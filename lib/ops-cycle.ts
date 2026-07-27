@@ -54,9 +54,12 @@ export const OPS_STEPS: OpsStep[] = [
     // A bounty whose issue is gone. The refund used to be one webhook
     // delivery, fired once, with two silent exits — so a single RPC hiccup at
     // the moment an issue closed stranded the escrow with no defect anywhere
-    // and nothing scheduled to notice. Not fast: it costs a GitHub call per
-    // live bounty, and being late here is free.
+    // and nothing scheduled to notice. Fast — the file's own definition of
+    // fast is "escrow that should have been freed", and this is exactly that.
+    // Bounded by RECONCILE_MAX_LOOKUPS per pass rather than by how many
+    // bounties exist, which is what makes it safe to ride on visitor traffic.
     name: 'bountyReconcile',
+    fast: true,
     run: async () => {
       const { reconcileBounties } = await import('@/lib/bounty-reconcile')
       return reconcileBounties()

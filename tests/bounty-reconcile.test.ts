@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
   RECONCILE_GRACE_MS,
+  RECONCILE_MAX_LOOKUPS,
   decideBountyCancel,
   explainBountyReason,
   type BountyFact,
@@ -158,5 +159,23 @@ describe('it is wired into the ops cycle', () => {
     // The whole point is that this runs without a webhook. A module nothing
     // calls is the bug it was written to fix, wearing a different file name.
     expect(readFileSync('lib/ops-cycle.ts', 'utf8')).toContain('reconcileBounties')
+  })
+})
+
+describe('the lookup cap', () => {
+  it('is small enough to ride on visitor traffic', () => {
+    // The sweep is `fast`, so it runs inside after() on a public request. The
+    // bound has to be the cap, not the number of bounties that happen to exist.
+    expect(RECONCILE_MAX_LOOKUPS).toBeLessThanOrEqual(10)
+    expect(RECONCILE_MAX_LOOKUPS).toBeGreaterThan(0)
+  })
+
+  it('reports what it deferred instead of dropping it', () => {
+    // A cap nobody is told about reads as "there was nothing else" — the exact
+    // confusion this whole sweep exists to end.
+    const source = readFileSync('lib/bounty-reconcile.ts', 'utf8')
+    expect(source).toMatch(/report\.deferred/)
+    // Oldest first, or a stranded escrow loses its turn to newer rows forever.
+    expect(source).toMatch(/orderBy\(asc\(jobSpec\.createdAt\)\)/)
   })
 })

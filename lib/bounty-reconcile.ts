@@ -77,6 +77,17 @@ export type BountyVerdict = { cancel: boolean; reason: BountyReason }
 export const RECONCILE_GRACE_MS = 30 * 60_000
 
 /**
+ * How many GitHub lookups one pass may spend.
+ *
+ * This sweep runs on ordinary traffic, so the per-pass cost has to be bounded
+ * by something other than "however many bounties exist". Oldest first, so a
+ * stranded escrow is never starved by newer ones, and whatever is left over is
+ * reported rather than dropped — a cap nobody is told about reads as "there
+ * was nothing else", which is the exact confusion this sweep exists to end.
+ */
+export const RECONCILE_MAX_LOOKUPS = 5
+
+/**
  * Should this bounty's escrow be returned?
  *
  * Ordered so the cheap refusals come first and every `false` carries a reason
@@ -133,6 +144,8 @@ export type ReconcileReport = {
   /** Count per reason, so a quiet pass still says what it saw. */
   reasons: Partial<Record<BountyReason, number>>
   failed?: number
+  /** Reached the lookup cap and will be picked up next pass. Never silent. */
+  deferred?: number
 }
 
 /**
@@ -145,7 +158,7 @@ export type ReconcileReport = {
 export async function reconcileBounties(): Promise<ReconcileReport | string> {
   const { db } = await import('@/lib/db')
   const { jobSpec } = await import('@/lib/db/schema')
-  const { and, isNotNull } = await import('drizzle-orm')
+  const { and, asc, isNotNull } = await import('drizzle-orm')
 
   let specs
   try {
@@ -160,6 +173,9 @@ export async function reconcileBounties(): Promise<ReconcileReport | string> {
       })
       .from(jobSpec)
       .where(and(isNotNull(jobSpec.repoFullName), isNotNull(jobSpec.issueNumber), isNotNull(jobSpec.onchainJobId)))
+      // Oldest first: whatever the lookup cap leaves behind must be the newest
+      // rows, never a stranded escrow that keeps losing its turn.
+      .orderBy(asc(jobSpec.createdAt))
   } catch (error) {
     return `spec read failed: ${error instanceof Error ? error.message : String(error)}`
   }
@@ -175,6 +191,7 @@ export async function reconcileBounties(): Promise<ReconcileReport | string> {
   }
 
   const now = Date.now()
+  let lookups = 0
   for (const spec of specs) {
     report.examined++
     const jobStatus = statusById?.get(spec.onchainJobId!) ?? null
@@ -189,6 +206,11 @@ export async function reconcileBounties(): Promise<ReconcileReport | string> {
       continue
     }
 
+    if (lookups >= RECONCILE_MAX_LOOKUPS) {
+      report.deferred = (report.deferred ?? 0) + 1
+      continue
+    }
+    lookups++
     const issue = await readIssue(spec.repoFullName!, spec.issueNumber!)
     const verdict = decideBountyCancel({
       issueState: issue?.state ?? null,
