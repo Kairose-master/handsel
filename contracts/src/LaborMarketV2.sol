@@ -59,6 +59,9 @@ contract LaborMarketV2 {
     ICreditRegistry public immutable registry;
     address public immutable arbiter;
 
+    /// @dev `Expired` is appended, never inserted: the numeric values are what
+    ///      every off-chain reader decodes, and renumbering an existing state
+    ///      silently reinterprets history.
     enum Status {
         Open,
         Accepted,
@@ -66,7 +69,15 @@ contract LaborMarketV2 {
         Completed,
         Cancelled,
         Disputed,
-        Refunded
+        Refunded,
+        /// @dev Delivered, never judged, and the review window ran out. Its own
+        ///      state rather than `Refunded` for two reasons. The balances do
+        ///      not match a refund — the requester gets back less than it
+        ///      escrowed — so a reconciler reading `Refunded` would see a
+        ///      shortfall and have to decide whether it was a bug or a theft.
+        ///      And nobody graded this work, so the credit engine must not
+        ///      score it as a worker failure: unknown verdict, do nothing.
+        Expired
     }
 
     struct Job {
@@ -124,6 +135,32 @@ contract LaborMarketV2 {
     ///      product is a worse bug than the one it prevents.
     uint256 public constant MIN_BOUNTY = 1;
 
+    /// @dev What a requester forfeits to the worker by neither approving nor
+    ///      disputing. 10%, in basis points.
+    ///
+    ///      Without it, silence is FREE AND DOMINANT for a dishonest
+    ///      requester: the deliverable arrived off-chain the moment it was
+    ///      submitted, approving costs gas, disputing costs gas, and doing
+    ///      nothing returns the whole bounty seven days later. An earlier draft
+    ///      answered that the market prices absent requesters out — but that is
+    ///      off-chain reputation, which is the thing docs/product-thesis.md
+    ///      argues does not carry. A defence that depends on the weakest claim
+    ///      in the product is not a defence.
+    ///
+    ///      The forfeit lands on requester INATTENTION specifically. A
+    ///      requester who reads their deliverables and disputes the bad ones
+    ///      never pays it; there is no honest behaviour it taxes.
+    ///
+    ///      What it costs, stated plainly: a worker who submits garbage now
+    ///      earns 10% whenever it finds an inattentive requester. That is a
+    ///      real hole and it is bounded — one dispute closes it, the worker
+    ///      still burns a delivery window and a job slot per attempt, and every
+    ///      requester who does respond records a graded failure against it.
+    ///      Accepted deliberately: the failure it prevents is a free option on
+    ///      every job in the market, and the failure it creates is capped at a
+    ///      tenth of one bounty per inattentive counterparty.
+    uint16 public constant SILENCE_FORFEIT_BPS = 1000;
+
     uint256 public jobCount;
     mapping(uint256 => Job) public jobs;
 
@@ -158,10 +195,14 @@ contract LaborMarketV2 {
     event PayeeAssigned(uint256 indexed jobId, address indexed worker, address indexed payee, uint256 amount);
     /// @dev A worker missed its deadline; escrow returned to the requester.
     event JobReclaimed(uint256 indexed jobId, address indexed formerWorker);
-    /// @dev A requester neither approved nor disputed in time.
-    event ReviewExpired(uint256 indexed jobId);
-    /// @dev The arbiter never ruled. Released to the worker — see expireDispute.
-    event DisputeExpired(uint256 indexed jobId);
+    /// @dev A requester neither approved nor disputed in time. Carries every
+    ///      leg, because this is the one terminal state where the escrow goes
+    ///      to more than one place and a reader that assumes "refund" would be
+    ///      wrong about all of them.
+    event ReviewExpired(uint256 indexed jobId, uint256 refunded, uint256 toPayee, uint256 toWorker);
+    /// @dev The arbiter never ruled. Released to the worker side — see
+    ///      expireDispute. Split reported for the same reason as JobCompleted.
+    event DisputeExpired(uint256 indexed jobId, uint256 toPayee, uint256 toWorker);
 
     error WrongStatus();
     error NotRequester();
@@ -390,24 +431,40 @@ contract LaborMarketV2 {
     /// @notice The mirror stall: work was delivered and the requester never
     ///         approved and never disputed. Also permissionless once the
     ///         review window has passed.
-    /// @dev    This resolves to a REFUND, and the asymmetry is deliberate
-    ///         rather than fair. Paying out on silence would make "submit
-    ///         anything and wait" a way to extract escrow without any grader
-    ///         ever passing the work — which is the one thing this whole
-    ///         system exists to prevent. Refunding on silence instead costs a
-    ///         worker who delivered honestly to an absent requester, and that
-    ///         cost is real. The trade is accepted because the failure it
-    ///         avoids is unbounded and the failure it causes is bounded by one
-    ///         bounty, and because an absent requester also stops being able
-    ///         to buy anything, so the market prices them out on its own.
+    /// @dev    Resolves MOSTLY to a refund: the requester gets its bounty back
+    ///         minus SILENCE_FORFEIT_BPS, which goes to the worker side.
+    ///
+    ///         Neither extreme is right. Paying the full bounty out on silence
+    ///         would make "submit anything and wait" a way to extract escrow
+    ///         with no grader ever passing the work, which is the one thing
+    ///         this system exists to prevent. Refunding all of it makes
+    ///         silence free — and free is not neutral, it is dominant. The
+    ///         requester already holds the deliverable; it arrived off-chain
+    ///         the moment it was submitted. Approving costs gas, disputing
+    ///         costs gas, and saying nothing pays.
+    ///
+    ///         So the requester pays a tenth for the option it took. It is not
+    ///         a payment for the work — nobody judged the work, and this
+    ///         contract never decides that. It is the price of leaving the
+    ///         question unanswered, charged to the only party who could have
+    ///         answered it.
+    ///
+    ///         Rounds DOWN, so a bounty small enough that a tenth is zero
+    ///         forfeits nothing rather than reverting. At cent scale that is
+    ///         the correct direction to be wrong in: a settlement that cannot
+    ///         execute is worse than a forfeit that does not apply.
     function expireReview(uint256 jobId) external {
         Job storage job = jobs[jobId];
         if (job.status != Status.Submitted) revert WrongStatus();
         if (block.timestamp < job.reviewDeadline) revert TooEarly(uint64(block.timestamp), job.reviewDeadline);
 
-        job.status = Status.Refunded;
-        require(usdc.transfer(job.requester, job.bounty), "refund: transfer");
-        emit ReviewExpired(jobId);
+        uint256 forfeit = (job.bounty * SILENCE_FORFEIT_BPS) / 10_000;
+        uint256 refund = job.bounty - forfeit;
+
+        job.status = Status.Expired;
+        (uint256 toPayee, uint256 toWorker) = _payWorkerSide(job, forfeit);
+        if (refund > 0) require(usdc.transfer(job.requester, refund), "refund: transfer");
+        emit ReviewExpired(jobId, refund, toPayee, toWorker);
     }
 
     /// @notice The third stall, and the one the first draft of this contract
@@ -442,9 +499,19 @@ contract LaborMarketV2 {
         if (job.status != Status.Disputed) revert WrongStatus();
         if (block.timestamp < job.disputeDeadline) revert TooEarly(uint64(block.timestamp), job.disputeDeadline);
 
-        job.status = Status.Completed;
-        _release(jobId, job);
-        emit DisputeExpired(jobId);
+        // `Expired`, not `Completed`, and the distinction is the same one
+        // `expireReview` makes: NOBODY JUDGED THIS WORK. The arbiter vanished.
+        // Marking it Completed would tell the credit engine a grader passed
+        // it, and a scoring system that cannot tell "approved" from "nobody
+        // showed up" is buying reputation with an absence.
+        //
+        // The taxonomy the three terminal states carry:
+        //   Completed — someone decided the work was good
+        //   Refunded  — someone decided it was not, or it never arrived
+        //   Expired   — settled by a deadline; no verdict exists
+        job.status = Status.Expired;
+        (uint256 toPayee, uint256 toWorker) = _payWorkerSide(job, job.bounty);
+        emit DisputeExpired(jobId, toPayee, toWorker);
     }
 
     /// @dev Single release path, so the payee assignment cannot be honoured on
@@ -457,16 +524,35 @@ contract LaborMarketV2 {
     ///      transfers cannot exceed what this job escrowed — the invariant that
     ///      keeps one job's release from touching another job's money.
     function _release(uint256 jobId, Job storage job) private {
-        uint256 toPayee = job.payee == address(0) ? 0 : job.payeeAmount;
-        uint256 toWorker = job.bounty - toPayee;
+        (uint256 toPayee, uint256 toWorker) = _payWorkerSide(job, job.bounty);
+        emit JobCompleted(jobId, job.worker, job.requester, job.bounty, job.payee, toPayee, toWorker);
+    }
+
+    /// @dev Pay `amount` of this job's escrow to the worker side, LENDER FIRST.
+    ///
+    ///      A strict waterfall rather than a proportional split, and the
+    ///      difference only shows up on the forfeit path — where the amount is
+    ///      a tenth of the bounty and may be less than what the lender
+    ///      advanced. Paying the borrower ahead of its own secured lender out
+    ///      of the same collateral is the exact thing a lien exists to prevent,
+    ///      and it would mean a THIRD PARTY's inaction (the requester's) could
+    ///      strip a lender's security. The assignment is irrevocable; a
+    ///      requester going quiet must not be able to revoke it by proxy.
+    ///
+    ///      `amount` is always <= bounty and `payeeAmount` is capped at bounty
+    ///      by assignPayee, so neither subtraction can underflow and the two
+    ///      transfers can never exceed what this job escrowed.
+    function _payWorkerSide(Job storage job, uint256 amount) private returns (uint256 toPayee, uint256 toWorker) {
+        if (job.payee != address(0)) {
+            toPayee = amount < job.payeeAmount ? amount : job.payeeAmount;
+        }
+        toWorker = amount - toPayee;
 
         if (toPayee > 0) require(usdc.transfer(job.payee, toPayee), "release: payee transfer");
-        // Skipped when a lender took the whole bounty — a zero transfer is a
-        // real transfer that some tokens revert on, and it would strand the
-        // settlement for no reason.
+        // Both legs are guarded: a zero transfer is a real transfer that some
+        // tokens revert on, and stranding a settlement over a zero-value leg
+        // would be the whole failure class this contract exists to close.
         if (toWorker > 0) require(usdc.transfer(job.worker, toWorker), "release: worker transfer");
-
-        emit JobCompleted(jobId, job.worker, job.requester, job.bounty, job.payee, toPayee, toWorker);
     }
 
     /// @notice Whether `reclaimJob` would succeed right now — for the
@@ -501,5 +587,25 @@ contract LaborMarketV2 {
         payee = job.payee;
         toPayee = payee == address(0) ? 0 : job.payeeAmount;
         toWorker = job.bounty - toPayee;
+    }
+
+    /// @notice What silence would cost, if the requester lets the review window
+    ///         run out.
+    /// @dev    For the requester's own UI, more than for anyone else: a charge
+    ///         a party cannot see before it is levied is a penalty, and a
+    ///         penalty is not what this is. It should be possible to read the
+    ///         price of doing nothing while there is still time to do
+    ///         something. Same waterfall as the release, so a lender can also
+    ///         see what it recovers on this path.
+    function expirySplit(uint256 jobId)
+        external
+        view
+        returns (uint256 toRequester, uint256 toPayee, uint256 toWorker)
+    {
+        Job storage job = jobs[jobId];
+        uint256 forfeit = (job.bounty * SILENCE_FORFEIT_BPS) / 10_000;
+        toRequester = job.bounty - forfeit;
+        if (job.payee != address(0)) toPayee = forfeit < job.payeeAmount ? forfeit : job.payeeAmount;
+        toWorker = forfeit - toPayee;
     }
 }

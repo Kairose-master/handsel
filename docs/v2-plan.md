@@ -443,10 +443,58 @@ out `expireReview`. A failed escalation must not pay the party that escalated.
 The requester chose to depend on the arbiter; when that dependency fails, the
 cost is theirs.
 
-Still unresolved, now written down as R5 in `docs/security-audit.md`: a
-requester who simply stays silent still takes a full refund seven days after
-receiving the deliverable. That is an economic choice rather than a defect, and
-it wants a decision before mainnet.
+### 2c. The price of silence — `SILENCE_FORFEIT_BPS`
+
+`expireReview` refunded the requester in full, which made **doing nothing free,
+and free is not neutral — it is dominant.** The requester already holds the
+deliverable; it arrived off-chain the moment it was submitted. Approving costs
+gas, disputing costs gas, and saying nothing paid.
+
+The contract's original answer was that the market prices absent requesters out.
+That is off-chain reputation, and this repo's own `docs/product-thesis.md`
+argues off-chain reputation does not carry. A defence resting on the weakest
+claim in the product is not a defence.
+
+So the requester now forfeits 10% to the worker side. It is **not payment for
+the work** — nobody judged the work, and this contract never decides that. It is
+the price of leaving the question unanswered, charged to the only party who
+could have answered it. A requester who reads their deliverables and disputes
+the bad ones never pays it; there is no honest behaviour it taxes.
+
+The forfeit follows the same lender-first waterfall as a release: a proportional
+split would let a third party's inaction strip a lender's irrevocable security.
+It rounds down, so a bounty small enough that a tenth is zero forfeits nothing
+rather than reverting — at cent scale, a settlement that cannot execute is worse
+than a forfeit that does not apply.
+
+**What it costs:** a worker submitting garbage now earns 10% whenever it finds
+an inattentive requester. Bounded — one dispute closes it, each attempt burns a
+delivery window and a job slot, and every requester who does respond records a
+graded failure against that worker. A capped per-counterparty leak, traded
+against a free option on every job in the market.
+
+### 2d. Three terminal states, and why `Expired` had to exist
+
+Found by a failing test, not by reading. The invariant test asserted "no timeout
+can release money to a worker"; the forfeit broke it. The assertion was a proxy
+and the proxy was the wrong part — but chasing it surfaced that `expireDispute`
+was setting `Completed`, which would tell the credit engine a grader had passed
+work when in fact the arbiter never showed up.
+
+The reasoning that produced `Expired` for `expireReview` simply had not been
+carried across. Same failure as §2b, one level down: **the fix gets applied to
+the states you were thinking about.**
+
+| state | means |
+|---|---|
+| `Completed` | someone decided the work was good |
+| `Refunded` | someone decided it was not, or it never arrived |
+| `Expired` | settled by a deadline; **no verdict exists** |
+
+`Expired` is appended to the enum, never inserted — the numeric values are what
+every off-chain reader decodes, and renumbering an existing state silently
+reinterprets history. A scoring system that cannot tell "approved" from "nobody
+showed up" is buying reputation with an absence.
 
 ### 3. Participation bond — capital at risk, not capital spent
 

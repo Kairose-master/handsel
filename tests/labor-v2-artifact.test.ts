@@ -124,6 +124,33 @@ describe('the assignable release — the lien', () => {
   })
 })
 
+describe('the price of silence', () => {
+  it('publishes the forfeit rate, so a requester can read it before it applies', () => {
+    // A charge a party cannot see coming is a penalty, and this is not one.
+    expect(fn('SILENCE_FORFEIT_BPS')?.stateMutability).toBe('view')
+  })
+
+  it('computes the expiry split too, not only the release split', () => {
+    expect(fn('expirySplit')?.stateMutability).toBe('view')
+    expect((fn('expirySplit')?.outputs ?? []).map((o) => o.name)).toEqual([
+      'toRequester',
+      'toPayee',
+      'toWorker',
+    ])
+  })
+
+  it('reports every leg of an expiry, because it is the one terminal state with three', () => {
+    const ev = abi.find((e) => e.type === 'event' && e.name === 'ReviewExpired')
+    expect((ev?.inputs ?? []).map((i) => i.name)).toEqual(['jobId', 'refunded', 'toPayee', 'toWorker'])
+  })
+
+  it('has no setter — the rate is not something an operator can tune per job', () => {
+    for (const setter of ['setForfeit', 'setSilenceForfeit', 'setForfeitBps']) {
+      expect(has('function', setter)).toBe(false)
+    }
+  })
+})
+
 describe('a job that was never posted is not a job', () => {
   it('has a distinct error for it', () => {
     // Status.Open is enum value ZERO, so an unposted job reads back as Open.

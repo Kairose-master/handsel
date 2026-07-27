@@ -313,33 +313,67 @@ Two smaller things found in the same pass, both fixed:
 Still open, and unchanged: **not deployed, not externally audited.** Written and
 tested is not audited, and this is still where an external audit should start.
 
-**R5 — A silent requester keeps the deliverable and the money.**
-`expireReview` refunds the requester when they neither approve nor dispute. The
-contract argues that asymmetry deliberately: paying out on silence would make
-"submit anything and wait" a way to extract escrow with no grader ever passing
-the work, which is the one thing this system exists to prevent.
+**R5 — ~~A silent requester keeps the deliverable and the money.~~ Priced.**
+`expireReview` used to refund the requester in full when they neither approved
+nor disputed. The contract argued that asymmetry deliberately: paying the bounty
+out on silence would make "submit anything and wait" a way to extract escrow
+with no grader ever passing the work, which is the one thing this system exists
+to prevent.
 
-The argument is right about the direction and thin about the cost. Doing
-nothing is **free and dominant** for a dishonest requester — the deliverable
-arrived off-chain the moment it was submitted, and seven days later the money
-comes back. Approving costs gas, disputing costs gas, silence costs nothing and
-pays. The contract's stated defence is that "an absent requester also stops
-being able to buy anything, so the market prices them out on its own" — but
-that is off-chain reputation, and `docs/product-thesis.md` is the document
-arguing that off-chain reputation is precisely what does not carry.
+Right about the direction, thin about the cost. Doing nothing was **free and
+dominant** for a dishonest requester — the deliverable arrived off-chain the
+moment it was submitted, and seven days later the money came back. Approving
+costs gas, disputing costs gas, silence cost nothing and paid. The stated
+defence was that "an absent requester also stops being able to buy anything, so
+the market prices them out on its own" — but that is off-chain reputation, and
+`docs/product-thesis.md` is the document arguing off-chain reputation is exactly
+what does not carry. **A defence that rests on the weakest claim in the product
+is not a defence.**
 
-`expireDispute` narrows this without closing it: a dishonest requester will now
-never dispute, because disputing risks paying the worker. It channels them into
-the path that at least resolves in seven days rather than never.
+Fixed with a forfeit: `SILENCE_FORFEIT_BPS = 1000`. The requester gets 90% back
+and 10% goes to the worker side. It is not payment for the work — nobody judged
+the work, and this contract never decides that. It is the price of leaving the
+question unanswered, charged to the only party who could have answered it. There
+is no honest behaviour it taxes: a requester who reads their deliverables and
+disputes the bad ones never pays it.
 
-Not fixed here, because the fix is an economic choice rather than a defect. The
-shape it would take is a forfeit — `expireReview` returning the bounty minus a
-small fraction paid to the worker, sized so silence is strictly worse than
-approving-when-good. The forfeit lands on requester inattention specifically,
-which is the party whose inaction caused it; a requester who reads their
-deliverables and disputes the bad ones never pays it. The counter-argument is
-that it hands a garbage-submitting worker a small payday every time it finds an
-inattentive requester. **Decide this before mainnet, not after.**
+Three consequences worth being explicit about.
+
+**The forfeit pays the lender first.** `_payWorkerSide` is a strict waterfall,
+so a worker that pledged the job to a lender does not collect ahead of it. A
+proportional split would let a *third party's* inaction — the requester's —
+strip a lender's security, and the assignment is supposed to be irrevocable.
+
+**It rounds down.** A bounty small enough that a tenth is zero forfeits nothing
+instead of reverting. At cent scale that is the right direction to be wrong in:
+a settlement that cannot execute is worse than a forfeit that does not apply.
+
+**What it costs, stated rather than buried.** A worker who submits garbage now
+earns 10% whenever it finds an inattentive requester. That is real. It is
+bounded: one dispute closes it, each attempt burns a delivery window and a job
+slot, and every requester who *does* respond records a graded failure against
+that worker. The trade is a capped, per-counterparty leak against a free option
+on every job in the market.
+
+**A related inconsistency, found by a test rather than by reading.** The
+existing invariant test asserted "no timeout can release money to a worker" and
+the forfeit broke it. The assertion was a proxy, and the proxy was the wrong
+part — but chasing it surfaced that `expireDispute` was setting `Completed`.
+That would tell the credit engine a grader had passed work when what actually
+happened is that the arbiter never showed up. The same reasoning that produced
+`Expired` for `expireReview` simply had not been carried across, which is the
+identical failure recorded above under R1: **the fix gets applied to the states
+you were thinking about.** Both timeouts now settle to `Expired`, and the three
+terminal states divide cleanly:
+
+| state | means |
+|---|---|
+| `Completed` | someone decided the work was good |
+| `Refunded` | someone decided it was not, or it never arrived |
+| `Expired` | settled by a deadline; **no verdict exists** |
+
+A scoring system that cannot tell "approved" from "nobody showed up" is buying
+reputation with an absence.
 
 **R2 — ~~Identity rotation defeats failure history.~~ Closed.**
 Reputation was tracked per AGENT, so an operator whose agent accumulated
