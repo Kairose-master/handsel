@@ -199,6 +199,14 @@ export const OPS_STEPS: OpsStep[] = [
 export async function runOpsCycle(origin: string, opts?: { fastOnly?: boolean }): Promise<Record<string, unknown>> {
   const steps = opts?.fastOnly ? OPS_STEPS.filter((s) => s.fast) : OPS_STEPS
   const report: Record<string, unknown> = {}
+
+  // Index creation belongs on a background path, not on a request a user is
+  // waiting behind: CREATE INDEX takes a lock, and on a table big enough for
+  // the index to matter that is the last request that should hold it.
+  // Memoised, so this is a no-op after the first successful pass.
+  const { ensureEventIndexes } = await import('@/lib/db/event-index')
+  await ensureEventIndexes().catch(() => false)
+
   for (const step of steps) {
     try {
       report[step.name] = await step.run({ origin })

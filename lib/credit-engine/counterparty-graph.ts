@@ -22,6 +22,7 @@
  */
 import { db } from '@/lib/db'
 import { agentEvent } from '@/lib/db/schema'
+import { REQUESTER_JSON_PATH } from '@/lib/db/event-index'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 
 /** One settled hire: `requester` paid `worker`. */
@@ -53,9 +54,15 @@ export function otherPartnerCounts(edges: readonly TradeEdge[], me: string): Map
  * look shipped and do nothing. A test compiles this to SQL instead.
  */
 export function counterpartyEdgeQuery(ids: readonly string[]) {
+  // REQUESTER_JSON_PATH, not a literal: the partial expression index in
+  // lib/db/event-index.ts is built from the same constant, and an expression
+  // index only helps when the expression matches character for character. A
+  // key renamed here alone would leave the index in place, unused, and the
+  // query back to a sequential scan on every settlement with no error anywhere.
+  const requester = sql.raw(REQUESTER_JSON_PATH)
   return db
     .select({
-      requester: sql<string>`${agentEvent.detail}->>'requesterAgentId'`,
+      requester: sql<string>`${requester}`,
       worker: agentEvent.agentId,
     })
     .from(agentEvent)
@@ -63,8 +70,9 @@ export function counterpartyEdgeQuery(ids: readonly string[]) {
       and(
         eq(agentEvent.eventType, 'JOB_COMPLETED'),
         // Parameterised, not interpolated: these ids come from a JSON field
-        // and must never reach the statement as text.
-        inArray(sql<string>`${agentEvent.detail}->>'requesterAgentId'`, [...ids]),
+        // and must never reach the statement as text. Only the COLUMN
+        // EXPRESSION is raw, and it is a constant in this repo, never input.
+        inArray(sql<string>`${requester}`, [...ids]),
       ),
     )
 }
