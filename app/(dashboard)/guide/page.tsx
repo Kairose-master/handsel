@@ -23,6 +23,7 @@ import {
 } from 'lucide-react'
 import { getGuideProgress } from '@/app/actions/guide'
 import { useI18n } from '@/lib/i18n'
+import { mcpUrl } from '@/lib/origin'
 
 type Progress = Awaited<ReturnType<typeof getGuideProgress>>
 
@@ -48,7 +49,7 @@ const STEPS: {
   { key: 's8', icon: Fingerprint, href: '/profile', doneWhen: (p) => p.hasErc8004 },
 ]
 
-const MCP_URL = 'https://ai-agent-credit-dashboard.vercel.app/api/mcp'
+const MCP_URL = mcpUrl()
 
 /**
  * The interactive "connect your assistant" step — the fastest way in (the Hire

@@ -2,6 +2,7 @@ import { resolveMcpAuth } from '@/lib/oauth'
 import { gradeTextSubmission } from '@/lib/text-grading'
 import { rateLimited } from '@/lib/rate-limit'
 import { nanoid } from 'nanoid'
+import { absoluteUrl } from '@/lib/origin'
 
 /**
  * POST /api/grade — independent grading as a service, for external harnesses
@@ -80,6 +81,6 @@ export async function POST(request: Request): Promise<Response> {
     passed: verdict.passed,
     reason: verdict.output,
     gradedAt: verdict.gradedAt,
-    ...(proof ? { proof: { ...proof, url: `https://ai-agent-credit-dashboard.vercel.app/proof/${proof.id}` } } : {}),
+    ...(proof ? { proof: { ...proof, url: absoluteUrl(`/proof/${proof.id}`) } } : {}),
   })
 }

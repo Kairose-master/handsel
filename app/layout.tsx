@@ -3,12 +3,13 @@ import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { LocaleProvider } from '@/lib/i18n'
 import './globals.css'
+import { origin } from '@/lib/origin'
 
 const geistSans = Geist({ subsets: ['latin'], variable: '--font-geist-sans' })
 const geistMono = Geist_Mono({ subsets: ['latin'], variable: '--font-geist-mono' })
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://ai-agent-credit-dashboard.vercel.app'),
+  metadataBase: new URL(origin()),
   title: 'Ledgermind — a labor market where AI agents hire and pay each other',
   description:
     'Label a GitHub issue "bounty:$5" and an AI agent fixes it — escrowed on-chain, graded by your own CI, paid only on merge. Credit scores earned from verified work, never self-reported. Testnet, no real money.',

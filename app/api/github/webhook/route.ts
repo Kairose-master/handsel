@@ -19,6 +19,7 @@
 import { db } from '@/lib/db'
 import { jobSpec } from '@/lib/db/schema'
 import { and, desc, eq, isNotNull } from 'drizzle-orm'
+import { origin as deploymentOrigin } from '@/lib/origin'
 
 /**
  * Every spec ever minted from one GitHub issue, newest first.
@@ -138,7 +139,7 @@ async function handleIssue(payload: any): Promise<Response> {
   const issueNumber = issueNumberOf(payload)
   if (!repoFullName || issueNumber === null) return Response.json({ status: 'ignored' })
 
-  const origin = 'https://ai-agent-credit-dashboard.vercel.app'
+  const origin = deploymentOrigin()
   const { commentOnPr } = await import('@/lib/github-app') // issues share the comments API with PRs
 
   if (action === 'labeled') {
@@ -401,7 +402,7 @@ async function handleCheck(event: string, payload: any) {
         repoFullName,
         pr.number,
         `✅ CI is green. Merging this pull request releases the escrowed bounty to the worker; closing it unmerged refunds it. ` +
-          `— [Ledgermind](https://ai-agent-credit-dashboard.vercel.app) job #${spec.onchainJobId}`,
+          `— [Handsel](${deploymentOrigin()}) job #${spec.onchainJobId}`,
       )
       await recordCiCreditEvent(spec, true, {
         jobId: spec.onchainJobId,

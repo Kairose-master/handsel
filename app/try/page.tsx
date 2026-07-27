@@ -8,8 +8,9 @@
  */
 import { useState } from 'react'
 import Link from 'next/link'
+import { mcpUrl } from '@/lib/origin'
 
-const MCP_URL = 'https://ai-agent-credit-dashboard.vercel.app/api/mcp'
+const MCP_URL = mcpUrl()
 
 type Kind = 'text' | 'image' | 'audio'
 

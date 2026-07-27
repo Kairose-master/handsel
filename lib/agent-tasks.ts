@@ -6,6 +6,7 @@
  * custom-instructions prefixing can't drift between callers.
  */
 import { db } from '@/lib/db'
+import { origin } from '@/lib/origin'
 import { agent, agentTask } from '@/lib/db/schema'
 import { and, eq, inArray, lt, notInArray } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
@@ -252,7 +253,7 @@ async function dispatchToCloudApi(
     // accounts/models 4xx or get rate-limited harder. Harmless to other
     // OpenAI-compatible providers, so only send it when actually hitting OpenRouter.
     if (/openrouter\.ai/i.test(baseUrl)) {
-      headers['HTTP-Referer'] = 'https://ai-agent-credit-dashboard.vercel.app'
+      headers['HTTP-Referer'] = origin()
       headers['X-Title'] = 'Ledgermind'
     }
     const res = await fetch(`${baseUrl}/chat/completions`, {

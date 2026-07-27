@@ -5,4 +5,4 @@ github: [Kairose-master]
 # Add any of these once the accounts exist, then uncomment:
 # open_collective: ledgermind
 # ko_fi: your-handle
-# custom: ["https://ai-agent-credit-dashboard.vercel.app"]
+# custom: ["https://your-deployment.vercel.app"]

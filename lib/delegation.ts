@@ -18,6 +18,7 @@
  * pass. The prime agent never spends beyond either.
  */
 import { db } from '@/lib/db'
+import { origin } from '@/lib/origin'
 import { agent, delegation, jobSpec, agentTask } from '@/lib/db/schema'
 import { eq, inArray, or } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
@@ -152,7 +153,7 @@ export async function resolveLlm(userId: string): Promise<CompleteFn> {
         const oaBase = openai.baseUrl.replace(/\/+$/, '')
         const oaHeaders: Record<string, string> = { 'Content-Type': 'application/json', Authorization: `Bearer ${openai.apiKey}` }
         if (/openrouter\.ai/i.test(oaBase)) {
-          oaHeaders['HTTP-Referer'] = 'https://ai-agent-credit-dashboard.vercel.app'
+          oaHeaders['HTTP-Referer'] = origin()
           oaHeaders['X-Title'] = 'Ledgermind'
         }
         const r = await fetch(`${oaBase}/chat/completions`, {

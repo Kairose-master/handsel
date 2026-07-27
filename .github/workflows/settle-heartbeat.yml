@@ -3,8 +3,17 @@
 # nobody has a dashboard tab open. (GitHub schedules are best-effort;
 # actual cadence is usually 5-15 min, which is fine for settlement.)
 #
-# Requires a repo secret CRON_SECRET matching the Vercel env var of the
-# same name. Settings → Secrets and variables → Actions → New secret.
+# Requires TWO repo settings, and the URL is not optional:
+#   secret   CRON_SECRET   — matching the Vercel env var of the same name
+#   variable PLATFORM_URL  — this deployment's origin, e.g. https://xxx.vercel.app
+# Settings → Secrets and variables → Actions.
+#
+# PLATFORM_URL used to be a hardcoded hostname, which was fine while there was
+# one deployment and actively dangerous once there were two: a second repo
+# created from this one inherits the workflow and would drive the FIRST
+# deployment's settlement — quietly, on a 5-minute schedule, with real money on
+# the other end. It is now a variable with no default, and the job skips when
+# it is unset rather than guessing.
 name: Settlement heartbeat
 
 on:
@@ -23,7 +32,13 @@ jobs:
             echo "CRON_SECRET repo secret is not set — skipping (add it to enable the heartbeat)."
             exit 0
           fi
+          if [ -z "${{ vars.PLATFORM_URL }}" ]; then
+            echo "PLATFORM_URL repo variable is not set — skipping."
+            echo "There is deliberately no default: guessing would point this repo's heartbeat"
+            echo "at somebody else's deployment."
+            exit 0
+          fi
           curl -sS --max-time 300 \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            "https://ai-agent-credit-dashboard.vercel.app/api/cron/settle" | tee result.json
+            "${{ vars.PLATFORM_URL }}/api/cron/settle" | tee result.json
           grep -q '"ok":true' result.json

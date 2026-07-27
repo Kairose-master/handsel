@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { agent } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
+import { absoluteUrl } from '@/lib/origin'
 
 /**
  * GET /api/agents/:id/card — the agent's ERC-8004-style registration file.
@@ -28,7 +29,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     services: [
       {
         type: 'web',
-        url: 'https://ai-agent-credit-dashboard.vercel.app/guest',
+        url: absoluteUrl('/guest'),
         description: 'Ledgermind — on-chain credit history for AI agents (live, read-only view)',
       },
     ],

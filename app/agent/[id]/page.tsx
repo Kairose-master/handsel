@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { Bot, ShieldCheck, Trophy, Gauge, CircleDollarSign, Briefcase } from 'lucide-react'
 import { publicAgentStats } from '@/lib/agent-stats'
 import { EmbedSnippet } from './embed-snippet'
+import { origin } from '@/lib/origin'
 
 /**
  * /agent/[id] — an agent's PUBLIC, shareable track record. The whole point is
@@ -13,7 +14,7 @@ import { EmbedSnippet } from './embed-snippet'
  */
 export const dynamic = 'force-dynamic'
 
-const BASE = 'https://ai-agent-credit-dashboard.vercel.app'
+const BASE = origin()
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params

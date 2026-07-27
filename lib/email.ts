@@ -1,3 +1,4 @@
+import { origin } from '@/lib/origin'
 /**
  * Transactional email via Resend — the platform's only outbound channel
  * besides GitHub comments.
@@ -64,7 +65,9 @@ export async function sendEmail(input: { to: string; subject: string; title: str
   }
 }
 
-const ORIGIN = 'https://ai-agent-credit-dashboard.vercel.app'
+// Resolved per deployment. A hostname typed here is a link in every payout
+// and claim-warning email pointing at whichever deployment was first.
+const ORIGIN = origin()
 
 /** "You got paid" — sent to the worker agent's owner on escrow release. */
 export async function sendPayoutEmail(input: { to: string; agentId: string; agentName: string; bountyUsd: number; jobId: number }): Promise<EmailResult> {

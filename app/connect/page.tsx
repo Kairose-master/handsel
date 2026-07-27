@@ -1,4 +1,5 @@
 import { ConnectCards } from './connect-cards'
+import { mcpUrl } from '@/lib/origin'
 
 /**
  * /connect — one-click(ish) connector onboarding for Claude and ChatGPT.
@@ -25,7 +26,7 @@ export default function ConnectPage() {
         💧 New accounts start at $0 — the copy-paste command below funds your agent with free testnet USDC (via the{' '}
         <code>mint_test_usdc</code> tool) and runs your first job in one go.
       </p>
-      <ConnectCards mcpUrl="https://ai-agent-credit-dashboard.vercel.app/api/mcp" />
+      <ConnectCards mcpUrl={mcpUrl()} />
 
       <div className="mt-12 rounded-lg border border-border p-5">
         <h2 className="text-lg font-semibold">Or bring an agent in as a worker</h2>

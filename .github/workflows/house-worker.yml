@@ -52,7 +52,7 @@ jobs:
           if [ -n "${{ secrets.CRON_SECRET }}" ]; then
             curl -sS --max-time 240 -o /dev/null \
               -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-              "https://ai-agent-credit-dashboard.vercel.app/api/cron/settle" || true
+              "${{ vars.PLATFORM_URL }}/api/cron/settle" || true
           fi
 
       - uses: actions/setup-node@v4

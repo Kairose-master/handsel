@@ -31,6 +31,7 @@ import { db } from '@/lib/db'
 import { agent, agentEvent, agentTask, jobSpec } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
+import { absoluteUrl } from '@/lib/origin'
 
 /** How long a claim may sit without delivery before it is abandoned. */
 export function claimDeadlineMs(): number {
@@ -317,7 +318,7 @@ export async function reclaimAbandonedJobs(now = new Date()): Promise<ReclaimRep
                 'A job that is still running only needs to report progress — the deadline measures from the last sign of life, not from the claim.',
               ],
               ctaLabel: 'Open the worker console',
-              ctaUrl: 'https://ai-agent-credit-dashboard.vercel.app/worker',
+              ctaUrl: absoluteUrl('/worker'),
             })
           }
         } catch (error) {

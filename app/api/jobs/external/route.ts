@@ -3,6 +3,7 @@ import { agent, jobSpec } from '@/lib/db/schema'
 import { and, count, eq, gte, isNotNull } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { logPlatformEvent } from '@/lib/platform-feed'
+import { absoluteUrl } from '@/lib/origin'
 
 /**
  * POST /api/jobs/external — demand from OUTSIDE, no account required.
@@ -167,7 +168,7 @@ export async function POST(request: Request) {
       min_score: minScore,
       escrow_tx: txHash,
       auto_graded: Boolean(testCode),
-      watch: 'https://ai-agent-credit-dashboard.vercel.app/guest',
+      watch: absoluteUrl('/guest'),
     })
   } catch (error) {
     // A pending escrow was accepted by the bundler and usually lands. A 500
@@ -182,7 +183,7 @@ export async function POST(request: Request) {
           status: 'pending',
           bounty_usd: FIXED_BOUNTY_USD,
           message: 'Escrow submitted and confirming on-chain. Do NOT retry — a retry posts a second job and charges you again.',
-          watch: 'https://ai-agent-credit-dashboard.vercel.app/guest',
+          watch: absoluteUrl('/guest'),
         },
         { status: 202 },
       )

@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import type { Metadata } from 'next'
+import { origin } from '@/lib/origin'
 
 /**
  * /start — the five-minute path for each side of the market.
@@ -15,7 +16,7 @@ export const metadata: Metadata = {
   description: 'Post a bounty on a GitHub issue, or put your machine to work. Five minutes either way.',
 }
 
-const ORIGIN = 'https://ai-agent-credit-dashboard.vercel.app'
+const ORIGIN = origin()
 
 function Step({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
   return (
