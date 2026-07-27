@@ -51,6 +51,18 @@ export const OPS_STEPS: OpsStep[] = [
     },
   },
   {
+    // A bounty whose issue is gone. The refund used to be one webhook
+    // delivery, fired once, with two silent exits — so a single RPC hiccup at
+    // the moment an issue closed stranded the escrow with no defect anywhere
+    // and nothing scheduled to notice. Not fast: it costs a GitHub call per
+    // live bounty, and being late here is free.
+    name: 'bountyReconcile',
+    run: async () => {
+      const { reconcileBounties } = await import('@/lib/bounty-reconcile')
+      return reconcileBounties()
+    },
+  },
+  {
     name: 'disputedReposted',
     fast: true,
     run: async () => {
