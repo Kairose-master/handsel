@@ -172,6 +172,12 @@ export const VAULT_ABI = [
 export const USDC_ABI = [
   { type: 'function', name: 'approve', stateMutability: 'nonpayable', inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [{ type: 'bool' }] },
   { type: 'function', name: 'balanceOf', stateMutability: 'view', inputs: [{ name: 'account', type: 'address' }], outputs: [{ type: 'uint256' }] },
+  // Read so the configured token's decimals can be checked against
+  // USDC_DECIMALS. Every amount in this system is scaled by that constant, so
+  // a token with different decimals is off by orders of magnitude in a way
+  // nothing else would notice — a $5 bounty escrowing $5,000,000, or $0.000005.
+  { type: 'function', name: 'decimals', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint8' }] },
+  { type: 'function', name: 'symbol', stateMutability: 'view', inputs: [], outputs: [{ type: 'string' }] },
 ] as const
 
 export const LABOR_MARKET_ABI = [

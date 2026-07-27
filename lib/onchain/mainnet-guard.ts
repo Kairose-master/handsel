@@ -26,6 +26,7 @@ export type BlockerCode =
   | 'faucet-enabled'
   | 'labor-market-unset'
   | 'mint-not-available'
+  | 'token-decimals-mismatch'
 
 export type Blocker = { code: BlockerCode; detail: string }
 
@@ -86,6 +87,32 @@ export function realMoneyBlockers(config: RealMoneyConfig): Blocker[] {
   }
 
   return blockers
+}
+
+/**
+ * Does the configured token scale the way every amount in this system assumes?
+ *
+ * `USDC_DECIMALS` is a compile-time constant and every bounty, cap, fee and
+ * balance is scaled by it. Point the app at a token with different decimals and
+ * nothing errors — a $5 bounty simply escrows $5,000,000 or $0.000005, and the
+ * first symptom is a settlement. USDC is 6 everywhere it matters, so this
+ * should never fire; that is exactly why it has to be checked rather than
+ * assumed.
+ *
+ * Pass the value read from the token's `decimals()`. Null means the read
+ * failed, which is not treated as a mismatch — an RPC blip must not stop a
+ * working market (the same "unknown is not empty" rule as lib/onchain/labor-read.ts).
+ */
+export function decimalsBlocker(onChainDecimals: number | null, expected: number): Blocker | null {
+  if (onChainDecimals === null) return null
+  if (onChainDecimals === expected) return null
+  return {
+    code: 'token-decimals-mismatch',
+    detail:
+      `The configured escrow token reports ${onChainDecimals} decimals but every amount in this system is scaled by ` +
+      `${expected}. Nothing would error — bounties would simply be wrong by a factor of 10^${Math.abs(onChainDecimals - expected)}, ` +
+      'and the first symptom would be a settlement. Check that the address is the token you meant.',
+  }
 }
 
 /** One-line summary for a log or a diagnostics page. */

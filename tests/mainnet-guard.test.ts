@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { formatBlockers, mintBlocker, realMoneyBlockers, type RealMoneyConfig } from '@/lib/onchain/mainnet-guard'
+import {
+  decimalsBlocker,
+  formatBlockers,
+  mintBlocker,
+  realMoneyBlockers,
+  type RealMoneyConfig,
+} from '@/lib/onchain/mainnet-guard'
 
 const ready: RealMoneyConfig = {
   isRealMoney: true,
@@ -89,6 +95,29 @@ describe('every blocker explains itself', () => {
     )
     expect(byCode['escrow-token-unset']).toContain('USDC_ADDRESS')
     expect(byCode['paymaster-unmetered']).toContain('PAYMASTER_METERED')
+  })
+})
+
+describe('decimalsBlocker — the compatibility check that has no symptom', () => {
+  it('passes when the token scales the way the code assumes', () => {
+    expect(decimalsBlocker(6, 6)).toBeNull()
+  })
+
+  it('catches a token whose decimals differ, in either direction', () => {
+    expect(decimalsBlocker(18, 6)?.code).toBe('token-decimals-mismatch')
+    expect(decimalsBlocker(2, 6)?.code).toBe('token-decimals-mismatch')
+  })
+
+  it('says how far wrong the amounts would be', () => {
+    // 18 vs 6 is a factor of a trillion. An operator should not have to work
+    // that out from "decimals mismatch".
+    expect(decimalsBlocker(18, 6)?.detail).toContain('10^12')
+  })
+
+  it('treats an unreadable value as unknown, not as a mismatch', () => {
+    // An RPC blip must not stop a working market — the same rule as
+    // lib/onchain/labor-read.ts, where unknown and empty are different.
+    expect(decimalsBlocker(null, 6)).toBeNull()
   })
 })
 
