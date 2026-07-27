@@ -99,6 +99,18 @@ importers:
       '@eslint/js':
         specifier: ^9.39.5
         version: 9.39.5
+      '@ethereumjs/common':
+        specifier: 4.4.0
+        version: 4.4.0
+      '@ethereumjs/tx':
+        specifier: 5.4.0
+        version: 5.4.0
+      '@ethereumjs/util':
+        specifier: 9.1.0
+        version: 9.1.0
+      '@ethereumjs/vm':
+        specifier: 8.1.1
+        version: 8.1.1
       '@next/eslint-plugin-next':
         specifier: ^16.2.11
         version: 16.2.11
@@ -490,21 +502,64 @@ packages:
     resolution: {integrity: sha512-43/qtrDUokr7LJqoF2c3+RInu/t4zfrpYdoSDfYyhg52rwLV6TnOvdG4fXm7IkSB3wErkcmJS9iEhjVtOSEjjA==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
 
+  '@ethereumjs/block@5.3.0':
+    resolution: {integrity: sha512-cyphdEB/ywIERqWLRHdAS6muTkAcd6BibMOp6XmGbeWgvtIhe4ArxcMDI78MVstJzT/faihvRI4rKQKy+MpdKQ==}
+    engines: {node: '>=18'}
+
+  '@ethereumjs/blockchain@7.3.0':
+    resolution: {integrity: sha512-UZXFb6JFeXDHobKhXGAiKf+m5n2ynCtqpgHWCl2nQ3Tol9W7C3By4UFMpAl2E6EyaFhC26Maig9kqCWxfsQ6bQ==}
+    engines: {node: '>=18'}
+
   '@ethereumjs/common@3.2.0':
     resolution: {integrity: sha512-pksvzI0VyLgmuEF2FA/JR/4/y6hcPq8OUail3/AvycBaW1d5VSauOZzqGvJ3RTmR4MU35lWE8KseKOsEhrFRBA==}
+
+  '@ethereumjs/common@4.4.0':
+    resolution: {integrity: sha512-Fy5hMqF6GsE6DpYTyqdDIJPJgUtDn4dL120zKw+Pswuo+iLyBsEYuSyzMw6NVzD2vDzcBG9fE4+qX4X2bPc97w==}
+
+  '@ethereumjs/ethash@3.0.4':
+    resolution: {integrity: sha512-dDc9h4RxEIWr38DxzeFyWlTmc++WeAFysFT6Ru0opoQ8WSM/hM3KH1VfHMPwx6JaqQT89Q/xtHV3CEvWrbwLKw==}
+    engines: {node: '>=18'}
+
+  '@ethereumjs/evm@3.1.1':
+    resolution: {integrity: sha512-JbDXtIn0PPZFU2oqVngje0YvW/JuNa6Y+kIYp1MCh5pn9NRplR8FkBbvb991fVSSo6AzuFMHJxSwgVl+OksnvQ==}
+    engines: {node: '>=18'}
 
   '@ethereumjs/rlp@4.0.1':
     resolution: {integrity: sha512-tqsQiBQDQdmPWE1xkkBq4rlSW5QZpLOUJ5RJh2/9fug+q9tnUhuZoVLk7s0scUIKTOzEtR72DFBXI4WiZcMpvw==}
     engines: {node: '>=14'}
     hasBin: true
 
+  '@ethereumjs/rlp@5.0.2':
+    resolution: {integrity: sha512-DziebCdg4JpGlEqEdGgXmjqcFoJi+JGulUXwEjsZGAscAQ7MyD/7LE/GVCP29vEQxKc7AAwjT3A2ywHp2xfoCA==}
+    engines: {node: '>=18'}
+    hasBin: true
+
+  '@ethereumjs/statemanager@2.4.0':
+    resolution: {integrity: sha512-IBe5kMGsDWlSvNg7QCERwO3BQE1c9hzVIZ9ktZF7xyifFEfA4VNhTMMEpwLuiAIy0l/ZzZiZ17/Iqar+SawMYA==}
+
+  '@ethereumjs/trie@6.2.1':
+    resolution: {integrity: sha512-MguABMVi/dPtgagK+SuY57rpXFP+Ghr2x+pBDy+e3VmMqUY+WGzFu1QWjBb5/iJ7lINk4CI2Uwsih07Nu9sTSg==}
+    engines: {node: '>=18'}
+
   '@ethereumjs/tx@4.2.0':
     resolution: {integrity: sha512-1nc6VO4jtFd172BbSnTnDQVr9IYBFl1y4xPzZdtkrkKIncBCkdbgfdRV+MiTkJYAtTxvV12GRZLqBFT1PNK6Yw==}
     engines: {node: '>=14'}
 
+  '@ethereumjs/tx@5.4.0':
+    resolution: {integrity: sha512-SCHnK7m/AouZ7nyoR0MEXw1OO/tQojSbp88t8oxhwes5iZkZCtfFdUrJaiIb72qIpH2FVw6s1k1uP7LXuH7PsA==}
+    engines: {node: '>=18'}
+
   '@ethereumjs/util@8.1.0':
     resolution: {integrity: sha512-zQ0IqbdX8FZ9aw11vP+dZkKDkS+kgIvQPHnSAXzP9pLu+Rfu3D3XEeLbicvoXJTYnhZiPmsZUxgdzXwNKxRPbA==}
     engines: {node: '>=14'}
+
+  '@ethereumjs/util@9.1.0':
+    resolution: {integrity: sha512-XBEKsYqLGXLah9PNJbgdkigthkG7TAGvlD/sH12beMXEyHDyigfcbdvHhmLyDWgDyOJn4QwiQUaF7yeuhnjdog==}
+    engines: {node: '>=18'}
+
+  '@ethereumjs/vm@8.1.1':
+    resolution: {integrity: sha512-h9gIN/maMKXltM4VxZ9ac581PPUUObnFVBniLuu9vJgGTELdnwqxLwJVxSfho/Bhk56YyvKBYf1RpHwoLZZ6xw==}
+    engines: {node: '>=18'}
 
   '@floating-ui/core@1.7.5':
     resolution: {integrity: sha512-1Ih4WTWyw0+lKyFMcBHGbb5U5FtuHJuujoyyr5zTaWS5EYMeT6Jb2AuDeftsCsEuchO+mM2ij5+q9crhydzLhQ==}
@@ -1810,6 +1865,9 @@ packages:
   '@types/react@19.2.14':
     resolution: {integrity: sha512-ilcTH/UniCkMdtexkoCN0bI7pMcJDvmQFPvuPvmEaYA/NSfFTAgdUSLAoVjaRJm7+6PvcM+q1zYOwS4wTYMF9w==}
 
+  '@types/readable-stream@2.3.15':
+    resolution: {integrity: sha512-oM5JSKQCcICF1wvGgmecmHldZ48OZamtMxcGGVICOJA8o8cahXC1zEVAif8iwoc5j8etxFaRFnf095+CDsuoFQ==}
+
   '@types/set-cookie-parser@2.4.10':
     resolution: {integrity: sha512-GGmQVGpQWUe5qglJozEjZV/5dyxbOOZ0LHe/lqyWssB88Y4svNfst0uqBVscdDeIKl5Jy5+aPSvy7mI9tYRguw==}
 
@@ -2369,6 +2427,10 @@ packages:
 
   big.js@6.2.2:
     resolution: {integrity: sha512-y/ie+Faknx7sZA5MfGA2xKlu0GDv8RWrXGsmlteyJQ2lvoKv9GBK/fpRMc2qlSoBAgNxrixICFCBefIq8WCQpQ==}
+
+  bigint-crypto-utils@3.3.0:
+    resolution: {integrity: sha512-jOTSb+drvEDxEq6OuUybOAv/xxoh3cuYRUIPyu8sSHQNKM303UQ2R1DAo45o1AkcIXw6fzbaFI1+xGGdaXs2lg==}
+    engines: {node: '>=14.0.0'}
 
   bn.js@5.2.5:
     resolution: {integrity: sha512-Vq886eXykuP5E6HcKSSStP3bJgrE6In5WKxVUvJ8XGpWWYs2xZHWqUwzCtGgEtBcxyd57KBFDPFoUfNzdaHCNg==}
@@ -3743,6 +3805,9 @@ packages:
   jose@6.2.3:
     resolution: {integrity: sha512-YYVDInQKFJfR/xa3ojUTl8c2KoTwiL1R5Wg9YCydwH0x0B9grbzlg5HC7mMjCtUJjbQ/YnGEZIhI5tCgfTb4Hw==}
 
+  js-sdsl@4.4.2:
+    resolution: {integrity: sha512-dwXFwByc/ajSV6m5bcKAPwe4yDDF6D614pxmIi5odytzxRlwqF6nwoiCek80Ixc7Cvma5awClxrzFtxCQvcM8w==}
+
   js-tokens@10.0.0:
     resolution: {integrity: sha512-lM/UBzQmfJRo9ABXbPWemivdCW8V2G8FHaHdypQaIy523snUjog0W71ayWXTjiR+ixeMyVHN2XcpnTd/liPg/Q==}
 
@@ -4016,6 +4081,10 @@ packages:
 
   longest-streak@3.1.0:
     resolution: {integrity: sha512-9Ri+o0JYgehTaVBBDoMqIl8GXtbWg711O3srftcHhZ0dqnETqLaoIK0x17fUw9rFSlK/0NlsKe0Ahhyl5pXE2g==}
+
+  lru-cache@10.1.0:
+    resolution: {integrity: sha512-/1clY/ui8CzjKFyjdvwPWJUYKiFVXG2I2cY0ssG7h4+hwk+XOIX7ZSG9Q7TW8TW3Kp3BUSqgFWBLgL4PJ+Blag==}
+    engines: {node: 14 || >=16.14}
 
   lru-cache@11.5.2:
     resolution: {integrity: sha512-4pfM1Ff0x50o0tQwb5ucw/RzNyD0/YJME6IVcStalZuMWxdt3sR3huStTtxz4PUmvZfRguvDejasvQ2kifR11g==}
@@ -4927,6 +4996,9 @@ packages:
 
   run-parallel@1.2.0:
     resolution: {integrity: sha512-5l4VyZR86LZ/lDxZTR6jqL8AFE2S0IFLMP26AbjsLVADxHdhB/c0GUsH+y39UfCi3dzz8OlQuPmnaJOMoDHQBA==}
+
+  rustbn-wasm@0.4.0:
+    resolution: {integrity: sha512-C2ujvPv05hXC69MD7YwSsoUEsT/X/dKHkkgwN9B0ZTgb0OXDC9yaHhE6Pq+uaRAzMyW0Y97bwc4JO4cqPDzVuQ==}
 
   safe-array-concat@1.1.4:
     resolution: {integrity: sha512-wtZlHyOje6OZTGqAoaDKxFkgRtkF9CnHAVnCHKfuj200wAgL+bSJhdsCD2l0Qx/2ekEXjPWcyKkfGb5CPboslg==}
@@ -6335,12 +6407,93 @@ snapshots:
       '@eslint/core': 0.17.0
       levn: 0.4.1
 
+  '@ethereumjs/block@5.3.0':
+    dependencies:
+      '@ethereumjs/common': 4.4.0
+      '@ethereumjs/rlp': 5.0.2
+      '@ethereumjs/trie': 6.2.1
+      '@ethereumjs/tx': 5.4.0
+      '@ethereumjs/util': 9.1.0
+      ethereum-cryptography: 2.2.1
+    transitivePeerDependencies:
+      - supports-color
+
+  '@ethereumjs/blockchain@7.3.0':
+    dependencies:
+      '@ethereumjs/block': 5.3.0
+      '@ethereumjs/common': 4.4.0
+      '@ethereumjs/ethash': 3.0.4
+      '@ethereumjs/rlp': 5.0.2
+      '@ethereumjs/trie': 6.2.1
+      '@ethereumjs/tx': 5.4.0
+      '@ethereumjs/util': 9.1.0
+      debug: 4.4.3
+      ethereum-cryptography: 2.2.1
+      lru-cache: 10.1.0
+    transitivePeerDependencies:
+      - supports-color
+
   '@ethereumjs/common@3.2.0':
     dependencies:
       '@ethereumjs/util': 8.1.0
       crc-32: 1.2.2
 
+  '@ethereumjs/common@4.4.0':
+    dependencies:
+      '@ethereumjs/util': 9.1.0
+
+  '@ethereumjs/ethash@3.0.4':
+    dependencies:
+      '@ethereumjs/block': 5.3.0
+      '@ethereumjs/rlp': 5.0.2
+      '@ethereumjs/util': 9.1.0
+      bigint-crypto-utils: 3.3.0
+      ethereum-cryptography: 2.2.1
+    transitivePeerDependencies:
+      - supports-color
+
+  '@ethereumjs/evm@3.1.1':
+    dependencies:
+      '@ethereumjs/common': 4.4.0
+      '@ethereumjs/statemanager': 2.4.0
+      '@ethereumjs/tx': 5.4.0
+      '@ethereumjs/util': 9.1.0
+      '@noble/curves': 1.9.7
+      '@types/debug': 4.1.13
+      debug: 4.4.3
+      ethereum-cryptography: 2.2.1
+      rustbn-wasm: 0.4.0
+    transitivePeerDependencies:
+      - supports-color
+
   '@ethereumjs/rlp@4.0.1': {}
+
+  '@ethereumjs/rlp@5.0.2': {}
+
+  '@ethereumjs/statemanager@2.4.0':
+    dependencies:
+      '@ethereumjs/common': 4.4.0
+      '@ethereumjs/rlp': 5.0.2
+      '@ethereumjs/trie': 6.2.1
+      '@ethereumjs/util': 9.1.0
+      debug: 4.4.3
+      ethereum-cryptography: 2.2.1
+      js-sdsl: 4.4.2
+      lru-cache: 10.1.0
+    transitivePeerDependencies:
+      - supports-color
+
+  '@ethereumjs/trie@6.2.1':
+    dependencies:
+      '@ethereumjs/rlp': 5.0.2
+      '@ethereumjs/util': 9.1.0
+      '@types/readable-stream': 2.3.15
+      debug: 4.4.3
+      ethereum-cryptography: 2.2.1
+      lru-cache: 10.1.0
+      readable-stream: 3.6.2
+    transitivePeerDependencies:
+      - supports-color
 
   '@ethereumjs/tx@4.2.0':
     dependencies:
@@ -6349,11 +6502,39 @@ snapshots:
       '@ethereumjs/util': 8.1.0
       ethereum-cryptography: 2.2.1
 
+  '@ethereumjs/tx@5.4.0':
+    dependencies:
+      '@ethereumjs/common': 4.4.0
+      '@ethereumjs/rlp': 5.0.2
+      '@ethereumjs/util': 9.1.0
+      ethereum-cryptography: 2.2.1
+
   '@ethereumjs/util@8.1.0':
     dependencies:
       '@ethereumjs/rlp': 4.0.1
       ethereum-cryptography: 2.2.1
       micro-ftch: 0.3.1
+
+  '@ethereumjs/util@9.1.0':
+    dependencies:
+      '@ethereumjs/rlp': 5.0.2
+      ethereum-cryptography: 2.2.1
+
+  '@ethereumjs/vm@8.1.1':
+    dependencies:
+      '@ethereumjs/block': 5.3.0
+      '@ethereumjs/blockchain': 7.3.0
+      '@ethereumjs/common': 4.4.0
+      '@ethereumjs/evm': 3.1.1
+      '@ethereumjs/rlp': 5.0.2
+      '@ethereumjs/statemanager': 2.4.0
+      '@ethereumjs/trie': 6.2.1
+      '@ethereumjs/tx': 5.4.0
+      '@ethereumjs/util': 9.1.0
+      debug: 4.4.3
+      ethereum-cryptography: 2.2.1
+    transitivePeerDependencies:
+      - supports-color
 
   '@floating-ui/core@1.7.5':
     dependencies:
@@ -7907,6 +8088,11 @@ snapshots:
     dependencies:
       csstype: 3.2.3
 
+  '@types/readable-stream@2.3.15':
+    dependencies:
+      '@types/node': 24.10.4
+      safe-buffer: 5.1.2
+
   '@types/set-cookie-parser@2.4.10':
     dependencies:
       '@types/node': 24.10.4
@@ -8945,6 +9131,8 @@ snapshots:
       zod: 4.4.3
 
   big.js@6.2.2: {}
+
+  bigint-crypto-utils@3.3.0: {}
 
   bn.js@5.2.5: {}
 
@@ -10300,6 +10488,8 @@ snapshots:
 
   jose@6.2.3: {}
 
+  js-sdsl@4.4.2: {}
+
   js-tokens@10.0.0: {}
 
   js-tokens@4.0.0: {}
@@ -10516,6 +10706,8 @@ snapshots:
       is-unicode-supported: 1.3.0
 
   longest-streak@3.1.0: {}
+
+  lru-cache@10.1.0: {}
 
   lru-cache@11.5.2: {}
 
@@ -11707,6 +11899,10 @@ snapshots:
   run-parallel@1.2.0:
     dependencies:
       queue-microtask: 1.2.3
+
+  rustbn-wasm@0.4.0:
+    dependencies:
+      '@scure/base': 1.2.6
 
   safe-array-concat@1.1.4:
     dependencies:

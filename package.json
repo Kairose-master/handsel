@@ -45,6 +45,10 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
+    "@ethereumjs/common": "4.4.0",
+    "@ethereumjs/tx": "5.4.0",
+    "@ethereumjs/util": "9.1.0",
+    "@ethereumjs/vm": "8.1.1",
     "@next/eslint-plugin-next": "^16.2.11",
     "@tailwindcss/postcss": "^4.2.0",
     "@types/bcryptjs": "^3.0.0",
