@@ -4,9 +4,10 @@
  * are USDC transfers executed as sponsored UserOps from the agent's account.
  */
 import { encodeFunctionData, parseUnits, type Address, type Hex } from 'viem'
-import { USDC_ABI, USDC_DECIMALS, onchainEnv } from './config'
+import { IS_REAL_MONEY, USDC_ABI, USDC_DECIMALS, onchainEnv } from './config'
 import { publicClient } from './clients'
 import { sendAgentCall } from './account'
+import { mintBlocker } from './mainnet-guard'
 
 const TRANSFER_ABI = [
   {
@@ -53,6 +54,13 @@ export async function transferUsdc(agentId: string, to: Address, amountUsd: numb
 
 /** Self-mint test USDC into the agent's own smart account (testnet only). */
 export async function mintTestUsdc(agentId: string, amountUsd: number, toAddress: Address): Promise<Hex> {
+  // Refused BEFORE the UserOperation is built. On a real chain the escrow
+  // token is issued by someone else and has no permissionless mint, so this
+  // would revert — but only after the sponsored gas was already spent, which
+  // is the operator paying for a guaranteed failure.
+  const blocked = mintBlocker(IS_REAL_MONEY)
+  if (blocked) throw new Error(blocked.detail)
+
   const data = encodeFunctionData({
     abi: MINT_ABI,
     functionName: 'mint',

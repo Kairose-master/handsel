@@ -596,6 +596,11 @@ export async function tickJobFaucet(opts?: { force?: boolean }): Promise<FaucetR
   // (e.g. for a workshop/demo where guaranteed instant work matters more).
   if (process.env.FAUCET_ENABLED !== 'true') return { posted: 0, openBefore: 0, skipped: 'disabled (opt-in: set FAUCET_ENABLED=true)' }
   if (process.env.FAUCET_DISABLED === 'true') return { posted: 0, openBefore: 0, skipped: 'disabled' }
+  // Practice work funded with real money is money spent on jobs nobody asked
+  // for, and it fills the board with exactly the demand that must not be
+  // counted as demand. FAUCET_ENABLED does not override this — the chain does.
+  const { IS_REAL_MONEY } = await import('@/lib/onchain/config')
+  if (IS_REAL_MONEY) return { posted: 0, openBefore: 0, skipped: 'disabled: the configured chain is real money' }
 
   const { acquireOpsLease } = await import('@/lib/ops-lease')
   const leaseMs = opts?.force ? FAUCET_FORCE_LEASE_MS : FAUCET_TICK_COOLDOWN_MS

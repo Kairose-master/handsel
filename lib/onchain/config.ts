@@ -17,7 +17,7 @@
  *              one-key/N-agents property, no bundler dependency.
  */
 import { defineChain } from 'viem'
-import { sepolia } from 'viem/chains'
+import { base, sepolia } from 'viem/chains'
 
 export const giwaSepolia = defineChain({
   id: 91342,
@@ -28,16 +28,38 @@ export const giwaSepolia = defineChain({
   testnet: true,
 })
 
-const CHAINS = { sepolia, 'giwa-sepolia': giwaSepolia } as const
+const CHAINS = { sepolia, 'giwa-sepolia': giwaSepolia, base } as const
 export const CHAIN = CHAINS[(process.env.ONCHAIN_CHAIN ?? 'sepolia') as keyof typeof CHAINS] ?? sepolia
 export const EXPLORER_URL = CHAIN.blockExplorers?.default.url ?? 'https://sepolia.etherscan.io'
 export const USDC_DECIMALS = 6
 
-/** EAS deployment per chain. GIWA is OP Stack, so EAS ships as a predeploy
- *  (verified present via eth_getCode); Sepolia uses the standalone deployment. */
+/**
+ * Is the configured chain one where losing money means losing money?
+ *
+ * Everything in this codebase was written against a testnet and quietly
+ * assumes it: the escrow token is mintable by anyone, the faucet posts
+ * practice work, gas is sponsored without a budget. None of those assumptions
+ * survives contact with a real chain, and the dangerous ones fail silently
+ * rather than loudly — so the chain's own `testnet` flag is turned into a
+ * first-class fact that the money paths can consult.
+ *
+ * viem sets `testnet` on test chains and leaves it undefined on mainnets, so
+ * the check is deliberately "not explicitly a testnet" rather than "explicitly
+ * a mainnet": an unknown chain is treated as real money, which is the safe
+ * direction to be wrong in.
+ */
+export const IS_REAL_MONEY = CHAIN.testnet !== true
+
+/** EAS deployment per chain. GIWA and Base are OP Stack, so EAS ships as a
+ *  predeploy at the standard address; Sepolia uses the standalone deployment.
+ *  GIWA's was verified present with eth_getCode. Base's is the documented OP
+ *  Stack predeploy and should be verified the same way before it is relied on
+ *  — a wrong address here breaks attestations, which is loud, rather than
+ *  losing funds, which is not. */
 const EAS_DEFAULTS: Record<number, `0x${string}`> = {
   [sepolia.id]: '0xC2679fBD37d54388Ce493F1DB75320D236e1815e',
   [giwaSepolia.id]: '0x4200000000000000000000000000000000000021',
+  [base.id]: '0x4200000000000000000000000000000000000021',
 }
 
 export const onchainEnv = {
@@ -49,7 +71,25 @@ export const onchainEnv = {
   vaultAddress: (process.env.CREDIT_VAULT_ADDRESS ?? '') as `0x${string}` | '',
   laborMarketAddress: (process.env.LABOR_MARKET_ADDRESS ?? '') as `0x${string}` | '',
   verifiedEscrowAddress: (process.env.VERIFIED_TASK_ESCROW_ADDRESS ?? '') as `0x${string}` | '',
-  usdcAddress: (process.env.MOCK_USDC_ADDRESS ?? '') as `0x${string}` | '',
+  /**
+   * The escrow token. `USDC_ADDRESS` is the name to use; `MOCK_USDC_ADDRESS`
+   * is read after it only so existing testnet deployments keep working.
+   *
+   * There is deliberately NO default. On a mainnet the wrong token address is
+   * unrecoverable — funds approved and transferred to it are simply gone —
+   * and a plausible-looking constant compiled into the app is exactly how that
+   * happens. Unset fails loudly at startup; a wrong default fails silently at
+   * settlement.
+   */
+  usdcAddress: (process.env.USDC_ADDRESS ?? process.env.MOCK_USDC_ADDRESS ?? '') as `0x${string}` | '',
+  /**
+   * Operator's explicit confirmation that the ZeroDev project has a spending
+   * policy. Sponsored gas on a real chain is the operator's money, spendable
+   * by anyone who can cause a UserOperation, and there is no way to detect the
+   * policy from here — so it is an acknowledgement rather than a check.
+   * See docs/v2-plan.md, paymaster section.
+   */
+  paymasterMeteredAck: process.env.PAYMASTER_METERED === 'true',
   veilpollFactoryAddress: (process.env.VEILPOLL_FACTORY_ADDRESS ?? '') as `0x${string}` | '', // commit-reveal poll factory
   governanceRevealDays: Number(process.env.GOVERNANCE_REVEAL_DAYS ?? '2'), // reveal window after a proposal closes
   // Both supported chains have an EAS default, so this is always a real address.
