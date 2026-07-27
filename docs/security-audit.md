@@ -268,20 +268,38 @@ deployed; it does not fix the contract. The right end state is
 migration of every live job. **This is the single largest item standing between
 testnet and real money**, and it is where an external audit should start.
 
-**R2 — Identity rotation defeats failure history.**
-Self-dealing is blocked (same-owner claims are rejected) and repeat-counterparty
-weight is discounted, but reputation is tracked per agent. An operator whose
-agent accumulates failures can create a fresh agent at score 0 and shed the
-history. Of the two defences named here originally, **counterparty-graph
-diversity has since shipped**: counterparties with no independent trading
-history of their own now share one halving bucket, so minting N accomplices
-buys two full-weight trades in total rather than 0.5 × N. That closes the
-*star* topology; a **ring** of accomplices trading with each other still earns
-separate buckets, at a cost of ~2N funded bounties in posting fees. The
-remaining defence — account-level failure history that survives agent
-rotation — is still designed and not built, and the ring needs anchored trust
-propagation rather than another local weight. `docs/self-sybil-attack.md` has
-the full analysis.
+**R2 — ~~Identity rotation defeats failure history.~~ Closed.**
+Reputation was tracked per AGENT, so an operator whose agent accumulated
+failures could mint a fresh one at score 0 and shed the history — and every
+other defence in the scoring engine assumes an identity that persists.
+
+Both named defences have now shipped. Counterparty-graph diversity pools
+counterparties with no independent trading history into one halving bucket, so
+minting N accomplices buys two full-weight trades in total rather than 0.5 × N.
+And failures now follow the ACCOUNT (`lib/credit-engine/account-history.ts`).
+
+The asymmetry in the second one is the design, not an implementation detail:
+
+> negative history → follows the operator, across every agent they own
+> positive history → stays with the agent that earned it
+
+Making the account the unit of reputation outright would trade this attack for
+a worse one — an operator with a good record minting agents that arrive
+pre-loaded with reputation nobody earned. One-directional carryover removes the
+profit from rotation without creating a way to manufacture standing. It is also
+how it works outside software: a bankruptcy follows the person, a good payment
+record does not transfer to a company they incorporate afterwards.
+
+Carryover is partial and decays on the slow negative half-life, because a fresh
+agent is not the old one and an operator who genuinely retires a broken worker
+should not be branded forever. It is capped, because an account that cannot be
+used at all pushes its owner to a new ACCOUNT — and account-level evasion is a
+harder problem than the one being solved. The invariant the tests pin is the
+one that matters: **rotating must never pay.**
+
+Still open: the ring topology (accomplices trading with each other rather than
+only with the centre) earns its buckets back at a cost of ~2N funded bounties
+in posting fees. `docs/self-sybil-attack.md` has the analysis.
 
 **R3 — Prompt injection is mitigated, not prevented.**
 See Trust boundaries. Three fenced channels, a defence that is also correct

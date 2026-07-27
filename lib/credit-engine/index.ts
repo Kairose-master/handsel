@@ -8,11 +8,51 @@
  */
 import { db } from '@/lib/db'
 import { agent, agentEvent, creditScoreEntry, creditTransaction, jobSpec } from '@/lib/db/schema'
-import { and, desc, eq, isNotNull } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNotNull } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
-import { assessCredit, buildCalculationReason, collateralizedCreditLimit, type CreditAssessment } from './scoring'
+import {
+  assessCredit,
+  buildCalculationReason,
+  collateralizedCreditLimit,
+  creditLimitForScore,
+  ratingForScore,
+  riskLevelForScore,
+  type CreditAssessment,
+} from './scoring'
 import { otherPartnersByCounterparty } from './counterparty-graph'
+import { accountCarryover, applyCarryover, type CarryoverResult } from './account-history'
+
 import { getEffectiveCreditRules } from '@/lib/credit-rules'
+
+/**
+ * Negative events belonging to the OTHER agents of this agent's owner.
+ *
+ * Two queries rather than a join, because the agent table and the event table
+ * are keyed differently and the readable version is worth more here than one
+ * fewer round trip. Fails soft to "no carryover": an unreadable sibling history
+ * must not invent a penalty, and the direction is the safe one — an agent
+ * temporarily escapes a deduction rather than being handed one it never earned.
+ */
+async function ownerFailureCarryover(agentId: string): Promise<CarryoverResult> {
+  const empty = accountCarryover([])
+  try {
+    const [me] = await db.select({ userId: agent.userId }).from(agent).where(eq(agent.id, agentId))
+    if (!me?.userId) return empty
+
+    const siblings = await db.select({ id: agent.id }).from(agent).where(eq(agent.userId, me.userId))
+    const siblingIds = siblings.map((s) => s.id).filter((id) => id !== agentId)
+    if (siblingIds.length === 0) return empty
+
+    const rows = await db
+      .select({ eventType: agentEvent.eventType, createdAt: agentEvent.createdAt, agentId: agentEvent.agentId })
+      .from(agentEvent)
+      .where(inArray(agentEvent.agentId, siblingIds))
+    return accountCarryover(rows)
+  } catch (error) {
+    console.error('[credit] could not read sibling failure history for', agentId, error)
+    return empty
+  }
+}
 
 /**
  * A task's self-reported TASK_COMPLETED/TASK_FAILED event only knows "did
@@ -159,6 +199,22 @@ export async function recalculateCredit(agentId: string): Promise<CreditState> {
       }
     })
   assessment.creditLimit = collateralizedCreditLimit(assessment.creditLimit, settledTrades)
+
+  // Failures follow the account (audit R2). Without this, an operator whose
+  // agent accumulates failures mints a fresh one at score 0 and sheds the
+  // history — and every other defence in this engine assumes an identity that
+  // persists. Successes deliberately do NOT carry: inheriting them would let a
+  // good record mint pre-loaded agents, which is the worse of the two trades.
+  const carryover = await ownerFailureCarryover(agentId)
+  if (carryover.weight > 0) {
+    assessment.score = applyCarryover(assessment.score, carryover)
+    assessment.rating = ratingForScore(assessment.score, rules.rating)
+    assessment.riskLevel = riskLevelForScore(assessment.score, rules.risk)
+    // Re-derive the limit from the reduced score and re-apply the collateral
+    // cap. Skipping this would leave a ceiling that a lower score no longer
+    // justifies — the score would fall and the borrowing power would not.
+    assessment.creditLimit = collateralizedCreditLimit(creditLimitForScore(assessment.score), settledTrades)
+  }
 
   const [previous] = await db
     .select()
