@@ -133,14 +133,25 @@ export async function getAgentKernel(agentId: string) {
   // slips through (cross-instance) is retried with backoff.
   const address = account.address as Address
   const rawSend = kernelClient.sendUserOperation.bind(kernelClient)
-  ;(kernelClient as any).sendUserOperation = (args: unknown) =>
-    serializedSend(address, () =>
+  ;(kernelClient as any).sendUserOperation = async (args: unknown) => {
+    // The gas gate lives HERE, wrapped around the client itself, rather than at
+    // each call site. Four call sites already batch their own UserOps instead
+    // of going through sendAgentCall, and each was a door somebody had to
+    // remember to lock — the next one added would have been unlocked by
+    // default. Wrapping the client means a sponsored operation cannot be sent
+    // without passing the meter, including from code not written yet.
+    // lib/onchain/gas-policy.ts explains the allowance.
+    const { requireSponsoredOp } = await import('./gas-meter')
+    await requireSponsoredOp(agentId)
+
+    return serializedSend(address, () =>
       withRetry(() => rawSend(args as Parameters<typeof rawSend>[0]), {
         retries: 4,
         baseMs: 500,
         retryable: isNonceCollision,
       }),
     )
+  }
 
   return { account, kernelClient, address }
 }
@@ -230,6 +241,8 @@ export async function sendAgentCall(
   agentId: string,
   call: { to: Address; data: Hex; value?: bigint },
 ): Promise<Hex> {
+  // EOA mode is not sponsored — the gas lands on the agent's own balance, so
+  // there is nothing of the operator's to meter.
   if (agentAccountMode === 'eoa') return sendEoaCall(agentId, call)
 
   const { account, kernelClient } = await getAgentKernel(agentId)

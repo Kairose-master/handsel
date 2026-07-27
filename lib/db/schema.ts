@@ -750,6 +750,30 @@ export const authAttempt = pgTable(
   (t) => [index('auth_attempts_scope_ip_at_idx').on(t.scope, t.ip, t.at)],
 )
 
+/**
+ * sponsored_ops — one row per UserOperation the operator's paymaster paid for.
+ *
+ * Same shape as auth_attempts above and for the same reason: a per-instance
+ * counter is not a counter at all across serverless fan-out. This one guards
+ * money rather than a login — sponsored gas is the operator's wallet, spendable
+ * by anyone who can cause an operation (lib/onchain/gas-policy.ts).
+ *
+ * Written BEFORE the operation is sent, never after. A row written afterwards
+ * does not exist yet for the request that raced it, and refusing the second one
+ * is the entire point. If the send then fails, an agent has been charged for an
+ * operation that did not happen — which is the cheap direction to be wrong in,
+ * and the opposite mistake spends real money.
+ */
+export const sponsoredOp = pgTable(
+  'sponsored_ops',
+  {
+    id: text('id').primaryKey(),
+    agentId: text('agent_id').notNull(),
+    at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('sponsored_ops_agent_at_idx').on(t.agentId, t.at)],
+)
+
 // ---- OAuth 2.0 for MCP connectors (Claude / ChatGPT custom connectors) ----
 // Public clients only (PKCE, no client secret): connectors register
 // dynamically (RFC 7591), the user approves on /oauth/authorize, and the

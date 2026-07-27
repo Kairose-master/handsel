@@ -535,6 +535,17 @@ CREATE TABLE IF NOT EXISTS auth_attempts (
 );
 CREATE INDEX IF NOT EXISTS auth_attempts_scope_ip_at_idx ON auth_attempts (scope, ip, at);
 
+-- One row per UserOperation the operator's paymaster paid for. Same shape and
+-- the same reason as auth_attempts above: a per-instance counter is not a
+-- counter at all across serverless fan-out. This one guards the operator's
+-- wallet rather than a login -- see lib/onchain/gas-policy.ts.
+CREATE TABLE IF NOT EXISTS sponsored_ops (
+  id       text PRIMARY KEY,
+  agent_id text NOT NULL,
+  at       timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS sponsored_ops_agent_at_idx ON sponsored_ops (agent_id, at);
+
 CREATE TABLE IF NOT EXISTS oauth_clients (
   id              text PRIMARY KEY,
   name            text NOT NULL,
