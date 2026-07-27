@@ -184,6 +184,50 @@ describe('the deadline is set by the requester but bounded by the contract', () 
   })
 })
 
+describe('withdraw is a claim, not a drain', () => {
+  // `withdraw` was on the forbidden list above until settlement became a
+  // credit, and the guard firing was correct: on an escrow contract that name
+  // is the classic operator drain. It is allowed now only because of the
+  // properties below, so they are asserted rather than assumed.
+
+  it('takes no argument, so it cannot name whose money to move', () => {
+    expect(fn('withdraw')?.inputs).toHaveLength(0)
+  })
+
+  it('lets you redirect only your OWN balance', () => {
+    // withdrawTo(address) takes a DESTINATION, not a source. There is no
+    // withdrawFrom, and no two-address form that could move someone else's.
+    expect(sig('withdrawTo')).toBe('address')
+    for (const drain of ['withdrawFrom', 'withdrawFor', 'withdrawAll', 'collect']) {
+      expect(has('function', drain)).toBe(false)
+    }
+  })
+
+  it('publishes every balance it owes', () => {
+    expect(fn('withdrawable')?.stateMutability).toBe('view')
+    expect(fn('totalWithdrawable')?.stateMutability).toBe('view')
+  })
+
+  it('announces money actually leaving, separately from settlement', () => {
+    // Every other event is a CREDIT. An indexer that conflates the two reports
+    // a worker as paid before it has been.
+    const ev = abi.find((e) => e.type === 'event' && e.name === 'Withdrawn')
+    expect((ev?.inputs ?? []).map((i) => i.name)).toEqual(['account', 'to', 'amount'])
+  })
+})
+
+describe('the registry cannot take the market down with it', () => {
+  it('has a distinct error for an unreadable score', () => {
+    // Not ScoreTooLow(0, n) — that would blame the worker for the registry
+    // being down.
+    expect(has('error', 'RegistryUnavailable')).toBe(true)
+  })
+
+  it('bounds the gas it will forward', () => {
+    expect(fn('REGISTRY_GAS_LIMIT')?.stateMutability).toBe('view')
+  })
+})
+
 describe('the escrow says whether it is solvent', () => {
   it('exposes the running total, not just a per-job amount', () => {
     expect(fn('totalEscrowed')?.stateMutability).toBe('view')
@@ -255,7 +299,7 @@ describe('what v2 deliberately did NOT change', () => {
   it('has no owner, no pause, and no upgrade hatch', () => {
     // Every one of these would hand the operator a way to reverse a settlement,
     // which is the property this system exists to remove.
-    for (const escape of ['owner', 'pause', 'unpause', 'upgradeTo', 'setArbiter', 'withdraw', 'sweep']) {
+    for (const escape of ['owner', 'pause', 'unpause', 'upgradeTo', 'setArbiter', 'sweep']) {
       expect(has('function', escape)).toBe(false)
     }
   })

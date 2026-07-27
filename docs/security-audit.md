@@ -313,6 +313,59 @@ Two smaller things found in the same pass, both fixed:
 Still open, and unchanged: **not deployed, not externally audited.** Written and
 tested is not audited, and this is still where an external audit should start.
 
+**R6 — ~~Settlement could be frozen by the token, not by the state machine.~~
+Fixed.**
+Every payout was a push inside the settling transaction. Base USDC is
+upgradeable by Circle and enforces a **blocklist**, so one frozen address —
+chosen by nobody in the market, undoable by nobody in the market — reverted the
+settlement that had to pay it. Measured against a blocklisting token double
+(`tests/labor-market-v2-hostile.evm.test.ts`), not reasoned about:
+
+| frozen | broke |
+|---|---|
+| worker | `approveJob`, `resolveDispute(true)`, `expireDispute` → escrow frozen |
+| requester | `cancelJob`, `reclaimJob`, `expireReview` — the last **taking the worker's forfeit with it** |
+| payee | every settlement route |
+| fee recipient | **every `postJob`; the market accepts no work at all** |
+
+R1 again, arriving through the token after the state machine had been built to
+make it impossible. **Three permissionless timeouts are worth nothing if the
+timeout cannot execute.**
+
+Settlement now credits `withdrawable[account]`; `withdraw()` pays. A frozen
+address blocks only itself, and `withdrawTo(address)` lets even that party
+recover, because USDC checks the sender and recipient of a transfer and the
+sender is the contract. Cost: one extra transaction per party to collect, and
+any UI that said "paid" must say "claimable". Withdrawals batch, so at volume
+it is cheaper than a transfer per settlement.
+
+Worth naming as a pattern, because it is the third instance this week: **the
+fix gets applied to the states you were thinking about.** R1 was fixed in the
+state machine, then walked back in through the arbiter (`Disputed` had no
+exit), then through the credit engine (`expireDispute` marking work
+`Completed`), and now through the token. The state machine was never the
+boundary; it was just the part that was being looked at.
+
+**R7 — ~~An immutable registry could stop the market permanently.~~ Fixed.**
+`registry.creditScore` was an unguarded call to an address that can never
+change. Now wrapped with a 100k gas stipend; an unreadable score means the job
+proceeds when `minScore == 0` (the gate would not have rejected anyone) and is
+refused with a distinct `RegistryUnavailable` when `minScore > 0` (never act on
+missing evidence — and `ScoreTooLow(0, n)` would have blamed the worker for the
+registry being down). A dead registry now stops the market without freezing
+escrow: `cancelJob` still refunds Open jobs. Stopping is survivable; stopping
+with the money inside is R1.
+
+**R8 — ~~The contract's own instructions were wrong.~~ Fixed.**
+`postJob`'s NatSpec said to approve `bounty`; it pulls `bounty + fee`. With a
+non-zero fee that is an instruction which fails on the first attempt and every
+one after, in a contract that cannot be upgraded to correct itself. Found by
+the audit, missed by 97 tests — because the harness grants a blanket
+over-approval once and never revisits allowance. **Over-provisioning in a
+fixture hides exactly the defect class where the contract asks for more than it
+said it would.** `postCost(bounty)` now returns the figure, and the new tests
+approve the exact documented amount and nothing more.
+
 **R5 — ~~A silent requester keeps the deliverable and the money.~~ Priced.**
 `expireReview` used to refund the requester in full when they neither approved
 nor disputed. The contract argued that asymmetry deliberately: paying the bounty

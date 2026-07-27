@@ -37,7 +37,7 @@ for (const source of SOURCES) {
   }
 }
 
-for (const required of ['LaborMarketV2', 'TestUSDC', 'TestRegistry']) {
+for (const required of ['LaborMarketV2', 'TestUSDC', 'TestRegistry', 'BlocklistUSDC', 'RevertingRegistry']) {
   if (!artifacts[required]) {
     console.error(`missing ${required} — refusing to write a fixture the tests cannot use`)
     process.exit(1)

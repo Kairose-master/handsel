@@ -591,6 +591,92 @@ returns to zero after each.
 
 ---
 
+### 7. Settlement credits; `withdraw` pays — the blocklist brick
+
+Every payout used to be a push inside the settling transaction:
+`require(usdc.transfer(to, amount))`. **Base USDC is upgradeable by Circle and
+enforces a blocklist**, so "this address cannot receive" is a real, permanent
+state that nobody in the market chooses and nobody in the market can undo.
+
+Measured, not reasoned about — `tests/labor-market-v2-hostile.evm.test.ts`
+deploys a USDC double with Circle's blocklist and the whole design fell over:
+
+| frozen party | what stopped working |
+|---|---|
+| worker | `approveJob`, `resolveDispute(true)`, `expireDispute` all revert → **escrow frozen** |
+| requester | `cancelJob`, `reclaimJob`, `expireReview` revert — and the last one **took the worker's forfeit down with it** |
+| payee (lender) | every settlement route reverts |
+| **fee recipient** | **every `postJob` reverts — the market accepts no work at all** |
+
+That is R1 — frozen escrow, no exit — reintroduced **through the token**, after
+the state machine had been built specifically to make it impossible. Three
+permissionless timeouts are worth nothing if the timeout itself cannot execute.
+It is also the third time this session that a fix was applied to the states
+being thought about while the same shape walked in through a door nobody was
+watching.
+
+So settlement now moves money into `withdrawable[account]` and `withdraw()`
+pays. A frozen address blocks only itself: the job settles, everyone else is
+paid, and that party's balance waits. `withdrawTo(address)` is the escape hatch
+for the frozen party itself — USDC checks the *sender* and *recipient* of a
+transfer, and the sender here is the contract, so naming an unfrozen address
+works. Without it, crediting would only have moved the trap from the job to the
+balance.
+
+**What it costs, plainly.** Money no longer lands in a wallet as part of the
+job finishing; every party takes one extra transaction to collect. Any UI that
+said "paid" has to say "claimable". Against that: withdrawals *batch* — one
+collection after fifty jobs is cheaper in total gas than fifty transfers — so
+at volume this is cheaper, not dearer. And settlement gas becomes constant,
+which matters because a permissionless timeout is paid for by a stranger.
+
+`escrowSolvency()` now reports **both** liabilities: `totalEscrowed` (owed to
+running jobs) plus `totalWithdrawable` (earned, not yet collected). Reporting
+only the first would show a contract holding a large surplus that is entirely
+spoken for, and a solvency number that flatters is worse than none.
+
+### 8. The registry cannot take the market down with it
+
+`registry` is immutable and `creditScore` was called bare inside `acceptJob`.
+An immutable address called without a guard means that if the registry is ever
+upgraded into something that reverts, **no job can be accepted again, ever.**
+
+Now wrapped, with a 100k gas stipend, and an unreadable score resolves the two
+cases in opposite and correct directions:
+
+- `minScore == 0` — the gate was never going to reject anyone, so an unreadable
+  score changes nothing and the market keeps working.
+- `minScore > 0` — the requester asked for a guarantee that cannot be checked,
+  so refuse, with a distinct `RegistryUnavailable`. Not `ScoreTooLow(0, n)`,
+  which would blame the worker for the registry being down.
+
+The gas stipend is a separate hazard from the revert: a registry that consumed
+everything would leave the 1/64 remainder, too little to finish, so the `catch`
+would not save the transaction.
+
+Pinned either way: a dead registry stops the market **but never freezes
+escrow** — `cancelJob` still refunds Open jobs, so requesters can always leave.
+Stopping is survivable; stopping with the money inside is R1.
+
+### 9. `postCost` — the contract's own instructions were wrong
+
+`postJob`'s NatSpec said *"Requester must approve this contract for `bounty`"*.
+It pulls `bounty + fee`. On a deployment with a non-zero fee that instruction
+**fails on the first attempt and every attempt after it**, and the contract
+cannot be upgraded to correct its own documentation.
+
+Every existing test missed it because the harness grants one blanket
+`approve(market, BOUNTY * 100n)` and never thinks about allowance again.
+Over-provisioning in a fixture hides exactly the class of defect where the
+contract asks for more than it said it would.
+
+`postCost(bounty)` returns the figure, for the same reason `releaseSplit`
+exists: a lender that reimplements the split is a lender that can get it wrong,
+and a requester that reimplements the fee is a requester whose posting reverts.
+The new tests approve the *exact* documented amount and nothing more.
+
+---
+
 ## Is the contract *enough*? — the extensibility answer
 
 ### What it can already absorb without a redeploy
@@ -643,6 +729,7 @@ state.
 | Arbiter rotation | A `setArbiter` is an owner wearing a narrow name. A *silent* arbiter is already survivable via `expireDispute`; a *malicious* one can only choose between two legitimate outcomes and cannot pay itself. Bounded, and the bound is the argument. |
 | A pause switch | The reversal power the whole thesis is against. |
 | A surplus sweep | See §6. |
+| A push/pull hybrid | Trying `transfer` and falling back to a credit would put money in wallets in the common case, but makes settlement gas non-deterministic and adds a `try/catch` whose behaviour depends on how the token fails. One path, always, is worth more than a saved transaction. |
 
 ---
 

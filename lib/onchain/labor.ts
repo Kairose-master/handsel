@@ -21,7 +21,13 @@ export type OnchainJob = {
   resultHash: Hex
 }
 
-/** Post a job: approve the market for the bounty and postJob, atomically. */
+/** Post a job: approve the market and postJob, atomically.
+ *
+ *  NOTE for the V2 migration: V2 charges a protocol fee ON TOP of the bounty,
+ *  so `postJob` there pulls `bounty + fee` and this approval — exactly the
+ *  bounty — reverts. V2 exposes `postCost(bounty)` for precisely this; approve
+ *  that. The V1 contract this file still targets has no fee, so the amount
+ *  below is correct today and wrong the moment the address changes. */
 export async function postJob(
   requesterAgentId: string,
   bountyUsd: number,

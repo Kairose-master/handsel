@@ -98,6 +98,16 @@ contract LaborMarketV2 {
     ///         cheap enough that it actually gets published.
     uint256 public totalEscrowed;
 
+    /// @notice What each address may withdraw, and the sum of it.
+    /// @dev    **Settlement CREDITS; it does not transfer.** See `withdraw`.
+    ///         Held separately from `totalEscrowed` because they answer
+    ///         different questions — one is money owed to unfinished jobs, the
+    ///         other is money already earned and not yet collected — and a
+    ///         solvency check that added them together without naming them
+    ///         would hide which side a shortfall was on.
+    mapping(address => uint256) public withdrawable;
+    uint256 public totalWithdrawable;
+
     /// @dev `Expired` is appended, never inserted: the numeric values are what
     ///      every off-chain reader decodes, and renumbering an existing state
     ///      silently reinterprets history.
@@ -200,6 +210,10 @@ contract LaborMarketV2 {
     ///      tenth of one bounty per inattentive counterparty.
     uint16 public constant SILENCE_FORFEIT_BPS = 1000;
 
+    /// @dev Gas allowed to the credit registry per lookup. Generous for a
+    ///      mapping read, far too little to grief with. See `_scoreOf`.
+    uint256 public constant REGISTRY_GAS_LIMIT = 100_000;
+
     uint256 public jobCount;
     mapping(uint256 => Job) public jobs;
 
@@ -246,6 +260,10 @@ contract LaborMarketV2 {
     /// @dev The arbiter never ruled. Released to the worker side — see
     ///      expireDispute. Split reported for the same reason as JobCompleted.
     event DisputeExpired(uint256 indexed jobId, uint256 toPayee, uint256 toWorker);
+    /// @dev Money actually leaving. Every other event above describes a CREDIT;
+    ///      this is the only one that means a token moved, and an indexer that
+    ///      conflates the two will report a worker as paid before it has been.
+    event Withdrawn(address indexed account, address indexed to, uint256 amount);
 
     error WrongStatus();
     error NotRequester();
@@ -262,6 +280,8 @@ contract LaborMarketV2 {
     error BadPayeeAmount();
     error FeeTooHigh();
     error ZeroFeeRecipient();
+    error NothingToWithdraw();
+    error RegistryUnavailable();
 
     constructor(address _usdc, address _registry, address _arbiter, uint16 _feeBps, address _feeRecipient) {
         if (_feeBps > MAX_FEE_BPS) revert FeeTooHigh();
@@ -276,8 +296,15 @@ contract LaborMarketV2 {
         feeRecipient = _feeRecipient;
     }
 
-    /// @notice Post a job, escrowing `bounty` USDC. Requester must approve
-    ///         this contract for `bounty` first (batch it in the same UserOp).
+    /// @notice Post a job, escrowing `bounty` USDC.
+    /// @dev    **Approve `postCost(bounty)`, not `bounty`.** The fee is charged
+    ///         ON TOP, so this pulls `bounty + fee` and an allowance of exactly
+    ///         the bounty reverts every time. An earlier version of this
+    ///         sentence said `bounty`, which on a deployment with a non-zero
+    ///         fee is an instruction that fails on the first attempt and every
+    ///         attempt after it — and the contract cannot be upgraded, so a
+    ///         wrong instruction in its own NatSpec is permanent. Batch the
+    ///         approve into the same UserOp.
     /// @param deliveryWindow How long the accepting worker gets to deliver.
     function postJob(uint256 bounty, uint256 minScore, bytes32 specHash, uint32 deliveryWindow)
         external
@@ -293,7 +320,13 @@ contract LaborMarketV2 {
         // nobody can price against.
         uint256 fee = (bounty * feeBps) / 10_000;
         require(usdc.transferFrom(msg.sender, address(this), bounty + fee), "escrow: transferFrom");
-        if (fee > 0) require(usdc.transfer(feeRecipient, fee), "fee: transfer");
+        // The fee is CREDITED, not sent. Sending it here put a third party's
+        // ability to receive on the critical path of every posting: one
+        // blocklisted fee recipient and the market accepts no work at all.
+        if (fee > 0) {
+            withdrawable[feeRecipient] += fee;
+            totalWithdrawable += fee;
+        }
 
         totalEscrowed += bounty;
         jobId = ++jobCount;
@@ -330,13 +363,50 @@ contract LaborMarketV2 {
         if (job.status != Status.Open) revert WrongStatus();
         if (msg.sender == job.requester) revert SelfWork();
 
-        uint256 score = registry.creditScore(msg.sender);
+        uint256 score = _scoreOf(msg.sender, job.minScore);
         if (score < job.minScore) revert ScoreTooLow(score, job.minScore);
 
         job.worker = msg.sender;
         job.status = Status.Accepted;
         job.deliveryDeadline = uint64(block.timestamp) + job.deliveryWindow;
         emit JobAccepted(jobId, msg.sender, score, job.deliveryDeadline);
+    }
+
+    /// @dev Read a worker's score without letting the registry take the market
+    ///      down with it.
+    ///
+    ///      `registry` is immutable and was called bare. An unguarded external
+    ///      call to an address that can never be changed means that if the
+    ///      registry is ever upgraded into something that reverts, or simply
+    ///      stops answering, **no job can be accepted again, ever** — the
+    ///      market stops taking work while the contract still holds escrow.
+    ///      (Not frozen: `cancelJob` still refunds Open jobs, so requesters can
+    ///      leave. It stops, it does not steal. Pinned by a test.)
+    ///
+    ///      Unknown score is treated as ZERO, which resolves the two cases in
+    ///      opposite and correct directions:
+    ///
+    ///        minScore == 0  the gate was never going to reject anyone, so an
+    ///                       unreadable score changes nothing and the job
+    ///                       proceeds. The market keeps working.
+    ///        minScore > 0   the requester asked for a guarantee that cannot be
+    ///                       checked. Refuse. "Never act on missing evidence"
+    ///                       (docs/failure-modes.md invariant 5) — and the
+    ///                       caller gets `RegistryUnavailable`, not a
+    ///                       `ScoreTooLow(0, n)` that would blame the worker
+    ///                       for the registry being down.
+    ///
+    ///      The gas stipend is a separate hazard: a registry that consumed
+    ///      everything would leave the 1/64 remainder, too little to finish, so
+    ///      the catch would not save the transaction. 100k is far above any
+    ///      honest score lookup and far below a griefing budget.
+    function _scoreOf(address worker, uint256 minScore) private view returns (uint256) {
+        try registry.creditScore{gas: REGISTRY_GAS_LIMIT}(worker) returns (uint256 score) {
+            return score;
+        } catch {
+            if (minScore > 0) revert RegistryUnavailable();
+            return 0;
+        }
     }
 
     /// @notice Worker submits the deliverable (referenced off-chain by hash).
@@ -450,7 +520,7 @@ contract LaborMarketV2 {
             _release(jobId, job);
         } else {
             job.status = Status.Refunded;
-            _payOut(job.requester, job.bounty, "refund: transfer");
+            _credit(job.requester, job.bounty);
         }
         emit DisputeResolved(jobId, releaseToWorker);
     }
@@ -462,7 +532,7 @@ contract LaborMarketV2 {
         if (msg.sender != job.requester) revert NotRequester();
 
         job.status = Status.Cancelled;
-        _payOut(job.requester, job.bounty, "refund: transfer");
+        _credit(job.requester, job.bounty);
         emit JobCancelled(jobId);
     }
 
@@ -486,7 +556,7 @@ contract LaborMarketV2 {
 
         address formerWorker = job.worker;
         job.status = Status.Refunded;
-        _payOut(job.requester, job.bounty, "refund: transfer");
+        _credit(job.requester, job.bounty);
         emit JobReclaimed(jobId, formerWorker);
     }
 
@@ -525,7 +595,7 @@ contract LaborMarketV2 {
 
         job.status = Status.Expired;
         (uint256 toPayee, uint256 toWorker) = _payWorkerSide(job, forfeit);
-        _payOut(job.requester, refund, "refund: transfer");
+        _credit(job.requester, refund);
         emit ReviewExpired(jobId, refund, toPayee, toWorker);
     }
 
@@ -585,15 +655,22 @@ contract LaborMarketV2 {
     ///      by `assignPayee`, so the subtraction cannot underflow and the two
     ///      transfers cannot exceed what this job escrowed — the invariant that
     ///      keeps one job's release from touching another job's money.
-    /// @dev Money leaving the contract, in one place. `totalEscrowed` is a
-    ///      claim about solvency, and a settlement route that forgets to
-    ///      decrement it makes the contract look permanently over-collateralised
-    ///      — which is the direction that hides a real shortfall behind an
-    ///      accounting one. Every payout below goes through here.
-    function _payOut(address to, uint256 amount, string memory context) private {
+    /// @dev Settlement, in one place: move `amount` out of this job's escrow
+    ///      and into `to`'s withdrawable balance.
+    ///
+    ///      **No token transfer happens here, and that is the point.** See the
+    ///      note on `withdraw` for why pushing was a frozen escrow waiting for
+    ///      Circle to press a button.
+    ///
+    ///      `totalEscrowed` is a claim about solvency, and a settlement route
+    ///      that forgets to decrement it makes the contract look permanently
+    ///      over-collateralised — the direction that hides a real shortfall
+    ///      behind an accounting one. Every settlement goes through here.
+    function _credit(address to, uint256 amount) private {
         if (amount == 0) return;
         totalEscrowed -= amount;
-        require(usdc.transfer(to, amount), context);
+        withdrawable[to] += amount;
+        totalWithdrawable += amount;
     }
 
     function _release(uint256 jobId, Job storage job) private {
@@ -625,8 +702,81 @@ contract LaborMarketV2 {
         // transfer that some tokens revert on, and stranding a settlement over
         // a zero-value leg would be the whole failure class this contract
         // exists to close.
-        _payOut(job.payee, toPayee, "release: payee transfer");
-        _payOut(job.worker, toWorker, "release: worker transfer");
+        _credit(job.payee, toPayee);
+        _credit(job.worker, toWorker);
+    }
+
+    /// @notice Collect everything settlement has credited to you.
+    /// @dev    **This is why settlement never transfers.**
+    ///
+    ///         Every payout used to be a push inside the settling transaction,
+    ///         and `require(usdc.transfer(...))` meant one recipient's inability
+    ///         to receive reverted the whole settlement. Base USDC is
+    ///         upgradeable by Circle and enforces a blocklist, so "inability to
+    ///         receive" is not hypothetical and is not chosen by anyone in the
+    ///         market. Measured against a blocklisting token
+    ///         (tests/labor-market-v2-hostile.evm.test.ts), the old design gave:
+    ///
+    ///           blocked worker    -> approveJob, resolveDispute(true) and
+    ///                                expireDispute all revert; escrow frozen
+    ///           blocked requester -> cancelJob, reclaimJob and expireReview
+    ///                                revert, taking the WORKER's forfeit with
+    ///                                them
+    ///           blocked payee     -> every settlement route reverts
+    ///           blocked feeRecip. -> every postJob reverts; the market stops
+    ///
+    ///         That is residual risk R1 — a frozen escrow with no exit —
+    ///         reintroduced through the token after the state machine had been
+    ///         carefully built to make it impossible. Three permissionless
+    ///         timeouts do not help if the timeout itself cannot execute.
+    ///
+    ///         Crediting instead means a blocked address blocks only ITSELF:
+    ///         the job settles, everyone else is paid, and the blocked party's
+    ///         balance waits. It can still be recovered — see `withdrawTo`.
+    ///
+    ///         What this costs, plainly: money no longer lands in a wallet as
+    ///         part of the job finishing. Every party takes one extra
+    ///         transaction to collect. For the smart accounts this market runs
+    ///         on, that batches — one withdraw after fifty jobs is cheaper in
+    ///         total gas than fifty transfers — but it IS a second step, and
+    ///         any UI that said "paid" now has to say "claimable".
+    function withdraw() external returns (uint256 amount) {
+        return _withdrawTo(msg.sender);
+    }
+
+    /// @notice Collect your balance to a different address.
+    /// @dev    The escape hatch for the party the token itself has frozen. USDC
+    ///         checks the sender and the recipient of a transfer; the sender
+    ///         here is this contract, so a blocked address that names an
+    ///         unblocked one is paid. Without this, crediting would merely move
+    ///         the trap from the job to the balance.
+    ///
+    ///         Only ever your OWN balance, to an address you choose. There is
+    ///         no path for anyone to move anyone else's.
+    function withdrawTo(address to) external returns (uint256 amount) {
+        if (to == address(0)) revert ZeroPayee();
+        return _withdrawTo(to);
+    }
+
+    function _withdrawTo(address to) private returns (uint256 amount) {
+        amount = withdrawable[msg.sender];
+        if (amount == 0) revert NothingToWithdraw();
+        // Zeroed before the transfer. The token is trusted and not reentrant,
+        // but checks-effects-interactions costs nothing here and the one thing
+        // this contract must never do is pay the same balance twice.
+        withdrawable[msg.sender] = 0;
+        totalWithdrawable -= amount;
+        require(usdc.transfer(to, amount), "withdraw: transfer");
+        emit Withdrawn(msg.sender, to, amount);
+    }
+
+    /// @notice Exactly what `postJob(bounty, ...)` will pull from the caller.
+    /// @dev    So a requester never recomputes the fee. Same reasoning as
+    ///         `releaseSplit` — a lender that reimplements the split is a
+    ///         lender that can get it wrong, and a requester that reimplements
+    ///         the fee is a requester whose posting reverts.
+    function postCost(uint256 bounty) public view returns (uint256) {
+        return bounty + (bounty * feeBps) / 10_000;
     }
 
     /// @notice Whether `reclaimJob` would succeed right now — for the
@@ -683,7 +833,12 @@ contract LaborMarketV2 {
     ///         fee-on-transfer, rebasing, a blocklist — and no settlement
     ///         should be trusted until someone has found out why.
     function escrowSolvency() external view returns (uint256 owed, uint256 held, uint256 surplus) {
-        owed = totalEscrowed;
+        // BOTH liabilities. `totalEscrowed` is money owed to jobs still
+        // running; `totalWithdrawable` is money already earned and not yet
+        // collected. Reporting only the first would show a contract holding a
+        // large "surplus" that is in fact entirely spoken for — a solvency
+        // number that flatters is worse than none.
+        owed = totalEscrowed + totalWithdrawable;
         held = usdcBalance();
         surplus = held > owed ? held - owed : 0;
     }

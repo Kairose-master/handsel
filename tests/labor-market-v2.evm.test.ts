@@ -67,8 +67,37 @@ const FIELD = { status: 4, payee: 11 } as const
 
 const status = async (ctx: Ctx, id: bigint) => Number((await job(ctx, id))[FIELD.status])
 const payee = async (ctx: Ctx, id: bigint) => String((await job(ctx, id))[FIELD.payee]).toLowerCase()
-const balance = (ctx: Ctx, who: `0x${string}`) =>
+const wallet = (ctx: Ctx, who: `0x${string}`) =>
   ctx.chain.call<bigint>('requester', ctx.usdc, 'TestUSDC', 'balanceOf', [who])
+
+/**
+ * What a party has ENDED UP WITH: tokens in its wallet plus tokens the contract
+ * has credited it and not yet handed over.
+ *
+ * Settlement credits rather than transfers (see `withdraw` in the contract, and
+ * tests/labor-market-v2-hostile.evm.test.ts for the blocklisted-recipient
+ * bricks that forced it). Every assertion below that used a raw token balance
+ * meant "what did this party get", and that quantity is now the sum of the two.
+ * Asserting only the wallet would test the withdrawal step, which is not what
+ * any of these cases are about.
+ */
+const balance = async (ctx: Ctx, who: `0x${string}`) =>
+  (await wallet(ctx, who)) +
+  (await ctx.chain.call<bigint>('requester', ctx.market, 'LaborMarketV2', 'withdrawable', [who]))
+
+/**
+ * What is still locked in ESCROW — money attached to jobs that have not
+ * settled.
+ *
+ * This replaces the old `balance(ctx, ctx.market) === 0` assertion, and the
+ * distinction is the whole point of the pull-payment change. The market's token
+ * balance no longer empties at settlement: it holds credited-but-unclaimed
+ * money until each party withdraws. "The job released its escrow" and "the
+ * tokens have left the building" used to be the same statement and are not any
+ * more, and every assertion below means the first one.
+ */
+const stillEscrowed = (ctx: Ctx) =>
+  ctx.chain.call<bigint>('requester', ctx.market, 'LaborMarketV2', 'totalEscrowed')
 
 let ctx: Ctx
 beforeEach(async () => {
@@ -83,7 +112,7 @@ describe('the happy path still works', () => {
     // house. The requester paid bounty + fee, and the WORKER is still owed the
     // whole advertised bounty — a board price that is not the paid price is a
     // price nobody can plan against.
-    expect(await balance(ctx, ctx.market)).toBe(BOUNTY)
+    expect(await stillEscrowed(ctx)).toBe(BOUNTY)
     expect(await balance(ctx, ACCOUNTS.house)).toBe(feeOn(BOUNTY))
     expect(await balance(ctx, ACCOUNTS.requester)).toBe(before - BOUNTY - feeOn(BOUNTY))
 
@@ -93,7 +122,7 @@ describe('the happy path still works', () => {
 
     expect(await status(ctx, id)).toBe(Status.Completed)
     expect(await balance(ctx, ACCOUNTS.worker)).toBe(BOUNTY)
-    expect(await balance(ctx, ctx.market)).toBe(0n)
+    expect(await stillEscrowed(ctx)).toBe(0n)
   })
 
   it('refuses a worker whose score is below the job threshold', async () => {
@@ -133,7 +162,7 @@ describe('reclaimJob — the exit from Accepted that v1 did not have', () => {
     // board, and a refundable toll is not a toll — a wash-trading ring would
     // post and reclaim all day for free.
     expect(await balance(ctx, ACCOUNTS.requester)).toBe(before - feeOn(BOUNTY))
-    expect(await balance(ctx, ctx.market)).toBe(0n)
+    expect(await stillEscrowed(ctx)).toBe(0n)
   })
 
   it('IS permissionless — a stranger with no relationship to the job can call it', async () => {
@@ -153,7 +182,7 @@ describe('reclaimJob — the exit from Accepted that v1 did not have', () => {
     ctx.chain.advance(WINDOW)
     await ctx.chain.send('stranger', ctx.market, 'LaborMarketV2', 'reclaimJob', [id])
     expect(await ctx.chain.revertReason('stranger', ctx.market, 'LaborMarketV2', 'reclaimJob', [id])).toBeTruthy()
-    expect(await balance(ctx, ctx.market)).toBe(0n)
+    expect(await stillEscrowed(ctx)).toBe(0n)
   })
 
   it('does not apply to an Open job — cancelJob is that path', async () => {
@@ -207,7 +236,7 @@ describe('the late delivery race — the question put to Olas in mech#470', () =
     await ctx.chain.send('stranger', ctx.market, 'LaborMarketV2', 'reclaimJob', [id])
     await ctx.chain.revertReason('worker', ctx.market, 'LaborMarketV2', 'submitWork', [id, RESULT])
 
-    expect(await balance(ctx, ctx.market)).toBe(0n)
+    expect(await stillEscrowed(ctx)).toBe(0n)
     expect(await balance(ctx, ACCOUNTS.requester)).toBe(before - feeOn(BOUNTY))
     expect(await balance(ctx, ACCOUNTS.worker)).toBe(0n)
   })
@@ -238,7 +267,7 @@ describe('expireReview — the mirror stall, when the requester goes silent', ()
     expect(await status(ctx, id)).toBe(Status.Expired)
     expect(await balance(ctx, ACCOUNTS.worker)).toBe(FORFEIT)
     expect(await balance(ctx, ACCOUNTS.requester)).toBe(before - FORFEIT - feeOn(BOUNTY))
-    expect(await balance(ctx, ctx.market)).toBe(0n) // the escrow is fully distributed
+    expect(await stillEscrowed(ctx)).toBe(0n) // the escrow is fully distributed
   })
 
   it('is its own state, not Refunded — the balances do not match a refund', async () => {
@@ -307,7 +336,7 @@ describe('expireReview — the mirror stall, when the requester goes silent', ()
 
     expect(await status(ctx, id)).toBe(Status.Expired)
     expect(await balance(ctx, ACCOUNTS.worker)).toBe(0n)
-    expect(await balance(ctx, ctx.market)).toBe(0n)
+    expect(await stillEscrowed(ctx)).toBe(0n)
   })
 
   it('does not reach a disputed job — that belongs to the arbiter', async () => {
@@ -354,7 +383,7 @@ describe('assignPayee — the lien, and the size of it', () => {
     await ctx.chain.send('requester', ctx.market, 'LaborMarketV2', 'approveJob', [first])
 
     expect(await balance(ctx, ACCOUNTS.lender)).toBe(BOUNTY)
-    expect(await balance(ctx, ctx.market)).toBe(BOUNTY) // the second job, untouched
+    expect(await stillEscrowed(ctx)).toBe(BOUNTY) // the second job, untouched
     expect(await status(ctx, second)).toBe(Status.Open)
   })
 
@@ -663,7 +692,7 @@ describe('the delivery window is bounded by the contract, not by the requester',
     const before = await balance(ctx, ACCOUNTS.requester)
     await ctx.chain.revertReason('requester', ctx.market, 'LaborMarketV2', 'postJob', [BOUNTY, 0n, SPEC, 1])
     expect(await balance(ctx, ACCOUNTS.requester)).toBe(before)
-    expect(await balance(ctx, ctx.market)).toBe(0n)
+    expect(await stillEscrowed(ctx)).toBe(0n)
   })
 })
 
@@ -739,14 +768,18 @@ describe('the escrow balances, and says so in one call', () => {
   const solvency = () =>
     ctx.chain.call<unknown[]>('stranger', ctx.market, 'LaborMarketV2', 'escrowSolvency')
 
-  it('owes exactly the escrowed bounties, never the fees', async () => {
-    // The fee left during postJob. Counting it as owed would make the contract
-    // look permanently insolvent by 2% of everything ever posted.
+  it('owes the escrowed bounties AND the uncollected fees', async () => {
+    // The fee no longer leaves during postJob — it is credited to the house,
+    // which means it is still the contract's money and still someone else's
+    // claim on it. Reporting only the escrow would show a "surplus" that is
+    // entirely spoken for, and a solvency number that flatters is worse than
+    // none.
     await post(ctx)
     await post(ctx)
+    const fees = feeOn(BOUNTY) * 2n
     const [owed, held, surplus] = await solvency()
-    expect(owed).toBe(BOUNTY * 2n)
-    expect(held).toBe(BOUNTY * 2n)
+    expect(owed).toBe(BOUNTY * 2n + fees)
+    expect(held).toBe(BOUNTY * 2n + fees)
     expect(surplus).toBe(0n)
   })
 
@@ -805,10 +838,22 @@ describe('the escrow balances, and says so in one call', () => {
 
     for (const [i, route] of routes.entries()) {
       await route()
-      const [owed, held] = await solvency()
-      expect(owed, `route ${i} still claims an escrow`).toBe(0n)
-      expect(held, `route ${i} left tokens behind`).toBe(0n)
+      // The ESCROW must unwind on every route. What the parties have not yet
+      // collected is a different liability and is checked below.
+      expect(await stillEscrowed(ctx), `route ${i} still claims an escrow`).toBe(0n)
     }
+
+    // And once everybody collects, the contract holds nothing at all. This is
+    // the invariant the old `held === 0` assertion was reaching for; under pull
+    // payments it needs the withdrawals to have happened.
+    for (const who of ['requester', 'worker', 'lender', 'house'] as const) {
+      await ctx.chain
+        .send(who, ctx.market, 'LaborMarketV2', 'withdraw')
+        .catch(() => undefined) // not every route credits every party
+    }
+    const [owedAfter, heldAfter] = await solvency()
+    expect(owedAfter).toBe(0n)
+    expect(heldAfter).toBe(0n)
   })
 
   it('counts a stray transfer as surplus, and offers no way to sweep it', async () => {
@@ -816,9 +861,10 @@ describe('the escrow balances, and says so in one call', () => {
     // not owe is a function that can move tokens it does.
     await post(ctx)
     await ctx.chain.send('requester', ctx.usdc, 'TestUSDC', 'transfer', [ctx.market, 12_345n])
+    const owedNow = BOUNTY + feeOn(BOUNTY)
     const [owed, held, surplus] = await solvency()
-    expect(owed).toBe(BOUNTY)
-    expect(held).toBe(BOUNTY + 12_345n)
+    expect(owed).toBe(owedNow)
+    expect(held).toBe(owedNow + 12_345n)
     expect(surplus).toBe(12_345n)
   })
 })
@@ -903,6 +949,13 @@ describe('every job dies of old age — the migration property', () => {
     ctx.chain.advance(MAXW + 7 * 24 * 3600 + 14 * 24 * 3600)
     await ctx.chain.send('stranger', ctx.market, 'LaborMarketV2', 'expireDispute', [id])
 
+    // The escrow is released. Collecting it is a separate step now, so drain
+    // the parties before asserting the contract is empty — "v2 can be drained"
+    // is the migration claim, and it has to include the withdrawals.
+    expect(await stillEscrowed(ctx)).toBe(0n)
+    for (const who of ['worker', 'house'] as const) {
+      await ctx.chain.send(who, ctx.market, 'LaborMarketV2', 'withdraw').catch(() => undefined)
+    }
     const [owed, held] = await ctx.chain.call<unknown[]>('stranger', ctx.market, 'LaborMarketV2', 'escrowSolvency')
     expect(owed).toBe(0n)
     expect(held).toBe(0n)
