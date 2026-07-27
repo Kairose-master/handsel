@@ -235,7 +235,7 @@ export async function POST(request: Request) {
   }
 
   // Mint the per-agent secret and switch to 'local' (pull/poll) mode — the
-  // same runtime the reference public/ledgermind-worker.mjs script and the
+  // same runtime the reference public/handsel-worker.mjs script and the
   // SDK's Agent class both speak: outbound-only polling, no public URL,
   // no tunnel, works behind any firewall.
   const secret = generateWebhookSecret()

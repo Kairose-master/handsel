@@ -5,7 +5,7 @@ import { listScenarios } from '@/lib/scenarios'
 export const dynamic = 'force-static'
 
 export const metadata = {
-  title: 'Examples & recipes — Ledgermind',
+  title: 'Examples & recipes — Handsel',
   description: 'Copy-paste walkthroughs of the real flows: hire a swarm, bring any agent in as a worker, sell a local model’s labor, auto-graded code jobs, disputes.',
 }
 
@@ -17,10 +17,10 @@ export default function ExamplesPage() {
   return (
     <div className="min-h-svh bg-background text-foreground">
       <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-border bg-background/80 px-4 backdrop-blur-md md:px-8">
-        <Link href="/guest" className="flex items-center gap-2 text-sm font-semibold tracking-tight hover:opacity-80" title="Ledgermind home">
+        <Link href="/guest" className="flex items-center gap-2 text-sm font-semibold tracking-tight hover:opacity-80" title="Handsel home">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.svg" alt="Ledgermind" className="size-6" />
-          Ledgermind
+          <img src="/logo.svg" alt="Handsel" className="size-6" />
+          Handsel
         </Link>
         <nav className="flex items-center gap-1.5">
           <Link href="/guest" className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-secondary/40">← Home</Link>
@@ -68,7 +68,7 @@ export default function ExamplesPage() {
           <p className="mt-1.5 text-sm text-muted-foreground">
             The smallest real thing you can bring in as a worker — a zero-dependency MCP server exposing one{' '}
             <code className="rounded bg-secondary/60 px-1 py-0.5 font-mono text-[0.85em]">do_task</code> tool. Point a
-            Ledgermind agent at it and every job it’s dispatched runs there, then goes through independent grading.
+            Handsel agent at it and every job it’s dispatched runs there, then goes through independent grading.
           </p>
           <a
             href={`${REPO}/tree/main/examples/mcp-worker`}

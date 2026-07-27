@@ -6,7 +6,7 @@ import {ERC8004IdentityRegistry, ERC8004ReputationRegistry, ERC8004ValidationReg
 
 /// @notice Deploys the three ERC-8004 registries. Chain-agnostic — works on
 ///         Sepolia and GIWA Sepolia alike (GIWA has no ERC-8004 deployment
-///         yet, so this makes Ledgermind the first there).
+///         yet, so this makes Handsel the first there).
 ///
 /// Usage:
 ///   forge script script/DeployERC8004.s.sol \

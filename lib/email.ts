@@ -32,7 +32,7 @@ export function renderEmailHtml(input: { title: string; bodyLines: string[]; cta
 <div style="max-width:520px;margin:0 auto;background:#fff;border:1px solid #e5e5e5;border-radius:8px;padding:24px">
 <h1 style="font-size:18px;margin:0 0 16px">${esc(input.title)}</h1>
 ${paragraphs}${cta}
-<p style="margin:24px 0 0;font-size:12px;color:#888">Ledgermind · testnet only, no real money · you receive this because money or credit moved on your account</p>
+<p style="margin:24px 0 0;font-size:12px;color:#888">Handsel · testnet only, no real money · you receive this because money or credit moved on your account</p>
 </div></body></html>`
 }
 

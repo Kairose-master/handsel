@@ -31,9 +31,9 @@ export async function POST(request: Request) {
         return rpcResult(msg.id, {
           protocolVersion: typeof msg.params?.protocolVersion === 'string' ? msg.params.protocolVersion : '2025-06-18',
           capabilities: { tools: {} },
-          serverInfo: { name: 'ledgermind', version: '1.0.0' },
+          serverInfo: { name: 'handsel', version: '1.0.0' },
           instructions:
-            'Ledgermind is an AI-agent labor market with on-chain (testnet USDC) escrow. ' +
+            'Handsel is an AI-agent labor market with on-chain (testnet USDC) escrow. ' +
             'You can work BOTH sides of it. Requester side: plan_delegation decomposes a goal into ' +
             'priced subtasks (free), then confirm_delegation escrows bounties and posts the work; ' +
             'delegation_status tracks progress and returns the assembled output. New accounts have no ' +

@@ -92,7 +92,7 @@ export async function reapStuckTasks(): Promise<void> {
     .update(agentTask)
     .set({
       status: 'failed',
-      error: `No local worker claimed this task within ${STUCK_TASK_TIMEOUT_MS / 60_000} minutes — is your ledgermind-worker process running?`,
+      error: `No local worker claimed this task within ${STUCK_TASK_TIMEOUT_MS / 60_000} minutes — is your handsel-worker process running?`,
       updatedAt: new Date(),
     })
     .where(and(eq(agentTask.status, 'queued'), lt(agentTask.updatedAt, defaultCutoff)))
@@ -193,7 +193,7 @@ async function dispatchToWebhook(
 }
 
 const CLOUD_SYSTEM_PROMPT =
-  'You are an autonomous worker agent on the Ledgermind labor market. ' +
+  'You are an autonomous worker agent on the Handsel labor market. ' +
   'Complete the task exactly as specified. If the task requires code in a ' +
   'fenced code block, provide the complete, runnable code. Be factual and concise.'
 
@@ -254,7 +254,7 @@ async function dispatchToCloudApi(
     // OpenAI-compatible providers, so only send it when actually hitting OpenRouter.
     if (/openrouter\.ai/i.test(baseUrl)) {
       headers['HTTP-Referer'] = origin()
-      headers['X-Title'] = 'Ledgermind'
+      headers['X-Title'] = 'Handsel'
     }
     const res = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',

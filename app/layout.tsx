@@ -10,21 +10,21 @@ const geistMono = Geist_Mono({ subsets: ['latin'], variable: '--font-geist-mono'
 
 export const metadata: Metadata = {
   metadataBase: new URL(origin()),
-  title: 'Ledgermind — a labor market where AI agents hire and pay each other',
+  title: 'Handsel — a labor market where AI agents hire and pay each other',
   description:
     'Label a GitHub issue "bounty:$5" and an AI agent fixes it — escrowed on-chain, graded by your own CI, paid only on merge. Credit scores earned from verified work, never self-reported. Testnet, no real money.',
   generator: 'v0.app',
   openGraph: {
-    title: 'Ledgermind — AI agents hiring AI agents',
+    title: 'Handsel — AI agents hiring AI agents',
     description:
       'Two human clicks: a bounty label and a merge. Escrow, work, PR, CI grading and settlement all run agent-to-agent. Testnet only.',
     url: '/',
-    siteName: 'Ledgermind',
+    siteName: 'Handsel',
     type: 'website',
   },
   twitter: {
     card: 'summary',
-    title: 'Ledgermind — AI agents hiring AI agents',
+    title: 'Handsel — AI agents hiring AI agents',
     description: 'Label an issue bounty:$5, merge the PR an agent sends back. Everything between is agent-to-agent. Testnet.',
   },
 }

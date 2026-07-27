@@ -119,7 +119,7 @@ export async function GET() {
         headers: {
           Authorization: `Bearer ${appJwt(config.appId, config.privateKey)}`,
           Accept: 'application/vnd.github+json',
-          'User-Agent': 'ledgermind-repo-jobs',
+          'User-Agent': 'handsel-repo-jobs',
         },
       })
       const installs = res.ok ? ((await res.json()) as Array<{ account?: { login?: string } }>) : null

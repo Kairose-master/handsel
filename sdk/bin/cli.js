@@ -11,11 +11,11 @@ function usage() {
     [
       'Usage: agent register --email you@example.com --password *** --name "Research Agent" [--description "..."] [--platform-url https://...] [--auto-mine]',
       '',
-      'Registers a new (or reuses an existing) Ledgermind account, creates the agent, provisions',
+      'Registers a new (or reuses an existing) Handsel account, creates the agent, provisions',
       'its on-chain smart account, and mints a worker secret — the same result as the dashboard\'s',
       'sign-up -> create-agent -> provision -> "Connect a local worker" flow, in one call.',
       '',
-      'Env var fallbacks: LEDGERMIND_EMAIL, LEDGERMIND_PASSWORD.',
+      'Env var fallbacks: HANDSEL_EMAIL, HANDSEL_PASSWORD.',
     ].join('\n'),
   )
 }
@@ -28,8 +28,8 @@ async function main() {
     process.exit(1)
   }
 
-  const email = flag(rest, 'email', process.env.LEDGERMIND_EMAIL)
-  const password = flag(rest, 'password', process.env.LEDGERMIND_PASSWORD)
+  const email = flag(rest, 'email', process.env.HANDSEL_EMAIL)
+  const password = flag(rest, 'password', process.env.HANDSEL_PASSWORD)
   const name = flag(rest, 'name')
   const description = flag(rest, 'description')
   const platformUrl = flag(rest, 'platform-url', DEFAULT_PLATFORM_URL)
@@ -43,9 +43,9 @@ async function main() {
   const result = await register({ platformUrl, email, password, name, description, autoMine })
 
   console.log('\nRegistered. This secret is shown once — save it now:\n')
-  console.log(`  LEDGERMIND_PLATFORM_URL=${result.platform_url}`)
-  console.log(`  LEDGERMIND_AGENT_ID=${result.agent_id}`)
-  console.log(`  LEDGERMIND_AGENT_SECRET=${result.secret}`)
+  console.log(`  HANDSEL_PLATFORM_URL=${result.platform_url}`)
+  console.log(`  HANDSEL_AGENT_ID=${result.agent_id}`)
+  console.log(`  HANDSEL_AGENT_SECRET=${result.secret}`)
   if (result.smart_account_address) {
     console.log(`\nOn-chain smart account: ${result.smart_account_address}`)
   } else {
@@ -53,7 +53,7 @@ async function main() {
   }
   console.log(`\nDocs: ${result.docs}`)
   console.log('\nNext:')
-  console.log('  import { Agent } from "ledgermind-agent-sdk"')
+  console.log('  import { Agent } from "handsel-agent-sdk"')
   console.log('  new Agent({ name: "..." }).onTask(async (task) => { ... }).start()')
 }
 

@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * Ledgermind reference MCP worker — the smallest real thing you can bring in
+ * Handsel reference MCP worker — the smallest real thing you can bring in
  * as a worker.
  *
- * Exposes ONE MCP tool, `do_task`, over Streamable HTTP. Point a Ledgermind
+ * Exposes ONE MCP tool, `do_task`, over Streamable HTTP. Point a Handsel
  * agent at it (Runtime card → "Connect an MCP agent" → this URL + tool name
  * `do_task`) and every job dispatched to that agent is run here; the output is
  * submitted for the platform's independent grading exactly like any worker.
@@ -34,7 +34,7 @@ const OLLAMA_BASE = (flag('ollama') ?? 'http://localhost:11434').replace(/\/+$/,
 const API_KEY = flag('api-key') ?? process.env.OPENAI_API_KEY ?? 'not-needed'
 
 const SYSTEM_PROMPT =
-  'You are an autonomous worker agent on the Ledgermind labor market. Complete the ' +
+  'You are an autonomous worker agent on the Handsel labor market. Complete the ' +
   'task exactly as specified. If it requires code in a fenced block, give the complete, ' +
   'runnable code. Be factual and concise.'
 
@@ -86,13 +86,13 @@ async function runTask(task) {
 }
 
 function send(res, status, body, extraHeaders = {}) {
-  res.writeHead(status, { 'Content-Type': 'application/json', 'Mcp-Session-Id': 'ledgermind-ref-worker', ...extraHeaders })
+  res.writeHead(status, { 'Content-Type': 'application/json', 'Mcp-Session-Id': 'handsel-ref-worker', ...extraHeaders })
   res.end(body === undefined ? '' : JSON.stringify(body))
 }
 
 const server = createServer((req, res) => {
   if (req.method === 'GET') {
-    return send(res, 200, { name: 'ledgermind-reference-mcp-worker', tool: TOOL.name, model: MODEL ?? 'echo-mode' })
+    return send(res, 200, { name: 'handsel-reference-mcp-worker', tool: TOOL.name, model: MODEL ?? 'echo-mode' })
   }
   if (req.method !== 'POST') return send(res, 405, { error: 'method not allowed' })
 
@@ -111,7 +111,7 @@ const server = createServer((req, res) => {
       return reply({
         protocolVersion: '2025-06-18',
         capabilities: { tools: {} },
-        serverInfo: { name: 'ledgermind-reference-mcp-worker', version: '1.0.0' },
+        serverInfo: { name: 'handsel-reference-mcp-worker', version: '1.0.0' },
       })
     }
     if (msg.method === 'notifications/initialized') return send(res, 202, undefined)
@@ -134,7 +134,7 @@ const server = createServer((req, res) => {
 
 server.listen(PORT, () => {
   console.log(`[mcp-worker] listening on http://localhost:${PORT}  (tool: ${TOOL.name}, model: ${MODEL ?? 'echo-mode'})`)
-  console.log('[mcp-worker] expose this publicly (ngrok/cloudflared/deploy), then register the https URL in Ledgermind.')
+  console.log('[mcp-worker] expose this publicly (ngrok/cloudflared/deploy), then register the https URL in Handsel.')
   if (!MODEL) {
     console.log(
       '[mcp-worker] ⚠ ECHO MODE — returns "ECHO: <task>". Proves the wiring, but this WILL FAIL independent grading.\n' +

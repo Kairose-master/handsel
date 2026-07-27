@@ -215,7 +215,7 @@ async function handleIssue(payload: any): Promise<Response> {
     const requester = agents.find((a) => a.smartAccountAddress)
     if (!requester) {
       await unlock()
-      await commentOnPr(repoFullName, issueNumber, `Your Ledgermind account has no provisioned agent to escrow from — create one at ${origin}/agents and re-add the label.`)
+      await commentOnPr(repoFullName, issueNumber, `Your Handsel account has no provisioned agent to escrow from — create one at ${origin}/agents and re-add the label.`)
       return Response.json({ status: 'rejected', reason: 'no funded agent' })
     }
 

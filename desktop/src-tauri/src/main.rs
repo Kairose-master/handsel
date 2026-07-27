@@ -147,7 +147,7 @@ async fn register_agent(
         email,
         password,
         name,
-        description: Some("Ledgermind Miner desktop app".into()),
+        description: Some("Handsel Miner desktop app".into()),
         auto_mine: true,
         capabilities: vec!["text".into()],
     };
@@ -416,7 +416,7 @@ async fn run_mining_loop(app: tauri::AppHandle, agent: AgentConfig, backend: Mod
                         &app,
                         MiningEvent::Log { line: "5 consecutive failures — stopping. Check your connection and try again.".into() },
                     );
-                    notify(&app, "Ledgermind Miner", "Mining stopped after repeated connection failures — open the app to restart.");
+                    notify(&app, "Handsel Miner", "Mining stopped after repeated connection failures — open the app to restart.");
                     break;
                 }
                 sleep_cancellable(&flag, wait).await;
@@ -516,7 +516,7 @@ async fn run_one_task(
                 match grading.and_then(|g| g.get("settled")).and_then(|s| s.as_str()) {
                     Some("paid") => {
                         emit_event(app, MiningEvent::Log { line: "✅ 채점 통과 — 정산 완료(지급됨).".into() });
-                        notify(app, "Ledgermind Miner", "채점 통과 — 대금이 지급됐어요.");
+                        notify(app, "Handsel Miner", "채점 통과 — 대금이 지급됐어요.");
                     }
                     Some("refunded") => {
                         let reason = grading
@@ -530,19 +530,19 @@ async fn run_one_task(
                             format!("❌ 채점 실패 — 요청자에게 환불(지급 없음). 사유: {reason}")
                         };
                         emit_event(app, MiningEvent::Log { line });
-                        notify(app, "Ledgermind Miner", "채점 실패로 환불됐어요 — 지급 없음. 로그에서 사유를 확인하세요.");
+                        notify(app, "Handsel Miner", "채점 실패로 환불됐어요 — 지급 없음. 로그에서 사유를 확인하세요.");
                     }
                     Some("manual") => {
                         emit_event(app, MiningEvent::Log { line: "⏳ 자동 채점 없음 — 요청자 수동 검토 대기 중.".into() });
                     }
                     _ => {
-                        notify(app, "Ledgermind Miner", &format!("Task completed and submitted ({done} this session) — independent grading decides the payout."));
+                        notify(app, "Handsel Miner", &format!("Task completed and submitted ({done} this session) — independent grading decides the payout."));
                     }
                 }
             } else {
                 failed.fetch_add(1, Ordering::Relaxed);
                 emit_event(app, MiningEvent::Log { line: format!("FAILED: {output}") });
-                notify(app, "Ledgermind Miner", "A task failed — see the log for details.");
+                notify(app, "Handsel Miner", "A task failed — see the log for details.");
             }
         }
         Err(e) => {
@@ -732,7 +732,7 @@ fn main() {
             use tauri::tray::TrayIconBuilder;
 
             let build_tray = || -> tauri::Result<()> {
-                let show = MenuItem::with_id(app, "show", "Open Ledgermind Miner", true, None::<&str>)?;
+                let show = MenuItem::with_id(app, "show", "Open Handsel Miner", true, None::<&str>)?;
                 let quit = MenuItem::with_id(app, "quit", "Quit (stops mining)", true, None::<&str>)?;
                 let menu = Menu::with_items(app, &[&show, &quit])?;
                 let icon = app
@@ -741,7 +741,7 @@ fn main() {
                     .ok_or_else(|| tauri::Error::AssetNotFound("window icon".into()))?;
                 TrayIconBuilder::with_id("main-tray")
                     .icon(icon)
-                    .tooltip("Ledgermind Miner")
+                    .tooltip("Handsel Miner")
                     .menu(&menu)
                     .show_menu_on_left_click(true)
                     .on_menu_event(|app, event| match event.id.as_ref() {
@@ -777,5 +777,5 @@ fn main() {
             }
         })
         .run(tauri::generate_context!())
-        .expect("error while running Ledgermind Miner");
+        .expect("error while running Handsel Miner");
 }

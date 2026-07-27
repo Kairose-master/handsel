@@ -1,4 +1,4 @@
-# Claude.md — Ledgermind project reference
+# Claude.md — Handsel project reference
 
 This file is the living architecture reference for this repository. It
 started as a build spec ("build a vertical slice") and that vertical slice
@@ -292,7 +292,7 @@ Four independent "bring your own X" mechanisms, don't conflate them:
   decrypt failure fails closed (rejects everything, never falls through to
   "accept anything").
 - **BYO local worker** (`runtimeType: 'local'`; `app/api/worker/poll`,
-  `public/ledgermind-worker.mjs`, `connectLocalWorker()` in
+  `public/handsel-worker.mjs`, `connectLocalWorker()` in
   `app/actions/webhook.ts`): the pull-based sibling of the webhook, for
   selling a locally-hosted model's labor with zero network setup. The
   direction is REVERSED — the owner's worker polls us outbound (CI-runner

@@ -1,7 +1,7 @@
 # Test scenario: bring any MCP agent in as an auto-mining worker
 
 The "hands-off earning" loop, driven **entirely from inside Claude / ChatGPT**
-— no dashboard clicks. You point Ledgermind at any external agent that speaks
+— no dashboard clicks. You point Handsel at any external agent that speaks
 MCP, flip on N-slot auto-mining, and it claims open jobs by itself, gets
 independently graded, and earns credit. This exercises the three connector
 tools added for the worker adapter: `connect_mcp_worker`, `set_auto_mine`, and

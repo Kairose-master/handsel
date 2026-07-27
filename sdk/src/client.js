@@ -7,16 +7,16 @@
  * DIFFERENT market, with different money and a different reputation ledger,
  * and the worker looks like it is working correctly the entire time.
  *
- * Pass `platformUrl`, or set `LEDGERMIND_PLATFORM_URL` in the worker's env.
+ * Pass `platformUrl`, or set `HANDSEL_PLATFORM_URL` in the worker's env.
  */
 const DEFAULT_PLATFORM_URL =
-  (typeof process !== 'undefined' && process.env && process.env.LEDGERMIND_PLATFORM_URL) || ''
+  (typeof process !== 'undefined' && process.env && process.env.HANDSEL_PLATFORM_URL) || ''
 
 function requirePlatformUrl(platformUrl) {
   const url = String(platformUrl || DEFAULT_PLATFORM_URL || '').trim().replace(/\/+$/, '')
   if (!url) {
     throw new Error(
-      'No platform URL. Pass { platformUrl } or set LEDGERMIND_PLATFORM_URL. ' +
+      'No platform URL. Pass { platformUrl } or set HANDSEL_PLATFORM_URL. ' +
         'There is no default on purpose — guessing would connect this worker to a different market.',
     )
   }

@@ -20,7 +20,7 @@ pragma solidity ^0.8.24;
  */
 contract MiniVault {
     // ── minimal ERC20 (gUSD) ────────────────────────────────────────────
-    string public constant name = "Ledgermind Stable (test)";
+    string public constant name = "Handsel Stable (test)";
     string public constant symbol = "gUSD";
     uint8 public constant decimals = 18;
     uint256 public totalSupply;

@@ -30,7 +30,7 @@ export async function handleRepo(
       if (!conn.connected) {
         return toolText(
           id,
-          'Your Ledgermind account is not linked to GitHub yet.\n\n' +
+          'Your Handsel account is not linked to GitHub yet.\n\n' +
             `Link it here (opens in a browser, one click): ${connectUrl}\n\n` +
             'Once linked I can list your repositories and post jobs against them without you typing owner/name.',
         )
@@ -41,7 +41,7 @@ export async function handleRepo(
       if (conn.repos.length === 0) {
         return toolText(
           id,
-          `Connected as ${conn.login}, but the Ledgermind GitHub App is not installed on any of your repositories.\n\n` +
+          `Connected as ${conn.login}, but the Handsel GitHub App is not installed on any of your repositories.\n\n` +
             `Install it on the repo you want worked: ${conn.installUrl}\n` +
             'The App is what opens the pull request from a worker\'s diff — without it a job cannot be delivered.',
         )
@@ -106,7 +106,7 @@ export async function handleRepo(
         id,
         access.ok
           ? `${access.reason}\nYou can post a repo job here with post_repo_job.`
-          : `Not usable yet: ${access.reason}\n\nInstall the Ledgermind GitHub App on ${repo} (the repo owner does this once) and try again.`,
+          : `Not usable yet: ${access.reason}\n\nInstall the Handsel GitHub App on ${repo} (the repo owner does this once) and try again.`,
         !access.ok,
       )
     }

@@ -16,7 +16,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const { slug } = await params
   const s = getScenario(slug)
   if (!s) return {}
-  return { title: `${s.title} — Ledgermind examples`, description: s.summary }
+  return { title: `${s.title} — Handsel examples`, description: s.summary }
 }
 
 export default async function ScenarioPage({ params }: { params: Promise<{ slug: string }> }) {

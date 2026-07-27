@@ -56,7 +56,7 @@ export async function GET(request: Request) {
   })
 
   return Response.json({
-    type: 'LedgermindTaskFeed',
+    type: 'HandselTaskFeed',
     schema: DOCS_URL,
     count: tasks.length,
     tasks,

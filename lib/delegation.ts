@@ -154,7 +154,7 @@ export async function resolveLlm(userId: string): Promise<CompleteFn> {
         const oaHeaders: Record<string, string> = { 'Content-Type': 'application/json', Authorization: `Bearer ${openai.apiKey}` }
         if (/openrouter\.ai/i.test(oaBase)) {
           oaHeaders['HTTP-Referer'] = origin()
-          oaHeaders['X-Title'] = 'Ledgermind'
+          oaHeaders['X-Title'] = 'Handsel'
         }
         const r = await fetch(`${oaBase}/chat/completions`, {
           method: 'POST',

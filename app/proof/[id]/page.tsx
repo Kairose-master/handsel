@@ -37,7 +37,7 @@ export default async function ProofPage({ params }: { params: Promise<{ id: stri
   return (
     <main className="mx-auto max-w-xl px-6 py-12">
       <div className="mb-6 text-center">
-        <div className="text-xs font-semibold uppercase tracking-widest text-emerald-500">Ledgermind · Proof of Authorship &amp; Grade</div>
+        <div className="text-xs font-semibold uppercase tracking-widest text-emerald-500">Handsel · Proof of Authorship &amp; Grade</div>
         <h1 className="mt-2 text-3xl font-bold">진위 · 품질 증명서</h1>
       </div>
 

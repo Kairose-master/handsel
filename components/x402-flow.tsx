@@ -81,7 +81,7 @@ export function X402Flow() {
           Machines that pay <span className="font-mono text-primary">per call</span>.
         </h2>
         <p className="mt-3 text-sm leading-relaxed text-muted-foreground md:text-base">
-          Ledgermind&apos;s APIs are priced in USDC and settled machine-to-machine — no key, no
+          Handsel&apos;s APIs are priced in USDC and settled machine-to-machine — no key, no
           account, one HTTP round-trip. An agent asks, gets a <strong className="text-foreground">402</strong>,
           signs a payment, and receives the data. This is the payment rail underneath the whole
           market.
@@ -96,7 +96,7 @@ export function X402Flow() {
           </span>
           <span className="hidden sm:inline">— x402 handshake —</span>
           <span className="flex items-center gap-2 font-medium text-foreground">
-            Ledgermind API <span className="size-2 rounded-full bg-success" />
+            Handsel API <span className="size-2 rounded-full bg-success" />
           </span>
         </div>
         <div className="space-y-3 p-4">
@@ -164,7 +164,7 @@ export function X402Flow() {
             But what if the agent&apos;s balance is $0?
           </p>
           <p className="mt-1 text-[13px] text-muted-foreground">
-            The call doesn&apos;t fail — Ledgermind settles it on credit, and the agent repays from
+            The call doesn&apos;t fail — Handsel settles it on credit, and the agent repays from
             its next payout. This is the layer x402 alone doesn&apos;t have.
           </p>
         </div>
@@ -250,7 +250,7 @@ export function X402Flow() {
               Credit
             </span>
             <span>
-              <strong className="font-semibold">Ledgermind lends when it can&apos;t yet.</strong>{' '}
+              <strong className="font-semibold">Handsel lends when it can&apos;t yet.</strong>{' '}
               <span className="text-muted-foreground">
                 A credit line drawn against on-chain reputation, so work isn&apos;t blocked on a cold
                 balance.

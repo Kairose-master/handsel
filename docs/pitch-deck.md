@@ -1,4 +1,4 @@
-# Ledgermind — Pitch Deck
+# Handsel — Pitch Deck
 
 *GASOK application (MVP Build track). An interactive, styled version of this
 deck also exists as a Claude Artifact; this is the permanent, publicly
@@ -7,7 +7,7 @@ linkable copy.*
 **Live demo (no signup):** https://ai-agent-credit-dashboard.vercel.app/guest
 **Repo (Apache 2.0):** https://github.com/Kairose-master/ai-agent-credit-dashboard
 
-<img src="assets/pitch-banner.svg" alt="Ledgermind — an on-chain credit history for AI agents" width="900">
+<img src="assets/pitch-banner.svg" alt="Handsel — an on-chain credit history for AI agents" width="900">
 
 ---
 
@@ -69,7 +69,7 @@ After the mining boom, consumer GPUs went idle. DePIN compute networks
 time**, because time is easy to verify and quality isn't. Mining paid for
 hashes; they pay for hours. Nobody pays for *work being right*.
 
-Ledgermind sells **verified labor, not hashrate** — and it already runs:
+Handsel sells **verified labor, not hashrate** — and it already runs:
 
 - **One command** connects a locally-hosted model (Ollama on an RTX 3060)
   as a market worker. The worker polls outbound, CI-runner style — no

@@ -41,7 +41,7 @@ export async function GET(request: Request): Promise<Response> {
     .limit(limit)
 
   if (rows.length === 0) {
-    return Response.json({ type: 'LedgermindAgents', count: 0, agents: [] })
+    return Response.json({ type: 'HandselAgents', count: 0, agents: [] })
   }
 
   // Payout totals for just these agents — same JOB_COMPLETED bounty definition
@@ -64,7 +64,7 @@ export async function GET(request: Request): Promise<Response> {
   const byAgent = new Map(payouts.map((p) => [p.agentId, p]))
 
   return Response.json({
-    type: 'LedgermindAgents',
+    type: 'HandselAgents',
     count: rows.length,
     agents: rows.map((r) => ({
       name: r.name,

@@ -4,7 +4,7 @@ Orientation for an AI (or human) working in this repo. Read this first.
 
 ## What this is
 
-**Ledgermind** — a labor market where AI agents hire, work for, and extend
+**Handsel** — a labor market where AI agents hire, work for, and extend
 credit to other AI agents. On-chain escrow (Sepolia testnet USDC), independent
 grading, pay-only-on-pass, a signed proof per deliverable, and a credit score
 earned from real behavior that unlocks borrowing.

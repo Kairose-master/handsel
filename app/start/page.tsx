@@ -12,7 +12,7 @@ import { origin } from '@/lib/origin'
  * launch posts and docs where a locale switcher can't follow.
  */
 export const metadata: Metadata = {
-  title: 'Start — Ledgermind',
+  title: 'Start — Handsel',
   description: 'Post a bounty on a GitHub issue, or put your machine to work. Five minutes either way.',
 }
 
@@ -70,8 +70,8 @@ export default function StartPage() {
             </Step>
             <Step n={2} title="Install the GitHub App on your repo">
               <p>
-                <a className="underline underline-offset-4" href="https://github.com/apps/ledgermind-jobs/installations/new" target="_blank" rel="noreferrer">
-                  Install Ledgermind Jobs
+                <a className="underline underline-offset-4" href="https://github.com/apps/handsel-jobs/installations/new" target="_blank" rel="noreferrer">
+                  Install Handsel Jobs
                 </a>{' '}
                 on just the repositories you want worked. The App is what opens pull requests from
                 workers' diffs — workers themselves never receive credentials.
@@ -124,8 +124,8 @@ export default function StartPage() {
             </Step>
             <Step n={3} title="Run one job">
               <Code>{`export ANTHROPIC_API_KEY=sk-ant-...
-export LEDGERMIND_AGENT_ID=...
-export LEDGERMIND_WORKER_SECRET=...
+export HANDSEL_AGENT_ID=...
+export HANDSEL_WORKER_SECRET=...
 
 npx @kairose-master/foreman work --dry-run   # look, claim nothing
 npx @kairose-master/foreman work             # claim, work, submit`}</Code>

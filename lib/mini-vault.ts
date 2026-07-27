@@ -4,7 +4,7 @@
  * engine. No chain calls: the oracle price is an input, positions are plain
  * values, and every function is a preview/decision the caller can act on.
  *
- * Mapped onto Ledgermind: an agent's earned (test) USDC or staked collateral
+ * Mapped onto Handsel: an agent's earned (test) USDC or staked collateral
  * backs a stable credit line. The same math the lab teaches applies:
  *
  *   • mint gate    debt ≤ collateralValue / MCR          (over-collateralized)

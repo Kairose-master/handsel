@@ -1886,7 +1886,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "ledgermind-miner"
+name = "handsel-miner"
 version = "0.10.0"
 dependencies = [
  "open",

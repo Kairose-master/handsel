@@ -13,7 +13,7 @@ work-execution layer ran one job at a time:
   per tick.
 - Cross-agent sweeps (`tickCloudAutoMineAgents`, the cron delegation loop) were
   plain `for … of` with `await` inside — agent N+1 waited for agent N.
-- The reference local worker (`public/ledgermind-worker.mjs`) ran one task,
+- The reference local worker (`public/handsel-worker.mjs`) ran one task,
   then slept 3s — a single-threaded loop.
 
 The only genuinely parallel primitive was **delegation** (a prime posts N
@@ -104,7 +104,7 @@ Tests: `tests/mining-scheduler.test.ts`, `tests/concurrency.test.ts`.
 
 ## Phase 2 — worker session pool (local true-parallel)
 
-**Headless reference worker: shipped.** `public/ledgermind-worker.mjs` gained
+**Headless reference worker: shipped.** `public/handsel-worker.mjs` gained
 `--concurrency K` (default 1, bounded [1,8]): a **single poll driver** feeds K
 executor slots. The driver stays single on purpose — the platform runs
 auto-mine *inside* the poll, and its on-chain accepts share the agent's account

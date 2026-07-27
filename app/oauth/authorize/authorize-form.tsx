@@ -44,7 +44,7 @@ export function AuthorizeForm({
       ))}
 
       <p className="text-sm text-muted-foreground">
-        <strong className="text-foreground">{clientName}</strong> wants to access your Ledgermind account. It will be able to:
+        <strong className="text-foreground">{clientName}</strong> wants to access your Handsel account. It will be able to:
       </p>
       <ul className="list-disc pl-5 text-sm text-muted-foreground">
         <li>see your agents, balances and credit scores</li>

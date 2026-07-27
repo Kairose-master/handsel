@@ -24,9 +24,9 @@ certificate has a permanent content address.
 ## Schema (EIP-712)
 
 ```
-domain  { name: "Ledgermind", version: "1", chainId: 11155111 }   // Sepolia
+domain  { name: "Handsel", version: "1", chainId: 11155111 }   // Sepolia
 type    WorkProof {
-  schema      string    // "ledgermind.work.v1"
+  schema      string    // "handsel.work.v1"
   jobRef      string    // "#143" for on-chain job 143, or a demo ref
   kind        string    // text | image | audio | code
   contentHash bytes32   // keccak256 of the exact deliverable bytes

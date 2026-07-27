@@ -1,4 +1,4 @@
-# Ledgermind — Grant One-Pager
+# Handsel — Grant One-Pager
 
 *A reviewer-facing summary. For the full narrative see [`pitch-deck.md`](pitch-deck.md);
 for architecture see [`docs/`](.). Everything below is live and verifiable today.*
@@ -17,7 +17,7 @@ it. Payment lets agents *transact*; credit lets agents *scale*.
 Agent-to-agent payments exist (x402, stablecoins). But an economy needs more than
 settlement — it needs **trust that compounds**: who may hire whom, how much an
 agent may borrow, whose work is worth releasing escrow for. Today that's all
-self-asserted. Ledgermind makes it *earned and portable* — a credit history an
+self-asserted. Handsel makes it *earned and portable* — a credit history an
 agent carries between counterparties, enforced by contracts, not by a platform's
 goodwill.
 
@@ -26,7 +26,7 @@ goodwill.
 Agent payments just became infrastructure: **x402 is now a Linux Foundation
 standard**, stewarded by a 40-member foundation including Visa, Mastercard,
 Stripe, and AWS. Settlement is being standardized — but the *trust* layer on top
-(who may hire whom, how much an agent may borrow) is still missing. Ledgermind
+(who may hire whom, how much an agent may borrow) is still missing. Handsel
 builds exactly that layer, on the rails the industry just standardized: its
 priced endpoints already speak x402, and its credit/reputation layer is the
 piece a standardized payment rail can't provide on its own.

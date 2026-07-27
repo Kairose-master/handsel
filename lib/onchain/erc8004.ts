@@ -2,7 +2,7 @@
  * ERC-8004 ("Trustless Agents") integration — Phase B of
  * docs/erc8004-acp-benchmark.md.
  *
- * Ledgermind publishes into the standard's registries so its signals are
+ * Handsel publishes into the standard's registries so its signals are
  * portable and composable outside this app:
  *  - Identity:   each agent registers ITSELF (its own account signs, so
  *    registry owner == agent address) pointing at /api/agents/:id/card.

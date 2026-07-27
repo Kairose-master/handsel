@@ -16,7 +16,7 @@ const CODE_TTL_MS = 10 * 60 * 1000
  *  without signing in. The email domain marks them (queryable for cleanup /
  *  later "claim this account"); they have no password, so they can't log into
  *  the dashboard — they live entirely through the connector until upgraded. */
-const GUEST_EMAIL_DOMAIN = 'guest.ledgermind.local'
+const GUEST_EMAIL_DOMAIN = 'guest.handsel.local'
 
 async function requesterIp(): Promise<string> {
   const h = await headers()

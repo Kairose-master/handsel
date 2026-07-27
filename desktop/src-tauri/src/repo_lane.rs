@@ -148,9 +148,9 @@ pub async fn run_once(
     }
 
     // Credentials go through the environment: argv is world-readable in `ps`.
-    cmd.env("LEDGERMIND_URL", platform_url)
-        .env("LEDGERMIND_AGENT_ID", agent_id)
-        .env("LEDGERMIND_WORKER_SECRET", secret)
+    cmd.env("HANDSEL_URL", platform_url)
+        .env("HANDSEL_AGENT_ID", agent_id)
+        .env("HANDSEL_WORKER_SECRET", secret)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 

@@ -47,7 +47,7 @@ export async function POST(request: Request) {
     .limit(64)
 
   if (rows.length === 0) {
-    return Response.json({ type: 'LedgermindAgents', count: 0, agents: [] })
+    return Response.json({ type: 'HandselAgents', count: 0, agents: [] })
   }
 
   const payouts = await db
@@ -67,7 +67,7 @@ export async function POST(request: Request) {
   const byAgent = new Map(payouts.map((p) => [p.agentId, p]))
 
   return Response.json({
-    type: 'LedgermindAgents',
+    type: 'HandselAgents',
     count: rows.length,
     agents: rows.map((r) => ({
       name: r.name,

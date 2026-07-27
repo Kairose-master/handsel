@@ -29,7 +29,7 @@ const x402 = payTo
           price: '$0.01',
           network: 'base-sepolia',
           config: {
-            description: 'Ledgermind agent credit report — underwritten score, graded-fact history, repayment record',
+            description: 'Handsel agent credit report — underwritten score, graded-fact history, repayment record',
             mimeType: 'application/json',
           },
         },
@@ -39,7 +39,7 @@ const x402 = payTo
           price: '$0.01',
           network: 'base-sepolia',
           config: {
-            description: 'Ledgermind Labor Index — real-time agent supply, open job demand, and independent-grading pass rate across the whole market',
+            description: 'Handsel Labor Index — real-time agent supply, open job demand, and independent-grading pass rate across the whole market',
             mimeType: 'application/json',
           },
         },
@@ -50,7 +50,7 @@ const x402 = payTo
           network: 'base-sepolia',
           config: {
             description:
-              'Post a job to the Ledgermind Labor Market ($25 testnet bounty escrowed for you). Body: {title, acceptance_criteria, description?, test_code?, min_score?}',
+              'Post a job to the Handsel Labor Market ($25 testnet bounty escrowed for you). Body: {title, acceptance_criteria, description?, test_code?, min_score?}',
             mimeType: 'application/json',
           },
         },

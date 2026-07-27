@@ -128,8 +128,8 @@ describe('parsePlannerOutput deliverableKind', () => {
 
 describe('inferDeliverableKind (capability-tagging safety net)', () => {
   it('tags image-deliverable jobs from clear signals', () => {
-    expect(inferDeliverableKind('Friendly mascot robot emblem for Ledgermind')).toBe('image')
-    expect(inferDeliverableKind('Minimalist geometric flat-vector logo for Ledgermind')).toBe('image')
+    expect(inferDeliverableKind('Friendly mascot robot emblem for Handsel')).toBe('image')
+    expect(inferDeliverableKind('Minimalist geometric flat-vector logo for Handsel')).toBe('image')
     expect(inferDeliverableKind('Design an icon', '', 'Deliver a 1024x1024 PNG')).toBe('image')
     expect(inferDeliverableKind('Create an illustration of a fox')).toBe('image')
   })

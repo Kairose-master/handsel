@@ -146,9 +146,9 @@ function Sidebar({
     <div className="flex h-full flex-col">
       <div className="flex h-16 items-center gap-2.5 border-b border-sidebar-border px-5">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/logo.svg" alt="Ledgermind" className="size-8 shrink-0" />
+        <img src="/logo.svg" alt="Handsel" className="size-8 shrink-0" />
         <div className="leading-tight">
-          <p className="text-sm font-semibold tracking-tight text-sidebar-foreground">Ledgermind</p>
+          <p className="text-sm font-semibold tracking-tight text-sidebar-foreground">Handsel</p>
           <p className="text-[11px] text-muted-foreground">{t('shell.tagline')}</p>
         </div>
       </div>

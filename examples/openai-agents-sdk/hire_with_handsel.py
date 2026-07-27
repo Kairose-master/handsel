@@ -1,42 +1,42 @@
 """
 Give an OpenAI Agents SDK agent the ability to hire and price work through
-Ledgermind — using the keyless public API, so this runs with zero setup
+Handsel — using the keyless public API, so this runs with zero setup
 beyond your OpenAI key.
 
     pip install -r requirements.txt
     export OPENAI_API_KEY=sk-...
-    python hire_with_ledgermind.py
+    python hire_with_handsel.py
 
 What it does: the agent is asked to turn a goal into an actionable, priced
 plan and to check what work the market already has open. It reasons over two
-Ledgermind tools:
+Handsel tools:
 
-  * plan_delegation(goal, budget) -> the real Ledgermind planner decomposes the
+  * plan_delegation(goal, budget) -> the real Handsel planner decomposes the
     goal into priced, independently-gradable subtasks (POST /api/demo/plan)
   * browse_open_jobs(limit)       -> the live open-job feed (GET /api/tasks)
 
 Everything hits the live testnet. All USDC is test money with no real value.
 Swap the model for any provider the Agents SDK supports (including Claude) —
-the Ledgermind tools are model-agnostic.
+the Handsel tools are model-agnostic.
 """
 
 import httpx
 from agents import Agent, Runner, function_tool
 
-LEDGERMIND = "https://ai-agent-credit-dashboard.vercel.app"
+HANDSEL = "https://ai-agent-credit-dashboard.vercel.app"
 
 
 @function_tool
 def plan_delegation(goal: str, budget_usd: float) -> str:
     """Decompose a goal into priced, independently-gradable subtasks via
-    Ledgermind's real planner. Returns the subtasks with their USD bounties.
+    Handsel's real planner. Returns the subtasks with their USD bounties.
 
     Args:
         goal: what you want built (e.g. "a landing page for a coffee brand").
         budget_usd: total budget in (testnet) USDC to split across subtasks.
     """
     r = httpx.post(
-        f"{LEDGERMIND}/api/demo/plan",
+        f"{HANDSEL}/api/demo/plan",
         json={"goal": goal, "budget": budget_usd},
         timeout=60,
     )
@@ -53,9 +53,9 @@ def plan_delegation(goal: str, budget_usd: float) -> str:
 
 @function_tool
 def browse_open_jobs(limit: int = 5) -> str:
-    """List currently-open jobs on the Ledgermind labor market that an agent
+    """List currently-open jobs on the Handsel labor market that an agent
     could claim and earn (testnet) USDC for on passing independent grading."""
-    r = httpx.get(f"{LEDGERMIND}/api/tasks", params={"limit": limit}, timeout=30)
+    r = httpx.get(f"{HANDSEL}/api/tasks", params={"limit": limit}, timeout=30)
     r.raise_for_status()
     tasks = r.json().get("tasks", [])
     if not tasks:
@@ -66,7 +66,7 @@ def browse_open_jobs(limit: int = 5) -> str:
 agent = Agent(
     name="Procurement Agent",
     instructions=(
-        "You help a user get real work done by delegating it to the Ledgermind "
+        "You help a user get real work done by delegating it to the Handsel "
         "agent labor market. When given a goal and a budget, call plan_delegation "
         "to break it into priced subtasks, then present the plan clearly and note "
         "that each piece is escrowed on-chain and only paid on passing independent "

@@ -12,7 +12,7 @@ import {
 describe('isDogfoodJobTitle', () => {
   it('recognizes both dogfood families and rejects practice titles', () => {
     expect(isDogfoodJobTitle('i18n → zh: translate 12 UI strings [a…]')).toBe(true)
-    expect(isDogfoodJobTitle('docs → English: translate minecraft/README.md (part 1/3)')).toBe(true)
+    expect(isDogfoodJobTitle('docs → Korean: translate docs/mcp-connector.md (part 1/3)')).toBe(true)
     expect(isDogfoodJobTitle('Implement sum_multiples(n)')).toBe(false)
     expect(isDogfoodJobTitle('Reverse the words of a string')).toBe(false)
   })
@@ -40,7 +40,7 @@ describe('splitMarkdownSections', () => {
   })
 
   it('reassembles losslessly (concatenation equals the source)', () => {
-    const md = readFileSync('minecraft/README.md', 'utf8')
+    const md = readFileSync('docs/mcp-connector.md', 'utf8')
     const chunks = splitMarkdownSections(md)
     expect(chunks.join('\n')).toBe(md)
     expect(chunks.length).toBeGreaterThan(1) // the real README does need chunking
@@ -48,23 +48,26 @@ describe('splitMarkdownSections', () => {
 })
 
 describe('briefs', () => {
+  // Derived from the source rather than hardcoded. The list is real work that
+  // changes as docs are written and translated, and a test that pins today's
+  // first entry fails for reasons that have nothing to do with the briefs.
   const source = DOCS_JOB_SOURCES[0]!
 
   it('title carries the target language, path and part', () => {
-    expect(docsJobTitle(source, 2, 3)).toBe('docs → English: translate minecraft/README.md (part 2/3)')
-    expect(docsJobTitle(source, 1, 1)).toBe('docs → English: translate minecraft/README.md')
+    expect(docsJobTitle(source, 2, 3)).toBe(`docs → ${source.to}: translate ${source.path} (part 2/3)`)
+    expect(docsJobTitle(source, 1, 1)).toBe(`docs → ${source.to}: translate ${source.path}`)
   })
 
   it('description embeds the chunk and the review-and-commit expectation', () => {
-    const d = docsJobDescription(source, '## 빌드\nmvn package', 1, 2)
-    expect(d).toContain('## 빌드')
-    expect(d).toContain('Korean to English')
+    const d = docsJobDescription(source, '## Build\nmvn package', 1, 2)
+    expect(d).toContain('## Build')
+    expect(d).toContain(`${source.from} to ${source.to}`)
     expect(d).toContain('maintainer reviews and commits')
   })
 
   it('acceptance criteria pin completeness and verbatim code blocks', () => {
     const c = docsJobAcceptanceCriteria(source)
-    expect(c).toContain('complete English translation')
+    expect(c).toContain(`complete ${source.to} translation`)
     expect(c).toContain('unchanged')
   })
 })

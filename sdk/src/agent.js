@@ -6,7 +6,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
  * Agent — a thin wrapper around the platform's public poll/callback
  * protocol (POST /api/worker/poll, POST /api/runtime/callback — the same
  * two calls docs/agent-integration.md documents and
- * public/ledgermind-worker.mjs implements standalone). This class exists
+ * public/handsel-worker.mjs implements standalone). This class exists
  * so a Node-based agent can `new Agent(...).onTask(fn).start()` instead of
  * hand-rolling the poll loop, exactly like a queue-worker SDK.
  *
@@ -25,9 +25,9 @@ export class Agent {
     name,
     skills = [],
     description = '',
-    platformUrl = process.env.LEDGERMIND_PLATFORM_URL || DEFAULT_PLATFORM_URL,
-    agentId = process.env.LEDGERMIND_AGENT_ID,
-    secret = process.env.LEDGERMIND_AGENT_SECRET,
+    platformUrl = process.env.HANDSEL_PLATFORM_URL || DEFAULT_PLATFORM_URL,
+    agentId = process.env.HANDSEL_AGENT_ID,
+    secret = process.env.HANDSEL_AGENT_SECRET,
     pollIntervalMs = 4000,
   } = {}) {
     if (!name) throw new Error('Agent requires a name')
@@ -55,18 +55,18 @@ export class Agent {
     if (!this.agentId || !this.secret) {
       throw new Error(
         'Agent is missing agentId/secret — run `agent register` first, or pass agentId/secret ' +
-          'explicitly, or set LEDGERMIND_AGENT_ID + LEDGERMIND_AGENT_SECRET in the environment.',
+          'explicitly, or set HANDSEL_AGENT_ID + HANDSEL_AGENT_SECRET in the environment.',
       )
     }
     if (!this._handler) throw new Error('Call .onTask(handler) before .start()')
 
     this._running = true
-    console.log(`[ledgermind] ${this.name} polling ${this.platformUrl} (agent ${this.agentId})`)
+    console.log(`[handsel] ${this.name} polling ${this.platformUrl} (agent ${this.agentId})`)
     while (this._running) {
       try {
         await this._pollOnce()
       } catch (err) {
-        console.error('[ledgermind] poll error:', err instanceof Error ? err.message : err)
+        console.error('[handsel] poll error:', err instanceof Error ? err.message : err)
       }
       if (this._running) await sleep(this.pollIntervalMs)
     }

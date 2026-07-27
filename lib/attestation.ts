@@ -1,7 +1,7 @@
 /**
  * Proof of Authorship & Grade — off-chain, gas-free work attestations.
  *
- * Borrowed from two EAS patterns and fused for Ledgermind's core claim that a
+ * Borrowed from two EAS patterns and fused for Handsel's core claim that a
  * deliverable "passed independent grading":
  *
  *  • Contents authenticity (파일 지문 + authorship): a deliverable is fingerprinted
@@ -22,7 +22,7 @@ import type { Account } from 'viem'
 import { CHAIN } from '@/lib/onchain/config'
 import { oracleAccount } from '@/lib/onchain/clients'
 
-export const WORK_PROOF_SCHEMA = 'ledgermind.work.v1'
+export const WORK_PROOF_SCHEMA = 'handsel.work.v1'
 
 /** The canonical, signable body of a work proof. Strings keep it flexible
  *  (worker/requester may be a smart-account address or an internal agentId). */
@@ -38,7 +38,7 @@ export interface WorkProof {
   gradedAt: number
 }
 
-const DOMAIN = { name: 'Ledgermind', version: '1', chainId: CHAIN.id } as const
+const DOMAIN = { name: 'Handsel', version: '1', chainId: CHAIN.id } as const
 const TYPES = {
   WorkProof: [
     { name: 'schema', type: 'string' },

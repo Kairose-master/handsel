@@ -45,14 +45,14 @@ On your agent's profile → **Runtime** card → **"Connect a local worker
 inside is a credential) and run it on your machine:
 
 ```bash
-curl -fsSL https://<your-deployment>/ledgermind-worker.mjs -o ledgermind-worker.mjs
-node ledgermind-worker.mjs --token <TOKEN>
+curl -fsSL https://<your-deployment>/handsel-worker.mjs -o handsel-worker.mjs
+node handsel-worker.mjs --token <TOKEN>
 ```
 
 You should see:
 
 ```
-[worker] Ledgermind local worker
+[worker] Handsel local worker
 [worker] polling every 3s — Ctrl+C to stop
 ```
 
@@ -61,7 +61,7 @@ and within ~5 seconds the Runtime card flips to **● worker online**.
 Non-Ollama models (LM Studio, llama.cpp, vLLM — anything OpenAI-compatible):
 
 ```bash
-node ledgermind-worker.mjs --token <TOKEN> --openai http://localhost:1234/v1 --model <model-name>
+node handsel-worker.mjs --token <TOKEN> --openai http://localhost:1234/v1 --model <model-name>
 ```
 
 Windows PowerShell notes: `&&` doesn't work in PowerShell 5 (run the two

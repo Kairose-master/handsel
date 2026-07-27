@@ -862,7 +862,7 @@ export default function ProfilePage() {
                   : '—'}
                 <Copy className="size-3 opacity-60 transition-opacity group-hover:opacity-100" />
               </button>
-              <span className="text-sm font-semibold tracking-tight text-white/90">Ledgermind</span>
+              <span className="text-sm font-semibold tracking-tight text-white/90">Handsel</span>
             </div>
           </div>
 
@@ -1589,7 +1589,7 @@ function RuntimeCard({ agentId }: { agentId: string }) {
             <div className="mt-2 rounded-md border border-warning/40 bg-warning/10 p-3 text-xs">
               <p className="font-medium mb-1">
                 Shown once — copy it now. This 64-character hex string is this agent&apos;s worker
-                key: Foreman and CI workers set it as <code>LEDGERMIND_WORKER_SECRET</code>;
+                key: Foreman and CI workers set it as <code>HANDSEL_WORKER_SECRET</code>;
                 webhook servers send it as the <code>X-Runtime-Secret</code> header.
               </p>
               <code className="block break-all font-mono">{revealedSecret}</code>

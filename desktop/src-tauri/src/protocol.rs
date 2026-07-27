@@ -1,5 +1,5 @@
-//! The exact 3-call Ledgermind worker protocol, ported from
-//! `public/ledgermind-worker.mjs` (the reference Node implementation) so
+//! The exact 3-call Handsel worker protocol, ported from
+//! `public/handsel-worker.mjs` (the reference Node implementation) so
 //! this native GUI does the same thing that script does, just without a
 //! terminal. See docs/agent-integration.md §2 for the spec these calls
 //! implement — this file is not a new protocol, only a new client for the
@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::time::Duration;
 
-const SYSTEM_PROMPT: &str = "You are an autonomous worker agent on the Ledgermind labor market. \
+const SYSTEM_PROMPT: &str = "You are an autonomous worker agent on the Handsel labor market. \
 Complete the task exactly as specified; be factual and concise, and if code is required give the \
 complete, runnable code in a fenced block. Some jobs are one piece of a larger collaboration — when \
 these cues appear in the task, follow them: \
@@ -183,7 +183,7 @@ pub async fn submit_result(
 /// Where the model call itself goes — either a local Ollama daemon, or any
 /// OpenAI-compatible /chat/completions endpoint (LM Studio, vLLM, or a
 /// cloud host like Groq/Together/OpenRouter the user already has a free
-/// key for). Mirrors --ollama / --openai in ledgermind-worker.mjs.
+/// key for). Mirrors --ollama / --openai in handsel-worker.mjs.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ModelBackend {
@@ -372,7 +372,7 @@ pub async fn ask_model(backend: &ModelBackend, task: &str) -> Result<String, Str
 /// A cold local model can take a while to load into memory on its first
 /// request. Block here with backoff, retrying a trivial prompt, so mining
 /// never claims a task while the model is still warming up — matches
-/// warmupModel() in ledgermind-worker.mjs.
+/// warmupModel() in handsel-worker.mjs.
 pub async fn warmup_model(backend: &ModelBackend, mut on_attempt: impl FnMut(u32, &str)) -> Result<(), String> {
     const MAX_ATTEMPTS: u32 = 8;
     for attempt in 1..=MAX_ATTEMPTS {
@@ -485,7 +485,7 @@ pub struct AgentCardStats {
 
 /// GET /api/agents/:id/card — the agent's public ERC-8004-style card.
 /// No auth (registration files are the standard's discovery layer); we
-/// surface the Ledgermind underwriting extensions the Miner cares about.
+/// surface the Handsel underwriting extensions the Miner cares about.
 pub async fn agent_card(platform_url: &str, agent_id: &str) -> Result<AgentCardStats, String> {
     let url = format!("{}/api/agents/{}/card", platform_url.trim_end_matches('/'), agent_id);
     let res = client().get(&url).send().await.map_err(|e| format!("card lookup failed: {e}"))?;
@@ -496,11 +496,11 @@ pub async fn agent_card(platform_url: &str, agent_id: &str) -> Result<AgentCardS
     Ok(AgentCardStats {
         name: body.get("name").and_then(|v| v.as_str()).unwrap_or("Agent").to_string(),
         credit_score: body
-            .pointer("/ledgermind/creditScore")
+            .pointer("/handsel/creditScore")
             .and_then(|v| v.as_i64())
             .unwrap_or(0),
         credit_rating: body
-            .pointer("/ledgermind/creditRating")
+            .pointer("/handsel/creditRating")
             .and_then(|v| v.as_str())
             .unwrap_or("unrated")
             .to_string(),

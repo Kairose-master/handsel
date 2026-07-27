@@ -65,7 +65,7 @@ export function i18nJobDescription(locale: Locale, keys: string[]): string {
     '',
     'Reply with ONLY a JSON object (optionally in a ```json fence) mapping every key above to its translation.',
     'Rules: preserve placeholders in braces like {n} or {amount} verbatim; keep product/technical names',
-    '(Ledgermind, MCP, USDC, Claude, ChatGPT, GitHub) untranslated; match the tone of a product UI (concise, natural).',
+    '(Handsel, MCP, USDC, Claude, ChatGPT, GitHub) untranslated; match the tone of a product UI (concise, natural).',
   ].join('\n')
 }
 
@@ -74,7 +74,7 @@ export function i18nJobAcceptanceCriteria(locale: Locale, keys: string[]): strin
     `- The submission is a single JSON object whose keys are EXACTLY these ${keys.length}: ${keys.join(', ')}`,
     `- Every value is a natural ${localeLabel(locale)} translation of the given English source — not English, not another language, not left empty`,
     '- Brace placeholders like {n} or {amount} appear verbatim in the translation wherever the source has them',
-    '- Product names (Ledgermind, MCP, USDC, Claude, ChatGPT, GitHub) are not translated',
+    '- Product names (Handsel, MCP, USDC, Claude, ChatGPT, GitHub) are not translated',
   ].join('\n')
 }
 

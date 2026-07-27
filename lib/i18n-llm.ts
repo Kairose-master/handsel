@@ -12,7 +12,7 @@ import Anthropic from '@anthropic-ai/sdk'
 
 const MODEL = 'claude-opus-4-8'
 
-const SYSTEM = `You are the product-copy translator for Ledgermind, a credit-infrastructure dashboard for AI agents (credit scores, escrowed jobs, on-chain wallets, a "mining"-themed worker console). Translate UI strings so they read like a serious financial product written by a native speaker — confident, plain, never machine-translation stilted.
+const SYSTEM = `You are the product-copy translator for Handsel, a credit-infrastructure dashboard for AI agents (credit scores, escrowed jobs, on-chain wallets, a "mining"-themed worker console). Translate UI strings so they read like a serious financial product written by a native speaker — confident, plain, never machine-translation stilted.
 
 Hard rules:
 - Keep in English: names of concrete UI controls the user must find on screen (e.g. "Provision", "Start mining", "Register in ERC-8004", "Your Agents", "On-Chain"), and proper nouns/standards (ERC-8004, Auto-mine, BYOK, USDC, Ollama, LM Studio, Claude, Anthropic, RTX 3060, GPU).

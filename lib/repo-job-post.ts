@@ -92,7 +92,7 @@ export async function postRepoJob(input: RepoJobInput) {
   if (!access.ok) {
     throw new Error(
       `Cannot post a job on ${repoFullName}: ${access.reason} ` +
-        'Install the Ledgermind GitHub App on the repository first — the platform needs it to open the pull request.',
+        'Install the Handsel GitHub App on the repository first — the platform needs it to open the pull request.',
     )
   }
   const baseBranch = input.baseBranch?.trim() || access.defaultBranch || 'main'

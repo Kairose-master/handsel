@@ -11,7 +11,7 @@
  *   ③ not stale & subject == borrower
  *   ④ score >= minScore
  *
- * Applied to Ledgermind: an agent's credit score (already attested by the
+ * Applied to Handsel: an agent's credit score (already attested by the
  * platform oracle) unlocks an undercollateralized draw / auto-approve limit
  * that scales with the score — read-only condition checks, no funds move here.
  */
@@ -25,7 +25,7 @@ export interface CreditScoreProof {
   issuedAt: number // unix seconds
 }
 
-const DOMAIN = { name: 'Ledgermind', version: '1', chainId: CHAIN.id } as const
+const DOMAIN = { name: 'Handsel', version: '1', chainId: CHAIN.id } as const
 const TYPES = {
   CreditScore: [
     { name: 'subject', type: 'string' },

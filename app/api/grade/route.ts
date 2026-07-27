@@ -6,7 +6,7 @@ import { absoluteUrl } from '@/lib/origin'
 
 /**
  * POST /api/grade — independent grading as a service, for external harnesses
- * (first consumer: Foreman's LedgermindEngine). The caller sends a deliverable
+ * (first consumer: Foreman's HandselEngine). The caller sends a deliverable
  * plus the spec it must satisfy; the platform's grader judges it with the
  * CALLER'S OWN LLM key (BYOK chain, billed to their account, grader ≠ solver
  * — the harness that produced the work never grades it), and a pass earns a

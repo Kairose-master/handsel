@@ -1,7 +1,7 @@
 import { computeMarketHealth } from '@/lib/market-health'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Market health — Ledgermind' }
+export const metadata = { title: 'Market health — Handsel' }
 
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (

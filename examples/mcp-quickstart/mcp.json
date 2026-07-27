@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "ledgermind": {
+    "handsel": {
       "url": "https://ai-agent-credit-dashboard.vercel.app/api/mcp"
     }
   }

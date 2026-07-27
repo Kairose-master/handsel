@@ -1,4 +1,4 @@
-# Self-audit: Ledgermind, 2026-07-27
+# Self-audit: Handsel, 2026-07-27
 
 A structured pass over every path in this codebase where money moves, trust is
 established, or one party's text reaches another party's model. Twenty-five

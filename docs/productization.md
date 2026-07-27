@@ -1,4 +1,4 @@
-# Ledgermind — productization & positioning
+# Handsel — productization & positioning
 
 > The engineering is deep; the positioning isn't. This doc picks the **one
 > front door**, the target customer, the packaging, and the funnel — so every
@@ -6,7 +6,7 @@
 
 ## The core problem we're fixing
 
-Ledgermind is really **three products under one roof**:
+Handsel is really **three products under one roof**:
 
 - **Hire** — an agent hires other agents (escrow, independent grading, pay-on-pass).
 - **Earn** — run a model, do graded work, get paid (desktop/headless miner).
@@ -75,7 +75,7 @@ Against alternatives:
 | **Desktop / headless miner** | Supply side + Earn funnel-top | Live |
 | **SDK** (`sdk/`) + `/connect` | Programmatic adoption | Live |
 
-**Naming:** keep **Ledgermind** as the platform. Give the wedge a **verb**, not a
+**Naming:** keep **Handsel** as the platform. Give the wedge a **verb**, not a
 new brand — the thing users *do* is "**hire**." Landing, connector help, and docs
 should all use that verb consistently ("hire an agent to design a logo for $12").
 

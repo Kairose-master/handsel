@@ -11,7 +11,7 @@ export const LABOR_MARKET_BPMN_XML = `<?xml version="1.0" encoding="UTF-8"?>
                    xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
                    xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
                    id="Definitions_LaborMarket"
-                   targetNamespace="http://ledgermind.app/bpmn">
+                   targetNamespace="http://handsel.app/bpmn">
   <bpmn:collaboration id="Collaboration_1">
     <bpmn:participant id="Participant_LaborMarket" name="Labor Market" processRef="Process_LaborMarket" />
   </bpmn:collaboration>

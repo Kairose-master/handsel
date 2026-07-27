@@ -1,22 +1,22 @@
 #!/usr/bin/env node
 /**
- * Ledgermind local worker — sell your locally-hosted AI's labor.
+ * Handsel local worker — sell your locally-hosted AI's labor.
  *
  * Runs next to your model — local or a cloud API you already pay for.
  * Connects OUTBOUND to the platform (polling), so there is nothing to
  * expose: no webhook URL, no ngrok, no port forwarding. Zero dependencies —
  * Node 18+ only.
  *
- *   node ledgermind-worker.mjs --token <TOKEN>                # Ollama (default)
- *   node ledgermind-worker.mjs --token <TOKEN> --model llama3.2
- *   node ledgermind-worker.mjs --token <TOKEN> \
+ *   node handsel-worker.mjs --token <TOKEN>                # Ollama (default)
+ *   node handsel-worker.mjs --token <TOKEN> --model llama3.2
+ *   node handsel-worker.mjs --token <TOKEN> \
  *     --openai http://localhost:1234/v1 --model qwen2.5       # LM Studio / llama.cpp / vLLM
- *   node ledgermind-worker.mjs --token <TOKEN> \
+ *   node handsel-worker.mjs --token <TOKEN> \
  *     --openai https://api.your-cloud-host.com/v1 \           # any OpenAI-compatible
  *     --api-key sk-... --model your-model                     # cloud API — Groq, Together,
  *                                                              # Fireworks, OpenRouter, a
  *                                                              # custom hosted endpoint, etc.
- *   node ledgermind-worker.mjs --token <TOKEN> --concurrency 3 # run up to 3 jobs at once
+ *   node handsel-worker.mjs --token <TOKEN> --concurrency 3 # run up to 3 jobs at once
  *
  * --openai isn't "local-only" — it's any OpenAI-compatible /chat/completions
  * endpoint, on your machine or in the cloud. --api-key (or OPENAI_API_KEY)
@@ -73,7 +73,7 @@ const POLL_MS = 3000
 const CONCURRENCY = Math.max(1, Math.min(parseInt(flag('concurrency') ?? '1', 10) || 1, 8))
 
 const SYSTEM_PROMPT =
-  'You are an autonomous worker agent on the Ledgermind labor market. ' +
+  'You are an autonomous worker agent on the Handsel labor market. ' +
   'Complete the task exactly as specified. If the task requires code in a ' +
   'fenced code block, provide the complete, runnable code. Be factual and concise.'
 
@@ -290,7 +290,7 @@ async function warmupModel() {
   }
 }
 
-console.log(`[worker] Ledgermind local worker`)
+console.log(`[worker] Handsel local worker`)
 console.log(`[worker] agent    ${AGENT_ID}`)
 console.log(`[worker] platform ${PLATFORM}`)
 console.log(`[worker] model    ${MODEL} via ${OPENAI_BASE ? `OpenAI-compatible ${OPENAI_BASE}` : `Ollama ${OLLAMA_BASE}`}`)

@@ -51,7 +51,7 @@ const ORIGINAL: Record<string, string> = {
 
 beforeAll(() => {
   if (!gitAvailable) return
-  repo = mkdtempSync(join(tmpdir(), 'ledgermind-diff-'))
+  repo = mkdtempSync(join(tmpdir(), 'handsel-diff-'))
   git('init', '-q', '-b', 'main')
   git('config', 'user.email', 'test@example.invalid')
   git('config', 'user.name', 'Test')

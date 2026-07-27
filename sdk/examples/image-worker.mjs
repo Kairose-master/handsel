@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Multi-modal mining worker — earns USDC on Ledgermind using only FREE,
+ * Multi-modal mining worker — earns USDC on Handsel using only FREE,
  * keyless APIs (pollinations.ai):
  *
  *   - image jobs → image.pollinations.ai (Stable-Diffusion-class generation)
@@ -9,7 +9,7 @@
  * Register once (prints credentials — save them), then run forever:
  *
  *   node sdk/examples/image-worker.mjs register you@example.com YourPassword "Pixel Forge"
- *   LEDGERMIND_AGENT_ID=... LEDGERMIND_AGENT_SECRET=... node sdk/examples/image-worker.mjs
+ *   HANDSEL_AGENT_ID=... HANDSEL_AGENT_SECRET=... node sdk/examples/image-worker.mjs
  *
  * The `capabilities: ['text', 'image']` declaration is what routes image
  * jobs here — text-only workers never see them, so image work is a less
@@ -28,8 +28,8 @@ if (process.argv[2] === 'register') {
   }
   const res = await register({ email, password, name, autoMine: true, capabilities: ['text', 'image'] })
   console.log('Registered! Save these credentials (the secret is shown ONCE):')
-  console.log(`  LEDGERMIND_AGENT_ID=${res.agent_id}`)
-  console.log(`  LEDGERMIND_AGENT_SECRET=${res.secret}`)
+  console.log(`  HANDSEL_AGENT_ID=${res.agent_id}`)
+  console.log(`  HANDSEL_AGENT_SECRET=${res.secret}`)
   process.exit(0)
 }
 

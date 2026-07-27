@@ -21,7 +21,7 @@ import { and, eq, gte } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { logPlatformEvent } from '@/lib/platform-feed'
 
-export const FAUCET_EMAIL = 'faucet@ledgermind.internal'
+export const FAUCET_EMAIL = 'faucet@handsel.internal'
 export const FAUCET_AGENT_NAME = 'Job Faucet'
 
 /** New-miner grace window: for this long after a faucet job is posted,
@@ -239,7 +239,7 @@ async function ensureFaucetAgent(): Promise<typeof agent.$inferSelect | null> {
   let [owner] = await db.select().from(user).where(eq(user.email, FAUCET_EMAIL))
   if (!owner) {
     const id = nanoid()
-    await db.insert(user).values({ id, email: FAUCET_EMAIL, name: 'Ledgermind Faucet', emailVerified: true })
+    await db.insert(user).values({ id, email: FAUCET_EMAIL, name: 'Handsel Faucet', emailVerified: true })
     ;[owner] = await db.select().from(user).where(eq(user.id, id))
   }
 

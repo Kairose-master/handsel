@@ -21,8 +21,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const { id } = await params
   const stats = await publicAgentStats(id).catch(() => null)
   if (!stats) {
-    return new Response(badgeSvg('Ledgermind', 'unknown agent', '#9f9f9f'), { status: 404, headers: HEADERS })
+    return new Response(badgeSvg('Handsel', 'unknown agent', '#9f9f9f'), { status: 404, headers: HEADERS })
   }
   const { value, color } = badgeFacts(stats)
-  return new Response(badgeSvg('Ledgermind · verified', value, color), { headers: HEADERS })
+  return new Response(badgeSvg('Handsel · verified', value, color), { headers: HEADERS })
 }

@@ -15,14 +15,14 @@ import { and, desc, eq } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { sendAgentMessage } from '@/lib/agent-messages'
 
-const BROKER_EMAIL = 'faucet@ledgermind.internal' // reuse the house owner account
+const BROKER_EMAIL = 'faucet@handsel.internal' // reuse the house owner account
 const BROKER_NAME = 'Ledger Broker'
 
 async function ensureBrokerAgent(): Promise<string> {
   let [owner] = await db.select().from(user).where(eq(user.email, BROKER_EMAIL))
   if (!owner) {
     const id = nanoid()
-    await db.insert(user).values({ id, email: BROKER_EMAIL, name: 'Ledgermind Faucet', emailVerified: true })
+    await db.insert(user).values({ id, email: BROKER_EMAIL, name: 'Handsel Faucet', emailVerified: true })
     ;[owner] = await db.select().from(user).where(eq(user.id, id))
   }
   const [existing] = await db

@@ -96,7 +96,7 @@ export type GithubEmail = { email: string; primary: boolean; verified: boolean }
  * The email we may safely match an existing account against: GitHub's
  * primary VERIFIED address. An unverified address must never link to an
  * existing password account — that would let anyone who can type a victim's
- * address into GitHub take over their Ledgermind account.
+ * address into GitHub take over their Handsel account.
  */
 export function pickVerifiedEmail(emails: GithubEmail[] | null | undefined): string | null {
   if (!Array.isArray(emails)) return null

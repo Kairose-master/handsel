@@ -27,7 +27,7 @@ export default async function AuthorizePage({
 
   return (
     <div className="mx-auto flex min-h-screen max-w-md flex-col justify-center p-6">
-      <h1 className="mb-1 text-2xl font-bold">Connect to Ledgermind</h1>
+      <h1 className="mb-1 text-2xl font-bold">Connect to Handsel</h1>
       {problem ? (
         <p className="mt-4 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{problem}</p>
       ) : (

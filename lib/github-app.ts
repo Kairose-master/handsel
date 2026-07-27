@@ -63,7 +63,7 @@ async function ghFetch(path: string, token: string, init?: RequestInit): Promise
       Authorization: `Bearer ${token}`,
       Accept: 'application/vnd.github+json',
       'X-GitHub-Api-Version': '2022-11-28',
-      'User-Agent': 'ledgermind-repo-jobs',
+      'User-Agent': 'handsel-repo-jobs',
       ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
       ...init?.headers,
     },
@@ -96,7 +96,7 @@ export async function installationTokenForRepo(repoFullName: string): Promise<st
   const jwt = appJwt(config.appId, config.privateKey)
   const inst = await ghJson<{ id: number }>(`/repos/${repoFullName}/installation`, jwt).catch((e) => {
     throw new Error(
-      `The Ledgermind GitHub App is not installed on ${repoFullName} (or the repo doesn't exist). ` +
+      `The Handsel GitHub App is not installed on ${repoFullName} (or the repo doesn't exist). ` +
         `The requester must install the App on that repository. (${e instanceof Error ? e.message : e})`,
     )
   })
@@ -203,7 +203,7 @@ export async function openPrFromDiff(input: {
     body: JSON.stringify({ message: title, tree: newTree.sha, parents: [baseSha] }),
   })
 
-  const branch = `ledgermind/${input.branchHint.replace(/[^A-Za-z0-9._-]+/g, '-').slice(0, 60)}`
+  const branch = `handsel/${input.branchHint.replace(/[^A-Za-z0-9._-]+/g, '-').slice(0, 60)}`
   await ghJson(`/repos/${repoFullName}/git/refs`, token, {
     method: 'POST',
     body: JSON.stringify({ ref: `refs/heads/${branch}`, sha: commit.sha }),

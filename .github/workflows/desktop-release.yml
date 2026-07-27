@@ -60,14 +60,14 @@ jobs:
         with:
           projectPath: desktop
           tagName: ${{ steps.tag.outputs.value }}
-          releaseName: 'Ledgermind Miner ${{ steps.tag.outputs.value }}'
+          releaseName: 'Handsel Miner ${{ steps.tag.outputs.value }}'
           releaseBody: |
             Download the installer for your OS below.
 
             **Windows** users: SmartScreen will warn "Windows protected your PC" because this
             build isn't code-signed yet — click "More info" → "Run anyway".
             **Mac** users: Gatekeeper will say the app "is damaged" for the same reason — right-click
-            the app → Open, or run `xattr -cr "Ledgermind Miner.app"` in Terminal once.
+            the app → Open, or run `xattr -cr "Handsel Miner.app"` in Terminal once.
 
             See [desktop/README.md](https://github.com/${{ github.repository }}/blob/main/desktop/README.md)
             for setup help.

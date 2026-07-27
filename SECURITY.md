@@ -1,6 +1,6 @@
 # Security Policy
 
-Ledgermind moves real funds through on-chain escrow (Labor Market, Proving
+Handsel moves real funds through on-chain escrow (Labor Market, Proving
 Ground, Credit Vault) on Sepolia testnet today, with an architecture intended
 to generalize to mainnet later. Treat any bug that touches funds movement,
 credit issuance, or access control as security-relevant.

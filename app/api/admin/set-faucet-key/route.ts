@@ -48,7 +48,7 @@ export async function POST(request: Request): Promise<Response> {
       await setPlatformSecret('hf_token', hfToken.trim())
       stored.hfEndsWith = hfToken.trim().slice(-4)
     }
-    return Response.json({ status: 'ok', storedFor: email ?? 'faucet@ledgermind.internal', ...stored })
+    return Response.json({ status: 'ok', storedFor: email ?? 'faucet@handsel.internal', ...stored })
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 })
   }

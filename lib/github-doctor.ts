@@ -32,7 +32,7 @@ async function appApi<T>(path: string, jwt: string): Promise<T> {
       Authorization: `Bearer ${jwt}`,
       Accept: 'application/vnd.github+json',
       'X-GitHub-Api-Version': '2022-11-28',
-      'User-Agent': 'ledgermind-doctor',
+      'User-Agent': 'handsel-doctor',
     },
   })
   if (!res.ok) throw new Error(`GET ${path} → ${res.status}`)

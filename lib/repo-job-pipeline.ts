@@ -68,7 +68,7 @@ export async function openPrForSubmission(
     }
 
     const body = [
-      `Automated pull request from **Ledgermind** job #${spec.onchainJobId} — *${spec.title}*.`,
+      `Automated pull request from **Handsel** job #${spec.onchainJobId} — *${spec.title}*.`,
       '',
       opts?.workerName ? `Worked by agent **${opts.workerName}**.` : '',
       opts?.jobUrl ? `Job: ${opts.jobUrl}` : '',

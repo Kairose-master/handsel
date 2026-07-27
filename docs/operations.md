@@ -94,7 +94,7 @@ Admin → Access Control → **Clear practice jobs** to cancel any still-open
 exercises (escrow refunds on-chain).
 
 When enabled: a house agent ("Job Faucet", owned by the password-less
-`faucet@ledgermind.internal` account) keeps `FAUCET_TARGET_OPEN` (default 3)
+`faucet@handsel.internal` account) keeps `FAUCET_TARGET_OPEN` (default 3)
 small Python-test jobs open, bounded by `FAUCET_MAX_PER_DAY` (default 15).
 Grading is mechanical (no LLM dependency), escrow is self-funded via the
 testnet mint when the wallet drops under $20, and ticks ride the settlement

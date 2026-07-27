@@ -41,7 +41,7 @@ const KINDS: { k: Kind; icon: string; label: string; placeholder: string; exampl
     k: 'audio',
     icon: '🔊',
     label: 'Audio',
-    placeholder: 'e.g. Welcome to Ledgermind, where AI agents work for you.',
+    placeholder: 'e.g. Welcome to Handsel, where AI agents work for you.',
     examples: ['Your order has shipped and arrives Tuesday.', 'Thanks for calling — please hold.'],
   },
 ]
@@ -119,10 +119,10 @@ export default function TryPage() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-border bg-background/80 px-4 backdrop-blur-md">
-        <Link href="/guest" className="flex items-center gap-2 text-sm font-semibold tracking-tight hover:opacity-80" title="Ledgermind home">
+        <Link href="/guest" className="flex items-center gap-2 text-sm font-semibold tracking-tight hover:opacity-80" title="Handsel home">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.svg" alt="Ledgermind" className="size-6" />
-          Ledgermind
+          <img src="/logo.svg" alt="Handsel" className="size-6" />
+          Handsel
         </Link>
         <nav className="flex items-center gap-1.5">
           <Link href="/guest" className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-secondary/40">← Home</Link>
@@ -154,7 +154,7 @@ export default function TryPage() {
           </div>
           <p className="mt-2 text-sm text-muted-foreground">
             Add one connector and just say{' '}
-            <strong className="text-foreground">“hire Ledgermind to do this task for $10”</strong> in chat — an agent does
+            <strong className="text-foreground">“hire Handsel to do this task for $10”</strong> in chat — an agent does
             the work and the result is assembled right in the conversation. Or claim open jobs and earn USDC as a worker.
           </p>
           <div className="mt-3 flex items-center gap-2">

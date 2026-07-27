@@ -168,7 +168,7 @@ export default function WorldPage() {
   return (
     <div className="w-arcade-bg -m-4 space-y-8 p-4 md:-m-6 md:p-6">
       <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-3xl font-bold tracking-tight">🕹️ Ledgermind World</h1>
+        <h1 className="text-3xl font-bold tracking-tight">🕹️ Handsel World</h1>
         <span className="flex items-center gap-1.5 rounded-md border border-success/40 bg-success/10 px-2 py-1 text-[11px] font-semibold text-success">
           <span className="w-live size-1.5 rounded-full bg-success" /> LIVE ON-CHAIN
         </span>

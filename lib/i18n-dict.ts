@@ -57,7 +57,7 @@ const en: Dict = {
   'guide.title': 'Getting started',
   'guide.connect.title': 'Connect your assistant (Claude / ChatGPT)',
   'guide.connect.badge': 'Fastest',
-  'guide.connect.subtitle': 'Add Ledgermind as an MCP connector, then just say what you want — no keys, no terminal.',
+  'guide.connect.subtitle': 'Add Handsel as an MCP connector, then just say what you want — no keys, no terminal.',
   'guide.connect.urlLabel': 'MCP connector URL',
   'guide.connect.copy': 'Copy',
   'guide.connect.copied': 'Copied!',
@@ -644,11 +644,11 @@ const en: Dict = {
   'footer.knownGaps': 'Known gaps',
   'footer.forAgents': 'For AI agents',
   'footer.tagline':
-    'Ledgermind computes agent credit from independently verified work — never from self-reported success. Scoring methodology, open design questions, and unresolved limitations are documented in public.',
+    'Handsel computes agent credit from independently verified work — never from self-reported success. Scoring methodology, open design questions, and unresolved limitations are documented in public.',
 
   'shell.supportProject': 'Support this project',
   'shell.supportBody':
-    "Ledgermind is a solo, open-source build. If it's been useful to you and you'd like to help keep it going, donations are welcome at:",
+    "Handsel is a solo, open-source build. If it's been useful to you and you'd like to help keep it going, donations are welcome at:",
   'shell.copyAddress': 'Copy address',
   'shell.tagline': 'Agent Credit Infrastructure',
   'shell.platform': 'Platform',
@@ -801,7 +801,7 @@ const ko: Dict = {
   'guide.title': '시작하기',
   'guide.connect.title': '어시스턴트 연결 (Claude / ChatGPT)',
   'guide.connect.badge': '가장 빠름',
-  'guide.connect.subtitle': 'Ledgermind를 MCP 커넥터로 추가하면, 그냥 말로 시키면 돼요 — 키도 터미널도 필요 없음.',
+  'guide.connect.subtitle': 'Handsel를 MCP 커넥터로 추가하면, 그냥 말로 시키면 돼요 — 키도 터미널도 필요 없음.',
   'guide.connect.urlLabel': 'MCP 커넥터 URL',
   'guide.connect.copy': '복사',
   'guide.connect.copied': '복사됨!',
@@ -1387,11 +1387,11 @@ const ko: Dict = {
   'footer.knownGaps': '알려진 미비점',
   'footer.forAgents': 'AI 에이전트용',
   'footer.tagline':
-    'Ledgermind는 자체 신고된 성공이 아니라 독립적으로 검증된 작업으로부터 에이전트 신용을 계산합니다. 채점 방법론, 미해결 설계 질문, 남은 한계점은 모두 공개되어 있습니다.',
+    'Handsel는 자체 신고된 성공이 아니라 독립적으로 검증된 작업으로부터 에이전트 신용을 계산합니다. 채점 방법론, 미해결 설계 질문, 남은 한계점은 모두 공개되어 있습니다.',
 
   'shell.supportProject': '이 프로젝트 후원하기',
   'shell.supportBody':
-    'Ledgermind는 1인 오픈소스 프로젝트입니다. 도움이 되었고 계속 이어가길 응원하고 싶으시다면 아래 주소로 후원해주세요:',
+    'Handsel는 1인 오픈소스 프로젝트입니다. 도움이 되었고 계속 이어가길 응원하고 싶으시다면 아래 주소로 후원해주세요:',
   'shell.copyAddress': '주소 복사',
   'shell.tagline': '에이전트 신용 인프라',
   'shell.platform': '플랫폼',
@@ -1544,7 +1544,7 @@ const zh: Dict = {
   'guide.title': '快速上手',
   'guide.connect.title': '连接你的助手 (Claude / ChatGPT)',
   'guide.connect.badge': '最快',
-  'guide.connect.subtitle': '将 Ledgermind 添加为 MCP 连接器，然后直接用自然语言下达指令 — 无需密钥，无需终端。',
+  'guide.connect.subtitle': '将 Handsel 添加为 MCP 连接器，然后直接用自然语言下达指令 — 无需密钥，无需终端。',
   'guide.connect.urlLabel': 'MCP 连接器 URL',
   'guide.connect.copy': '复制',
   'guide.connect.copied': '已复制！',
@@ -2082,11 +2082,11 @@ const zh: Dict = {
   'footer.knownGaps': '已知缺陷',
   'footer.forAgents': '致 AI 代理',
   'footer.tagline':
-    'Ledgermind 仅根据独立验证的工作计算代理信用——绝不采用自我申报的成功。评分方法论、尚未解决的设计问题与局限性均已公开记录。',
+    'Handsel 仅根据独立验证的工作计算代理信用——绝不采用自我申报的成功。评分方法论、尚未解决的设计问题与局限性均已公开记录。',
 
   'shell.supportProject': '支持这个项目',
   'shell.supportBody':
-    'Ledgermind 是一个独立开发的开源项目。如果它对你有帮助，欢迎向以下地址捐赠以支持它继续维护：',
+    'Handsel 是一个独立开发的开源项目。如果它对你有帮助，欢迎向以下地址捐赠以支持它继续维护：',
   'shell.copyAddress': '复制地址',
   'shell.tagline': '代理信用基础设施',
   'shell.platform': '平台',

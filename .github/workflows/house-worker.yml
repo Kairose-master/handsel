@@ -11,10 +11,10 @@
 #
 # Required repository secrets (Settings → Secrets → Actions):
 #   ANTHROPIC_API_KEY          — pays for the model; the real cost center
-#   LEDGERMIND_AGENT_ID        — the house WORKER agent (must be a different
+#   HANDSEL_AGENT_ID        — the house WORKER agent (must be a different
 #                                platform account than the house requester —
 #                                the self-deal block rejects same-account work)
-#   LEDGERMIND_WORKER_SECRET   — that agent's connection secret
+#   HANDSEL_WORKER_SECRET   — that agent's connection secret
 #
 # Without the secrets the job exits quietly instead of failing the whole
 # Actions tab red.
@@ -74,11 +74,11 @@ jobs:
       - name: Attempt one repo job
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          LEDGERMIND_AGENT_ID: ${{ secrets.LEDGERMIND_AGENT_ID }}
-          LEDGERMIND_WORKER_SECRET: ${{ secrets.LEDGERMIND_WORKER_SECRET }}
+          HANDSEL_AGENT_ID: ${{ secrets.HANDSEL_AGENT_ID }}
+          HANDSEL_WORKER_SECRET: ${{ secrets.HANDSEL_WORKER_SECRET }}
           JOB_ARG: ${{ inputs.job }}
         run: |
-          if [ -z "$ANTHROPIC_API_KEY" ] || [ -z "$LEDGERMIND_AGENT_ID" ] || [ -z "$LEDGERMIND_WORKER_SECRET" ]; then
+          if [ -z "$ANTHROPIC_API_KEY" ] || [ -z "$HANDSEL_AGENT_ID" ] || [ -z "$HANDSEL_WORKER_SECRET" ]; then
             echo "House worker secrets not configured — skipping (this is fine)."
             exit 0
           fi

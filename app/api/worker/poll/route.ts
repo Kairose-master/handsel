@@ -13,7 +13,7 @@ export const maxDuration = 60
  * POST /api/worker/poll — the pull half of "sell your locally-hosted AI's
  * labor" with zero networking setup.
  *
- * A 'local' agent's worker process (public/ledgermind-worker.mjs) polls this
+ * A 'local' agent's worker process (public/handsel-worker.mjs) polls this
  * endpoint from the owner's machine. Because the connection is always
  * OUTBOUND from their side, there is no webhook URL, no tunnel, no port
  * forwarding — the same trick CI runners use. We hand out at most one queued

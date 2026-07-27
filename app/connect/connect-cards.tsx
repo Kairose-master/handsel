@@ -6,7 +6,7 @@ import { useState } from 'react'
  *  account and delegates a small task in a single go, so the very first thing
  *  they see is the whole pipeline running (mint → plan → escrow → graded → result). */
 const FIRST_COMMAND =
-  'Mint 100 test USDC for my agent, then hire Ledgermind to write a 3-sentence product description for an eco-friendly coffee brand — budget $8. Show me the result when it passes.'
+  'Mint 100 test USDC for my agent, then hire Handsel to write a 3-sentence product description for an eco-friendly coffee brand — budget $8. Show me the result when it passes.'
 
 export function ConnectCards({ mcpUrl }: { mcpUrl: string }) {
   const [copied, setCopied] = useState<string | null>(null)
@@ -62,7 +62,7 @@ export function ConnectCards({ mcpUrl }: { mcpUrl: string }) {
               Settings → <strong>Apps &amp; Connectors</strong> → enable developer mode, then <strong>Create</strong> a
               connector with the pasted URL (OAuth is detected automatically).
             </li>
-            <li>Approve Ledgermind on the consent screen.</li>
+            <li>Approve Handsel on the consent screen.</li>
           </ol>
           <button
             onClick={async () => {
@@ -85,7 +85,7 @@ export function ConnectCards({ mcpUrl }: { mcpUrl: string }) {
         </p>
         <pre className="mt-3 overflow-x-auto rounded-md bg-secondary/50 p-3 text-xs">{`{
   "mcpServers": {
-    "ledgermind": { "httpUrl": "${mcpUrl}" }
+    "handsel": { "httpUrl": "${mcpUrl}" }
   }
 }`}</pre>
         <p className="mt-3 text-sm text-muted-foreground">

@@ -1,4 +1,4 @@
-# Benchmark: ERC-8004 & Virtuals ACP vs Ledgermind — and the integration plan
+# Benchmark: ERC-8004 & Virtuals ACP vs Handsel — and the integration plan
 
 *Last updated 2026-07. Companion to [competitive-landscape.md](competitive-landscape.md);
 this one goes to spec level and ends in an actionable adoption plan.*
@@ -7,7 +7,7 @@ this one goes to spec level and ends in an actionable adoption plan.*
 
 Three on-chain registries. Concept-for-concept against what we already run:
 
-| ERC-8004 | Spec surface | Ledgermind equivalent today | Verdict |
+| ERC-8004 | Spec surface | Handsel equivalent today | Verdict |
 | --- | --- | --- | --- |
 | **Identity Registry** | ERC-721 per agent; `register(agentURI)`, `setAgentWallet()`, metadata KV; agentURI points to a JSON registration file (`type/name/description/services/supportedTrust`) | `agent` table + deterministic smart-account address (`getAgentAccountAddress`) | Same concept, ours is off-chain + private. Adoptable nearly 1:1 |
 | **Reputation Registry** | `giveFeedback(agentId, value, valueDecimals, tag1, tag2, endpoint, feedbackURI, feedbackHash)`; submitter must NOT be the agent's owner/operator; `getSummary()` aggregation | `creditScore` + `agent_events` + EAS attestation of score | Ours computes *one underwritten number*; theirs stores *many raw signals*. Complementary, not duplicate |
@@ -32,7 +32,7 @@ third-party users arrive. The standard is actually enforcing the same
 
 Their four-phase protocol vs our Labor Market lifecycle:
 
-| ACP phase | Mechanics | Ledgermind today | Gap |
+| ACP phase | Mechanics | Handsel today | Gap |
 | --- | --- | --- | --- |
 | Request | client↔provider compatibility handshake | Open job + `minScore` gate (credit-based, theirs isn't) | Ours gates on underwritten score — richer signal, less negotiation |
 | Negotiation | terms signed into a **Proof of Agreement (PoA)** | `specHash` committed on-chain at `postJob`; worker's `acceptJob` tx references the same job — an implicit countersign | Real parity: both bind terms cryptographically before work. Theirs is bilateral-signed; ours is commit-then-accept |
@@ -54,7 +54,7 @@ history into borrowing capacity. Their whitepaper's own framing stops at
 - [x] This document; competitive positioning restated in ERC-8004 vocabulary.
 - [x] Serve an ERC-8004-style **registration file** per agent —
   `GET /api/agents/[id]/card` returns `{type, name, description, services,
-  supportedTrust}` plus a `ledgermind` extension block (score, rating,
+  supportedTrust}` plus a `handsel` extension block (score, rating,
   on-chain address). This URL is what we'll pass to `register(agentURI)`
   in Phase B.
 - [x] **x402 live**: `GET /api/agents/[id]/report` (the full credit
@@ -88,6 +88,6 @@ story for GASOK.
 ## Part 4 — the sentence for the pitch
 
 > ERC-8004 standardizes where trust signals live; ACP standardizes how
-> agents transact; Ledgermind is the underwriting engine between them —
+> agents transact; Handsel is the underwriting engine between them —
 > it turns those signals into a credit limit an agent can actually draw
 > against, and publishes the result back into the standards.

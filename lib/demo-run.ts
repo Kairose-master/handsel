@@ -39,7 +39,7 @@ async function attachProof(
   const stored = await issueWorkProof({
     jobRef: `demo-${kind}-${Date.now()}`,
     kind,
-    worker: 'demo-worker@ledgermind',
+    worker: 'demo-worker@handsel',
     requester: FAUCET_EMAIL,
     grader,
     deliverable,
@@ -47,7 +47,7 @@ async function attachProof(
   return stored ? { id: stored.id, contentHash: stored.proof.contentHash, attester: stored.attester } : undefined
 }
 
-const FAUCET_EMAIL = 'faucet@ledgermind.internal'
+const FAUCET_EMAIL = 'faucet@handsel.internal'
 const IMAGE_API = 'https://image.pollinations.ai/prompt/'
 const TTS_API = 'https://translate.google.com/translate_tts'
 

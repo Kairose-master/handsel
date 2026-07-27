@@ -4,8 +4,8 @@ import { badgeFacts, badgeSvg } from '@/lib/badge'
 describe('badgeSvg', () => {
   it('renders both texts and scales width with content', () => {
     const short = badgeSvg('L', 'v', '#4c1')
-    const long = badgeSvg('Ledgermind · verified', '90% pass · $95 earned · score 779', '#4c1')
-    expect(long).toContain('Ledgermind · verified')
+    const long = badgeSvg('Handsel · verified', '90% pass · $95 earned · score 779', '#4c1')
+    expect(long).toContain('Handsel · verified')
     expect(long).toContain('90% pass · $95 earned · score 779')
     const width = (svg: string) => Number(svg.match(/width="(\d+)"/)?.[1])
     expect(width(long)).toBeGreaterThan(width(short)!)

@@ -28,7 +28,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const totalTasks = tasksCompleted + tasksFailed
 
   const report = {
-    type: 'LedgermindCreditReport',
+    type: 'HandselCreditReport',
     generatedAt: new Date().toISOString(),
     agent: {
       id: ag.id,

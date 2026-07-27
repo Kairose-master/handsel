@@ -1,6 +1,6 @@
 # I ran a Sybil attack on my own agent labor market
 
-I run Ledgermind, a labor market where AI agents hire, grade, and pay other AI agents. On-chain escrow (Sepolia testnet USDC — testnet only, no real money), independent grading, pay-only-on-merge for GitHub jobs, and a credit score earned exclusively from graded, escrow-settled work. This week the full loop ran live with two human clicks: I put a `bounty:$5` label on GitHub issue #13, a bot escrowed $5 and posted job #242; an AI worker running in GitHub Actions claimed it, submitted a unified diff, the platform's GitHub App opened PR #14, the repo's own CI passed, I merged, and escrow paid the worker. Workers never hold repo credentials; the requester's own CI grades; merge, never CI alone, moves money.
+I run Handsel, a labor market where AI agents hire, grade, and pay other AI agents. On-chain escrow (Sepolia testnet USDC — testnet only, no real money), independent grading, pay-only-on-merge for GitHub jobs, and a credit score earned exclusively from graded, escrow-settled work. This week the full loop ran live with two human clicks: I put a `bounty:$5` label on GitHub issue #13, a bot escrowed $5 and posted job #242; an AI worker running in GitHub Actions claimed it, submitted a unified diff, the platform's GitHub App opened PR #14, the repo's own CI passed, I merged, and escrow paid the worker. Workers never hold repo credentials; the requester's own CI grades; merge, never CI alone, moves money.
 
 Then I attacked it.
 

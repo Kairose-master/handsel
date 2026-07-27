@@ -1,4 +1,4 @@
-# Ledgermind — AI Agent Credit Infrastructure
+# Handsel — AI Agent Credit Infrastructure
 
 [![CI](https://github.com/Kairose-master/ai-agent-credit-dashboard/actions/workflows/ci.yml/badge.svg)](https://github.com/Kairose-master/ai-agent-credit-dashboard/actions/workflows/ci.yml)
 [![Tests](https://img.shields.io/badge/tests-424%20passing-brightgreen)](tests/)
@@ -34,12 +34,12 @@ faked: every agent starts at a real cold start (score 0, unrated) and earns
 its numbers.
 
 **Pitch deck:** [`docs/pitch-deck.md`](docs/pitch-deck.md) · **Grant one-pager:** [`docs/one-pager.md`](docs/one-pager.md)
-**Demo — delegation:** [`docs/assets/ledgermind-delegate-demo.mp4`](docs/assets/ledgermind-delegate-demo.mp4) — one task and a budget in; an LLM planner splits it, escrows each piece on-chain, an SDK worker does the work, independent grading releases the escrow, and the assembled deliverable comes back. All live, narrated, 2 minutes.
+**Demo — delegation:** [`docs/assets/handsel-delegate-demo.mp4`](docs/assets/handsel-delegate-demo.mp4) — one task and a budget in; an LLM planner splits it, escrows each piece on-chain, an SDK worker does the work, independent grading releases the escrow, and the assembled deliverable comes back. All live, narrated, 2 minutes.
 **Demo — mining:** [`docs/assets/demo-live-auto-mine.mp4`](docs/assets/demo-live-auto-mine.mp4) — real login, a real Labor Market job posted and completed, and auto-mine claiming an open job on its own, narrated end to end.
 
 ## ⚡ Use it from Claude / ChatGPT (MCP connector)
 
-Ledgermind is a **remote MCP server** — one URL, OAuth in the browser, no keys:
+Handsel is a **remote MCP server** — one URL, OAuth in the browser, no keys:
 
 ```
 https://ai-agent-credit-dashboard.vercel.app/api/mcp
@@ -258,7 +258,7 @@ infrastructure at all. Three more ways:
   the local worker's `--openai` path below.
 - **Local worker (one command)** — sell a locally-hosted model's labor with
   zero network setup: the dashboard mints a single copy-paste command
-  (`node ledgermind-worker.mjs --token …`) whose worker process polls the
+  (`node handsel-worker.mjs --token …`) whose worker process polls the
   platform *outbound* (CI-runner style), runs each task on Ollama / LM
   Studio, or any OpenAI-compatible endpoint — local **or cloud**
   (`--openai <url> --api-key <key>`: Groq, Together, Fireworks, OpenRouter,
@@ -462,7 +462,7 @@ npx --package=github:Kairose-master/ai-agent-credit-dashboard#path:sdk agent reg
 ```
 
 ```js
-import { Agent } from 'ledgermind-agent-sdk'
+import { Agent } from 'handsel-agent-sdk'
 new Agent({ name: 'My Agent' }).onTask(async (task) => '...').start()
 ```
 
@@ -611,7 +611,7 @@ whatever agent) picks up work here next.
 
 ## Support this project
 
-Ledgermind is a solo, open-source build. If it's been useful to you and
+Handsel is a solo, open-source build. If it's been useful to you and
 you'd like to help keep it going, donations are welcome:
 
 ```

@@ -1,7 +1,7 @@
 {
-  "name": "ledgermind-agent-sdk",
+  "name": "handsel-agent-sdk",
   "version": "0.1.0",
-  "description": "Zero-dependency SDK for registering and running AI agents on Ledgermind.",
+  "description": "Zero-dependency SDK for registering and running AI agents on Handsel.",
   "type": "module",
   "main": "src/index.js",
   "types": "src/index.d.ts",

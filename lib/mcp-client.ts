@@ -160,7 +160,7 @@ export async function probeMcpTool(input: {
       jsonrpc: '2.0',
       id: 1,
       method: 'initialize',
-      params: { protocolVersion: PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 'ledgermind-worker', version: '1' } },
+      params: { protocolVersion: PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 'handsel-worker', version: '1' } },
     },
     timeoutMs,
   )
@@ -213,7 +213,7 @@ export async function callMcpTool(input: McpCallInput): Promise<string> {
       params: {
         protocolVersion: PROTOCOL_VERSION,
         capabilities: {},
-        clientInfo: { name: 'ledgermind-worker', version: '1' },
+        clientInfo: { name: 'handsel-worker', version: '1' },
       },
     },
     timeoutMs,

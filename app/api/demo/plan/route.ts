@@ -40,7 +40,7 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'goal must be 10-500 chars' }, { status: 400 })
   }
 
-  const [owner] = await db.select({ id: user.id }).from(user).where(eq(user.email, 'faucet@ledgermind.internal'))
+  const [owner] = await db.select({ id: user.id }).from(user).where(eq(user.email, 'faucet@handsel.internal'))
   if (!owner) return Response.json({ error: 'demo engine not configured' }, { status: 503 })
 
   try {

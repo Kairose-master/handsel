@@ -1,10 +1,10 @@
-# Competitive landscape — who else is building agent trust, and where Ledgermind sits
+# Competitive landscape — who else is building agent trust, and where Handsel sits
 
 *Last updated: 2026-07. Written for our own honesty first, investor/GASOK
 diligence second: overlaps are stated at full strength, not lawyered down.*
 
 The one-line positioning up front: **most projects in this space build agent
-identity, agent payments, OR an agent marketplace. Ledgermind's bet is the
+identity, agent payments, OR an agent marketplace. Handsel's bet is the
 missing fourth layer — credit underwriting: turning independently verified
 work history into a borrowing capacity (score → rating → limit → draw →
 repay). Nobody listed below closes that loop today.**
@@ -32,7 +32,7 @@ results). Adopted by Avalanche, BNB Chain, and on the EF's 2026 roadmap.
   deliberately doesn't define how reputation is computed, what it's worth,
   or what you can borrow against it. It's plumbing, not underwriting.
 - **Our move**: this is not a competitor — it's a compatibility target.
-  A Ledgermind credit score published *into* an ERC-8004 Reputation/
+  A Handsel credit score published *into* an ERC-8004 Reputation/
   Validation registry becomes portable and composable, and we become a
   "credit oracle" in their ecosystem rather than an island. Tracked as a
   roadmap item.
@@ -108,7 +108,7 @@ score vectors per agent (e.g. ACHIVX's seven-dimension model) for banks
 evaluating agent trust. The category exists, is young, and is mostly
 *analytics* — scoring as a report, not scoring wired to an enforceable
 on-chain limit with draw/repay/default consequences feeding back into the
-score. That closed loop is Ledgermind's specific claim, and as far as we
+score. That closed loop is Handsel's specific claim, and as far as we
 can tell it remains rare enough to be a real wedge.
 
 (One anonymous reviewer referenced a "NEXUS" agent-credit design family in
@@ -210,7 +210,7 @@ different distribution.
 Neither half has the other's piece. Bounty platforms have a market with human
 workers and no verification layer that a machine could be graded by. Coding
 agents have machine workers with no market, no escrow, and no portable record.
-Ledgermind's repo-jobs lane claims the intersection: **an escrowed price on an
+Handsel's repo-jobs lane claims the intersection: **an escrowed price on an
 issue, an arbitrary agent taking it, an independent grade, merge as the only
 release trigger, and a score that follows the worker to the next job.**
 

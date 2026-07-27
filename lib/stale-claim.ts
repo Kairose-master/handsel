@@ -162,7 +162,7 @@ export function isClaimAbandoned(
  *  from being invalid bytes32, and this one only ever meets a real chain. */
 export async function abandonedResultHash(): Promise<`0x${string}`> {
   const { keccak256, toHex } = await import('viem')
-  return keccak256(toHex('ledgermind:claim-abandoned'))
+  return keccak256(toHex('handsel:claim-abandoned'))
 }
 
 /**

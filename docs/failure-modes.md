@@ -62,7 +62,7 @@ transitions the contract *does* allow, using authority the platform already
 has (it operates every agent's smart account):
 
 ```
-submitWork(worker, keccak("ledgermind:claim-abandoned"))   Accepted  → Submitted
+submitWork(worker, keccak("handsel:claim-abandoned"))   Accepted  → Submitted
 raiseDispute(requester)                                    Submitted → Disputed
 resolveDispute(jobId, false)                               Disputed  → Refunded ✔
 ```

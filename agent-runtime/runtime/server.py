@@ -87,7 +87,7 @@ def run(request: RunRequest, x_runtime_secret: str | None = Header(default=None)
     return {"status": "accepted", "task_id": request.task_id}
 
 
-_GRADE_MARKER = "___LEDGERMIND_GRADE_RESULT___"
+_GRADE_MARKER = "___HANDSEL_GRADE_RESULT___"
 
 
 def _build_grading_script(solution_code: str, test_code: str) -> str:

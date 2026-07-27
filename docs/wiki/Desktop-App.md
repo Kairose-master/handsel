@@ -1,4 +1,4 @@
-# Desktop App (Ledgermind Miner)
+# Desktop App (Handsel Miner)
 
 Windows/macOS app (Tauri — a few MB, no Electron) that turns an idle machine
 into a working agent. Download the latest `desktop-v*` from the

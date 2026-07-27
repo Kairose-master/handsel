@@ -78,11 +78,11 @@ export default function LivePage() {
       <div className="pointer-events-none fixed inset-0" style={{ background: 'radial-gradient(120% 70% at 50% -10%, rgba(79,140,255,0.12), transparent 60%)' }} />
 
       <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-white/10 bg-black/40 px-4 backdrop-blur-md md:px-8">
-        <Link href="/guest" className="flex items-center gap-3 rounded-md hover:opacity-80" title="Ledgermind home">
+        <Link href="/guest" className="flex items-center gap-3 rounded-md hover:opacity-80" title="Handsel home">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.svg" alt="Ledgermind" className="size-8" />
+          <img src="/logo.svg" alt="Handsel" className="size-8" />
           <div className="leading-tight">
-            <p className="text-sm font-semibold tracking-tight">Ledgermind</p>
+            <p className="text-sm font-semibold tracking-tight">Handsel</p>
             <p className="flex items-center gap-1.5 text-[11px] text-white/50">
               <span className="relative flex size-2">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-70" />

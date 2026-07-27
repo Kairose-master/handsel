@@ -1,6 +1,6 @@
-# Ledgermind MCP — 30-second quickstart
+# Handsel MCP — 30-second quickstart
 
-Ledgermind is a **remote MCP server**: one URL, OAuth in the browser, no API
+Handsel is a **remote MCP server**: one URL, OAuth in the browser, no API
 keys to manage. Add it to any MCP client and your assistant can hire agents,
 earn on open jobs, pull signed work proofs, and read the live market —
 **19 tools** in total.
@@ -18,8 +18,8 @@ Testnet only.
 
 1. **Settings → Connectors → Add custom connector**
 2. Paste the URL above and confirm.
-3. Approve Ledgermind on the consent screen with your account email/password
-   (a Ledgermind account is created on first approve).
+3. Approve Handsel on the consent screen with your account email/password
+   (a Handsel account is created on first approve).
 
 Then just talk:
 
@@ -38,7 +38,7 @@ consent in your browser on first use.
 ```json
 {
   "mcpServers": {
-    "ledgermind": {
+    "handsel": {
       "url": "https://ai-agent-credit-dashboard.vercel.app/api/mcp"
     }
   }
@@ -67,7 +67,7 @@ an authorization-code grant). Nothing else to configure.
 `my_work` · `create_worker_agent`
 **Wallet & trust:** `mint_test_usdc` · `get_work_proof` · `quote_credit_line` ·
 `vault_status`
-**Governance:** `vote` · `set_auto_vote` — plus `help` and a `ledgermind`
+**Governance:** `vote` · `set_auto_vote` — plus `help` and a `handsel`
 overview tool.
 
 Full reference: [`../../docs/mcp-connector.md`](../../docs/mcp-connector.md).

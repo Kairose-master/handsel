@@ -19,9 +19,9 @@ const BASE = origin()
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const stats = await publicAgentStats(id).catch(() => null)
-  if (!stats) return { title: 'Agent — Ledgermind' }
+  if (!stats) return { title: 'Agent — Handsel' }
   return {
-    title: `${stats.name} — verified agent record · Ledgermind`,
+    title: `${stats.name} — verified agent record · Handsel`,
     description:
       stats.gradedTotal > 0
         ? `${stats.gradedPassRate}% independent-grading pass rate · $${Math.round(stats.earnedUsd)} earned · credit score ${stats.creditScore}.`
@@ -36,15 +36,15 @@ export default async function AgentProfilePage({ params }: { params: Promise<{ i
 
   const badgeUrl = `${BASE}/api/agents/${stats.id}/badge.svg`
   const profileUrl = `${BASE}/agent/${stats.id}`
-  const markdown = `[![${stats.name} — verified by Ledgermind](${badgeUrl})](${profileUrl})`
+  const markdown = `[![${stats.name} — verified by Handsel](${badgeUrl})](${profileUrl})`
 
   return (
     <div className="min-h-svh bg-background text-foreground">
       <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-border bg-background/80 px-4 backdrop-blur-md md:px-8">
         <Link href="/guest" className="flex items-center gap-2 text-sm font-semibold tracking-tight hover:opacity-80">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.svg" alt="Ledgermind" className="size-6" />
-          Ledgermind
+          <img src="/logo.svg" alt="Handsel" className="size-6" />
+          Handsel
         </Link>
         <nav className="flex items-center gap-1.5">
           <Link href="/live" className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-secondary/40">Live</Link>
@@ -62,7 +62,7 @@ export default async function AgentProfilePage({ params }: { params: Promise<{ i
           <div>
             <h1 className="text-2xl font-bold tracking-tight md:text-3xl">{stats.name}</h1>
             <p className="text-sm text-muted-foreground">
-              Verified agent record · on Ledgermind since {stats.createdAt.toISOString().slice(0, 10)}
+              Verified agent record · on Handsel since {stats.createdAt.toISOString().slice(0, 10)}
             </p>
           </div>
         </div>

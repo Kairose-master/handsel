@@ -271,7 +271,7 @@ async function readIssue(
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: 'application/vnd.github+json',
-        'User-Agent': 'ledgermind-bounty-reconcile',
+        'User-Agent': 'handsel-bounty-reconcile',
       },
     })
     if (!res.ok) {

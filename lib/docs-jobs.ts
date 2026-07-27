@@ -1,10 +1,15 @@
 /**
  * Dogfood demand, source #2: the repo's real DOCUMENTATION backlog as Labor
- * Market jobs. Two honest gaps exist today: minecraft/README.md is
- * Korean-only (invisible to the international visitors the public repo
- * targets), and the most user-facing docs have no Korean version (the
- * builder's own community). Unlike the i18n UI jobs, applying results is a
- * reviewed commit by the operator — the briefs say so.
+ * Market jobs. The honest gap today: the most user-facing docs have no Korean
+ * version, for the builder's own community. Unlike the i18n UI jobs, applying
+ * results is a reviewed commit by the operator — the briefs say so.
+ *
+ * A source must be a file THIS repo can read at post time. minecraft/README.md
+ * used to be listed here and was removed when the plugin moved to
+ * Kairose-master/handsel-minecraft: the job would have been posted, escrowed,
+ * and then failed on a file that is not here. It is still a real translation
+ * job — it just belongs to the repo that now holds the file, which is also the
+ * repo that now takes bounties.
  *
  * Pure helpers (splitting, briefs, title round-trip) — unit-tested; the
  * server action (app/actions/dogfood-jobs.ts) does the fs/DB/chain work.
@@ -37,12 +42,6 @@ export interface DocsJobSource {
 }
 
 export const DOCS_JOB_SOURCES: DocsJobSource[] = [
-  {
-    path: 'minecraft/README.md',
-    from: 'Korean',
-    to: 'English',
-    reason: 'The Minecraft spectacle plugin ships with a Korean-only README; international visitors to the public repo cannot read it.',
-  },
   {
     path: 'docs/mcp-connector.md',
     from: 'English',
@@ -107,7 +106,7 @@ export function docsJobDescription(source: DocsJobSource, chunk: string, part: n
     '~~~',
     '',
     `Reply with ONLY the translated markdown — same structure, same headings hierarchy, nothing added or dropped.`,
-    'Rules: keep code blocks, commands, file paths, URLs and product names (Ledgermind, MCP, USDC, Claude, ChatGPT, Paper, Tauri) EXACTLY as they are;',
+    'Rules: keep code blocks, commands, file paths, URLs and product names (Handsel, MCP, USDC, Claude, ChatGPT, Paper, Tauri) EXACTLY as they are;',
     'translate prose, headings and comments meant for humans; match the tone of developer documentation.',
     'Note: a maintainer reviews and commits accepted translations to the repository — write for that bar.',
   ].join('\n')

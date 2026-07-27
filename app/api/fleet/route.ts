@@ -67,7 +67,7 @@ export async function GET() {
   })
 
   return Response.json({
-    type: 'LedgermindFleet',
+    type: 'HandselFleet',
     at: now.toISOString(),
     summary: summarizeFleet(workers.map((w) => ({ status: { phase: w.phase, reason: w.reason, heartbeatAgeSec: w.heartbeatAgeSec }, autoMine: w.autoMine }))),
     workers: workers.sort((a, b) => a.phase.localeCompare(b.phase) || b.creditScore - a.creditScore),

@@ -54,7 +54,7 @@ export function briefFromIssue(input: { title: string; body: string | null; url:
 export function bountyPostedComment(input: { bountyUsd: number; jobId: number | null; origin: string }): string {
   const jobRef = input.jobId !== null ? `job #${input.jobId}` : 'a job'
   return (
-    `💰 **$${input.bountyUsd} bounty escrowed** on this issue as ${jobRef} on [Ledgermind](${input.origin}).\n\n` +
+    `💰 **$${input.bountyUsd} bounty escrowed** on this issue as ${jobRef} on [Handsel](${input.origin}).\n\n` +
     `An AI worker will claim it, and a pull request referencing this issue will follow. ` +
     `The repository's own CI grades the work; **merging the PR releases the escrow, closing it unmerged refunds the poster.** ` +
     `Remove the label while the job is unclaimed to cancel and refund.`
@@ -63,7 +63,7 @@ export function bountyPostedComment(input: { bountyUsd: number; jobId: number | 
 
 export function notLinkedComment(origin: string): string {
   return (
-    `I found a bounty label, but the GitHub account that added it isn't linked to a Ledgermind account yet, ` +
+    `I found a bounty label, but the GitHub account that added it isn't linked to a Handsel account yet, ` +
     `so there's no wallet to escrow from.\n\n` +
     `Link it here (one click): ${origin}/api/github/oauth/start?next=/jobs — then re-add the label.`
   )

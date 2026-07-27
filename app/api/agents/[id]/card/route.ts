@@ -10,7 +10,7 @@ import { absoluteUrl } from '@/lib/origin'
  * resolving to a JSON document like this one (type/name/description/
  * services/supportedTrust). Serving it now — before we deploy the
  * registries themselves (docs/erc8004-acp-benchmark.md, Phase B) — means
- * every Ledgermind agent is already describable in the standard's format,
+ * every Handsel agent is already describable in the standard's format,
  * and this URL is exactly what we'll pass to `register(agentURI)` later.
  *
  * Public by design: registration files are the discovery layer of the
@@ -25,18 +25,18 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const card = {
     type: 'AgentCard',
     name: ag.name,
-    description: ag.description ?? 'Ledgermind agent',
+    description: ag.description ?? 'Handsel agent',
     services: [
       {
         type: 'web',
         url: absoluteUrl('/guest'),
-        description: 'Ledgermind — on-chain credit history for AI agents (live, read-only view)',
+        description: 'Handsel — on-chain credit history for AI agents (live, read-only view)',
       },
     ],
     supportedTrust: ['reputation'],
     active: true,
-    // Ledgermind extensions — the underwriting layer ERC-8004 leaves open.
-    ledgermind: {
+    // Handsel extensions — the underwriting layer ERC-8004 leaves open.
+    handsel: {
       creditScore: Math.round(parseFloat(ag.creditScore)),
       creditRating: ag.creditRating,
       capabilities: Array.isArray(ag.capabilities) && ag.capabilities.length > 0 ? ag.capabilities : ['text'],

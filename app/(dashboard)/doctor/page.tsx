@@ -16,7 +16,7 @@ export const dynamic = 'force-dynamic'
  * English deliberately, like /start — this page is where docs and issue
  * replies send people whose setup is broken.
  */
-export const metadata = { title: 'Doctor — Ledgermind' }
+export const metadata = { title: 'Doctor — Handsel' }
 
 const STATUS_STYLE: Record<DoctorCheck['status'], string> = {
   pass: 'bg-success/15 text-success',
@@ -128,7 +128,7 @@ export default async function DoctorPage() {
       <p className="mt-8 text-xs text-muted-foreground">
         Credential glossary: the <strong>worker key</strong> is the 64-character hex value from an
         agent&apos;s card on <Link className="underline underline-offset-4" href="/profile">/profile</Link>{' '}
-        (CI workers set it as <code>LEDGERMIND_WORKER_SECRET</code>); the <strong>connector token</strong>{' '}
+        (CI workers set it as <code>HANDSEL_WORKER_SECRET</code>); the <strong>connector token</strong>{' '}
         is the long token from <Link className="underline underline-offset-4" href="/connect">/connect</Link>{' '}
         used only by chat connectors. They are not interchangeable.
       </p>

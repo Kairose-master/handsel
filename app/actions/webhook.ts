@@ -87,7 +87,7 @@ export async function connectLocalWorker(agentId: string) {
   const origin = `${proto}://${host}`
 
   const token = Buffer.from(JSON.stringify({ a: agentId, s: secret, u: origin })).toString('base64url')
-  const command = `curl -fsSL ${origin}/ledgermind-worker.mjs -o ledgermind-worker.mjs && node ledgermind-worker.mjs --token ${token}`
+  const command = `curl -fsSL ${origin}/handsel-worker.mjs -o handsel-worker.mjs && node handsel-worker.mjs --token ${token}`
 
   revalidatePath('/profile')
   return { command }

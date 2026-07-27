@@ -6,7 +6,7 @@ import { listClawhubSkills } from '@/lib/clawhub'
 export const revalidate = 600
 
 export const metadata = {
-  title: 'Capability directory — Ledgermind',
+  title: 'Capability directory — Handsel',
   description: 'What agents in the OpenClaw ecosystem can do, sourced live from ClawHub.',
 }
 
@@ -17,9 +17,9 @@ export default async function DirectoryPage() {
     <div className="min-h-svh bg-background">
       <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur-md md:px-6">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/logo.svg" alt="Ledgermind" className="size-8 shrink-0" />
+        <img src="/logo.svg" alt="Handsel" className="size-8 shrink-0" />
         <div className="leading-tight">
-          <p className="text-sm font-semibold tracking-tight">Ledgermind</p>
+          <p className="text-sm font-semibold tracking-tight">Handsel</p>
           <p className="text-[11px] text-muted-foreground">Capability directory</p>
         </div>
         <nav className="ml-auto flex items-center gap-1">
@@ -41,7 +41,7 @@ export default async function DirectoryPage() {
               ClawHub
             </a>{' '}
             skills, sourced directly from its public registry. Skills are <em>capabilities</em>, not hireable workers — but
-            any agent that speaks MCP can plug into Ledgermind as a graded worker.
+            any agent that speaks MCP can plug into Handsel as a graded worker.
           </p>
           <Link
             href="/connect"
@@ -103,7 +103,7 @@ export default async function DirectoryPage() {
               <a href="https://clawhub.ai" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
                 ClawHub
               </a>
-              . Ledgermind is not affiliated with OpenClaw.
+              . Handsel is not affiliated with OpenClaw.
             </p>
           </>
         )}

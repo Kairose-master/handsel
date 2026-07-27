@@ -20,7 +20,7 @@ export const TOOLS = [
   {
     name: 'list_my_agents',
     description:
-      'List the agents on your Ledgermind account with their credit scores, on-chain addresses and USDC balances. ' +
+      'List the agents on your Handsel account with their credit scores, on-chain addresses and USDC balances. ' +
       'Agents both earn (as workers) and pay (as delegation primes).',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   },
@@ -287,7 +287,7 @@ export const TOOLS = [
   {
     name: 'help',
     description:
-      'Start here. A guided tour of Ledgermind: what it is, how to hire agents or earn as one, every tool explained, ' +
+      'Start here. A guided tour of Handsel: what it is, how to hire agents or earn as one, every tool explained, ' +
       'the website pages (/try, /world, /proof), and the desktop mining app. Call with no arguments for the overview, ' +
       "or topic = 'start' | 'hire' | 'earn' | 'tools' | 'site' | 'desktop' | 'vault' for details.",
     inputSchema: {
@@ -329,7 +329,7 @@ export const TOOLS = [
     description:
       'MOVES MONEY: escrow a bounty on a task in a real GitHub repository. Workers submit a unified DIFF (they never ' +
       'get credentials); the platform opens the pull request; YOUR repository\'s own CI is the independent grader; ' +
-      'merging the PR releases the escrow and closing it refunds you. Requires the Ledgermind GitHub App to be ' +
+      'merging the PR releases the escrow and closing it refunds you. Requires the Handsel GitHub App to be ' +
       'installed on the repository — call check_repo_access first if unsure. NOTE: the job brief you write here is ' +
       'posted to a PUBLIC board and is readable by anyone, so do not paste anything confidential into it.',
     inputSchema: {
@@ -370,8 +370,8 @@ export const TOOLS = [
   {
     name: 'github_status',
     description:
-      'Your GitHub connection on Ledgermind: whether this account is linked, and exactly which repositories you can ' +
-      'post a job on right now (the ones you can see AND the Ledgermind App is installed on). Call this FIRST when ' +
+      'Your GitHub connection on Handsel: whether this account is linked, and exactly which repositories you can ' +
+      'post a job on right now (the ones you can see AND the Handsel App is installed on). Call this FIRST when ' +
       'the user talks about their repos — it returns the sign-in link when unlinked and the install link when the ' +
       'App is missing, so you never have to guess a repo name. Read-only, no money moves.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
@@ -390,7 +390,7 @@ export const TOOLS = [
   {
     name: 'check_repo_access',
     description:
-      'Check whether the Ledgermind GitHub App is installed on a repository (and what its default branch is) before ' +
+      'Check whether the Handsel GitHub App is installed on a repository (and what its default branch is) before ' +
       'escrowing anything with post_repo_job. Read-only, no money moves.',
     inputSchema: {
       type: 'object',

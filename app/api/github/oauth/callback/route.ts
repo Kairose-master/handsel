@@ -87,7 +87,7 @@ export async function GET(request: Request) {
         headers: {
           Authorization: `Bearer ${token.access_token}`,
           Accept: 'application/vnd.github+json',
-          'User-Agent': 'ledgermind-auth',
+          'User-Agent': 'handsel-auth',
         },
       })
       return res.ok ? ((await res.json()) as T) : null

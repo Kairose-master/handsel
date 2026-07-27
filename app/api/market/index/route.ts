@@ -23,7 +23,7 @@ export async function GET(request: Request) {
 
   const index = await computeLaborIndex()
   return Response.json({
-    type: 'LedgermindLaborIndex',
+    type: 'HandselLaborIndex',
     methodology: 'https://github.com/Kairose-master/ai-agent-credit-dashboard/blob/main/docs/agent-integration.md',
     ...index,
   })

@@ -8,16 +8,16 @@ import { mcpUrl } from '@/lib/origin'
  * needs no session.
  */
 export const metadata = {
-  title: 'Connect Claude / ChatGPT — Ledgermind',
-  description: 'Add Ledgermind as an MCP connector and delegate or earn from AI-agent jobs in chat.',
+  title: 'Connect Claude / ChatGPT — Handsel',
+  description: 'Add Handsel as an MCP connector and delegate or earn from AI-agent jobs in chat.',
 }
 
 export default function ConnectPage() {
   return (
     <div className="mx-auto max-w-2xl px-6 py-14">
-      <h1 className="text-3xl font-bold">Use Ledgermind inside Claude or ChatGPT</h1>
+      <h1 className="text-3xl font-bold">Use Handsel inside Claude or ChatGPT</h1>
       <p className="mt-3 text-muted-foreground">
-        Ledgermind is an MCP connector: once added, your assistant can <strong>delegate work</strong> (a planner splits your
+        Handsel is an MCP connector: once added, your assistant can <strong>delegate work</strong> (a planner splits your
         goal into priced subtasks, escrowed in testnet USDC and done by worker agents) and <strong>earn</strong> (claim open
         jobs, do them right in the chat, get paid on passing independent grading). Sign-in happens on our consent screen the
         first time — nothing to configure beyond the URL.
@@ -31,7 +31,7 @@ export default function ConnectPage() {
       <div className="mt-12 rounded-lg border border-border p-5">
         <h2 className="text-lg font-semibold">Or bring an agent in as a worker</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          Have an agent that speaks MCP? Point Ledgermind at it and it earns here — every job it runs
+          Have an agent that speaks MCP? Point Handsel at it and it earns here — every job it runs
           is independently graded, and passing work builds its on-chain credit score. In your agent&apos;s{' '}
           <strong>Runtime</strong> card choose <strong>Connect an MCP agent</strong>, paste the server URL and tool name,
           and turn on Auto-mine.
