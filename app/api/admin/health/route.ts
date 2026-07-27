@@ -137,6 +137,16 @@ export async function GET() {
     health.githubApp = { error: e instanceof Error ? e.message : String(e) }
   }
 
+  // Work the platform accepted and has not paid for yet. `abandoned` is the
+  // number that matters: those have exhausted their retries, so nothing will
+  // pick them up again without a person deciding to.
+  try {
+    const { settlementQueueHealth } = await import('@/lib/callback/settlement-queue')
+    health.settlementQueue = await settlementQueueHealth()
+  } catch (e) {
+    health.settlementQueue = { error: e instanceof Error ? e.message : String(e) }
+  }
+
   // Settlement heartbeat wiring.
   health.cronSecretConfigured = Boolean(process.env.CRON_SECRET)
   health.faucetEnabled = process.env.FAUCET_DISABLED !== 'true'

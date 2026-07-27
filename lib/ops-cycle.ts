@@ -39,6 +39,18 @@ export const OPS_STEPS: OpsStep[] = [
     },
   },
   {
+    // First, and fast: this is the one sweep that knows for certain money is
+    // owed — a row here means a deliverable was accepted and its settlement
+    // did not finish. Everything else in this list is looking for trouble;
+    // this one has already been told.
+    name: 'settlementQueue',
+    fast: true,
+    run: async () => {
+      const { drainSettlementQueue } = await import('@/lib/callback/settlement-drain')
+      return drainSettlementQueue()
+    },
+  },
+  {
     name: 'disputedReposted',
     fast: true,
     run: async () => {

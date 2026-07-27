@@ -822,6 +822,63 @@ traffic-driven sweep has latency that is indistinguishable from a bug — which 
 
 ---
 
+## 19. The settlement that only existed inside one request
+
+**Not an observed incident — a gap closed on the way to real money.** Listed
+here because the shape is §5's and the fix is invariant 3's, and because on
+mainnet it stops being theoretical.
+
+**The shape.** `/api/runtime/callback` did the whole job in one request:
+store the deliverable, grade it, release or refund the escrow on-chain,
+recalculate credit. Hence `maxDuration = 300` — two of those steps are slow
+and neither is ours (a model grading; a bundler including a UserOperation).
+
+Everything after "store the deliverable" existed **only as a stack frame**. If
+the request hit its budget, or the instance was recycled, or the bundler hung
+past 300s, the process stopped and there was no record anywhere that a
+settlement had been owed. The task row said `completed`. The escrow said
+`Submitted`. Nothing was scheduled to reconcile them, and nothing had failed
+loudly enough to be noticed — §5's shape exactly, arrived at by timeout
+instead of by euphemism.
+
+Worse in one specific way: on any error the route marked the task **`failed`**.
+A grader outage or a bundler reverting therefore recorded the *worker* as
+having failed, and answered 500 — which tells a worker to redo work it has
+already delivered.
+
+**Fix** (`lib/callback/settlement-queue.ts`, `settlement-drain.ts`,
+`settle.ts`). Write the intent down before acting on it:
+
+1. deliverable, artifacts and events persist synchronously — that is the
+   worker's proof and it is what the task's `completed` status means;
+2. a `pending` row goes into `settlement_queue` (`task_id` UNIQUE, so a
+   retried callback is idempotent by constraint rather than by luck);
+3. settlement is attempted **inline exactly as before**, so the desktop miner
+   still gets its paid/refunded verdict in the response;
+4. success marks the row `done`. Failure — or a process that simply stops
+   existing — leaves it `pending`, and the ops cycle drains it with capped
+   exponential backoff, giving up after 8 attempts into `abandoned`.
+
+A settlement failure now returns **200** and leaves the task `completed`. The
+worker delivered; the platform owes. Only a failure to *store* the deliverable
+marks the task failed, which is the one case where it actually did fail.
+
+**Why not `after()`.** Because work lost inside `after()` leaves no record
+either — it is the same bug with a shorter stack trace. The queue is the
+record; the inline attempt is the fast path over it.
+
+**Deliberate:** the drain is `fast: true` and runs first in the ops cycle. It
+is the only sweep that has been *told* money is owed rather than going looking
+for it. Batch size 2, sequential — these are paymaster sends competing for one
+nonce and one daily gas allowance, and being killed halfway is survivable
+(the lock expires, the rows come back).
+
+**Watch:** `settlementQueue` in `/api/admin/health`. `pending` should be
+near-zero and transient; **`abandoned` should be zero**, and any non-zero value
+is money accepted and not moved.
+
+---
+
 ## Diagnostic surfaces
 
 Check these before reading code:
@@ -833,6 +890,7 @@ Check these before reading code:
 | `/api/fleet` | `kubectl get pods` for workers: phase, reason, heartbeat age, in-flight count. |
 | `/api/x402/live` | Real settlements on the machine-payment rail. |
 | Runtime logs, `[ops-cycle] traffic tick:` | One line per tick with every sweep's result — the fastest way to see whether background work is running at all. |
+| `/api/admin/health` → `settlementQueue` | Work we accepted and haven't paid for. `abandoned > 0` means retries are exhausted and nothing will move it without a person (§19). |
 
 ## Invariants these fixes encode
 
