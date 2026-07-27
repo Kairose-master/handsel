@@ -8,7 +8,7 @@ import { eq } from 'drizzle-orm'
  * base64 payload) so we can see whether the image/audio deliverable is even
  * linked and gradable. Guarded by CRON_SECRET.
  *
- *   GET /api/admin/job-diag?secret=...&job_id=129
+ *   curl -H "Authorization: Bearer $CRON_SECRET" ".../api/admin/job-diag?job_id=129"
  */
 export const dynamic = 'force-dynamic'
 

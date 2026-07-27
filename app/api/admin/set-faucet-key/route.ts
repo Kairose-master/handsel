@@ -8,10 +8,10 @@ import { setFaucetOwnerAnthropicKey, setFaucetOwnerOpenAiKey } from '@/lib/job-f
  * response returns only the last 4 chars for confirmation.
  *
  * Auth: same shared secret as the settlement heartbeat —
- *   Authorization: Bearer <CRON_SECRET>   (or ?secret=<CRON_SECRET>)
+ *   Authorization: Bearer <CRON_SECRET>   (a secret in the URL is refused)
  *
  * Usage:
- *   curl -X POST "https://<host>/api/admin/set-faucet-key?secret=$CRON_SECRET" \
+ *   curl -X POST -H "Authorization: Bearer $CRON_SECRET" "https://<host>/api/admin/set-faucet-key" \
  *     -H 'content-type: application/json' -d '{"key":"sk-ant-..."}'
  */
 export const dynamic = 'force-dynamic'

@@ -6,12 +6,12 @@ import { runDemoNegotiation } from '@/lib/demo-negotiation'
  * watch a real structured negotiation appear in /messages.
  *
  * Auth: same shared secret as the settlement heartbeat —
- *   Authorization: Bearer <CRON_SECRET>   (or ?secret=<CRON_SECRET>)
+ *   Authorization: Bearer <CRON_SECRET>   (a secret in the URL is refused)
  *
  * Target: ?agent_id=<id> (exact) or ?email=<owner email> (picks their most
  * recent agent).
  *
- *   curl -X POST "https://<host>/api/admin/demo-negotiation?secret=$CRON_SECRET&email=you@example.com"
+ *   curl -X POST -H "Authorization: Bearer $CRON_SECRET" "https://<host>/api/admin/demo-negotiation?email=you@example.com"
  */
 export const dynamic = 'force-dynamic'
 

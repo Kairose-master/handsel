@@ -20,9 +20,11 @@ export const maxDuration = 300 // settlement = several on-chain txs, LLM verify 
  * maybeRunTrafficTick) — one definition, no drift between "what the cron
  * runs" and "what a page load runs".
  *
- * Auth: `Authorization: Bearer <CRON_SECRET>` (or ?secret= for schedulers
- * that can't set headers). With CRON_SECRET unset the endpoint refuses to
- * run — never deploy an open settlement trigger.
+ * Auth: `Authorization: Bearer <CRON_SECRET>`. A secret in the query string is
+ * refused, including here — Vercel Cron and GitHub Actions both set headers,
+ * so the scheduler that "can't set headers" does not exist in this deployment.
+ * With CRON_SECRET unset the endpoint refuses to run — never deploy an open
+ * settlement trigger.
  */
 export async function GET(request: Request) {
   // GET, and it does move money — but this one has to stay GET because it is

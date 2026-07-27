@@ -7,7 +7,7 @@ import { requireOperator } from '@/lib/admin-route'
  * for testing the image lane end-to-end (generate → vision grade → pay/refund).
  *
  * Auth: same shared secret as the settlement heartbeat —
- *   Authorization: Bearer <CRON_SECRET>   (or ?secret=<CRON_SECRET>)
+ *   Authorization: Bearer <CRON_SECRET>   (a secret in the URL is refused)
  * With CRON_SECRET unset the endpoint refuses, so it can never post money
  * moves from an unauthenticated call.
  *

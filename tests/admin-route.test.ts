@@ -34,7 +34,7 @@ describe('requireOperator', () => {
 
   it('allows GET on a read-only endpoint', () => {
     process.env.CRON_SECRET = 's3cret'
-    expect(requireOperator(req(`${BASE}?secret=s3cret`)).ok).toBe(true)
+    expect(requireOperator(req(BASE, { headers: { authorization: 'Bearer s3cret' } })).ok).toBe(true)
   })
 
   it('accepts the secret from the Authorization header', () => {
@@ -46,14 +46,57 @@ describe('requireOperator', () => {
     expect(auth.ok).toBe(true)
   })
 
-  it('still accepts the secret from the query string, for saved commands', () => {
+  it('REFUSES a secret in the query string, even when it is the right one', async () => {
+    // The original deployment accepted this so saved operator commands would
+    // keep working — a migration compromise. This one has no saved commands to
+    // break, so it inherits the cost and none of the benefit.
     process.env.CRON_SECRET = 's3cret'
-    expect(requireOperator(req(`${BASE}?secret=s3cret`, { method: 'POST' }), { mutating: true }).ok).toBe(true)
+    const auth = requireOperator(req(`${BASE}?secret=s3cret`, { method: 'POST' }), { mutating: true })
+    expect(auth.ok).toBe(false)
+    if (!auth.ok) {
+      expect(auth.response.status).toBe(401)
+      const body = await auth.response.json()
+      expect(body.error).toContain('does not accept a secret in the URL')
+    }
+  })
+
+  it('tells the caller the refusal did NOT undo the exposure', async () => {
+    // By the time this runs, the request path — secret included — has already
+    // been written to log storage. Saying "denied" without saying "rotate it"
+    // would leave someone believing they were protected.
+    process.env.CRON_SECRET = 's3cret'
+    const auth = requireOperator(req(`${BASE}?secret=s3cret`, { method: 'POST' }), { mutating: true })
+    if (!auth.ok) {
+      const body = await auth.response.json()
+      expect(body.important).toContain('rotate')
+    }
+  })
+
+  it('never echoes the secret back in the refusal', async () => {
+    process.env.CRON_SECRET = 's3cret'
+    const auth = requireOperator(req(`${BASE}?secret=s3cret`, { method: 'POST' }), { mutating: true })
+    if (!auth.ok) {
+      expect(JSON.stringify(await auth.response.json())).not.toContain('s3cret')
+    }
+  })
+
+  it('rejects a header secret of the wrong length without throwing', () => {
+    // timingSafeEqual throws on unequal buffers; the digest construction is
+    // what stops a guess of any length from crashing the endpoint.
+    process.env.CRON_SECRET = 's3cret'
+    for (const guess of ['', 'x', 's3cre', 's3crett', 'x'.repeat(4096)]) {
+      const auth = requireOperator(req(BASE, { method: 'POST', headers: { authorization: `Bearer ${guess}` } }), {
+        mutating: true,
+      })
+      expect(auth.ok).toBe(false)
+    }
   })
 
   it('rejects a wrong secret', () => {
     process.env.CRON_SECRET = 's3cret'
-    const auth = requireOperator(req(`${BASE}?secret=nope`, { method: 'POST' }), { mutating: true })
+    const auth = requireOperator(req(BASE, { method: 'POST', headers: { authorization: 'Bearer nope' } }), {
+      mutating: true,
+    })
     expect(auth.ok).toBe(false)
     if (!auth.ok) expect(auth.response.status).toBe(401)
   })

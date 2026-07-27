@@ -13,7 +13,8 @@ import { oracleAccount } from '@/lib/onchain/clients'
  * MiniVault ops — deploy and drive the on-chain GIWA engine with the platform
  * oracle wallet. Guarded by CRON_SECRET.
  *
- *   POST /api/admin/minivault?secret=…&action=deploy[&price=3000][&force=1]
+ *   POST /api/admin/minivault?action=deploy[&price=3000][&force=1]
+ *   with Authorization: Bearer $CRON_SECRET — a secret in the URL is refused
  *   POST …&action=set-price&price=1200        (Oracle Mock price push)
  *   POST …&action=demo[&eth=0.002]            (deposit + mint half of max)
  *   POST …&action=read                        (state + oracle position)

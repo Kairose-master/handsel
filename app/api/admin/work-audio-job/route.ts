@@ -11,7 +11,8 @@ import { eq } from 'drizzle-orm'
  *
  * The callback then transcription-grades it (Whisper) and settles the escrow.
  *
- * Auth: Bearer <CRON_SECRET> or ?secret=. Params: ?job_id=N&agent=<name>.
+ * Auth: Authorization: Bearer <CRON_SECRET>. A secret in the query string is
+ * refused — see lib/admin-route.ts. Params: ?job_id=N&agent=<name>.
  */
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120

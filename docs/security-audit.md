@@ -288,12 +288,28 @@ See Trust boundaries. Three fenced channels, a defence that is also correct
 product policy, and bounded automated release. A sufficiently persuasive brief
 against a sufficiently compliant worker model still wins.
 
-**R4 — The operator secret is in log storage.**
-`?secret=` still works, because breaking every saved operator command would be
-worse than the exposure. Vercel logs the full request path, so those calls have
-written `CRON_SECRET` into logs where it stays. Using it now emits a warning
-naming the problem. **Rotating `CRON_SECRET` and moving to
-`Authorization: Bearer` is an outstanding operator action, not a code change.**
+**R4 — ~~The operator secret is in log storage.~~ Closed in this deployment.**
+The original deployment kept `?secret=` working because breaking every saved
+operator command would have been worse than the exposure — a migration
+compromise, and a defensible one. **This deployment has no saved commands to
+break**, so it inherited that compromise's cost and none of its benefit.
+`requireOperator` now refuses any request carrying a secret in the query
+string, before it is even compared, and answers with the reason rather than a
+bare 401 — otherwise someone with an old command hunts for a wrong secret when
+the problem is where they put it.
+
+The refusal says the thing that is easy to leave out: **rejecting the request
+did not undo the exposure.** By the time the handler runs, Vercel has already
+written the full request path, secret included, into log storage. The value has
+to be rotated, and the response says so.
+
+The same pass moved the header comparison to constant time (the F25
+construction from `lib/webhook.ts`), so the operator gate and the callback gate
+now compare secrets the same way.
+
+Remaining, and it is the operator's rather than the code's: any `CRON_SECRET`
+that has ever been sent in a URL — on this deployment or the one it was forked
+from — is in a log somewhere and should be rotated.
 
 ---
 
