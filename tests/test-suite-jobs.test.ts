@@ -8,7 +8,7 @@ import {
   testSuiteJobDescription,
   testSuiteJobTitle,
 } from '@/lib/test-suite-jobs'
-import { isDogfoodJobTitle } from '@/lib/docs-jobs'
+import { isDogfoodJobTitle } from '@/lib/test-suite-jobs'
 
 describe('catalog sanity', () => {
   it('slugs are unique and every entry has a reference plus at least 2 mutants', () => {

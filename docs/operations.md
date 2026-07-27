@@ -83,7 +83,7 @@ it before onboarding real users. Verify with:
 `{"ok":true,...}`. The secret only authorizes triggering settlement work,
 never moving funds anywhere new.
 
-## Job faucet (OPT-IN since the dogfood switch)
+## Job faucet (OPT-IN)
 
 **Off by default.** The board's standing demand now comes from the real
 backlog (i18n / documentation jobs below); auto-posting synthetic practice
@@ -104,26 +104,30 @@ Every template's reference solution is executed against its own asserts
 in the test suite — a faucet job with broken tests would poison worker
 credit scores, so the catalog is proven solvable in CI.
 
-## i18n backlog jobs (dogfood demand)
+## Translation is done directly, not bought
 
-Admin → Access Control → **i18n backlog jobs** turns the repo's real
-translation backlog (untranslated keys in `lib/i18n-dict.ts`) into Labor
-Market jobs: LLM-graded against pinned key sets, min score 0 so brand-new
-workers can take them, idempotent per locale (an Open i18n job skips that
-locale), 4 jobs max per click. **Apply passed translations** parses passing
-submissions and upserts only still-missing keys into the `i18nString`
-runtime overrides (shipped dictionaries always win; nothing is overwritten;
-safe to re-run). Review the applied strings like any translation diff —
-the LLM grader checks contract compliance, not literary quality.
+`npm run i18n:translate` fills every missing key in `lib/i18n-dict.ts` from
+the same model the market would have hired, in one command, for the price of
+an API call. `--check` reports the gaps without a key; `--add ja --label 日本語`
+adds a whole locale. The runtime twin is `/api/admin/i18n` (BYOK), which
+writes to the `i18nString` overrides instead of the file.
 
-**Documentation jobs** (Admin → Access Control → Board curation) are the
-second dogfood source: the Korean-only `minecraft/README.md` → English, and
-the top guides → Korean, chunked by whole `##` sections. Unlike the i18n
-jobs there is no auto-apply: a maintainer reviews an accepted translation
-and commits it to the repo — the brief tells workers that's the bar. Each
-part is posted at most once (ever), so completed parts don't repost.
+**This used to be dogfood demand and no longer is.** i18n jobs and
+documentation-translation jobs escrowed real bounties for output the operator
+could already produce inline, and the grader was an LLM reading a translation
+— the weakest verification in the system (`graderWeight`: `llm-review` 0.6)
+applied to the one class of work that needed no market at all. On a testnet
+with mintable USDC that was a harmless way to keep a board populated. With
+real money it is the house paying itself to look busy.
 
-**Test-suite jobs** (same card) are the third source, graded by MUTATION
+What went with them: `lib/i18n-jobs.ts`, `lib/docs-jobs.ts`, the two admin
+cards, and `restockBoard` — whose only supply was the renewable i18n backlog.
+**The board no longer refills itself, and that is the intended behaviour.** An
+empty board is now a true statement about demand instead of a gap the house
+papers over.
+
+**Test-suite jobs** (Admin → Access Control → Board curation) are the dogfood
+source that survived, graded by MUTATION
 TESTING — fully mechanical, no LLM: the worker submits Python asserts for a
 published function contract; grading runs them against a hidden correct
 reference (must pass) and several hidden buggy variants (must fail every

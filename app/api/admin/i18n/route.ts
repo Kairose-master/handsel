@@ -122,15 +122,45 @@ export async function POST(req: Request) {
         )
 
     const translated = await translateStrings(apiKey, locale, entries, reference)
-    await db
-      .insert(i18nString)
-      .values(batch.map((key) => ({ locale, key, value: translated[key] })))
-      .onConflictDoUpdate({
-        target: [i18nString.locale, i18nString.key],
-        set: { value: sql`excluded.value`, updatedAt: new Date() },
-      })
 
-    return Response.json({ translated: batch.length, remaining: missing.length - batch.length })
+    // Deterministic gate before anything reaches a visitor.
+    //
+    // lib/i18n-safety.ts was written for the worker-submitted translation
+    // path — "a stranger earned $5, and now the platform says this". That path
+    // is gone; translation is no longer bought. But whatever writes here still
+    // becomes the product's own UI copy in that locale, and the model is not
+    // the only thing that can be wrong: a truncated response, a refusal that
+    // came back as prose, a value that swallowed its placeholders. The check
+    // is cheap and it was already written, so the route that survived gets it
+    // rather than the module getting deleted.
+    const { validateTranslationValue } = await import('@/lib/i18n-safety')
+    const safe: Array<{ locale: string; key: string; value: string }> = []
+    const rejected: Array<{ key: string; reason: string }> = []
+    for (const key of batch) {
+      const value = translated[key]
+      const check = validateTranslationValue(DICTIONARIES.en[key] ?? '', value ?? '')
+      if (check.ok) safe.push({ locale, key, value: value!.trim() })
+      else rejected.push({ key, reason: check.reason })
+    }
+
+    if (safe.length > 0) {
+      await db
+        .insert(i18nString)
+        .values(safe)
+        .onConflictDoUpdate({
+          target: [i18nString.locale, i18nString.key],
+          set: { value: sql`excluded.value`, updatedAt: new Date() },
+        })
+    }
+    // A rejected key stays missing, so the next pass retries it rather than
+    // leaving a gap nobody is told about.
+    if (rejected.length > 0) console.warn('[admin/i18n] rejected translations:', rejected)
+
+    return Response.json({
+      translated: safe.length,
+      rejected: rejected.length,
+      remaining: missing.length - safe.length,
+    })
   }
 
   return Response.json({ error: 'Unknown action' }, { status: 400 })

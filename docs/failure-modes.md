@@ -430,10 +430,18 @@ anything that acts on absence:
 | `postI18nGapJobsCore` | no locale has an Open job | posts duplicates |
 | bounty-label idempotency | no job live for this issue | **escrows a second bounty** |
 
-`restockBoard` sits on the five-minute traffic tick, so a Sepolia hiccup
-doesn't misfire once — it bills once per tick for as long as the outage
-lasts. And the label path is the one users touch: an RPC blip while adding
-`bounty:$15` would double-escrow the issue.
+`restockBoard` sat on the five-minute traffic tick, so a chain hiccup didn't
+misfire once — it billed once per tick for as long as the outage lasted. And
+the label path is the one users touch: an RPC blip while adding `bounty:$15`
+would double-escrow the issue.
+
+**Two of those four paths no longer exist.** `restockBoard` and
+`postI18nGapJobsCore` were removed with the translation dogfood they served:
+the house stopped buying work it could produce inline. That deletes the two
+worst rows in this table rather than guarding them, which is the better fix
+and was not the reason for it — worth noticing that **the cheapest way to make
+a spend-on-absence path safe is for it not to spend.** The two that remain are
+guarded as described.
 
 The same shape appeared in `collectPostingFee`, which skipped its
 affordability check when the balance read returned `null` — charging the fee

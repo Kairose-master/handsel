@@ -30,7 +30,7 @@
 
 // ── Job classes ─────────────────────────────────────────────────────────
 
-export const JOB_CLASSES = ['i18n', 'docs', 'tests', 'repo', 'image', 'audio', 'video', 'file', 'text'] as const
+export const JOB_CLASSES = ['tests', 'repo', 'image', 'audio', 'video', 'file', 'text'] as const
 export type JobClass = (typeof JOB_CLASSES)[number]
 
 /** Title prefixes the dogfood posters use. Kept as literals so this module
@@ -38,11 +38,14 @@ export type JobClass = (typeof JOB_CLASSES)[number]
  *  match the constants they mirror, so drift fails a test rather than
  *  silently splitting one class into two. */
 const CLASS_PREFIXES: Array<[JobClass, string]> = [
-  ['i18n', 'i18n → '],
-  ['docs', 'docs → '],
   ['tests', 'tests → '],
   ['repo', 'repo → '],
 ]
+// 'i18n' and 'docs' were here. Both were translation work the house posted to
+// itself, and both are gone — the operator runs `npm run i18n:translate`
+// instead, which uses the same model for free. A price class for work nothing
+// can produce is a class that never gets a second data point, so comparability
+// within it is a number with a sample size of one.
 
 /**
  * Which price class a job belongs to. Standardized dogfood work is

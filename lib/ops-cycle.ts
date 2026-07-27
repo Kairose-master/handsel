@@ -16,8 +16,11 @@
  * of "the important ones") rots the first time somebody adds a sweep.
  *
  * FAST steps are the ones a visitor can feel and that cost little: money
- * that should have moved, escrow that should have been freed, an empty
- * board. The slow rest (delegation ticks, faucet, LLM auto-votes, cloud
+ * that should have moved and escrow that should have been freed. There used
+ * to be a `boardRestock` here too, filling an empty board with translation
+ * work the house posted to itself; it was removed when translation stopped
+ * being something worth buying. An empty board is now a true statement about
+ * demand rather than a gap to paper over. The slow rest (delegation ticks, faucet, LLM auto-votes, cloud
  * mining fan-out) stays on the cron, where a 300s budget is guaranteed.
  */
 
@@ -101,15 +104,6 @@ export const OPS_STEPS: OpsStep[] = [
       const { reconcileUncreditedPayouts } = await import('@/lib/credit-reconcile')
       const r = await reconcileUncreditedPayouts()
       return r.skipped ?? `${r.credited}/${r.examined} reconciled`
-    },
-  },
-  {
-    name: 'boardRestock',
-    fast: true,
-    run: async () => {
-      const { restockBoard } = await import('@/lib/board-stock')
-      const r = await restockBoard()
-      return r.skipped ?? `open ${r.openBefore} → +${r.posted}`
     },
   },
   {

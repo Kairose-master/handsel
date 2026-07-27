@@ -54,15 +54,17 @@ describe('countOpenBy', () => {
 
 /**
  * Wiring guard. Each of these paths SPENDS when it sees no Open jobs, so a
- * swallowed RPC error inverts the decision: a Sepolia hiccup reads as a
- * drained board and mints escrowed jobs nobody asked for. `restockBoard` sits
- * on the five-minute traffic tick, so an outage would bill once per tick for
- * as long as it lasted.
+ * swallowed RPC error inverts the decision: a chain hiccup reads as a drained
+ * board and mints escrowed jobs nobody asked for.
+ *
+ * `lib/board-stock.ts` was the third entry and the worst of them — it sat on
+ * the five-minute traffic tick, so an outage would have billed once per tick
+ * for as long as it lasted. It is gone: its only supply was translation work
+ * the house posted to itself.
  */
 describe('paths that spend on absence refuse unknown chain state', () => {
   const ROOT = join(import.meta.dirname, '..')
   const cases = [
-    'lib/board-stock.ts',
     'lib/job-faucet.ts',
     'app/api/github/webhook/route.ts',
   ]

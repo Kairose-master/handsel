@@ -589,11 +589,13 @@ export interface FaucetReport {
 /** One faucet tick: top up the wallet if low, then post enough templates
  *  to keep TARGET_OPEN faucet jobs open. Safe to call from any read path. */
 export async function tickJobFaucet(opts?: { force?: boolean }): Promise<FaucetReport> {
-  // OPT-IN since the dogfood switch: the board's standing demand now comes
-  // from the platform's real backlog (i18n/docs jobs — app/actions/*-jobs.ts),
-  // and auto-posting synthetic practice exercises next to real work made the
-  // board read as clutter. Set FAUCET_ENABLED=true to bring the faucet back
-  // (e.g. for a workshop/demo where guaranteed instant work matters more).
+  // OPT-IN. Auto-posting synthetic practice exercises next to real work made
+  // the board read as clutter, and the standing demand that replaced it —
+  // translation the house bought from itself — has since been removed too, as
+  // money spent on output the operator could produce inline. So there is no
+  // automatic supply at all now, on purpose: an empty board is a true
+  // statement about demand. Set FAUCET_ENABLED=true to bring the faucet back
+  // (a workshop or demo where guaranteed instant work matters more).
   if (process.env.FAUCET_ENABLED !== 'true') return { posted: 0, openBefore: 0, skipped: 'disabled (opt-in: set FAUCET_ENABLED=true)' }
   if (process.env.FAUCET_DISABLED === 'true') return { posted: 0, openBefore: 0, skipped: 'disabled' }
   // Practice work funded with real money is money spent on jobs nobody asked

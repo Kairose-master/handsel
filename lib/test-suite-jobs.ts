@@ -16,6 +16,23 @@
  * code grader uses.
  */
 
+/**
+ * Does this title belong to a job the HOUSE posted for itself?
+ *
+ * Used by `cancelPracticeJobs` to tell real work from board filler. It lived
+ * in lib/docs-jobs.ts until translation stopped being dogfood work at all —
+ * see the note there in git history, and §"What the house no longer buys" in
+ * docs/product-thesis.md.
+ *
+ * Only one prefix left, and that is the point rather than an oversight: the
+ * remaining dogfood source is mutation-graded, so a machine decides whether it
+ * passed. Repo jobs are the other real source and they are graded by the
+ * repository's own CI; neither needs the house to have an opinion.
+ */
+export function isDogfoodJobTitle(title: string): boolean {
+  return title.startsWith(TESTS_JOB_TITLE_PREFIX)
+}
+
 export const TESTS_JOB_TITLE_PREFIX = 'tests → '
 export const TESTS_JOB_BOUNTY_USD = 8
 export const TESTS_JOB_MIN_SCORE = 0

@@ -14,11 +14,13 @@ describe('OPS_STEPS', () => {
 
   it('marks the visitor-facing sweeps fast, and the expensive ones not', () => {
     const fast = OPS_STEPS.filter((s) => s.fast).map((s) => s.name)
-    // Money that should have moved, escrow that should have been freed, and
-    // an empty board are what a visitor can actually feel.
+    // Money that should have moved and escrow that should have been freed are
+    // what a visitor can actually feel. `boardRestock` used to be asserted
+    // here; it was removed with the translation dogfood it existed to post,
+    // and an empty board is now a true statement rather than a gap to fill.
     expect(fast).toContain('sweep')
     expect(fast).toContain('abandonedClaims')
-    expect(fast).toContain('boardRestock')
+    expect(fast).toContain('bountyReconcile')
     // LLM-backed and fan-out work stays on the cron's guaranteed budget.
     expect(fast).not.toContain('autoVotes')
     expect(fast).not.toContain('delegations')

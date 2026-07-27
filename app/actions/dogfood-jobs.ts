@@ -1,18 +1,27 @@
 'use server'
 
 /**
- * Board curation, admin-triggered. Two jobs:
+ * Board curation, admin-triggered.
  *
- *   • postDocsTranslationJobs — the second dogfood source: the repo's real
- *     documentation backlog (lib/docs-jobs.ts) as LLM-graded jobs. Files are
- *     read from the deployed bundle at post time (traced via
- *     outputFileTracingIncludes), chunked by whole ## sections.
+ *   • postTestSuiteJobs — the dogfood source that survived: writing a test
+ *     suite for a module that has none. Graded by MUTATION — the suite has to
+ *     catch deliberately broken versions of the code — so a machine decides
+ *     whether it passed and the house never has an opinion about its own work.
  *
  *   • cancelPracticeJobs — the un-clutter sweep: cancels every Open job owned
- *     by the house/faucet agents that is NOT dogfood work (i18n/docs
- *     prefixes), refunding each escrow to its poster on-chain. The practice
- *     catalog (seed exercises, faucet templates) stops reading as the
- *     platform's demand; the faucet itself is opt-in now (FAUCET_ENABLED).
+ *     by the house/faucet agents that is not dogfood work, refunding each
+ *     escrow to its poster on-chain. The practice catalog (seed exercises,
+ *     faucet templates) stops reading as the platform's demand; the faucet
+ *     itself is opt-in (FAUCET_ENABLED).
+ *
+ * **Translation used to be here and is not any more.** i18n and docs jobs
+ * bought, with real escrow and real gas, exactly what `npm run i18n:translate`
+ * already produces inline from the same model for the price of an API call.
+ * On a testnet that was a harmless way to keep a board looking alive. With
+ * real money it is the house paying itself to look busy, and the grader was an
+ * LLM reading a translation — the weakest verification in the system
+ * (`graderWeight`: llm-review 0.6) on the one class of work whose output the
+ * operator could simply produce. See docs/product-thesis.md.
  */
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -25,18 +34,7 @@ import { nanoid } from 'nanoid'
 import { revalidatePath } from 'next/cache'
 import { logPlatformEvent } from '@/lib/platform-feed'
 import { asActionError } from '@/lib/action-error'
-import {
-  DOCS_JOB_BOUNTY_USD,
-  DOCS_JOB_MIN_SCORE,
-  DOCS_JOB_SOURCES,
-  docsJobAcceptanceCriteria,
-  docsJobDescription,
-  docsJobTitle,
-  isDogfoodJobTitle,
-  splitMarkdownSections,
-} from '@/lib/docs-jobs'
-
-const MAX_DOCS_JOBS_PER_CLICK = 4
+import { isDogfoodJobTitle } from '@/lib/test-suite-jobs'
 
 async function requireSuperAdmin() {
   const session = await getSession()
@@ -84,80 +82,6 @@ export async function topUpHouseWallet(amountUsd = 100) {
   const after = await houseBalanceUsd(houseAgentId)
   await logPlatformEvent('HOUSE_WALLET_TOPPED_UP', `House requester topped up with $${amount} test USDC`)
   return { minted: amount, balanceUsd: after.balanceUsd }
-}
-
-export async function postDocsTranslationJobs() {
-  await requireSuperAdmin()
-  const houseAgentId = await houseContext()
-
-  const { readJobs, postJob } = await import('@/lib/onchain/labor')
-  const { keccak256, toHex } = await import('viem')
-
-  const [existingJobs, existingSpecs] = await Promise.all([
-    readJobs().catch(() => []),
-    db.select().from(jobSpec).where(eq(jobSpec.requesterAgentId, houseAgentId)),
-  ])
-  const specByHash = new Map(existingSpecs.map((s) => [s.specHash, s]))
-  const openTitles = new Set(
-    existingJobs
-      .filter((j) => j.status === 'Open')
-      .map((j) => specByHash.get(j.specHash)?.title)
-      .filter(Boolean),
-  )
-  // A docs title ever posted (any status) is done or in flight — don't repost
-  // the same part when it completes; the operator commits the result instead.
-  const everPosted = new Set(existingSpecs.map((s) => s.title))
-
-  // Pre-fund: a dry house wallet otherwise fails every post deep inside an
-  // ERC-4337 simulation with `USDC: balance`, which reads like an outage.
-  const { ensureHouseFunds } = await import('@/lib/house-funding')
-  const funding = await ensureHouseFunds(houseAgentId, MAX_DOCS_JOBS_PER_CLICK * DOCS_JOB_BOUNTY_USD)
-
-  const results: { title: string; ok: boolean; skipped?: boolean; error?: string }[] = []
-  let posted = 0
-
-  for (const source of DOCS_JOB_SOURCES) {
-    if (posted >= MAX_DOCS_JOBS_PER_CLICK) break
-    let md: string
-    try {
-      md = await readFile(join(process.cwd(), source.path), 'utf8')
-    } catch {
-      results.push({ title: source.path, ok: false, error: 'source file not readable in this deployment' })
-      continue
-    }
-    const chunks = splitMarkdownSections(md)
-    for (let i = 0; i < chunks.length; i++) {
-      if (posted >= MAX_DOCS_JOBS_PER_CLICK) break
-      const title = docsJobTitle(source, i + 1, chunks.length)
-      if (openTitles.has(title) || everPosted.has(title)) {
-        results.push({ title, ok: true, skipped: true })
-        continue
-      }
-      try {
-        const specHash = keccak256(toHex(JSON.stringify({ title, agent: houseAgentId, nonce: nanoid() })))
-        await db.insert(jobSpec).values({
-          specHash,
-          title,
-          description: docsJobDescription(source, chunks[i]!, i + 1, chunks.length),
-          acceptanceCriteria: docsJobAcceptanceCriteria(source),
-          requesterAgentId: houseAgentId,
-          autoApprove: true,
-        })
-        await postJob(houseAgentId, DOCS_JOB_BOUNTY_USD, DOCS_JOB_MIN_SCORE, specHash)
-        results.push({ title, ok: true })
-        posted++
-      } catch (error) {
-        const { explainOnchainError } = await import('@/lib/onchain/errors')
-        results.push({ title, ok: false, error: explainOnchainError(error) })
-      }
-    }
-  }
-
-  if (posted > 0) {
-    await logPlatformEvent('JOB_POSTED', `Posted ${posted} real documentation job(s) from the platform backlog`)
-  }
-  revalidatePath('/jobs')
-  return { posted, results, funding: funding.note }
 }
 
 /** Post the test-suite-writing jobs (mutation-graded — lib/test-suite-jobs.ts).

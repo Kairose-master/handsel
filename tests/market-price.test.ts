@@ -17,17 +17,25 @@ import {
   summarizePrices,
   validatePricingPlan,
 } from '@/lib/market-price'
-import { I18N_JOB_TITLE_PREFIX } from '@/lib/i18n-jobs'
-import { DOCS_JOB_TITLE_PREFIX } from '@/lib/docs-jobs'
 import { TESTS_JOB_TITLE_PREFIX } from '@/lib/test-suite-jobs'
 import { REPO_JOB_TITLE_PREFIX } from '@/lib/repo-jobs'
 
 describe('jobClassOf', () => {
-  it('recognises every standardized dogfood class by its real prefix', () => {
-    expect(jobClassOf(`${I18N_JOB_TITLE_PREFIX}ko (12 keys)`)).toBe('i18n')
-    expect(jobClassOf(`${DOCS_JOB_TITLE_PREFIX}minecraft/README.md part 1/3`)).toBe('docs')
+  it('recognises every standardized job class by its real prefix', () => {
+    // The prefixes are duplicated as literals inside market-price so that
+    // module stays dependency-free; importing the real constants here is what
+    // makes the duplication safe.
     expect(jobClassOf(`${TESTS_JOB_TITLE_PREFIX}slugify`)).toBe('tests')
     expect(jobClassOf(`${REPO_JOB_TITLE_PREFIX}acme/widget: fix pagination`)).toBe('repo')
+  })
+
+  it('no longer knows about translation, because nothing posts it', () => {
+    // i18n and docs were house-posted translation work. They now fall through
+    // to the deliverable kind like any other job, which is correct: a price
+    // class nothing can produce collects one data point and then never another,
+    // so "comparable to its class" would be comparing a job to itself.
+    expect(jobClassOf('i18n → ko (12 keys)')).toBe('text')
+    expect(jobClassOf('docs → Korean: translate docs/mcp-connector.md')).toBe('text')
   })
 
   it('falls back to the deliverable kind, which is the next-best comparability proxy', () => {
@@ -39,7 +47,7 @@ describe('jobClassOf', () => {
   })
 
   it('every class it can return is a declared class', () => {
-    for (const title of ['i18n → a', 'docs → b', 'tests → c', 'repo → d', 'plain']) {
+    for (const title of ['tests → c', 'repo → d', 'i18n → a', 'docs → b', 'plain']) {
       expect(JOB_CLASSES).toContain(jobClassOf(title))
     }
   })

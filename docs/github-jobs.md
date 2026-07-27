@@ -107,7 +107,7 @@ unconfigured App, an uninstalled App, or GitHub being down is **ours**
   = the job's bounty; the economics are honest by construction.
 - **House Foreman worker:** the platform runs one, so every repo job gets at
   least one credible attempt. This seeds supply with real labor, not fake
-  data — the same dogfood principle as the i18n/docs/test-suite jobs.
+  data — the same dogfood principle as the test-suite jobs.
 - The worker's Handsel track record (public profile + badge) becomes the
   hiring signal for whose attempts to trust with bigger bounties.
 

@@ -4,11 +4,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { KeyRound, Plus, Trash2, Loader2, DatabaseZap, Languages, Briefcase, ShieldOff, GitPullRequest, Wallet } from 'lucide-react'
 import { getAccessMatrix, grantAccess, revokeAccess } from '@/app/actions/admin'
 import { getSeedJobsStatus, seedLaborMarketJobs } from '@/app/actions/seed-jobs'
-import { applyPassedI18nTranslations, getI18nJobsStatus, postI18nGapJobs } from '@/app/actions/i18n-jobs'
 import {
   cancelPracticeJobs,
   getHouseWalletStatus,
-  postDocsTranslationJobs,
   postTestSuiteJobs,
   topUpHouseWallet,
 } from '@/app/actions/dogfood-jobs'
@@ -85,111 +83,13 @@ function SeedJobsCard() {
 }
 
 /**
- * Dogfood demand: post the platform's REAL i18n backlog (untranslated UI
- * keys per locale) as LLM-graded translation jobs, and apply passing results
- * into the runtime overrides so the work actually ships. The honest way to
- * keep the board alive — this demand exists because the repo needs it.
- */
-function I18nJobsCard() {
-  const [status, setStatus] = useState<{ configured: boolean; backlog: { locale: string; missing: number }[]; openTitles: string[] } | null>(null)
-  const [busy, setBusy] = useState<'post' | 'apply' | null>(null)
-  const [result, setResult] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  const refresh = useCallback(async () => {
-    try {
-      setStatus(await getI18nJobsStatus())
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    }
-  }, [])
-
-  useEffect(() => {
-    refresh()
-  }, [refresh])
-
-  const post = async () => {
-    setBusy('post')
-    setError(null)
-    setResult(null)
-    try {
-      const r = await postI18nGapJobs()
-      const failed = r.results.filter((x) => !x.ok)
-      setResult(`Posted ${r.posted} translation job(s).${failed.length ? ` ${failed.length} failed: ${failed[0]?.error}` : ''}`)
-      await refresh()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  const apply = async () => {
-    setBusy('apply')
-    setError(null)
-    setResult(null)
-    try {
-      const r = await applyPassedI18nTranslations()
-      setResult(`Applied ${r.applied} translation(s) from ${r.jobsUsed} passed job(s) into the runtime overrides.`)
-      await refresh()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  const totalMissing = status?.backlog.reduce((s, b) => s + b.missing, 0) ?? 0
-
-  return (
-    <div className="rounded-lg border border-border p-6">
-      <h3 className="font-bold text-lg mb-3 flex items-center gap-2">
-        <Languages className="size-5" /> i18n backlog jobs
-      </h3>
-      <p className="text-sm text-muted-foreground mb-3">
-        Turns the real translation backlog into Labor Market jobs (LLM-graded, min score 0 — open to brand-new
-        workers), then applies passing submissions into the runtime translations. Idempotent: a locale with an
-        i18n job still Open is skipped.
-      </p>
-      {status && (
-        <p className="text-sm text-muted-foreground mb-3">
-          {status.configured
-            ? `Backlog: ${totalMissing} untranslated keys across ${status.backlog.length} locale(s) · ${status.openTitles.length} i18n job(s) currently Open.`
-            : 'Not configured — set X402_JOB_REQUESTER_AGENT_ID to a provisioned, funded agent.'}
-        </p>
-      )}
-      <div className="flex flex-wrap gap-2">
-        <button
-          onClick={post}
-          disabled={busy !== null || status?.configured === false || totalMissing === 0}
-          className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
-        >
-          {busy === 'post' ? <Loader2 className="size-4 animate-spin" /> : <Languages className="size-4" />}
-          Post translation jobs
-        </button>
-        <button
-          onClick={apply}
-          disabled={busy !== null}
-          className="inline-flex items-center gap-2 rounded-md border border-border px-4 py-2 text-sm font-medium disabled:opacity-50"
-        >
-          {busy === 'apply' ? <Loader2 className="size-4 animate-spin" /> : <DatabaseZap className="size-4" />}
-          Apply passed translations
-        </button>
-      </div>
-      {result && <p className="mt-2 text-sm text-success">{result}</p>}
-      {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
-    </div>
-  )
-}
-
-/**
  * Board curation: post the documentation backlog as jobs, and sweep the
  * synthetic practice clutter (seed exercises / faucet templates) off the
  * board — dogfood work stays, escrow refunds on-chain. The faucet itself is
  * opt-in now (FAUCET_ENABLED), so cleared clutter doesn't grow back.
  */
 function BoardCurationCard() {
-  const [busy, setBusy] = useState<'docs' | 'tests' | 'cancel' | 'topup' | null>(null)
+  const [busy, setBusy] = useState<'tests' | 'cancel' | 'topup' | null>(null)
   const [result, setResult] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [wallet, setWallet] = useState<{ configured: boolean; address: string | null; balanceUsd: number | null } | null>(null)
@@ -221,19 +121,14 @@ function BoardCurationCard() {
     }
   }
 
-  const run = async (which: 'docs' | 'tests' | 'cancel') => {
+  const run = async (which: 'tests' | 'cancel') => {
     setBusy(which)
     setError(null)
     setResult(null)
     try {
-      if (which === 'docs') {
-        const r = await postDocsTranslationJobs()
-        const failed = r.results.filter((x) => !x.ok)
-        setResult(`Posted ${r.posted} documentation job(s). ${r.funding}${failed.length ? ` ${failed.length} failed: ${failed[0]?.error}` : ''}`)
-        await refreshWallet()
-      } else if (which === 'tests') {
+      if (which === 'tests') {
         const r = await postTestSuiteJobs()
-        const failed = r.results.filter((x) => !x.ok)
+        const failed = r.results.filter((x: { ok: boolean }) => !x.ok)
         setResult(`Posted ${r.posted} test-suite job(s). ${r.funding}${failed.length ? ` ${failed.length} failed: ${failed[0]?.error}` : ''}`)
         await refreshWallet()
       } else {
@@ -253,10 +148,11 @@ function BoardCurationCard() {
         <Briefcase className="size-5" /> Board curation
       </h3>
       <p className="text-sm text-muted-foreground mb-3">
-        <strong>Post documentation jobs</strong> turns the real docs backlog (Korean Minecraft README → English,
-        top guides → Korean) into LLM-graded jobs; accepted work is reviewed and committed by a maintainer.{' '}
+        <strong>Post test-suite jobs</strong> asks for a test suite covering a module that has none. It is graded
+        by <strong>mutation</strong> — the suite has to catch deliberately broken versions of the code — so a
+        machine decides whether it passed and the house never grades its own work.{' '}
         <strong>Clear practice jobs</strong> cancels every Open non-dogfood job owned by the house/faucet agents
-        (escrow refunds on-chain) — the faucet is opt-in now, so the clutter stays gone.
+        (escrow refunds on-chain) — the faucet is opt-in, so the clutter stays gone.
       </p>
       <p className="text-sm text-muted-foreground mb-3">
         Every bounty here is escrowed from the house requester wallet.{' '}
@@ -269,14 +165,6 @@ function BoardCurationCard() {
         Testnet MockUSDC is freely mintable, so this costs nothing.
       </p>
       <div className="flex flex-wrap gap-2">
-        <button
-          onClick={() => run('docs')}
-          disabled={busy !== null}
-          className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
-        >
-          {busy === 'docs' ? <Loader2 className="size-4 animate-spin" /> : <Briefcase className="size-4" />}
-          Post documentation jobs
-        </button>
         <button
           onClick={() => run('tests')}
           disabled={busy !== null}
@@ -874,7 +762,6 @@ export default function AccessControlPage() {
       </div>
 
       <SeedJobsCard />
-      <I18nJobsCard />
       <BoardCurationCard />
       <RepoJobsCard />
 
