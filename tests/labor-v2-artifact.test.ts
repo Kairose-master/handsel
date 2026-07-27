@@ -50,40 +50,91 @@ describe('the exits from a stalled job — the whole reason for v2', () => {
     expect(sig('expireReview')).toBe('uint256')
   })
 
-  it('makes both exits permissionless — no operator, no owner, no arbiter arg', () => {
-    // If either ever grows a caller restriction it will not show up in the ABI,
+  it('exposes expireDispute, the stall the first draft of v2 missed', () => {
+    // Disputed was reachable and its only door was resolveDispute, callable by
+    // an immutable arbiter with no setter. A lost key froze every contested
+    // escrow forever — R1 again, in the contract written to fix R1.
+    expect(sig('expireDispute')).toBe('uint256')
+  })
+
+  it('makes ALL THREE exits permissionless — no operator, no owner, no arbiter arg', () => {
+    // If any ever grows a caller restriction it will not show up in the ABI,
     // but an added address parameter would — and that is the shape a
     // "just let the operator do it" patch takes.
-    expect(fn('reclaimJob')?.inputs?.length).toBe(1)
-    expect(fn('expireReview')?.inputs?.length).toBe(1)
+    for (const exit of ['reclaimJob', 'expireReview', 'expireDispute']) {
+      expect(fn(exit)?.inputs?.length).toBe(1)
+    }
   })
 
-  it('lets the off-chain warner read the contract clock instead of keeping its own', () => {
+  it('lets the off-chain sweeps read the contract clock instead of keeping their own', () => {
     expect(fn('reclaimable')?.stateMutability).toBe('view')
     expect(fn('reviewExpirable')?.stateMutability).toBe('view')
+    expect(fn('disputeExpirable')?.stateMutability).toBe('view')
   })
 
-  it('announces both exits as events, so they are auditable from a log', () => {
+  it('announces every exit as an event, so they are auditable from a log', () => {
     expect(has('event', 'JobReclaimed')).toBe(true)
     expect(has('event', 'ReviewExpired')).toBe(true)
+    expect(has('event', 'DisputeExpired')).toBe(true)
+  })
+
+  it('publishes the dispute window, so the wait is knowable before you escalate', () => {
+    expect(fn('DISPUTE_WINDOW')?.stateMutability).toBe('view')
+  })
+
+  it('puts the dispute deadline on-chain, in the job itself', () => {
+    expect((fn('jobs')?.outputs ?? []).map((o) => o.name)).toContain('disputeDeadline')
   })
 })
 
 describe('the assignable release — the lien', () => {
-  it('exposes assignPayee(jobId, payee)', () => {
-    expect(sig('assignPayee')).toBe('uint256,address')
+  it('assigns an AMOUNT, not the whole cash flow', () => {
+    // Naming a lender sole payee makes it receive the full bounty and owe the
+    // worker the remainder back — off-chain, unsecured, in the opposite
+    // direction. That is a transfer of risk, not a reduction of it.
+    expect(sig('assignPayee')).toBe('uint256,address,uint256')
   })
 
-  it('emits the assignment, so a second lender can see the first one’s claim', () => {
-    expect(has('event', 'PayeeAssigned')).toBe(true)
+  it('emits the assignment WITH its size, so a second lender can price the residual', () => {
+    const ev = abi.find((e) => e.type === 'event' && e.name === 'PayeeAssigned')
+    expect(ev).toBeDefined()
+    expect(ev?.inputs?.map((i) => i.type)).toEqual(['uint256', 'address', 'address', 'uint256'])
   })
 
-  it('exposes the payee through the public jobs mapping', () => {
+  it('exposes the payee AND its amount through the public jobs mapping', () => {
     const jobs = fn('jobs')
     expect(jobs?.stateMutability).toBe('view')
     // A lender must be able to verify the assignment itself, not take the
     // operator's word or an indexer's.
-    expect((jobs?.outputs ?? []).map((o) => o.name)).toContain('payee')
+    const names = (jobs?.outputs ?? []).map((o) => o.name)
+    expect(names).toContain('payee')
+    expect(names).toContain('payeeAmount')
+  })
+
+  it('computes the split for the lender, so the lender never reimplements it', () => {
+    expect(fn('releaseSplit')?.stateMutability).toBe('view')
+    expect((fn('releaseSplit')?.outputs ?? []).map((o) => o.name)).toEqual(['payee', 'toPayee', 'toWorker'])
+  })
+
+  it('reports both recipients on completion, so a split cannot be mis-attributed', () => {
+    const ev = abi.find((e) => e.type === 'event' && e.name === 'JobCompleted')
+    const names = (ev?.inputs ?? []).map((i) => i.name)
+    expect(names).toContain('payeeAmount')
+    expect(names).toContain('workerAmount')
+  })
+})
+
+describe('a job that was never posted is not a job', () => {
+  it('has a distinct error for it', () => {
+    // Status.Open is enum value ZERO, so an unposted job reads back as Open.
+    // Without a check, acceptJob on a nonexistent id mints a JobAccepted event
+    // — a reputation record from nothing.
+    expect(has('error', 'NoSuchJob')).toBe(true)
+  })
+
+  it('refuses a bounty that escrows nothing', () => {
+    expect(has('error', 'BountyTooLow')).toBe(true)
+    expect(fn('MIN_BOUNTY')?.stateMutability).toBe('view')
   })
 })
 
@@ -111,7 +162,9 @@ describe('what v2 deliberately did NOT change', () => {
     expect(sig('approveJob')).toBe('uint256')
   })
 
-  it('still routes a contested job to the arbiter, not to a timeout', () => {
+  it('still routes a contested job to the arbiter FIRST', () => {
+    // expireDispute is a backstop against an arbiter that is gone, not a
+    // replacement for one that works: it cannot be called before the window.
     expect(sig('raiseDispute')).toBe('uint256')
     expect(sig('resolveDispute')).toBe('uint256,bool')
     expect(fn('arbiter')?.stateMutability).toBe('view')

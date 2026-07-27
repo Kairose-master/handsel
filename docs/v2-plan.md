@@ -387,13 +387,66 @@ with three properties that are the entire point:
   lender's claim. Otherwise the same collateral is borrowed against twice, which
   is the oldest fraud in secured lending.
 
-Open question, not solved: **partial assignment.** A prime that borrows 50% of
-collateral needs the release split between lender and prime. Splitting on-chain
-is simple; deciding what happens when the release amount differs from the
-expected bounty (a price raise, a partial refund) is not. v2 should probably
-support a single full-or-nothing payee first and treat partial assignment as a
-later version, because a wrong split is a money bug and money bugs are what this
-whole document is downstream of.
+~~Open question, not solved: **partial assignment.**~~ **Resolved the other
+way — the sketch above was wrong.** This section argued for shipping
+full-or-nothing first, because a wrong split is a money bug. That weighed the
+implementation risk and skipped the design risk, which is bigger:
+
+A lender advancing $40 against a $100 bounty and named **sole** payee receives
+$100 and owes the worker $60 back — off-chain, unsecured, in the opposite
+direction. The worker has not reduced its risk; it has swapped funding risk for
+counterparty risk on its own lender. Full-or-nothing does not defer the split,
+it *relocates* it to the one place with no contract holding it. So the shipped
+signature is:
+
+```
+assignPayee(uint256 jobId, address payee, uint256 amount)
+```
+
+`amount` is the loan-to-value ratio made real — the number
+`lib/orchestration-risk.ts` computes, and the contract is where it stops being
+an opinion. `_release` pays the payee its amount and the worker the remainder in
+one transaction; `assignPayee` caps `amount` at the bounty, so the subtraction
+cannot underflow and one job's release can never reach another job's escrow.
+`releaseSplit(jobId)` returns the split as a view, so a lender never has to
+reimplement it — a lender that reimplements it is a lender that can get it
+wrong.
+
+The concern this section actually named — a release amount differing from the
+expected bounty — does not arise. The bounty is fixed at post time, a price
+raise cancels and reposts as a new job, and there is no partial refund: every
+settlement pays the whole escrowed bounty or refunds it.
+
+**One assignment only**, even though a partial one leaves a remainder a second
+lender could take. Two claims on one uncertain cash flow need priority rules,
+and priority rules are where secured lending gets genuinely hard. The
+`PayeeAssigned` event discloses the first claim and its size; a second lender
+reads it and prices the residual off-chain, or declines.
+
+### 2b. The stall nobody counted — `expireDispute(uint256 jobId)`
+
+This document planned exits for `Accepted` and `Submitted` and stopped. So did
+the first draft of the contract, whose own docstring read "both stalls now have
+permissionless, deadline-gated exits."
+
+There are three. `raiseDispute` moves a job to `Disputed`, whose only door was
+`resolveDispute` — callable by an `immutable` arbiter with no setter. A lost
+arbiter key froze every contested escrow permanently. That is R1, reproduced
+inside the fix for R1, and it survived review because the fix was applied to the
+states under discussion rather than to the property being fixed.
+
+`expireDispute` is permissionless after `DISPUTE_WINDOW` (14 days) and releases
+to the **worker**. The direction is the design: only a requester can dispute, so
+refunding an unanswered dispute would turn `raiseDispute` into a free refund
+button on a two-week delay — strictly better for a bad requester than waiting
+out `expireReview`. A failed escalation must not pay the party that escalated.
+The requester chose to depend on the arbiter; when that dependency fails, the
+cost is theirs.
+
+Still unresolved, now written down as R5 in `docs/security-audit.md`: a
+requester who simply stays silent still takes a full refund seven days after
+receiving the deliverable. That is an economic choice rather than a defect, and
+it wants a decision before mainnet.
 
 ### 3. Participation bond — capital at risk, not capital spent
 

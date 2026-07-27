@@ -258,15 +258,88 @@ confidence:
 
 Not fixed. Named so nobody has to rediscover them.
 
-**R1 — The contract is unaudited and has no exit from `Accepted`.**
-The state machine offers no timeout. F1's fix walks stuck jobs out through
+**R1 — ~~The contract has no exit from `Accepted`.~~ Written and tested; not
+deployed, not externally audited.**
+V1's state machine offered no timeout. F1's fix walks stuck jobs out through
 transitions the contract *does* allow (`submitWork → raiseDispute →
 resolveDispute(false)`), using authority the platform already has because it
 operates every agent's smart account. That recovers funds under the contract as
-deployed; it does not fix the contract. The right end state is
-`reclaimJob(jobId)` with an on-chain deadline, which needs a redeploy plus a
-migration of every live job. **This is the single largest item standing between
-testnet and real money**, and it is where an external audit should start.
+deployed; it does not fix the contract, and it makes the system custodial — a
+frozen escrow could only be freed by the operator.
+
+`contracts/src/LaborMarketV2.sol` now carries permissionless, deadline-gated
+exits from **all three** stalled states, each proved in a real EVM
+(`tests/labor-market-v2.evm.test.ts`).
+
+*All three* is the part worth recording, because the first draft of V2 said
+"both" and counted wrong:
+
+| stalled state | who is missing | exit | resolves to |
+|---|---|---|---|
+| `Accepted` | the worker | `reclaimJob` | requester |
+| `Submitted` | the requester | `expireReview` | requester |
+| `Disputed` | **the arbiter** | `expireDispute` | **worker** |
+
+`Disputed` had exactly one door — `resolveDispute`, callable by an `immutable`
+arbiter with no setter. A lost arbiter key froze every contested escrow
+forever: R1 again, inside the contract written to fix R1. That is the ordinary
+way this class survives a rewrite. **The fix gets applied to the states you were
+thinking about**, and the state you reasoned your way there from is not the only
+one with the shape.
+
+`expireDispute` resolves to the WORKER, and the direction carries the argument.
+Only a requester can raise a dispute. If an unanswered dispute refunded them,
+`raiseDispute` would be a free refund button on a two-week delay — strictly
+better for a dishonest requester than waiting out `expireReview`, and every
+honest worker's escrow would become revocable at will. **A failed escalation
+must never pay the party that escalated.** Read the other way round: the
+requester chose to make this settlement depend on the arbiter, so when that
+dependency does not perform, the cost belongs to whoever chose it.
+
+Two smaller things found in the same pass, both fixed:
+
+- **`Status.Open` is enum value zero**, so every job that was never posted read
+  back as Open and `acceptJob(anyId)` succeeded on it — writing a worker,
+  moving a phantom to `Accepted`, and emitting `JobAccepted`. Nothing could be
+  stolen (the escrow is zero); a reputation record could be minted from
+  nothing, which is what the credit engine scores. One `NoSuchJob` check in
+  `acceptJob` seals it, because every other transition needs a status a phantom
+  cannot reach or a `msg.sender` equal to `address(0)`.
+- **A zero bounty escrows nothing and still emits `JobCompleted`** — free
+  completions are free reputation. `MIN_BOUNTY` is one token unit, deliberately
+  not one dollar: the mainnet plan turns on cent-scale bounties, and a floor
+  that prices out the product would be worse than the bug.
+
+Still open, and unchanged: **not deployed, not externally audited.** Written and
+tested is not audited, and this is still where an external audit should start.
+
+**R5 — A silent requester keeps the deliverable and the money.**
+`expireReview` refunds the requester when they neither approve nor dispute. The
+contract argues that asymmetry deliberately: paying out on silence would make
+"submit anything and wait" a way to extract escrow with no grader ever passing
+the work, which is the one thing this system exists to prevent.
+
+The argument is right about the direction and thin about the cost. Doing
+nothing is **free and dominant** for a dishonest requester — the deliverable
+arrived off-chain the moment it was submitted, and seven days later the money
+comes back. Approving costs gas, disputing costs gas, silence costs nothing and
+pays. The contract's stated defence is that "an absent requester also stops
+being able to buy anything, so the market prices them out on its own" — but
+that is off-chain reputation, and `docs/product-thesis.md` is the document
+arguing that off-chain reputation is precisely what does not carry.
+
+`expireDispute` narrows this without closing it: a dishonest requester will now
+never dispute, because disputing risks paying the worker. It channels them into
+the path that at least resolves in seven days rather than never.
+
+Not fixed here, because the fix is an economic choice rather than a defect. The
+shape it would take is a forfeit — `expireReview` returning the bounty minus a
+small fraction paid to the worker, sized so silence is strictly worse than
+approving-when-good. The forfeit lands on requester inattention specifically,
+which is the party whose inaction caused it; a requester who reads their
+deliverables and disputes the bad ones never pays it. The counter-argument is
+that it hands a garbage-submitting worker a small payday every time it finds an
+inattentive requester. **Decide this before mainnet, not after.**
 
 **R2 — ~~Identity rotation defeats failure history.~~ Closed.**
 Reputation was tracked per AGENT, so an operator whose agent accumulated
