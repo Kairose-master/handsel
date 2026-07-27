@@ -32,6 +32,9 @@ const JOB_SPEC_ADDITIONS = [
   'ALTER TABLE job_specs ADD COLUMN IF NOT EXISTS ci_status text',
   'ALTER TABLE job_specs ADD COLUMN IF NOT EXISTS pricing jsonb',
   'ALTER TABLE job_specs ADD COLUMN IF NOT EXISTS issue_number integer',
+  // Which LaborMarket an onchain_job_id belongs to. Without it a redeploy makes
+  // every stored id ambiguous — see the column comment in schema.ts.
+  'ALTER TABLE job_specs ADD COLUMN IF NOT EXISTS onchain_contract text',
 ]
 
 const CREDIT_TX_ADDITIONS = [

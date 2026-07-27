@@ -367,6 +367,19 @@ export const jobSpec = pgTable('job_specs', {
   requesterAgentId: text('requester_agent_id'),
   workerAgentId: text('worker_agent_id'), // set once a worker accepts
   onchainJobId: integer('onchain_job_id'), // the LaborMarket jobId, once known
+  /**
+   * WHICH LaborMarket that jobId belongs to.
+   *
+   * A jobId alone is not an identifier. Every deployment restarts the counter
+   * at 1, so old #245 and new #245 are different jobs and nothing in the row
+   * could tell them apart — which is why redeploying the contract used to mean
+   * walking out and reposting every live job instead of just deploying.
+   *
+   * Null means "whatever ONCHAIN_LABOR_MARKET pointed at when this row was
+   * written", which is the honest reading of every row that predates this
+   * column. New writes always stamp it.
+   */
+  onchainContract: text('onchain_contract'),
   agentTaskId: text('agent_task_id'), // links to agent_tasks — the real run that produced the deliverable
   disputeNote: text('dispute_note'), // requester's reason, if disputed
   attachmentUrl: text('attachment_url'), // source material the worker agent should act on (Vercel Blob)
