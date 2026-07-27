@@ -59,6 +59,45 @@ contract LaborMarketV2 {
     ICreditRegistry public immutable registry;
     address public immutable arbiter;
 
+    /// @notice Protocol fee on posting, in basis points, and where it goes.
+    /// @dev    Immutable, like everything else here. Set at deploy: 0 on a
+    ///         testnet, non-zero on Base.
+    ///
+    ///         **This exists because the off-chain version only worked while
+    ///         the operator held everyone's keys.** `lib/platform-fee.ts`
+    ///         collects the posting fee as a separate USDC transfer that the
+    ///         platform makes out of the requester's smart account. That is
+    ///         enforceable exactly as long as the platform drives that
+    ///         account — which is the custodial property v2 exists to remove.
+    ///         An agent posting with its own key pays nothing, and the fee is
+    ///         load-bearing: `docs/self-sybil-attack.md` prices manufacturing
+    ///         a track record at the fee times the volume manufactured. A
+    ///         deterrent that lapses the moment a user stops needing the
+    ///         operator is not a deterrent, it is a courtesy.
+    ///
+    ///         Charged on POST and not refunded, because it is a toll rather
+    ///         than a commission: it prices the act of occupying the board,
+    ///         which is the act a wash-trading ring repeats. Charging it on
+    ///         release instead would let a spammer post and cancel for free.
+    ///         The cost is that an honest requester whose job nobody takes
+    ///         pays for a job that never happened — a real cost, accepted
+    ///         because a refundable toll is not a toll.
+    uint16 public immutable feeBps;
+    address public immutable feeRecipient;
+
+    /// @dev Hard ceiling on what a deployment may charge, checked in the
+    ///      constructor. Immutability means a fat-fingered fee is permanent,
+    ///      so the bound is in the code rather than in the deploy script.
+    uint16 public constant MAX_FEE_BPS = 500; // 5%
+
+    /// @notice Sum of every bounty this contract is still holding.
+    /// @dev    Maintained so solvency is ONE call instead of a scan over
+    ///         `jobCount` jobs. `usdc.balanceOf(address(this))` must always be
+    ///         at least this; anyone can check it, which is the point.
+    ///         "Publish the unflattering numbers" only works if the number is
+    ///         cheap enough that it actually gets published.
+    uint256 public totalEscrowed;
+
     /// @dev `Expired` is appended, never inserted: the numeric values are what
     ///      every off-chain reader decodes, and renumbering an existing state
     ///      silently reinterprets history.
@@ -170,7 +209,11 @@ contract LaborMarketV2 {
         uint256 bounty,
         uint256 minScore,
         bytes32 specHash,
-        uint32 deliveryWindow
+        uint32 deliveryWindow,
+        /// @dev What the requester paid on top. Reported so the fee is
+        ///      auditable from the log rather than inferred from a constant
+        ///      the reader has to go and look up.
+        uint256 fee
     );
     event JobAccepted(uint256 indexed jobId, address indexed worker, uint256 workerScore, uint64 deliveryDeadline);
     event WorkSubmitted(uint256 indexed jobId, bytes32 resultHash, uint64 reviewDeadline);
@@ -217,11 +260,20 @@ contract LaborMarketV2 {
     error NoSuchJob();
     error BountyTooLow();
     error BadPayeeAmount();
+    error FeeTooHigh();
+    error ZeroFeeRecipient();
 
-    constructor(address _usdc, address _registry, address _arbiter) {
+    constructor(address _usdc, address _registry, address _arbiter, uint16 _feeBps, address _feeRecipient) {
+        if (_feeBps > MAX_FEE_BPS) revert FeeTooHigh();
+        // A non-zero fee with nowhere to send it would burn every posting fee
+        // to address(0), permanently, with no way to notice until someone
+        // reconciled revenue that never arrived.
+        if (_feeBps > 0 && _feeRecipient == address(0)) revert ZeroFeeRecipient();
         usdc = IERC20(_usdc);
         registry = ICreditRegistry(_registry);
         arbiter = _arbiter;
+        feeBps = _feeBps;
+        feeRecipient = _feeRecipient;
     }
 
     /// @notice Post a job, escrowing `bounty` USDC. Requester must approve
@@ -233,7 +285,17 @@ contract LaborMarketV2 {
     {
         if (deliveryWindow < MIN_DELIVERY_WINDOW || deliveryWindow > MAX_DELIVERY_WINDOW) revert BadWindow();
         if (bounty < MIN_BOUNTY) revert BountyTooLow();
-        require(usdc.transferFrom(msg.sender, address(this), bounty), "escrow: transferFrom");
+
+        // The requester pays bounty + fee; the WORKER still gets the whole
+        // advertised bounty. Taking the fee out of the bounty instead would
+        // mean the number on the board is not the number that arrives, and a
+        // market where the posted price is not the paid price is a market
+        // nobody can price against.
+        uint256 fee = (bounty * feeBps) / 10_000;
+        require(usdc.transferFrom(msg.sender, address(this), bounty + fee), "escrow: transferFrom");
+        if (fee > 0) require(usdc.transfer(feeRecipient, fee), "fee: transfer");
+
+        totalEscrowed += bounty;
         jobId = ++jobCount;
         Job storage job = jobs[jobId];
         job.requester = msg.sender;
@@ -242,7 +304,7 @@ contract LaborMarketV2 {
         job.status = Status.Open;
         job.specHash = specHash;
         job.deliveryWindow = deliveryWindow;
-        emit JobPosted(jobId, msg.sender, bounty, minScore, specHash, deliveryWindow);
+        emit JobPosted(jobId, msg.sender, bounty, minScore, specHash, deliveryWindow, fee);
     }
 
     /// @notice Accept an open job. Reputation-gated: the worker's on-chain
@@ -388,7 +450,7 @@ contract LaborMarketV2 {
             _release(jobId, job);
         } else {
             job.status = Status.Refunded;
-            require(usdc.transfer(job.requester, job.bounty), "refund: transfer");
+            _payOut(job.requester, job.bounty, "refund: transfer");
         }
         emit DisputeResolved(jobId, releaseToWorker);
     }
@@ -400,7 +462,7 @@ contract LaborMarketV2 {
         if (msg.sender != job.requester) revert NotRequester();
 
         job.status = Status.Cancelled;
-        require(usdc.transfer(job.requester, job.bounty), "refund: transfer");
+        _payOut(job.requester, job.bounty, "refund: transfer");
         emit JobCancelled(jobId);
     }
 
@@ -424,7 +486,7 @@ contract LaborMarketV2 {
 
         address formerWorker = job.worker;
         job.status = Status.Refunded;
-        require(usdc.transfer(job.requester, job.bounty), "refund: transfer");
+        _payOut(job.requester, job.bounty, "refund: transfer");
         emit JobReclaimed(jobId, formerWorker);
     }
 
@@ -463,7 +525,7 @@ contract LaborMarketV2 {
 
         job.status = Status.Expired;
         (uint256 toPayee, uint256 toWorker) = _payWorkerSide(job, forfeit);
-        if (refund > 0) require(usdc.transfer(job.requester, refund), "refund: transfer");
+        _payOut(job.requester, refund, "refund: transfer");
         emit ReviewExpired(jobId, refund, toPayee, toWorker);
     }
 
@@ -523,6 +585,17 @@ contract LaborMarketV2 {
     ///      by `assignPayee`, so the subtraction cannot underflow and the two
     ///      transfers cannot exceed what this job escrowed — the invariant that
     ///      keeps one job's release from touching another job's money.
+    /// @dev Money leaving the contract, in one place. `totalEscrowed` is a
+    ///      claim about solvency, and a settlement route that forgets to
+    ///      decrement it makes the contract look permanently over-collateralised
+    ///      — which is the direction that hides a real shortfall behind an
+    ///      accounting one. Every payout below goes through here.
+    function _payOut(address to, uint256 amount, string memory context) private {
+        if (amount == 0) return;
+        totalEscrowed -= amount;
+        require(usdc.transfer(to, amount), context);
+    }
+
     function _release(uint256 jobId, Job storage job) private {
         (uint256 toPayee, uint256 toWorker) = _payWorkerSide(job, job.bounty);
         emit JobCompleted(jobId, job.worker, job.requester, job.bounty, job.payee, toPayee, toWorker);
@@ -548,11 +621,12 @@ contract LaborMarketV2 {
         }
         toWorker = amount - toPayee;
 
-        if (toPayee > 0) require(usdc.transfer(job.payee, toPayee), "release: payee transfer");
-        // Both legs are guarded: a zero transfer is a real transfer that some
-        // tokens revert on, and stranding a settlement over a zero-value leg
-        // would be the whole failure class this contract exists to close.
-        if (toWorker > 0) require(usdc.transfer(job.worker, toWorker), "release: worker transfer");
+        // Both legs are guarded inside _payOut: a zero transfer is a real
+        // transfer that some tokens revert on, and stranding a settlement over
+        // a zero-value leg would be the whole failure class this contract
+        // exists to close.
+        _payOut(job.payee, toPayee, "release: payee transfer");
+        _payOut(job.worker, toWorker, "release: worker transfer");
     }
 
     /// @notice Whether `reclaimJob` would succeed right now — for the
@@ -587,6 +661,41 @@ contract LaborMarketV2 {
         payee = job.payee;
         toPayee = payee == address(0) ? 0 : job.payeeAmount;
         toWorker = job.bounty - toPayee;
+    }
+
+    /// @notice Does this contract hold what it says it owes?
+    /// @return owed     the sum of every unsettled bounty
+    /// @return held     the contract's actual token balance
+    /// @return surplus  held - owed, floored at zero
+    /// @dev    ONE call, and that is the whole design goal: a solvency check
+    ///         costing a scan over every job ever posted is a check nobody
+    ///         runs, and an invariant nobody runs is not an invariant.
+    ///
+    ///         `held` should sit slightly above `owed` forever. Tokens sent
+    ///         here by mistake land in the surplus and stay. There is
+    ///         deliberately NO sweep: a function that moves tokens the contract
+    ///         does not owe is a function that can move tokens it does, and
+    ///         "nobody has that button" is this contract's one real security
+    ///         property.
+    ///
+    ///         **`held < owed` is the alarm.** No path here can produce it, so
+    ///         if it ever reads that way the token is not behaving like USDC —
+    ///         fee-on-transfer, rebasing, a blocklist — and no settlement
+    ///         should be trusted until someone has found out why.
+    function escrowSolvency() external view returns (uint256 owed, uint256 held, uint256 surplus) {
+        owed = totalEscrowed;
+        held = usdcBalance();
+        surplus = held > owed ? held - owed : 0;
+    }
+
+    /// @dev A staticcall rather than an interface method, so `IERC20` above
+    ///      stays the two functions this contract actually needs to send money.
+    ///      Returns 0 if the token does not answer, which reads as insolvent —
+    ///      the safe direction for an alarm.
+    function usdcBalance() public view returns (uint256) {
+        (bool ok, bytes memory data) =
+            address(usdc).staticcall(abi.encodeWithSignature("balanceOf(address)", address(this)));
+        return ok && data.length >= 32 ? abi.decode(data, (uint256)) : 0;
     }
 
     /// @notice What silence would cost, if the requester lets the review window

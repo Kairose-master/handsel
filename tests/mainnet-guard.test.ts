@@ -13,6 +13,8 @@ const ready: RealMoneyConfig = {
   laborMarketAddress: '0x0000000000000000000000000000000000000002',
   paymasterMeteredAck: true,
   faucetEnabled: false,
+  contractFeeBps: 200,
+  offchainFeeBps: 0,
 }
 
 describe('a testnet is left alone', () => {
@@ -26,6 +28,8 @@ describe('a testnet is left alone', () => {
         laborMarketAddress: '',
         paymasterMeteredAck: false,
         faucetEnabled: true,
+        contractFeeBps: 0,
+        offchainFeeBps: 200,
       }),
     ).toEqual([])
   })
@@ -67,8 +71,12 @@ describe('real money: each prerequisite blocks on its own', () => {
       laborMarketAddress: '',
       paymasterMeteredAck: false,
       faucetEnabled: true,
+      contractFeeBps: 0,
+      offchainFeeBps: 0,
     })
-    expect(all).toHaveLength(4)
+    // Five now: the four setup blockers plus no-fee-anywhere, which fires
+    // because this fixture charges nothing on either side.
+    expect(all).toHaveLength(5)
   })
 
   it('refuses minting before the gas is spent, not after the revert', () => {
@@ -85,6 +93,8 @@ describe('every blocker explains itself', () => {
       laborMarketAddress: '',
       paymasterMeteredAck: false,
       faucetEnabled: true,
+      contractFeeBps: 0,
+      offchainFeeBps: 0,
     })
     for (const b of all) expect(b.detail.length).toBeGreaterThan(60)
   })
@@ -128,5 +138,35 @@ describe('formatBlockers', () => {
 
   it('lists codes for a log line', () => {
     expect(formatBlockers(realMoneyBlockers({ ...ready, faucetEnabled: true }))).toBe('faucet-enabled')
+  })
+})
+
+describe('the fee is collected exactly once', () => {
+  it('blocks when the contract AND the platform both charge', () => {
+    // lib/platform-fee.ts moves USDC out of the requester's account before the
+    // escrow; the contract charges inside postJob. Both configured bills every
+    // requester twice, and the off-chain half never appears in the contract's
+    // accounting — so the overcharge surfaces as a complaint, not a number.
+    const codes = realMoneyBlockers({ ...ready, contractFeeBps: 200, offchainFeeBps: 200 }).map((b) => b.code)
+    expect(codes).toContain('fee-charged-twice')
+  })
+
+  it('says so when nothing charges anywhere', () => {
+    // Not a typo-catcher — feeBps is immutable, so a deployment at zero can
+    // never start charging, and the Sybil pricing argument is denominated in
+    // that number.
+    const codes = realMoneyBlockers({ ...ready, contractFeeBps: 0, offchainFeeBps: 0 }).map((b) => b.code)
+    expect(codes).toContain('no-fee-anywhere')
+  })
+
+  it('is happy with the contract charging alone', () => {
+    // The intended mainnet shape: the fee that still applies when an agent
+    // posts with its own key instead of through the operator.
+    expect(realMoneyBlockers({ ...ready, contractFeeBps: 200, offchainFeeBps: 0 })).toEqual([])
+  })
+
+  it('is happy with the platform charging alone', () => {
+    // Still valid while every agent is operator-driven — which is today.
+    expect(realMoneyBlockers({ ...ready, contractFeeBps: 0, offchainFeeBps: 200 })).toEqual([])
   })
 })

@@ -529,6 +529,121 @@ discretionary one.
 that makes any *future* redeploy cheap, and not making it now guarantees this
 same document gets written again.
 
+### 5. The fee, moved on-chain — `feeBps` / `feeRecipient`
+
+**The posting fee was enforced by custody, and nobody had written that down.**
+
+`lib/platform-fee.ts` collects 2% as a separate USDC transfer that the platform
+makes *out of the requester's smart account*, before the escrow. That works for
+exactly as long as the platform drives that account — which is the custodial
+property §"The two things that actually block it" names as blocker #1 and which
+this whole v2 exists to remove. **An agent that posts with its own key pays
+nothing.**
+
+That is not a rounding error in the economics. `docs/self-sybil-attack.md`
+prices manufacturing a track record at *fee × volume manufactured*; at a fee of
+zero it prices nothing, and the ring analysis in that document becomes
+unfalsifiable in the same way minting your own MockUSDC made it unfalsifiable.
+The two documents were describing one hole from opposite sides.
+
+So `postJob` now charges `feeBps` and forwards it to `feeRecipient`, both
+immutable, capped at `MAX_FEE_BPS = 500`. Three decisions worth keeping:
+
+- **The requester pays bounty + fee; the worker still gets the whole bounty.**
+  Taking the fee out of the bounty would mean the number on the board is not
+  the number that arrives, and a market where the posted price is not the paid
+  price is a market nobody can plan against.
+- **Charged on post, not refunded.** It is a toll on occupying the board, which
+  is the act a wash-trading ring repeats — charging on release instead lets a
+  spammer post and cancel for free. The cost is real: an honest requester whose
+  job nobody takes pays for a job that never happened. A refundable toll is not
+  a toll.
+- **Rounds down.** 2% of one token unit is zero, and a market built for $0.01
+  jobs must not reject them because the fee underflows.
+
+`realMoneyBlockers` gained `fee-charged-twice` — both collectors configured
+bills every requester twice, and the off-chain half never appears in the
+contract's accounting, so the overcharge surfaces as a complaint rather than as
+a number. It also gained `no-fee-anywhere`, because `feeBps` is immutable: a
+deployment at zero can never start charging.
+
+### 6. Solvency as one call — `totalEscrowed` / `escrowSolvency()`
+
+"Publish the unflattering numbers" (failure-modes invariant 7) only works if
+the number is cheap enough to actually get published. Proving this contract
+holds what it owes previously meant summing every job ever posted, so nobody
+would have.
+
+`totalEscrowed` is maintained on every escrow and every payout, through a
+single `_payOut` helper so a future settlement route cannot forget to
+decrement. `escrowSolvency()` returns `(owed, held, surplus)` in one call.
+
+- `held > owed` forever, by a little. Tokens sent here by mistake land in the
+  surplus and stay. **There is deliberately no sweep**: a function that moves
+  tokens the contract does not owe is a function that can move tokens it does,
+  and "nobody has that button" is this contract's one real security property.
+- **`held < owed` is the alarm.** No path here can produce it, so if it ever
+  reads that way the token is not behaving like USDC — fee-on-transfer,
+  rebasing, a blocklist — and nothing should settle until someone knows why.
+
+Tested by driving all eight settlement routes and asserting the contract
+returns to zero after each.
+
+---
+
+## Is the contract *enough*? — the extensibility answer
+
+### What it can already absorb without a redeploy
+
+- **Any change to what a job IS.** `specHash` commits to arbitrary off-chain
+  structure — delegation trees, capability requirements, acceptance tests,
+  grader identity. The contract has never needed to know, and that is the
+  extension point.
+- **Any change to who may work.** `minScore` plus `ICreditRegistry` is a policy
+  hook: a different scoring rule is a different registry, not a different
+  market.
+- **Lending against work in progress.** `assignPayee(jobId, payee, amount)`.
+- **Cent-scale jobs.** `MIN_BOUNTY` is one token unit and both the fee and the
+  forfeit round down rather than reverting.
+
+### What it cannot, and the honest answer to that
+
+Changing the arbiter, the fee, the windows, the token, or the registry all
+require a new deployment. That is the price of having no owner, and it is the
+right price — every one of those setters is a lever an operator could pull on
+money already committed.
+
+**So the upgrade path is: deploy v3, stop posting to v2, wait.** And that only
+terminates because **every job dies of old age**:
+
+```
+MAX_DELIVERY_WINDOW  30 days
+REVIEW_WINDOW         7 days
+DISPUTE_WINDOW       14 days
+                     ────────
+worst case           51 days, after which v2 is empty
+```
+
+Every one of those deadlines is permissionless, so draining v2 needs nobody's
+cooperation — not the operator's, not the arbiter's. `tests/labor-market-v2.evm`
+asserts both halves: that the windows compose to under 60 days, and that a job
+parked in the worst state actually empties when a stranger finishes it.
+
+**A future state without a permissionless deadline would break migration, not
+just recovery.** That is the property to defend the next time someone adds a
+state.
+
+### What is deliberately NOT in the contract
+
+| | why |
+|---|---|
+| Multi-token | `usdc` is immutable. A second token is a second deployment, which costs less than the branching would. |
+| A second lien | Two claims on one uncertain cash flow need priority rules, and that is where secured lending gets genuinely hard. The `PayeeAssigned` event discloses the first claim so a second lender can price the residual off-chain. |
+| Parent/child job links | A delegation tree is `specHash`'s business. Putting it on-chain buys a lender a view it can already reconstruct from events. |
+| Arbiter rotation | A `setArbiter` is an owner wearing a narrow name. A *silent* arbiter is already survivable via `expireDispute`; a *malicious* one can only choose between two legitimate outcomes and cannot pay itself. Bounded, and the bound is the argument. |
+| A pause switch | The reversal power the whole thesis is against. |
+| A surplus sweep | See §6. |
+
 ---
 
 ## Operational cost, which is not zero

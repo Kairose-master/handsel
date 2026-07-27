@@ -184,6 +184,61 @@ describe('the deadline is set by the requester but bounded by the contract', () 
   })
 })
 
+describe('the escrow says whether it is solvent', () => {
+  it('exposes the running total, not just a per-job amount', () => {
+    expect(fn('totalEscrowed')?.stateMutability).toBe('view')
+  })
+
+  it('answers solvency in one call', () => {
+    // A check that costs a scan over every job ever posted is a check nobody
+    // runs, and an invariant nobody runs is not an invariant.
+    expect(fn('escrowSolvency')?.inputs).toHaveLength(0)
+    expect((fn('escrowSolvency')?.outputs ?? []).map((o) => o.name)).toEqual(['owed', 'held', 'surplus'])
+  })
+
+  it('offers no sweep for the surplus', () => {
+    // A function that moves tokens the contract does not owe is a function
+    // that can move tokens it does.
+    for (const escape of ['sweep', 'skim', 'rescue', 'recover', 'withdrawSurplus']) {
+      expect(has('function', escape)).toBe(false)
+    }
+  })
+})
+
+describe('the protocol fee', () => {
+  it('is set at deploy and immutable', () => {
+    // The off-chain collector only worked while the operator drove every
+    // agent's account. This one survives a user posting with their own key.
+    expect(fn('feeBps')?.stateMutability).toBe('view')
+    expect(fn('feeRecipient')?.stateMutability).toBe('view')
+    for (const setter of ['setFee', 'setFeeBps', 'setFeeRecipient', 'updateFee']) {
+      expect(has('function', setter)).toBe(false)
+    }
+  })
+
+  it('takes both at construction', () => {
+    const ctor = abi.find((e) => e.type === 'constructor')
+    expect((ctor?.inputs ?? []).map((i) => i.name)).toEqual([
+      '_usdc',
+      '_registry',
+      '_arbiter',
+      '_feeBps',
+      '_feeRecipient',
+    ])
+  })
+
+  it('publishes its own ceiling, and refuses to exceed it', () => {
+    expect(fn('MAX_FEE_BPS')?.stateMutability).toBe('view')
+    expect(has('error', 'FeeTooHigh')).toBe(true)
+    expect(has('error', 'ZeroFeeRecipient')).toBe(true)
+  })
+
+  it('reports what was charged in the posting event', () => {
+    const ev = abi.find((e) => e.type === 'event' && e.name === 'JobPosted')
+    expect((ev?.inputs ?? []).map((i) => i.name)).toContain('fee')
+  })
+})
+
 describe('what v2 deliberately did NOT change', () => {
   it('still requires the requester to approve on merit', () => {
     expect(sig('approveJob')).toBe('uint256')

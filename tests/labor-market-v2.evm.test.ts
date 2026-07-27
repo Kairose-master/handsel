@@ -13,6 +13,11 @@ import { ACCOUNTS, Chain } from './helpers/evm'
 const BOUNTY = 1_000_000n // 1 USDC at 6 decimals
 const WINDOW = 3600 // 1 hour delivery window
 const REVIEW_WINDOW = 7 * 24 * 3600
+/** Deployments under test charge a real fee, so every escrow path is exercised
+ *  with one rather than with the zero that would hide an accounting mistake. */
+const FEE_BPS = 200n
+const feeOn = (bounty: bigint) => (bounty * FEE_BPS) / 10_000n
+
 const SPEC = '0x' + '11'.repeat(32)
 const RESULT = '0x' + '22'.repeat(32)
 
@@ -41,7 +46,7 @@ async function setup(): Promise<Ctx> {
   const chain = await Chain.create()
   const usdc = await chain.deploy('TestUSDC')
   const registry = await chain.deploy('TestRegistry')
-  const market = await chain.deploy('LaborMarketV2', [usdc, registry, ACCOUNTS.arbiter])
+  const market = await chain.deploy('LaborMarketV2', [usdc, registry, ACCOUNTS.arbiter, FEE_BPS, ACCOUNTS.house])
   await chain.send('requester', usdc, 'TestUSDC', 'mint', [ACCOUNTS.requester, BOUNTY * 100n])
   await chain.send('requester', usdc, 'TestUSDC', 'approve', [market, BOUNTY * 100n])
   return { chain, usdc, registry, market }
@@ -74,8 +79,13 @@ describe('the happy path still works', () => {
   it('escrows on post, releases to the worker on approve', async () => {
     const before = await balance(ctx, ACCOUNTS.requester)
     const id = await post(ctx)
+    // The contract holds the bounty exactly; the fee went straight out to the
+    // house. The requester paid bounty + fee, and the WORKER is still owed the
+    // whole advertised bounty — a board price that is not the paid price is a
+    // price nobody can plan against.
     expect(await balance(ctx, ctx.market)).toBe(BOUNTY)
-    expect(await balance(ctx, ACCOUNTS.requester)).toBe(before - BOUNTY)
+    expect(await balance(ctx, ACCOUNTS.house)).toBe(feeOn(BOUNTY))
+    expect(await balance(ctx, ACCOUNTS.requester)).toBe(before - BOUNTY - feeOn(BOUNTY))
 
     await ctx.chain.send('worker', ctx.market, 'LaborMarketV2', 'acceptJob', [id])
     await ctx.chain.send('worker', ctx.market, 'LaborMarketV2', 'submitWork', [id, RESULT])
@@ -119,7 +129,10 @@ describe('reclaimJob — the exit from Accepted that v1 did not have', () => {
 
     await ctx.chain.send('stranger', ctx.market, 'LaborMarketV2', 'reclaimJob', [id])
     expect(await status(ctx, id)).toBe(Status.Refunded)
-    expect(await balance(ctx, ACCOUNTS.requester)).toBe(before)
+    // The BOUNTY comes back; the fee does not. It is a toll on occupying the
+    // board, and a refundable toll is not a toll — a wash-trading ring would
+    // post and reclaim all day for free.
+    expect(await balance(ctx, ACCOUNTS.requester)).toBe(before - feeOn(BOUNTY))
     expect(await balance(ctx, ctx.market)).toBe(0n)
   })
 
@@ -195,7 +208,7 @@ describe('the late delivery race — the question put to Olas in mech#470', () =
     await ctx.chain.revertReason('worker', ctx.market, 'LaborMarketV2', 'submitWork', [id, RESULT])
 
     expect(await balance(ctx, ctx.market)).toBe(0n)
-    expect(await balance(ctx, ACCOUNTS.requester)).toBe(before)
+    expect(await balance(ctx, ACCOUNTS.requester)).toBe(before - feeOn(BOUNTY))
     expect(await balance(ctx, ACCOUNTS.worker)).toBe(0n)
   })
 })
@@ -224,7 +237,7 @@ describe('expireReview — the mirror stall, when the requester goes silent', ()
     await ctx.chain.send('stranger', ctx.market, 'LaborMarketV2', 'expireReview', [id])
     expect(await status(ctx, id)).toBe(Status.Expired)
     expect(await balance(ctx, ACCOUNTS.worker)).toBe(FORFEIT)
-    expect(await balance(ctx, ACCOUNTS.requester)).toBe(before - FORFEIT)
+    expect(await balance(ctx, ACCOUNTS.requester)).toBe(before - FORFEIT - feeOn(BOUNTY))
     expect(await balance(ctx, ctx.market)).toBe(0n) // the escrow is fully distributed
   })
 
@@ -515,7 +528,7 @@ describe('expireDispute — the third stall, the one the first draft missed', ()
     await ctx.chain.send('stranger', ctx.market, 'LaborMarketV2', 'expireDispute', [id])
 
     expect(await balance(ctx, ACCOUNTS.worker)).toBe(BOUNTY)
-    expect(await balance(ctx, ACCOUNTS.requester)).toBe(BOUNTY * 99n)
+    expect(await balance(ctx, ACCOUNTS.requester)).toBe(BOUNTY * 99n - feeOn(BOUNTY))
   })
 
   it('honours a lien on this route too', async () => {
@@ -718,5 +731,180 @@ describe('what v2 deliberately did not change', () => {
       ).toContain('NotRequester')
     }
     expect(await status(ctx, id)).toBe(Status.Submitted)
+  })
+})
+
+describe('the escrow balances, and says so in one call', () => {
+  const ZERO = '0x0000000000000000000000000000000000000000'
+  const solvency = () =>
+    ctx.chain.call<unknown[]>('stranger', ctx.market, 'LaborMarketV2', 'escrowSolvency')
+
+  it('owes exactly the escrowed bounties, never the fees', async () => {
+    // The fee left during postJob. Counting it as owed would make the contract
+    // look permanently insolvent by 2% of everything ever posted.
+    await post(ctx)
+    await post(ctx)
+    const [owed, held, surplus] = await solvency()
+    expect(owed).toBe(BOUNTY * 2n)
+    expect(held).toBe(BOUNTY * 2n)
+    expect(surplus).toBe(0n)
+  })
+
+  it('drops back to zero through EVERY settlement route', async () => {
+    // A route that pays out without decrementing leaves the contract claiming
+    // to owe money it already sent — an accounting shortfall indistinguishable
+    // from a real one, which is the direction that hides a theft.
+    const DISPUTE_WINDOW = 14 * 24 * 3600
+    const send = (who: 'worker' | 'requester' | 'stranger' | 'arbiter', m: string, a: unknown[] = []) =>
+      ctx.chain.send(who, ctx.market, 'LaborMarketV2', m, a as never)
+    const delivered = async () => {
+      const id = await post(ctx)
+      await send('worker', 'acceptJob', [id])
+      await send('worker', 'submitWork', [id, RESULT])
+      return id
+    }
+
+    const routes: Array<() => Promise<void>> = [
+      async () => { await send('requester', 'approveJob', [await delivered()]) },
+      async () => { await send('requester', 'cancelJob', [await post(ctx)]) },
+      async () => {
+        const id = await post(ctx)
+        await send('worker', 'acceptJob', [id])
+        ctx.chain.advance(WINDOW)
+        await send('stranger', 'reclaimJob', [id])
+      },
+      async () => {
+        const id = await delivered()
+        await send('requester', 'raiseDispute', [id])
+        await send('arbiter', 'resolveDispute', [id, false])
+      },
+      async () => {
+        const id = await delivered()
+        await send('requester', 'raiseDispute', [id])
+        await send('arbiter', 'resolveDispute', [id, true])
+      },
+      async () => {
+        const id = await delivered()
+        ctx.chain.advance(REVIEW_WINDOW)
+        await send('stranger', 'expireReview', [id])
+      },
+      async () => {
+        const id = await delivered()
+        await send('requester', 'raiseDispute', [id])
+        ctx.chain.advance(DISPUTE_WINDOW)
+        await send('stranger', 'expireDispute', [id])
+      },
+      async () => {
+        const id = await post(ctx)
+        await send('worker', 'acceptJob', [id])
+        await send('worker', 'assignPayee', [id, ACCOUNTS.lender, BOUNTY / 3n])
+        await send('worker', 'submitWork', [id, RESULT])
+        await send('requester', 'approveJob', [id])
+      },
+    ]
+
+    for (const [i, route] of routes.entries()) {
+      await route()
+      const [owed, held] = await solvency()
+      expect(owed, `route ${i} still claims an escrow`).toBe(0n)
+      expect(held, `route ${i} left tokens behind`).toBe(0n)
+    }
+  })
+
+  it('counts a stray transfer as surplus, and offers no way to sweep it', async () => {
+    // No sweep, deliberately: a function that moves tokens the contract does
+    // not owe is a function that can move tokens it does.
+    await post(ctx)
+    await ctx.chain.send('requester', ctx.usdc, 'TestUSDC', 'transfer', [ctx.market, 12_345n])
+    const [owed, held, surplus] = await solvency()
+    expect(owed).toBe(BOUNTY)
+    expect(held).toBe(BOUNTY + 12_345n)
+    expect(surplus).toBe(12_345n)
+  })
+})
+
+describe('the protocol fee', () => {
+  const ZERO = '0x0000000000000000000000000000000000000000'
+  const freshChain = async () => {
+    const chain = await Chain.create()
+    return { chain, usdc: await chain.deploy('TestUSDC'), registry: await chain.deploy('TestRegistry') }
+  }
+
+  it('is capped in the constructor, because immutable means permanent', async () => {
+    const { chain, usdc, registry } = await freshChain()
+    await expect(
+      chain.deploy('LaborMarketV2', [usdc, registry, ACCOUNTS.arbiter, 501n, ACCOUNTS.house]),
+    ).rejects.toThrow()
+  })
+
+  it('refuses a fee with nowhere to send it', async () => {
+    // Otherwise every posting fee burns to address(0) forever, and the first
+    // symptom is revenue that never arrives.
+    const { chain, usdc, registry } = await freshChain()
+    await expect(
+      chain.deploy('LaborMarketV2', [usdc, registry, ACCOUNTS.arbiter, 200n, ZERO]),
+    ).rejects.toThrow()
+  })
+
+  it('allows a zero fee with no recipient — that is the testnet deployment', async () => {
+    const { chain, usdc, registry } = await freshChain()
+    const market = await chain.deploy('LaborMarketV2', [usdc, registry, ACCOUNTS.arbiter, 0n, ZERO])
+    await chain.send('requester', usdc, 'TestUSDC', 'mint', [ACCOUNTS.requester, BOUNTY])
+    await chain.send('requester', usdc, 'TestUSDC', 'approve', [market, BOUNTY])
+    await chain.send('requester', market, 'LaborMarketV2', 'postJob', [BOUNTY, 0n, SPEC, WINDOW])
+    expect(await chain.call<bigint>('requester', usdc, 'TestUSDC', 'balanceOf', [market])).toBe(BOUNTY)
+  })
+
+  it('has no setter — a settable fee is a price raised on money already committed', async () => {
+    // uint16 decodes as a JS number, not a bigint.
+    expect(await ctx.chain.call<number>('stranger', ctx.market, 'LaborMarketV2', 'feeBps')).toBe(Number(FEE_BPS))
+  })
+
+  it('scales with the bounty rather than being flat', async () => {
+    const big = BOUNTY * 10n
+    await ctx.chain.send('requester', ctx.market, 'LaborMarketV2', 'postJob', [big, 0n, SPEC, WINDOW])
+    expect(await balance(ctx, ACCOUNTS.house)).toBe(feeOn(big))
+  })
+
+  it('rounds a cent-scale fee down to zero rather than refusing the job', async () => {
+    // 2% of one token unit is zero. A market built for $0.01 jobs must not
+    // reject them because the fee underflows.
+    await ctx.chain.send('requester', ctx.market, 'LaborMarketV2', 'postJob', [1n, 0n, SPEC, WINDOW])
+    const id = await ctx.chain.call<bigint>('requester', ctx.market, 'LaborMarketV2', 'jobCount')
+    expect(await status(ctx, id)).toBe(Status.Open)
+    expect(await balance(ctx, ACCOUNTS.house)).toBe(0n)
+  })
+})
+
+describe('every job dies of old age — the migration property', () => {
+  it('bounds the longest a job can occupy the contract', async () => {
+    // This contract has no upgrade hatch, so the upgrade path is: deploy v3,
+    // stop posting to v2, wait. That only terminates because every state has a
+    // permissionless deadline and the windows compose to a finite number.
+    // If any future state lacks one, migration stops being possible and this
+    // test is the thing that says so.
+    const max = await ctx.chain.call<bigint>('stranger', ctx.market, 'LaborMarketV2', 'MAX_DELIVERY_WINDOW')
+    const review = await ctx.chain.call<bigint>('stranger', ctx.market, 'LaborMarketV2', 'REVIEW_WINDOW')
+    const dispute = await ctx.chain.call<bigint>('stranger', ctx.market, 'LaborMarketV2', 'DISPUTE_WINDOW')
+    const worstCase = max + review + dispute
+    expect(worstCase).toBeLessThanOrEqual(BigInt(60 * 24 * 3600)) // 60 days
+  })
+
+  it('actually empties after the worst case, with nobody privileged acting', async () => {
+    const MAXW = 30 * 24 * 3600
+    const id = await ctx.chain
+      .send('requester', ctx.market, 'LaborMarketV2', 'postJob', [BOUNTY, 0n, SPEC, MAXW])
+      .then(() => ctx.chain.call<bigint>('requester', ctx.market, 'LaborMarketV2', 'jobCount'))
+    await ctx.chain.send('worker', ctx.market, 'LaborMarketV2', 'acceptJob', [id])
+    await ctx.chain.send('worker', ctx.market, 'LaborMarketV2', 'submitWork', [id, RESULT])
+    await ctx.chain.send('requester', ctx.market, 'LaborMarketV2', 'raiseDispute', [id])
+
+    // The requester escalated and the arbiter never came. A stranger finishes it.
+    ctx.chain.advance(MAXW + 7 * 24 * 3600 + 14 * 24 * 3600)
+    await ctx.chain.send('stranger', ctx.market, 'LaborMarketV2', 'expireDispute', [id])
+
+    const [owed, held] = await ctx.chain.call<unknown[]>('stranger', ctx.market, 'LaborMarketV2', 'escrowSolvency')
+    expect(owed).toBe(0n)
+    expect(held).toBe(0n)
   })
 })

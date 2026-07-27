@@ -40,6 +40,9 @@ export const ACCOUNTS = {
   arbiter: '0x4444444444444444444444444444444444444444',
   lender: '0x5555555555555555555555555555555555555555',
   stranger: '0x6666666666666666666666666666666666666666',
+  /** Where the protocol fee goes. Separate from every other role so a fee
+   *  landing in the wrong place shows up as a balance nobody expected. */
+  house: '0x7777777777777777777777777777777777777777',
 } as const
 
 export type Account = keyof typeof ACCOUNTS

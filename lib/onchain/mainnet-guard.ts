@@ -27,6 +27,8 @@ export type BlockerCode =
   | 'labor-market-unset'
   | 'mint-not-available'
   | 'token-decimals-mismatch'
+  | 'fee-charged-twice'
+  | 'no-fee-anywhere'
 
 export type Blocker = { code: BlockerCode; detail: string }
 
@@ -36,6 +38,10 @@ export type RealMoneyConfig = {
   laborMarketAddress: string
   paymasterMeteredAck: boolean
   faucetEnabled: boolean
+  /** LaborMarketV2's immutable `feeBps`, read from the deployed contract. */
+  contractFeeBps: number
+  /** PLATFORM_FEE_BPS — the off-chain collector in lib/platform-fee.ts. */
+  offchainFeeBps: number
 }
 
 /**
@@ -74,6 +80,38 @@ export function realMoneyBlockers(config: RealMoneyConfig): Blocker[] {
         'PAYMASTER_METERED is not "true". Sponsored gas on a real chain is the operator\'s money, spendable by anyone ' +
         'who can cause a UserOperation — and causing one is free. Set a spending policy on the ZeroDev project first, ' +
         'then set this to acknowledge it. Nothing here can verify the policy for you.',
+    })
+  }
+
+  // Two fee collectors, one posting. lib/platform-fee.ts moves USDC out of the
+  // requester's smart account BEFORE the escrow; LaborMarketV2 charges feeBps
+  // inside postJob. Both configured means every requester is billed twice, and
+  // the off-chain half is invisible to the contract's own accounting — so the
+  // overcharge would surface as a user complaint rather than as a number.
+  //
+  // The contract's fee is the one that survives a user posting with their own
+  // key, so the contract wins and the off-chain fee must be switched off.
+  if (config.contractFeeBps > 0 && config.offchainFeeBps > 0) {
+    blockers.push({
+      code: 'fee-charged-twice',
+      detail:
+        `LaborMarketV2 charges ${config.contractFeeBps}bps on postJob and PLATFORM_FEE_BPS is ${config.offchainFeeBps}. ` +
+        'Both collect, so every requester pays the fee twice. Set PLATFORM_FEE_BPS=0 — the contract fee is the one ' +
+        'that still applies when an agent posts with its own key instead of through the operator.',
+    })
+  }
+
+  // The inverse, and it is not symmetric: no fee anywhere is not a
+  // misconfiguration to block on, it is a choice. But a contract deployed with
+  // feeBps=0 can never be changed, so it is worth saying out loud once.
+  if (config.contractFeeBps === 0 && config.offchainFeeBps === 0) {
+    blockers.push({
+      code: 'no-fee-anywhere',
+      detail:
+        'Neither the contract nor PLATFORM_FEE_BPS charges anything. The Sybil argument in docs/self-sybil-attack.md ' +
+        'prices manufacturing a track record at the fee times the volume manufactured, so at zero it prices nothing. ' +
+        'Deploy with a non-zero feeBps or set PLATFORM_FEE_BPS deliberately — feeBps is immutable, so this is not a ' +
+        'decision that can be revisited on the same deployment.',
     })
   }
 
