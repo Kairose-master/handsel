@@ -584,6 +584,39 @@ CREATE TABLE IF NOT EXISTS "insurancePolicy" (
   "createdAt"  timestamptz NOT NULL DEFAULT now(),
   "updatedAt"  timestamptz NOT NULL DEFAULT now()
 );
+-- ── Backfill: reconnect reposted bounties to their GitHub issue ──────
+--
+-- Every repost path (grading failure, dispute refund, price raise) inserts a
+-- NEW job_specs row copied from the old one, and all three carried
+-- repo_full_name while dropping issue_number. That column is the CANCEL KEY:
+-- the webhook's specsForIssue matches on (repo_full_name, issue_number), so a
+-- reposted bounty answered "issue closed" with "no job for this issue" and
+-- returned silently, leaving the escrow locked with no issue pointing at it.
+--
+-- The code is fixed; these rows are not, and a fix that only applies to future
+-- reposts leaves the money that is already stranded exactly where it is.
+--
+-- Climbs parent_spec_hash — the lineage link the repost paths already write —
+-- to the nearest ancestor that still knows its issue. Idempotent: it only ever
+-- fills NULLs, so re-running is a no-op. Depth-capped in case a chain ever
+-- loops; a runaway recursion inside a migration is worse than an unfixed row.
+WITH RECURSIVE climb(spec_hash, ancestor, depth) AS (
+  SELECT spec_hash, parent_spec_hash, 0
+    FROM job_specs
+   WHERE issue_number IS NULL AND repo_full_name IS NOT NULL AND parent_spec_hash IS NOT NULL
+  UNION ALL
+  SELECT c.spec_hash, p.parent_spec_hash, c.depth + 1
+    FROM climb c
+    JOIN job_specs p ON p.spec_hash = c.ancestor
+   WHERE p.issue_number IS NULL AND p.parent_spec_hash IS NOT NULL AND c.depth < 20
+)
+UPDATE job_specs t
+   SET issue_number = a.issue_number
+  FROM climb c
+  JOIN job_specs a ON a.spec_hash = c.ancestor
+ WHERE t.spec_hash = c.spec_hash
+   AND t.issue_number IS NULL
+   AND a.issue_number IS NOT NULL;
 `
 
 async function main() {

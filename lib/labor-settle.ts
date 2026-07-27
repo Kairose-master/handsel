@@ -267,6 +267,15 @@ export async function returnFailedJobToMarket(spec: typeof jobSpec.$inferSelect)
       // deliberately NOT carried — the replacement gets its own PR.
       repoFullName: spec.repoFullName,
       baseBranch: spec.baseBranch,
+      // issueNumber belongs to that identity too, and leaving it out stranded
+      // real escrow. It is the CANCEL KEY: `specsForIssue` in the webhook
+      // matches on (repoFullName, issueNumber), so a reposted bounty answered
+      // an issue-closed event with "no job for this issue" and silently
+      // returned. Job #327 sat Open with its issue closed and its label gone.
+      // The stale-claim deadline warning reads it too, so that went quiet as
+      // well. Two lines above named repo identity and counted two of its three
+      // fields.
+      issueNumber: spec.issueNumber,
       parentSpecHash: spec.specHash, // explicit lineage — lets delegations follow the work to its replacement
     })
     const txHash = await retry(() => postJob(spec.requesterAgentId!, job.bounty, job.minScore, newSpecHash))
@@ -353,6 +362,7 @@ export async function returnDisputedJobToMarket(spec: typeof jobSpec.$inferSelec
       autoApprove: spec.autoApprove,
       repoFullName: spec.repoFullName, // keep GitHub jobs GitHub jobs across a repost
       baseBranch: spec.baseBranch,
+      issueNumber: spec.issueNumber, // the cancel key — see the note on the grading-failure repost above
       parentSpecHash: spec.specHash, // lineage — delegations follow the replacement
     })
     const txHash = await retry(() => postJob(spec.requesterAgentId!, job.bounty, job.minScore, newSpecHash))

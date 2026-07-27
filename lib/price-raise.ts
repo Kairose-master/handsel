@@ -53,6 +53,12 @@ export const RAISE_SPEC_COLUMNS = {
   requiredCapabilities: jobSpec.requiredCapabilities,
   repoFullName: jobSpec.repoFullName,
   baseBranch: jobSpec.baseBranch,
+  // Selected because the replacement row has to carry it: it is the key the
+  // GitHub webhook cancels a bounty by. Narrowing the select is what keeps a
+  // column shipped ahead of its migration from breaking this reader — and the
+  // same narrowing is why a field can go missing here as quietly as it went
+  // missing from the insert.
+  issueNumber: jobSpec.issueNumber,
   autoApprove: jobSpec.autoApprove,
   failedWorkerIds: jobSpec.failedWorkerIds,
   repostCount: jobSpec.repostCount,
@@ -105,6 +111,7 @@ export async function raiseJobPrice(
     requiredCapabilities: spec.requiredCapabilities,
     repoFullName: spec.repoFullName,
     baseBranch: spec.baseBranch,
+    issueNumber: spec.issueNumber, // the cancel key — see lib/labor-settle.ts
     autoApprove: spec.autoApprove,
     failedWorkerIds: spec.failedWorkerIds,
     repostCount: spec.repostCount, // a price raise is not a failed attempt
