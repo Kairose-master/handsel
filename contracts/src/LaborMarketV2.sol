@@ -92,6 +92,56 @@ contract LaborMarketV2 {
     ///      so the bound is in the code rather than in the deploy script.
     uint16 public constant MAX_FEE_BPS = 500; // 5%
 
+    /// @notice What a worker stakes to accept a job, in basis points of the
+    ///         bounty. Slashed to the requester if the worker takes the job and
+    ///         never delivers; returned in full on every other path.
+    /// @dev    **Accepting used to be free, and the posting fee turned that into
+    ///         a grief the VICTIM paid for.** A squatter accepted any
+    ///         `minScore == 0` job and never delivered; `cancelJob` is Open-only
+    ///         so the requester had no exit and waited out the whole delivery
+    ///         window; `reclaimJob` then returned the bounty but NOT the fee,
+    ///         and `Refunded` is terminal with no path back to `Open`, so
+    ///         reposting cost the fee again. Measured over five cycles at a
+    ///         1_000_000 bounty and 200bps: requester −100_000, house +100_000,
+    ///         squatter's token balance byte-identical. At `feeBps = 0` the same
+    ///         five cycles cost nothing, which isolates the cause exactly: the
+    ///         fee converted a time-only grief into a money grief that scales
+    ///         with the bounty while the attacker's cost stays one transaction
+    ///         of gas.
+    ///
+    ///         The only on-chain defence before this was `minScore > 0`, which
+    ///         by this product's own cold-start rule excludes every honest new
+    ///         worker — so a requester had to choose between being griefed and
+    ///         killing its own supply side, and an incumbent with a score could
+    ///         squat every open job specifically to force that choice.
+    ///
+    ///         A bond is the answer rather than a fee refund because it makes
+    ///         the squatter pay instead of merely making the victim whole, and
+    ///         because `reclaimJob` is already a purely mechanical trigger — no
+    ///         judgement, no new privileged party, nobody to appeal to.
+    ///
+    ///         What it costs, stated plainly: a worker now needs capital to
+    ///         accept work. That is friction on the side of this market that is
+    ///         harder to attract, and at `bondBps = 0` the whole mechanism is
+    ///         off and behaviour is exactly as before — which is the right first
+    ///         deployment while supply is scarce.
+    uint16 public immutable bondBps;
+
+    /// @dev Ceilings on the deployment-chosen numbers, checked in the
+    ///      constructor. Every value below is immutable, so a fat-fingered
+    ///      deploy argument is not a bug to fix but a contract to redeploy —
+    ///      and by then the address is published and holding money. The bounds
+    ///      live in the code for the same reason `MAX_FEE_BPS` does.
+    uint16 public constant MAX_BOND_BPS = 2000; // 20% of the bounty
+    uint16 public constant MAX_SILENCE_FORFEIT_BPS = 2000; // 20%
+    /// @dev A floor on every window, because a zero-length one is a trap that
+    ///      settles before anyone could act, and a ceiling because an unbounded
+    ///      window is V1's frozen escrow wearing a number. The sum of the four
+    ///      is the migration bound in docs/v2-plan.md, so the ceiling is also
+    ///      what keeps that bound finite: 4 × 90 days.
+    uint32 public constant MIN_WINDOW = 10 minutes;
+    uint32 public constant MAX_WINDOW = 90 days;
+
     /// @notice Sum of every bounty this contract is still holding.
     /// @dev    Maintained so solvency is ONE call instead of a scan over
     ///         `jobCount` jobs. `usdc.balanceOf(address(this))` must always be
@@ -171,13 +221,13 @@ contract LaborMarketV2 {
     ///      one-second window is a trap that lets a requester reclaim before
     ///      any real work could finish; a ceiling because an unbounded window
     ///      is V1's frozen escrow wearing a number.
-    uint32 public constant MIN_DELIVERY_WINDOW = 10 minutes;
-    uint32 public constant MAX_DELIVERY_WINDOW = 30 days;
+    uint32 public immutable MIN_DELIVERY_WINDOW;
+    uint32 public immutable MAX_DELIVERY_WINDOW;
 
     /// @dev How long the requester has to approve or dispute after delivery.
     ///      Fixed rather than requester-chosen: it protects the WORKER, and a
     ///      value chosen by the party it constrains is not a protection.
-    uint32 public constant REVIEW_WINDOW = 7 days;
+    uint32 public immutable REVIEW_WINDOW;
 
     /// @dev How long a job may sit `Open` before anyone can return it to its
     ///      poster.
@@ -200,13 +250,13 @@ contract LaborMarketV2 {
     ///      job, and a short window would force honest requesters to repost.
     ///      Nobody has to wait for it — the requester may cancel at any moment.
     ///      This is only a backstop for a requester who is gone.
-    uint32 public constant MAX_OPEN_WINDOW = 60 days;
+    uint32 public immutable MAX_OPEN_WINDOW;
 
     /// @dev How long the arbiter has to rule on a contested job. Longer than
     ///      the review window because this is the one window a human is meant
     ///      to spend reading a deliverable and an objection. It is a backstop
     ///      against an arbiter that is gone, not a schedule for one that works.
-    uint32 public constant DISPUTE_WINDOW = 14 days;
+    uint32 public immutable DISPUTE_WINDOW;
 
     /// @dev A bounty of zero escrows nothing, and a job that escrows nothing
     ///      still emits JobAccepted and JobCompleted — which is the raw
@@ -215,7 +265,7 @@ contract LaborMarketV2 {
     ///      zero. Deliberately ONE UNIT and not a dollar: the mainnet plan
     ///      turns on cent-scale bounties, and a floor that prices out the
     ///      product is a worse bug than the one it prevents.
-    uint256 public constant MIN_BOUNTY = 1;
+    uint256 public immutable MIN_BOUNTY;
 
     /// @dev What a requester forfeits to the worker by neither approving nor
     ///      disputing. 10%, in basis points.
@@ -241,7 +291,7 @@ contract LaborMarketV2 {
     ///      Accepted deliberately: the failure it prevents is a free option on
     ///      every job in the market, and the failure it creates is capped at a
     ///      tenth of one bounty per inattentive counterparty.
-    uint16 public constant SILENCE_FORFEIT_BPS = 1000;
+    uint16 public immutable SILENCE_FORFEIT_BPS;
 
     /// @dev Gas allowed to the credit registry per lookup. Generous for a
     ///      mapping read, far too little to grief with. See `_scoreOf`.
@@ -330,13 +380,56 @@ contract LaborMarketV2 {
     error TooLate(uint64 nowTs, uint64 deadline);
     error NotAContract(address addr);
     error TransferFailed();
+    error BondTooHigh();
+    error ForfeitTooHigh();
 
-    constructor(address _usdc, address _registry, address _arbiter, uint16 _feeBps, address _feeRecipient) {
-        if (_feeBps > MAX_FEE_BPS) revert FeeTooHigh();
+    /// @notice Every number a deployment gets to choose.
+    /// @dev    A STRUCT and not eleven positional arguments, deliberately. These
+    ///         are all immutable: a transposed pair at deploy time is not a bug
+    ///         to fix, it is a redeployment, and by the time anyone notices the
+    ///         address is published and holding money. `reviewWindow` and
+    ///         `disputeWindow` are both `uint32` seconds, so swapping them
+    ///         compiles, deploys, and passes every bounds check. Named fields at
+    ///         the call site are the only thing that actually prevents that.
+    ///
+    ///         They were `constant` until now, which meant one source tree could
+    ///         not serve both a testnet and Base: seven days of review is very
+    ///         long for a market whose jobs finish in minutes, and it is the
+    ///         exposure window for both the accept-squat and the silence
+    ///         forfeit. Making them constructor arguments costs nothing against
+    ///         the no-owner property — there is still no setter for any of them.
+    struct Config {
+        uint16 feeBps;
+        address feeRecipient;
+        uint16 bondBps;
+        uint32 minDeliveryWindow;
+        uint32 maxDeliveryWindow;
+        uint32 reviewWindow;
+        uint32 maxOpenWindow;
+        uint32 disputeWindow;
+        uint16 silenceForfeitBps;
+        uint256 minBounty;
+    }
+
+    constructor(address _usdc, address _registry, address _arbiter, Config memory cfg) {
+        if (cfg.feeBps > MAX_FEE_BPS) revert FeeTooHigh();
         // A non-zero fee with nowhere to send it would burn every posting fee
         // to address(0), permanently, with no way to notice until someone
         // reconciled revenue that never arrived.
-        if (_feeBps > 0 && _feeRecipient == address(0)) revert ZeroFeeRecipient();
+        if (cfg.feeBps > 0 && cfg.feeRecipient == address(0)) revert ZeroFeeRecipient();
+        if (cfg.bondBps > MAX_BOND_BPS) revert BondTooHigh();
+        if (cfg.silenceForfeitBps > MAX_SILENCE_FORFEIT_BPS) revert ForfeitTooHigh();
+        // Each window inside the global bounds, and the delivery pair ordered.
+        // A max below the min would make `postJob` reject EVERY window and the
+        // market would accept no work at all — deployable, and dead.
+        if (!_windowOk(cfg.minDeliveryWindow) || !_windowOk(cfg.maxDeliveryWindow)) revert BadWindow();
+        if (cfg.minDeliveryWindow > cfg.maxDeliveryWindow) revert BadWindow();
+        if (!_windowOk(cfg.reviewWindow) || !_windowOk(cfg.maxOpenWindow) || !_windowOk(cfg.disputeWindow)) {
+            revert BadWindow();
+        }
+        // Zero would make free completions possible again, which is the raw
+        // material the credit engine scores. See MIN_BOUNTY.
+        if (cfg.minBounty == 0) revert BountyTooLow();
         // Every address here is immutable, so a wrong one is not a bug to fix,
         // it is a contract to redeploy. A token or registry that is an EOA or
         // an empty address does not revert at deploy time — it deploys fine and
@@ -351,8 +444,20 @@ contract LaborMarketV2 {
         usdc = IERC20(_usdc);
         registry = ICreditRegistry(_registry);
         arbiter = _arbiter;
-        feeBps = _feeBps;
-        feeRecipient = _feeRecipient;
+        feeBps = cfg.feeBps;
+        feeRecipient = cfg.feeRecipient;
+        bondBps = cfg.bondBps;
+        MIN_DELIVERY_WINDOW = cfg.minDeliveryWindow;
+        MAX_DELIVERY_WINDOW = cfg.maxDeliveryWindow;
+        REVIEW_WINDOW = cfg.reviewWindow;
+        MAX_OPEN_WINDOW = cfg.maxOpenWindow;
+        DISPUTE_WINDOW = cfg.disputeWindow;
+        SILENCE_FORFEIT_BPS = cfg.silenceForfeitBps;
+        MIN_BOUNTY = cfg.minBounty;
+    }
+
+    function _windowOk(uint32 w) private pure returns (bool) {
+        return w >= MIN_WINDOW && w <= MAX_WINDOW;
     }
 
     /// @notice Post a job, escrowing `bounty` USDC.
@@ -378,7 +483,7 @@ contract LaborMarketV2 {
         // market where the posted price is not the paid price is a market
         // nobody can price against.
         uint256 fee = (bounty * feeBps) / 10_000;
-        require(usdc.transferFrom(msg.sender, address(this), bounty + fee), "escrow: transferFrom");
+        _safeTransferFrom(msg.sender, bounty + fee);
         // The fee is CREDITED, not sent. Sending it here put a third party's
         // ability to receive on the critical path of every posting: one
         // blocklisted fee recipient and the market accepts no work at all.
@@ -450,7 +555,26 @@ contract LaborMarketV2 {
         job.worker = msg.sender;
         job.status = Status.Accepted;
         job.deliveryDeadline = uint64(block.timestamp) + job.deliveryWindow;
+
+        // Status is written BEFORE the token call, so a reentrant token that
+        // calls back into acceptJob finds a job that is no longer Open.
+        uint256 bond = bondFor(job.bounty);
+        if (bond > 0) {
+            totalEscrowed += bond;
+            _safeTransferFrom(msg.sender, bond);
+        }
         emit JobAccepted(jobId, msg.sender, score, job.deliveryDeadline);
+    }
+
+    /// @notice What a worker must stake to accept a job of this bounty, and
+    ///         therefore what it must approve to this contract first.
+    /// @dev    Derived from the bounty rather than stored, so there is no new
+    ///         struct field, no index shift for positional readers, and no
+    ///         possibility of a stored bond disagreeing with the rate that was
+    ///         charged. `bondBps` is immutable, so this answer never changes for
+    ///         a given bounty.
+    function bondFor(uint256 bounty) public view returns (uint256) {
+        return (bounty * bondBps) / 10_000;
     }
 
     /// @dev Read a worker's score without letting the registry take the market
@@ -638,6 +762,12 @@ contract LaborMarketV2 {
         } else {
             job.status = Status.Refunded;
             _credit(jobId, job.requester, job.bounty);
+            // Amount 0: the requester takes the whole bounty, and the worker
+            // gets its bond back. Losing a dispute means the work was judged
+            // bad, not that it never arrived — the bond answers only the second.
+            // Confiscating it here would punish delivering badly with the
+            // instrument built to punish not delivering at all.
+            _payWorkerSide(jobId, job, 0);
         }
         emit DisputeResolved(jobId, releaseToWorker);
     }
@@ -673,7 +803,13 @@ contract LaborMarketV2 {
 
         address formerWorker = job.worker;
         job.status = Status.Refunded;
-        _credit(jobId, job.requester, job.bounty);
+        // Bounty back, and the squatter's bond ON TOP. The only path in this
+        // contract that moves the bond to anyone but the worker, and the only
+        // one where the worker held a job through its entire delivery window and
+        // delivered nothing. No judgement is involved: the trigger is a deadline
+        // that has passed with an empty `resultHash`, which is why this needed no
+        // new privileged party and nobody to appeal to.
+        _credit(jobId, job.requester, job.bounty + bondFor(job.bounty));
         emit JobReclaimed(jobId, formerWorker);
     }
 
@@ -867,12 +1003,30 @@ contract LaborMarketV2 {
         }
         toWorker = amount - toPayee;
 
+        // The bond comes back HERE, in the single release path, for exactly the
+        // reason the payee split is here: a return that lived at each call site
+        // would be honoured on some routes and forgotten on others, which is the
+        // defect shape this function was extracted to prevent. Every transition
+        // out of `Submitted` or `Disputed` reaches this line — including
+        // `resolveDispute(false)`, which calls it with amount 0 precisely so the
+        // worker's own stake is not confiscated for losing an argument about
+        // quality. `reclaimJob` is the ONLY path that does not come through
+        // here, and it is the only path where the worker never delivered.
+        //
+        // Credited as its own leg rather than folded into `toWorker`, so the
+        // per-status events keep meaning "how the BOUNTY was split" and the
+        // `Credited` legs stay literally true about what each address received.
+        uint256 bond = bondFor(job.bounty);
+
         // Both legs are guarded inside _payOut: a zero transfer is a real
         // transfer that some tokens revert on, and stranding a settlement over
         // a zero-value leg would be the whole failure class this contract
         // exists to close.
         _credit(jobId, job.payee, toPayee);
         _credit(jobId, job.worker, toWorker);
+        // Never to the payee: the bond is the worker's own capital, so a lien on
+        // the bounty has no claim on it.
+        _credit(jobId, job.worker, bond);
     }
 
     /// @notice Collect everything settlement has credited to you.
@@ -964,6 +1118,17 @@ contract LaborMarketV2 {
     function _safeTransfer(address to, uint256 amount) private {
         (bool ok, bytes memory ret) = address(usdc).call(
             abi.encodeWithSelector(IERC20.transfer.selector, to, amount)
+        );
+        if (!ok || (ret.length != 0 && !abi.decode(ret, (bool)))) revert TransferFailed();
+    }
+
+    /// @dev The inbound twin of `_safeTransfer`, for the same reason. Pulls into
+    ///      this contract only — there is no caller-supplied destination, so it
+    ///      cannot be turned into a way to move a third party's approval
+    ///      somewhere else.
+    function _safeTransferFrom(address from, uint256 amount) private {
+        (bool ok, bytes memory ret) = address(usdc).call(
+            abi.encodeWithSelector(IERC20.transferFrom.selector, from, address(this), amount)
         );
         if (!ok || (ret.length != 0 && !abi.decode(ret, (bool)))) revert TransferFailed();
     }

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { ACCOUNTS, Chain } from './helpers/evm'
+import { ACCOUNTS, Chain, marketConfig } from './helpers/evm'
 
 /**
  * LaborMarketV2 against a token and a registry that misbehave.
@@ -62,7 +62,7 @@ async function setup(registryKind = 'TestRegistry'): Promise<Ctx> {
   const chain = await Chain.create()
   const usdc = await chain.deploy('BlocklistUSDC')
   const registry = await chain.deploy(registryKind)
-  const market = await chain.deploy('LaborMarketV2', [usdc, registry, ACCOUNTS.arbiter, FEE_BPS, ACCOUNTS.house])
+  const market = await chain.deploy('LaborMarketV2', [usdc, registry, ACCOUNTS.arbiter, marketConfig()])
   await chain.send('requester', usdc, 'BlocklistUSDC', 'mint', [ACCOUNTS.requester, BOUNTY * 100n])
   await chain.send('requester', usdc, 'BlocklistUSDC', 'approve', [market, BOUNTY * 100n])
   return { chain, usdc, registry, market }
@@ -307,7 +307,7 @@ describe('the documented approval is the approval that works', () => {
     chain = await Chain.create()
     usdc = await chain.deploy('BlocklistUSDC')
     const registry = await chain.deploy('TestRegistry')
-    market = await chain.deploy('LaborMarketV2', [usdc, registry, ACCOUNTS.arbiter, FEE_BPS, ACCOUNTS.house])
+    market = await chain.deploy('LaborMarketV2', [usdc, registry, ACCOUNTS.arbiter, marketConfig()])
     await chain.send('requester', usdc, 'BlocklistUSDC', 'mint', [ACCOUNTS.requester, BOUNTY * 10n])
   })
 
@@ -333,7 +333,7 @@ describe('the documented approval is the approval that works', () => {
   })
 
   it('is just the bounty on a zero-fee deployment, so testnets read the same way', async () => {
-    const free = await chain.deploy('LaborMarketV2', [usdc, await chain.deploy('TestRegistry'), ACCOUNTS.arbiter, 0n, ZERO])
+    const free = await chain.deploy('LaborMarketV2', [usdc, await chain.deploy('TestRegistry'), ACCOUNTS.arbiter, marketConfig({ feeBps: 0, feeRecipient: ZERO })])
     expect(await chain.call<bigint>('requester', free, 'LaborMarketV2', 'postCost', [BOUNTY])).toBe(BOUNTY)
   })
 })
@@ -460,24 +460,24 @@ describe('a deployment that cannot work should not deploy', () => {
     // returndata. It deploys fine and dies on the first real posting.
     const { chain, registry } = await fresh()
     await expect(
-      chain.deploy('LaborMarketV2', [ACCOUNTS.stranger, registry, ACCOUNTS.arbiter, 0n, ZERO]),
+      chain.deploy('LaborMarketV2', [ACCOUNTS.stranger, registry, ACCOUNTS.arbiter, marketConfig({ feeBps: 0, feeRecipient: ZERO })]),
     ).rejects.toThrow()
   })
 
   it('refuses a registry that is not a contract', async () => {
     const { chain, usdc } = await fresh()
     await expect(
-      chain.deploy('LaborMarketV2', [usdc, ACCOUNTS.stranger, ACCOUNTS.arbiter, 0n, ZERO]),
+      chain.deploy('LaborMarketV2', [usdc, ACCOUNTS.stranger, ACCOUNTS.arbiter, marketConfig({ feeBps: 0, feeRecipient: ZERO })]),
     ).rejects.toThrow()
   })
 
   it('refuses a zero arbiter, which no one could ever act as', async () => {
     const { chain, usdc, registry } = await fresh()
-    await expect(chain.deploy('LaborMarketV2', [usdc, registry, ZERO, 0n, ZERO])).rejects.toThrow()
+    await expect(chain.deploy('LaborMarketV2', [usdc, registry, ZERO, marketConfig({ feeBps: 0, feeRecipient: ZERO })])).rejects.toThrow()
   })
 
   it('accepts an EOA arbiter, which is the ordinary case', async () => {
     const { chain, usdc, registry } = await fresh()
-    expect(await chain.deploy('LaborMarketV2', [usdc, registry, ACCOUNTS.arbiter, 0n, ZERO])).toMatch(/^0x/)
+    expect(await chain.deploy('LaborMarketV2', [usdc, registry, ACCOUNTS.arbiter, marketConfig({ feeBps: 0, feeRecipient: ZERO })])).toMatch(/^0x/)
   })
 })

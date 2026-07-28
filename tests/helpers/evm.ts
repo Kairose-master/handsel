@@ -48,6 +48,51 @@ export const ACCOUNTS = {
 
 export type Account = keyof typeof ACCOUNTS
 
+/**
+ * LaborMarketV2's deploy-time `Config`.
+ *
+ * These were `constant` in the contract until a deployment needed to serve both
+ * a testnet and Base without a source edit. They are a struct rather than eleven
+ * positional arguments because `reviewWindow` and `disputeWindow` are both
+ * uint32 seconds — transposing them compiles, deploys, and passes every bounds
+ * check, and the contract is immutable.
+ *
+ * `bondBps: 0` is the default here on purpose: it is the no-bond behaviour every
+ * test in the suite was written against, so the whole existing suite goes on
+ * exercising the path a first mainnet deployment will actually run. Tests about
+ * the bond override the one field.
+ */
+export type MarketConfig = {
+  feeBps: number
+  feeRecipient: string
+  bondBps: number
+  minDeliveryWindow: number
+  maxDeliveryWindow: number
+  reviewWindow: number
+  maxOpenWindow: number
+  disputeWindow: number
+  silenceForfeitBps: number
+  minBounty: bigint
+}
+
+export const DEFAULT_CONFIG: MarketConfig = {
+  feeBps: 200,
+  feeRecipient: ACCOUNTS.house,
+  bondBps: 0,
+  minDeliveryWindow: 10 * 60,
+  maxDeliveryWindow: 30 * 24 * 3600,
+  reviewWindow: 7 * 24 * 3600,
+  maxOpenWindow: 60 * 24 * 3600,
+  disputeWindow: 14 * 24 * 3600,
+  silenceForfeitBps: 1000,
+  minBounty: 1n,
+}
+
+export const marketConfig = (overrides: Partial<MarketConfig> = {}): MarketConfig => ({
+  ...DEFAULT_CONFIG,
+  ...overrides,
+})
+
 /** ethereumjs shape: [emitter, topics, data]. */
 type RawLog = [Uint8Array, Uint8Array[], Uint8Array]
 

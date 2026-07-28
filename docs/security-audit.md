@@ -586,6 +586,68 @@ rather than by their absence of errors:
 
 ---
 
+## LaborMarketV2, adversarial round 2
+
+Six independent lenses against the rewritten contract, each finding verified by a
+skeptic told to refute it and to *execute* the attack rather than argue about it.
+Four claims died that way and are recorded below so nobody re-raises them.
+
+**No CRITICAL, no HIGH.** `usdc.balanceOf(market) == totalEscrowed +
+totalWithdrawable` holds with **equality**, not merely `>=`, at every function
+exit — across a 136-transition walk over 30 jobs and all eight terminal routes,
+and again under 85 randomized lifecycles with liens, hostile payees and clock
+jumps. Nothing double-settles, underflows, strands a wei in rounding, reenters,
+or lets one address move another's credit. The committed deploy artifact was
+confirmed byte-identical to a fresh compile of the audited source.
+
+**Every finding was the same shape, and the shape is the lesson.** Round 1 added
+five deadlines and four permissionless exits, and gave exactly ONE of them a
+matching upper-bound guard (`submitWork`'s `TooLate`). That is correct wherever
+the party keeping the power past the deadline is the deadline's own principal — a
+requester disputing late is not a silent requester, an arbiter ruling late is not
+a missing one; those were checked and deliberately left alone. It is wrong in two
+places, and **neither is a defect in any single round-1 fix. Each is a
+composition of two of them.**
+
+| # | Finding | Composition | Fix |
+|---|---|---|---|
+| V2-1 | `assignPayee` perfected a lien on a job only `reclaimJob` could settle, and `releaseSplit` — the one function a lender is told to trust — quoted `(lender, 400000, 600000)` for it. Lender withdrew `0`. | `assignPayee` × `submitWork`'s new `TooLate`: the guard turned "probably worthless collateral" into "unreachable with certainty" | `TooLate` on `assignPayee`; `releaseSplit` returns zeros for `Accepted` past `deliveryDeadline` |
+| V2-2 | A stranger could accept a 60-day-abandoned job, which shut both `expireOpen` AND the requester's own `cancelJob`, then submit junk and bank the 10% forfeit. Real token balance `0n → 100_000n`, zero stake. | `acceptJob` × `expireOpen`: the new exit did not CLOSE `Open`, and `openExpirable()` is a free public view naming exactly the absent requesters | `TooLate` on `acceptJob` |
+| V2-3 | Accepting was free and unbonded, and the non-refundable posting fee made squatting a ratchet the victim paid for: requester −100_000, house +100_000 over five cycles, squatter's balance byte-identical. | `acceptJob` × the fee: at `feeBps = 0` the same five cycles cost nothing | Worker bond, slashed to the requester by `reclaimJob` alone — see `docs/v2-plan.md` §3 |
+
+Also closed: `expireOpen` accepted phantom jobs (an unwritten slot decodes as
+`Open` with deadline `0`), letting anyone mint terminal records at arbitrary ids
+in a product whose claim is behaviour-derived credit; `withdrawTo(address(this))`
+silently burned the caller's entire balance; both token boundaries now decode
+SafeERC20-style, because a Circle upgrade returning no data would otherwise brick
+**every** withdrawal permanently, with no owner and no sweep; and `_credit` emits
+`Credited(jobId, to, amount)` — five of the eight credit-producing events omitted
+either the address or the amount, so an indexer had to replay `_payWorkerSide`'s
+`min()` waterfall off-chain and could not discover creditors at all.
+
+### Refuted — do not re-raise
+
+- **The arbiter's unbounded `resolveDispute`.** Produces a balance sheet identical
+  to a same-day ruling, runs in both directions, and `expireDispute` is a
+  permissionless door the victim holds.
+- **Unbounded `raiseDispute`.** The requester surrenders a guaranteed 90% to chase
+  10%, and the same capability already exists inside the review window anyway.
+- **`expireDispute` paying the worker side 100%.** No attacker can reach that
+  branch — `raiseDispute` is requester-only — and the 90% floor is unblockable.
+- **The registry oracle key.** Executed end to end with a stolen key: a fabricated
+  maximum score clears a `minScore` gate and buys nothing, because this contract
+  never pays on the strength of a score, only on approval, ruling, or silence.
+
+### What this round did not cover
+
+Everything ran against `@ethereumjs/vm`, not a fork of Base. Nothing here proves
+anything about real USDC's behaviour, real sequencer timestamp granularity, L2
+reorg depth, or gas under real Base conditions. That is the ground an external
+auditor with a forked-mainnet harness should cover, and it is the argument for
+buying one now that these fixes have landed.
+
+---
+
 ## Re-running this
 
 The findings came from questions, not tools. To repeat the audit, ask these of

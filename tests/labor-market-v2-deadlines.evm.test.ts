@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { ACCOUNTS, Chain } from './helpers/evm'
+import { ACCOUNTS, Chain, marketConfig } from './helpers/evm'
 
 /**
  * The deadline lattice — a deadline is only worth what the guard on it is worth.
@@ -62,7 +62,7 @@ beforeEach(async () => {
   const chain = await Chain.create()
   const usdc = await chain.deploy('TestUSDC')
   const registry = await chain.deploy('TestRegistry')
-  const market = await chain.deploy('LaborMarketV2', [usdc, registry, ACCOUNTS.arbiter, FEE_BPS, ACCOUNTS.house])
+  const market = await chain.deploy('LaborMarketV2', [usdc, registry, ACCOUNTS.arbiter, marketConfig()])
   await chain.send('requester', usdc, 'TestUSDC', 'mint', [ACCOUNTS.requester, BOUNTY * 100n])
   await chain.send('requester', usdc, 'TestUSDC', 'approve', [market, BOUNTY * 100n])
   ctx = { chain, usdc, market }

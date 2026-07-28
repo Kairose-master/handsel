@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { ACCOUNTS, Chain, artifacts } from './helpers/evm'
+import { ACCOUNTS, Chain, artifacts, marketConfig } from './helpers/evm'
 
 /**
  * LaborMarketV2 exercised in a real EVM.
@@ -46,7 +46,7 @@ async function setup(): Promise<Ctx> {
   const chain = await Chain.create()
   const usdc = await chain.deploy('TestUSDC')
   const registry = await chain.deploy('TestRegistry')
-  const market = await chain.deploy('LaborMarketV2', [usdc, registry, ACCOUNTS.arbiter, FEE_BPS, ACCOUNTS.house])
+  const market = await chain.deploy('LaborMarketV2', [usdc, registry, ACCOUNTS.arbiter, marketConfig()])
   await chain.send('requester', usdc, 'TestUSDC', 'mint', [ACCOUNTS.requester, BOUNTY * 100n])
   await chain.send('requester', usdc, 'TestUSDC', 'approve', [market, BOUNTY * 100n])
   return { chain, usdc, registry, market }
@@ -949,7 +949,7 @@ describe('the protocol fee', () => {
   it('is capped in the constructor, because immutable means permanent', async () => {
     const { chain, usdc, registry } = await freshChain()
     await expect(
-      chain.deploy('LaborMarketV2', [usdc, registry, ACCOUNTS.arbiter, 501n, ACCOUNTS.house]),
+      chain.deploy('LaborMarketV2', [usdc, registry, ACCOUNTS.arbiter, marketConfig({ feeBps: 501 })]),
     ).rejects.toThrow()
   })
 
@@ -958,13 +958,13 @@ describe('the protocol fee', () => {
     // symptom is revenue that never arrives.
     const { chain, usdc, registry } = await freshChain()
     await expect(
-      chain.deploy('LaborMarketV2', [usdc, registry, ACCOUNTS.arbiter, 200n, ZERO]),
+      chain.deploy('LaborMarketV2', [usdc, registry, ACCOUNTS.arbiter, marketConfig({ feeBps: 200, feeRecipient: ZERO })]),
     ).rejects.toThrow()
   })
 
   it('allows a zero fee with no recipient — that is the testnet deployment', async () => {
     const { chain, usdc, registry } = await freshChain()
-    const market = await chain.deploy('LaborMarketV2', [usdc, registry, ACCOUNTS.arbiter, 0n, ZERO])
+    const market = await chain.deploy('LaborMarketV2', [usdc, registry, ACCOUNTS.arbiter, marketConfig({ feeBps: 0, feeRecipient: ZERO })])
     await chain.send('requester', usdc, 'TestUSDC', 'mint', [ACCOUNTS.requester, BOUNTY])
     await chain.send('requester', usdc, 'TestUSDC', 'approve', [market, BOUNTY])
     await chain.send('requester', market, 'LaborMarketV2', 'postJob', [BOUNTY, 0n, SPEC, WINDOW])

@@ -518,10 +518,49 @@ chargebacks are on the "do not build" list. Slashing has to fire on conditions
 that are verifiable on-chain: a resolved dispute, an expired deadline, a
 reclaim. Anything requiring judgment cannot be a slashing trigger in v2.
 
-Until that is answered, the bond is designed and not built. **Shipping a
-slashable bond with an operator-controlled slash would be strictly worse than
-the current fee**, because it would look like a trustless mechanism and be a
-discretionary one.
+**BUILT, and the slash question is answered: `reclaimJob` slashes.** Nobody
+decides. The trigger is a delivery deadline that passed with an empty
+`resultHash` — already permissionless, already purely mechanical, already the
+one transition that means *the worker took the job and delivered nothing*. There
+is no judgement in it, no new privileged party, and nobody to appeal to, which
+is exactly the bar this section set.
+
+`bondBps` is a deploy-time immutable, bounded by `MAX_BOND_BPS = 2000`, and
+`bondFor(bounty)` is a public view so a worker can read what to approve.
+
+**The rule, in one line: the bond returns to the worker on every path out of
+`Submitted` or `Disputed`, and `reclaimJob` alone slashes it to the requester.**
+That asymmetry is the mechanism. Losing a dispute means the work was judged bad;
+only a reclaim means it never arrived, and the bond answers the second question
+only — so `resolveDispute(false)` deliberately calls `_payWorkerSide(jobId, job,
+0)` to hand the stake back to a worker who just lost. Confiscating it there would
+punish delivering badly with the instrument built to punish absence. The return
+lives inside `_payWorkerSide`, the single release path, for the same reason the
+payee split does: a return written at each call site is one that gets honoured on
+some routes and forgotten on others.
+
+**What forced it now.** Accepting was free, and the non-refundable posting fee
+turned that into a grief the VICTIM paid for. A squatter took any
+`minScore == 0` job and never delivered; `cancelJob` is Open-only so the
+requester had no exit and waited out the whole delivery window; `reclaimJob`
+returned the bounty but not the fee, and `Refunded` is terminal with no path back
+to `Open`, so reposting paid the fee again. Five cycles at a 1_000_000 bounty and
+200bps measured requester −100_000, house +100_000, and the squatter's token
+balance byte-identical. At `feeBps = 0` the same five cycles cost nothing, which
+isolates the cause exactly: **the fee converted a time-only grief into a money
+grief that scales with the bounty while the attacker's cost stays one transaction
+of gas.** The only prior on-chain defence was `minScore > 0`, which by this
+product's own cold-start rule excludes every honest new worker — so a requester
+chose between being griefed and killing its own supply side.
+
+**What it costs, and why the first deployment ships at zero.** A worker now needs
+capital to accept work. On a market whose scarce side is supply, that is a real
+price, and `bondBps = 0` turns the entire mechanism off with behaviour identical
+to before it existed — a worker with no capital at all can still accept, deliver
+and be paid. That is the right first Base deployment; turn the bond on when there
+is enough supply to bear it. Note the honest limit §Testnet already makes: on a
+mint-your-own testnet an attacker mints its own bond, so until real USDC this is
+a rehearsal, not a deterrent.
 
 ### 4. Schema, not contract — store the contract address
 
@@ -813,10 +852,12 @@ looked at" are different things.
 1. Fork repo → new Vercel project + new Neon DB.
 2. Schema: `(contractAddress, jobId)` everywhere. Cheap now, expensive later —
    and it is what lets one deployment address two chains at all.
-3. Contracts: **`reclaimJob` first**, then `assignPayee`. Bond deferred pending
-   the slashing question. `reclaimJob` is the gate: until it exists, recovery
-   requires operator custody, and mainnet is off the table for that reason
-   alone.
+3. Contracts: **`reclaimJob` first**, then `assignPayee`, then the bond — and in
+   that order because `reclaimJob` turned out to BE the answer to the slashing
+   question, not merely a prerequisite for it. `reclaimJob` is the gate twice
+   over: until it exists, recovery requires operator custody and mainnet is off
+   the table for that reason alone; and until it exists there is no
+   judgement-free slash trigger, so a bond could only have been discretionary.
 4. **Proof import from v1 by signature only, v1's DB treated as untrusted.**
    This is the thesis test; if it fails, stop and fix the thesis, not the code.
 5. **Meter the paymaster before anything on mainnet can be triggered by a

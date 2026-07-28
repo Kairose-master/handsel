@@ -270,15 +270,74 @@ describe('the protocol fee', () => {
     }
   })
 
-  it('takes both at construction', () => {
+  it('takes the addresses positionally and every number by name', () => {
+    // The three addresses stay positional because they are distinct types that
+    // a wrong order would not survive. Every NUMBER moved into a struct, and
+    // this is the assertion that makes the struct worth having: `reviewWindow`
+    // and `disputeWindow` are both uint32 seconds, so transposing them
+    // compiles, deploys, and passes every bounds check the constructor runs.
+    // The contract is immutable, so that transposition is permanent.
+    //
+    // Pinning the ORDER here as well as the names is deliberate. A deploy
+    // script that builds the struct positionally is still possible, so a
+    // reordering of these fields must break something loudly at CI time rather
+    // than quietly at deploy time.
     const ctor = abi.find((e) => e.type === 'constructor')
-    expect((ctor?.inputs ?? []).map((i) => i.name)).toEqual([
-      '_usdc',
-      '_registry',
-      '_arbiter',
-      '_feeBps',
-      '_feeRecipient',
+    const inputs = ctor?.inputs ?? []
+    expect(inputs.map((i) => i.name)).toEqual(['_usdc', '_registry', '_arbiter', 'cfg'])
+
+    const cfg = inputs[3] as { components?: { name: string; type: string }[] }
+    expect((cfg.components ?? []).map((c) => `${c.name}:${c.type}`)).toEqual([
+      'feeBps:uint16',
+      'feeRecipient:address',
+      'bondBps:uint16',
+      'minDeliveryWindow:uint32',
+      'maxDeliveryWindow:uint32',
+      'reviewWindow:uint32',
+      'maxOpenWindow:uint32',
+      'disputeWindow:uint32',
+      'silenceForfeitBps:uint16',
+      'minBounty:uint256',
     ])
+  })
+
+  it('still has no setter for anything the constructor fixed', () => {
+    // The windows became constructor arguments; they must not have become
+    // MUTABLE on the way. Configurable-per-deployment and configurable-after-
+    // deployment are different properties, and only the first one was wanted.
+    for (const name of [
+      'REVIEW_WINDOW',
+      'DISPUTE_WINDOW',
+      'MAX_OPEN_WINDOW',
+      'MIN_DELIVERY_WINDOW',
+      'MAX_DELIVERY_WINDOW',
+      'SILENCE_FORFEIT_BPS',
+      'MIN_BOUNTY',
+      'bondBps',
+    ]) {
+      expect(fn(name)?.stateMutability, `${name} should be a view`).toBe('view')
+    }
+    for (const setter of [
+      'setReviewWindow',
+      'setDisputeWindow',
+      'setWindows',
+      'setBondBps',
+      'setForfeit',
+      'setMinBounty',
+      'setConfig',
+    ]) {
+      expect(has('function', setter), `${setter} must not exist`).toBe(false)
+    }
+  })
+
+  it('prices the worker bond, and publishes its ceiling', () => {
+    // Accepting used to be free, which the non-refundable posting fee turned
+    // into a grief the victim paid for: measured at requester −100_000 and
+    // house +100_000 over five cycles, with the squatter's balance unchanged.
+    expect(fn('bondFor')?.stateMutability).toBe('view')
+    expect(fn('MAX_BOND_BPS')?.stateMutability).toBe('view')
+    expect(has('error', 'BondTooHigh')).toBe(true)
+    expect(has('error', 'ForfeitTooHigh')).toBe(true)
   })
 
   it('publishes its own ceiling, and refuses to exceed it', () => {
