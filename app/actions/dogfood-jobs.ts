@@ -120,6 +120,9 @@ export async function postTestSuiteJobs() {
         description: testSuiteJobDescription(suite),
         acceptanceCriteria: testSuiteJobAcceptanceCriteria(suite),
         requesterAgentId: houseAgentId,
+        // The binding recorded explicitly, by the code that chose it. Never
+        // re-derived from the title, which anyone can write.
+        testSuiteSlug: suite.slug,
         autoApprove: true, // mutation grading is mechanical — pass releases escrow
       })
       await postJob(houseAgentId, TESTS_JOB_BOUNTY_USD, TESTS_JOB_MIN_SCORE, specHash)

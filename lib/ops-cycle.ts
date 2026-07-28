@@ -77,6 +77,23 @@ export const OPS_STEPS: OpsStep[] = [
     },
   },
   {
+    // The ONLY thing on a V2 market that resolves a dispute — and it never
+    // decides one. It opens and closes a dispute in the same pass, and only
+    // when a refund is derivable from evidence the requester did not author.
+    // Everything else settles on a deadline, which pays the worker.
+    //
+    // Deliberately AFTER `deadlines` and sharing nothing with it. If this step
+    // throws on every pass, expireReview and expireDispute still settle
+    // everything; the policy layer is allowed to be broken because the backstop
+    // is not inside it. Capped at MAX_RULINGS_PER_PASS.
+    name: 'disputeGate',
+    fast: true,
+    run: async () => {
+      const { settleDisputes } = await import('@/lib/dispute-gate')
+      return settleDisputes()
+    },
+  },
+  {
     // The four permissionless exits, finally called by something.
     //
     // LaborMarketV2 grew expireOpen/reclaimJob/expireReview/expireDispute —

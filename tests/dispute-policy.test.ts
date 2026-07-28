@@ -32,6 +32,17 @@ const ALLOWED_UNGATED = new Set([
   'lib/dispute-policy.ts', // the guard
 ])
 
+/**
+ * The one file allowed to resolve a dispute ON a V2 market.
+ *
+ * Every other machine path stands down there; this one is the replacement, and
+ * it may only refund on grounds the requester did not author. Naming it here
+ * rather than exempting it silently is the point — "exactly one sanctioned
+ * resolver" is the property, and a second one appearing must be a decision
+ * somebody makes on purpose.
+ */
+const V2_GATE = 'lib/dispute-gate.ts'
+
 function walk(dir: string): string[] {
   const out: string[] = []
   for (const entry of readdirSync(dir)) {
@@ -53,8 +64,32 @@ describe('nothing off-chain resolves a dispute without asking first', () => {
     expect(callers.length).toBeGreaterThan(0)
   })
 
-  it.each(callers)('%s consults offchainMayResolveDisputes', (file) => {
+  it.each(callers.filter((f) => f !== V2_GATE))('%s consults offchainMayResolveDisputes', (file) => {
     expect(readFileSync(file, 'utf8')).toContain('offchainMayResolveDisputes')
+  })
+
+  it('has exactly one sanctioned V2 resolver, and it is the gate', () => {
+    // The V1 paths stand down on V2; this is what replaces them. A second file
+    // resolving disputes on V2 would recreate the original defect — several
+    // independent deciders, with whichever runs most often becoming the policy.
+    expect(callers).toContain(V2_GATE)
+    const v2Resolvers = callers.filter((f) => !readFileSync(f, 'utf8').includes('offchainMayResolveDisputes'))
+    expect(v2Resolvers).toEqual([V2_GATE])
+  })
+
+  it('the gate only ever refunds — it never resolves toward the worker', () => {
+    // resolveDispute(id, true) and expireDispute(id) pay identical money, so
+    // the gate has no reason to ever call the first: silence already does it.
+    // A `true` here would be the gate claiming an authority it does not need.
+    //
+    // Read the CODE, not the file. The first version of this matched the
+    // doc comment that explains why the `true` form is unnecessary — a guard
+    // that fires on the sentence describing the rule is not checking the rule.
+    const code = readFileSync(V2_GATE, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '')
+    expect(code).toMatch(/resolveDispute\([^)]*,\s*false\s*\)/)
+    expect(code).not.toMatch(/resolveDispute\([^)]*,\s*true\s*\)/)
   })
 
   it('reports standing down, rather than looking like it found nothing', () => {

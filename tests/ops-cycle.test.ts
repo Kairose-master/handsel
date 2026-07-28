@@ -3,6 +3,7 @@ import { OPS_STEPS, TRAFFIC_TICK_INTERVAL_MS } from '@/lib/ops-cycle'
 import { DRAIN_BATCH } from '@/lib/callback/settlement-drain'
 import { RECONCILE_MAX_LOOKUPS } from '@/lib/bounty-reconcile'
 import { MAX_EXITS_PER_PASS } from '@/lib/deadlines'
+import { MAX_RULINGS_PER_PASS } from '@/lib/dispute-gate'
 
 // The cron and ordinary traffic run the SAME step list; these pin the
 // properties that keep the two entry points honest.
@@ -32,11 +33,12 @@ describe('OPS_STEPS', () => {
     // A count is a proxy for time, and a weak one — but it still catches the
     // drift it was written for, which is "everything looks urgent, so mark it
     // all fast". Raised from 8 to 10 when settlementQueue and bountyReconcile
-    // landed, and to 11 for `deadlines`. Every raise has carried the same
+    // landed, then 11 for `deadlines` and 12 for `disputeGate`. Every raise
+    // has carried the same
     // justification, and it is CHECKED below rather than asserted here: the
     // step frees escrow a visitor can feel, and it is capped by a constant it
     // owns.
-    expect(OPS_STEPS.filter((s) => s.fast).length).toBeLessThanOrEqual(11)
+    expect(OPS_STEPS.filter((s) => s.fast).length).toBeLessThanOrEqual(12)
   })
 
   it('bounds the expensive fast steps by a cap they control', () => {
@@ -50,11 +52,13 @@ describe('OPS_STEPS', () => {
     expect(fast).toContain('settlementQueue') // DRAIN_BATCH = 2
     expect(fast).toContain('bountyReconcile') // RECONCILE_MAX_LOOKUPS = 5
     expect(fast).toContain('deadlines') // MAX_EXITS_PER_PASS = 3
+    expect(fast).toContain('disputeGate') // MAX_RULINGS_PER_PASS = 3
     expect(DRAIN_BATCH).toBeLessThanOrEqual(5)
     expect(RECONCILE_MAX_LOOKUPS).toBeLessThanOrEqual(10)
     // Each exit is a sponsored UserOp costing the operator real gas, so this
     // cap is tighter than the others by a category, not by a preference.
     expect(MAX_EXITS_PER_PASS).toBeLessThanOrEqual(3)
+    expect(MAX_RULINGS_PER_PASS).toBeLessThanOrEqual(3)
   })
 
   it('ticks traffic no more than once every five minutes', () => {

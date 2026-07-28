@@ -387,6 +387,18 @@ export const jobSpec = pgTable('job_specs', {
   // Auto-graded code jobs: requester-authored Python asserts run against the
   // worker's submitted code by the PLATFORM runtime (grader ≠ solver).
   testCode: text('test_code'),
+  /**
+   * The platform-authored grader bound to this job, written ONLY by the code
+   * that posts a catalog job — never derived from anything a requester supplies.
+   *
+   * `resolveTestSuiteSpec(title)` infers the same binding from a job TITLE, and
+   * a title is user-supplied: anyone could name a job `tests → <slug>:` and be
+   * graded by a platform reference implementation aimed at unrelated work. That
+   * is harmless while a grader verdict only advises, and it is a forgeable
+   * refund the moment a verdict can move escrow — see `authorOfRule`. This
+   * column is the non-forgeable version of the same fact.
+   */
+  testSuiteSlug: text('test_suite_slug'),
   testResult: jsonb('test_result').$type<{ passed: boolean | null; output: string; gradedAt: string }>(),
   // Requester's explicit, authenticated-at-posting-time consent to release
   // escrow automatically on a passing verdict, with no further approval

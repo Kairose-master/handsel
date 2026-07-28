@@ -149,3 +149,135 @@ export function decideAutoRelease(input: {
     reason: (out?.reason as string) ?? 'no matching rule — held for review',
   }
 }
+
+// ---------------------------------------------------------------------------
+// The refund gate
+// ---------------------------------------------------------------------------
+
+/**
+ * Who authored the rule that produced a verdict.
+ *
+ * This is the whole distinction the gate turns on, so it is its own function
+ * with its own tests. A requester writes `acceptanceCriteria` and `testCode`
+ * freely at post time; the platform writes the mutation-graded catalog
+ * implementations. Both produce a pass/fail that looks identical downstream.
+ */
+export type RuleAuthor = 'requester' | 'platform'
+
+/**
+ * The grounds on which escrow may be returned to a requester without anyone
+ * deciding anything.
+ *
+ * Every one is a fact about BYTES rather than about quality, and none can be
+ * manufactured by the party the refund pays. That is the constraint; the four
+ * rows are just what survives it.
+ */
+export type RefundGround =
+  | 'NO_DELIVERABLE'
+  | 'SUBSTITUTED'
+  | 'WRONG_KIND'
+  | 'PLATFORM_TESTS_FAIL'
+  | 'NONE'
+
+export type RefundDecision = 'refund' | 'no_refund'
+
+export const REFUND_GATE_TABLE: DecisionTable = {
+  name: 'Dispute refund gate',
+  hitPolicy: 'FIRST',
+  inputs: [
+    { key: 'hasDeliverable', label: 'Any output or artifact at all', type: 'boolean' },
+    { key: 'hashMismatch', label: 'Delivered bytes ≠ committed hash', type: 'string' },
+    { key: 'kindMismatch', label: 'Artifact type ≠ sealed brief', type: 'string' },
+    { key: 'platformVerdict', label: 'Platform-authored grader', type: 'string' },
+  ],
+  outputs: [
+    { key: 'decision', label: 'Decision' },
+    { key: 'ground', label: 'Ground' },
+    { key: 'reason', label: 'Why' },
+  ],
+  rules: [
+    // Nothing arrived. A fact about bytes; nobody's opinion is involved.
+    { when: ['false', '-', '-', '-'], then: ['refund', 'NO_DELIVERABLE', 'no output and no artifact was ever submitted'] },
+    // The bytes are not the bytes that were committed on-chain. Only asserted
+    // when BOTH hashes are present and differ — a fetch failure is 'unknown',
+    // never 'yes', so an unreachable artifact can never buy a refund.
+    { when: ['-', 'yes', '-', '-'], then: ['refund', 'SUBSTITUTED', 'the delivered bytes do not match the hash committed on-chain'] },
+    // The deliverable is a different KIND than the sealed brief asked for.
+    // Requires the brief hash to verify, so legacy rows report 'unknown'.
+    { when: ['-', '-', 'yes', '-'], then: ['refund', 'WRONG_KIND', 'the artifact type contradicts the deliverable kind in the sealed brief'] },
+    // The only quality signal admitted, and only because the platform wrote it.
+    { when: ['-', '-', '-', 'fail'], then: ['refund', 'PLATFORM_TESTS_FAIL', 'the platform-authored reference tests failed'] },
+    // Fall-through. Note where it lands: decideAutoRelease falls through to
+    // `manual_review`, a state that needs a person. This falls through to a
+    // state that needs NOBODY — the review deadline settles it.
+    { when: ['-', '-', '-', '-'], then: ['no_refund', 'NONE', 'no ground that the requester did not author — the deadline decides'] },
+  ],
+}
+
+/**
+ * Whether a dispute refunds, and on what ground.
+ *
+ * **The invariant, and it is one line: a verdict may never move money toward
+ * the party who authored the rule that produced it.**
+ *
+ * A requester's own `acceptanceCriteria` failing, their own `testCode` failing,
+ * their own repo CI failing — all of it stays advisory. It still blocks
+ * auto-release and it still scores the worker, exactly as before. It just never
+ * moves escrow back toward the party that wrote it. Without that line, a
+ * requester writes a rule nothing can satisfy, collects the finished work
+ * off-chain the moment it is submitted, and takes the money back too.
+ *
+ * Everything unknown degrades toward `no_refund`, never toward `refund`. An
+ * artifact that cannot be fetched, a legacy spec hash that cannot be verified,
+ * a grader that never ran: none of them are evidence of anything, and the
+ * deadline is a perfectly good answer.
+ */
+export function decideRefund(input: {
+  hasDeliverable: boolean
+  /** 'yes' only when both hashes are present AND differ. */
+  hashMismatch?: 'yes' | 'no' | 'unknown'
+  /** 'yes' only when the brief hash verified AND the kind contradicts it. */
+  kindMismatch?: 'yes' | 'no' | 'unknown'
+  /** The grader verdict, and who wrote the rule behind it. */
+  verdict?: 'pass' | 'fail' | 'pending'
+  ruleAuthor?: RuleAuthor
+}): { decision: RefundDecision; ground: RefundGround; reason: string } {
+  // The invariant, enforced HERE rather than in the table, because a table row
+  // is a thing someone can add without noticing what it implies.
+  const platformVerdict = input.ruleAuthor === 'platform' ? (input.verdict ?? 'pending') : 'pending'
+
+  const out = evaluate(REFUND_GATE_TABLE, {
+    hasDeliverable: input.hasDeliverable,
+    hashMismatch: input.hashMismatch ?? 'unknown',
+    kindMismatch: input.kindMismatch ?? 'unknown',
+    platformVerdict,
+  })
+  return {
+    decision: (out?.decision as RefundDecision) ?? 'no_refund',
+    ground: (out?.ground as RefundGround) ?? 'NONE',
+    reason: (out?.reason as string) ?? 'no matching rule — the deadline decides',
+  }
+}
+
+/**
+ * Who wrote the rule behind this job's grader verdict.
+ *
+ * The only thing that may answer 'platform' is an explicit binding recorded by
+ * the code that CHOSE it (`testSuiteSlug`). Everything else is the requester's:
+ * `acceptanceCriteria` and `testCode` are free text they supply at post time,
+ * and `lib/text-grading.ts` interpolates the criteria raw into the grader's
+ * prompt with a system prompt saying those criteria ARE the contract.
+ *
+ * Deliberately NOT `resolveTestSuiteSpec(spec.title)`, which infers the same
+ * binding from a TITLE. A title is user-supplied — anyone can name a job
+ * `tests → <slug>:` and be graded by a platform reference implementation aimed
+ * at unrelated work, which fails, which under this gate would refund them. The
+ * inference is harmless while a verdict only advises and is a forgeable refund
+ * the moment a verdict can move escrow.
+ *
+ * Unlabelled means requester. Fail closed: "I do not know who wrote this rule"
+ * reads as "not the platform".
+ */
+export function authorOfRule(spec: { testSuiteSlug?: string | null }): RuleAuthor {
+  return spec.testSuiteSlug ? 'platform' : 'requester'
+}
