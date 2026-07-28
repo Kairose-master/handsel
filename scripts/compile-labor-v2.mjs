@@ -36,6 +36,10 @@ const input = {
   sources: { [SOURCE]: { content: readFileSync(SOURCE, 'utf8') } },
   settings: {
     optimizer: { enabled: true, runs: 200 },
+    // The IR pipeline, because the `jobs` public getter returns fourteen
+    // fields and the legacy codegen runs out of stack slots generating it.
+    // Adding a struct member should not be a refactor.
+    viaIR: true,
     outputSelection: { '*': { '*': ['abi', 'evm.bytecode.object'] } },
   },
 }

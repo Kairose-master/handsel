@@ -313,6 +313,52 @@ Two smaller things found in the same pass, both fixed:
 Still open, and unchanged: **not deployed, not externally audited.** Written and
 tested is not audited, and this is still where an external audit should start.
 
+**R9 — ~~`Open` was a fourth stall with no permissionless exit.~~ Fixed.**
+Found by three of six audit lenses independently, and it is the worst finding
+of the pass: `cancelJob` is requester-only, so a job nobody accepted whose
+requester lost its key held escrow **forever**, with no deadline and no exit.
+Measured at ten simulated years — `reclaimJob`, `expireReview` and
+`expireDispute` all `WrongStatus()`, `cancelJob` `NotRequester()`, escrow
+intact.
+
+R1, in the state **every job starts in**, and which nobody examined because it
+is where jobs are supposed to wait. It also falsified the migration claim in
+`docs/v2-plan.md`: "deploy v3, stop posting, wait 51 days" summed the
+delivery/review/dispute chain and silently assumed acceptance. A test pinned
+that bound and passed, because it measured the path being thought about.
+
+`expireOpen` is permissionless after `MAX_OPEN_WINDOW` (60 days), and the
+worst-case lifetime is now 111 days. The test that pinned the bound no longer
+sums windows: it enumerates the four money-holding states against the status
+enum and requires each to expose a readable deadline. **A sum computed from the
+states you remembered is how this was missed in the first place.**
+
+**R10 — ~~A worker could submit after its deadline.~~ Fixed.**
+`submitWork` had no deadline guard, so the deadline meant only "the moment
+somebody else MAY reclaim". A worker a month late could still submit first,
+move the job to `Submitted`, restart a seven-day review clock, and put the
+requester on the hook to actively dispute or forfeit a tenth — to a worker that
+had already failed. The requester would be defending against a deadline that
+had already passed in its favour. Now the race has one answer instead of two:
+before the deadline only `submitWork` can win, after it only `reclaimJob` can.
+
+**R11 — ~~The lender views answered for states they no longer governed.~~
+Fixed.**
+`releaseSplit` and `expirySplit` read `payee`/`payeeAmount` straight out of
+storage, which a settled job still has, so a lender asking "what am I owed"
+about a job that paid out days ago got a live-looking claim. These functions
+exist precisely so a lender does not reconstruct the answer — *"a lender that
+reimplements it is a lender that can get it wrong"* — so a confidently wrong
+answer is worse than no function. Both are status-aware now; a settled claim
+lives in `withdrawable`.
+
+**R12 — ~~A broken deployment deployed successfully.~~ Fixed.**
+The constructor validated only the fee. A token or registry that was an EOA or
+`address(0)` deployed fine and reverted on the first `transferFrom` — i.e. once
+real money was involved and the address had been published. Every address here
+is immutable, so a wrong one is not a bug to fix, it is a contract to redeploy.
+Now checked for code, and `arbiter` for non-zero.
+
 **R6 — ~~Settlement could be frozen by the token, not by the state machine.~~
 Fixed.**
 Every payout was a push inside the settling transaction. Base USDC is

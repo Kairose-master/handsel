@@ -337,3 +337,147 @@ describe('the documented approval is the approval that works', () => {
     expect(await chain.call<bigint>('requester', free, 'LaborMarketV2', 'postCost', [BOUNTY])).toBe(BOUNTY)
   })
 })
+
+describe('Open was the fourth stall', () => {
+  /**
+   * A job nobody accepts, whose requester is gone. `cancelJob` is
+   * requester-only, so before `expireOpen` this held escrow forever with no
+   * deadline and no permissionless exit — R1, in the state every job STARTS in
+   * and which nobody examined because it is where jobs are supposed to wait.
+   *
+   * Measured at ten simulated years: reclaimJob, expireReview and
+   * expireDispute all WrongStatus(); cancelJob NotRequester(); escrow intact.
+   */
+  const OPEN_WINDOW = 60 * 24 * 3600
+
+  it('has a permissionless exit now, and a stranger can drive it', async () => {
+    const id = await post()
+    ctx.chain.advance(OPEN_WINDOW)
+    await send('stranger', 'expireOpen', [id])
+    expect(await claimable(ACCOUNTS.requester)).toBe(BOUNTY)
+  })
+
+  it('does not fire early — a job waiting for the right worker is doing its job', async () => {
+    const id = await post()
+    ctx.chain.advance(OPEN_WINDOW - 1)
+    expect(await fails('stranger', 'expireOpen', [id])).toContain('TooEarly')
+  })
+
+  it('is readable before it is callable', async () => {
+    const id = await post()
+    const ready = () => ctx.chain.call<boolean>('stranger', ctx.market, 'LaborMarketV2', 'openExpirable', [id])
+    expect(await ready()).toBe(false)
+    ctx.chain.advance(OPEN_WINDOW)
+    expect(await ready()).toBe(true)
+  })
+
+  it('settles to Expired, not Refunded — no worker was ever involved', async () => {
+    // Refunded is the state that means a worker was judged, or failed to
+    // deliver. Here there is nothing for the credit engine to score.
+    const id = await post()
+    ctx.chain.advance(OPEN_WINDOW)
+    await send('stranger', 'expireOpen', [id])
+    expect(Number((await ctx.chain.call<unknown[]>('stranger', ctx.market, 'LaborMarketV2', 'jobs', [id]))[4])).toBe(7)
+  })
+
+  it('cannot be replayed', async () => {
+    const id = await post()
+    ctx.chain.advance(OPEN_WINDOW)
+    await send('stranger', 'expireOpen', [id])
+    expect(await fails('stranger', 'expireOpen', [id])).toContain('WrongStatus')
+  })
+
+  it('does not reach a job somebody accepted', async () => {
+    const id = await post()
+    await send('worker', 'acceptJob', [id])
+    ctx.chain.advance(OPEN_WINDOW)
+    expect(await fails('stranger', 'expireOpen', [id])).toContain('WrongStatus')
+  })
+
+  it('closes the hole in the migration claim', async () => {
+    // "Deploy v3, stop posting to v2, wait" terminates only if EVERY job dies
+    // of old age. A job that is never accepted never enters the
+    // delivery/review/dispute chain at all, so the old 51-day bound was
+    // measured on a path this job never takes.
+    const id = await post()
+    ctx.chain.advance(10 * 365 * 24 * 3600) // ten years, requester long gone
+    await send('stranger', 'expireOpen', [id])
+    await send('requester', 'withdraw')
+    expect(await ctx.chain.call<bigint>('stranger', ctx.market, 'LaborMarketV2', 'totalEscrowed')).toBe(0n)
+  })
+})
+
+describe('the views do not answer for states they no longer govern', () => {
+  it('releaseSplit reports nothing once the job has settled', async () => {
+    // A settled job still has a payee and a payeeAmount in storage. Reporting
+    // them tells a lender it has a live claim on money paid out days ago — and
+    // this function exists precisely so a lender does not reconstruct the
+    // answer, so a confidently wrong answer is worse than no function.
+    const id = await post()
+    await send('worker', 'acceptJob', [id])
+    await send('worker', 'assignPayee', [id, ACCOUNTS.lender, BOUNTY / 2n])
+
+    const live = await ctx.chain.call<unknown[]>('lender', ctx.market, 'LaborMarketV2', 'releaseSplit', [id])
+    expect(live[1]).toBe(BOUNTY / 2n)
+
+    await send('worker', 'submitWork', [id, RESULT])
+    await send('requester', 'approveJob', [id])
+
+    const dead = await ctx.chain.call<unknown[]>('lender', ctx.market, 'LaborMarketV2', 'releaseSplit', [id])
+    expect(dead[0]).toBe(ZERO)
+    expect(dead[1]).toBe(0n)
+    expect(dead[2]).toBe(0n)
+    // The claim did not vanish — it moved to where an already-settled claim lives.
+    expect(await claimable(ACCOUNTS.lender)).toBe(BOUNTY / 2n)
+  })
+
+  it('expirySplit prices silence only while silence is still possible', async () => {
+    const id = await post()
+    const beforeDelivery = await ctx.chain.call<unknown[]>('requester', ctx.market, 'LaborMarketV2', 'expirySplit', [id])
+    expect(beforeDelivery[0]).toBe(0n) // nothing to be silent about yet
+
+    await send('worker', 'acceptJob', [id])
+    await send('worker', 'submitWork', [id, RESULT])
+    const awaitingReview = await ctx.chain.call<unknown[]>('requester', ctx.market, 'LaborMarketV2', 'expirySplit', [id])
+    expect(awaitingReview[0]).toBe(BOUNTY - FORFEIT)
+
+    await send('requester', 'approveJob', [id])
+    const settled = await ctx.chain.call<unknown[]>('requester', ctx.market, 'LaborMarketV2', 'expirySplit', [id])
+    expect(settled[0]).toBe(0n)
+  })
+})
+
+describe('a deployment that cannot work should not deploy', () => {
+  // Every address here is immutable, so a wrong one is not a bug to fix — it is
+  // a contract to redeploy, after the address has been published.
+  const fresh = async () => {
+    const chain = await Chain.create()
+    return { chain, usdc: await chain.deploy('TestUSDC'), registry: await chain.deploy('TestRegistry') }
+  }
+
+  it('refuses a token that is not a contract', async () => {
+    // An EOA does not revert on transferFrom — the call succeeds with empty
+    // returndata. It deploys fine and dies on the first real posting.
+    const { chain, registry } = await fresh()
+    await expect(
+      chain.deploy('LaborMarketV2', [ACCOUNTS.stranger, registry, ACCOUNTS.arbiter, 0n, ZERO]),
+    ).rejects.toThrow()
+  })
+
+  it('refuses a registry that is not a contract', async () => {
+    const { chain, usdc } = await fresh()
+    await expect(
+      chain.deploy('LaborMarketV2', [usdc, ACCOUNTS.stranger, ACCOUNTS.arbiter, 0n, ZERO]),
+    ).rejects.toThrow()
+  })
+
+  it('refuses a zero arbiter, which no one could ever act as', async () => {
+    const { chain, usdc, registry } = await fresh()
+    await expect(chain.deploy('LaborMarketV2', [usdc, registry, ZERO, 0n, ZERO])).rejects.toThrow()
+  })
+
+  it('accepts an EOA arbiter, which is the ordinary case', async () => {
+    const { chain, usdc, registry } = await fresh()
+    expect(await chain.deploy('LaborMarketV2', [usdc, registry, ACCOUNTS.arbiter, 0n, ZERO])).toMatch(/^0x/)
+  })
+})

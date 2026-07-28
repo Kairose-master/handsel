@@ -50,6 +50,15 @@ describe('the exits from a stalled job — the whole reason for v2', () => {
     expect(sig('expireReview')).toBe('uint256')
   })
 
+  it('exposes expireOpen, the stall that was the state every job starts in', () => {
+    // `cancelJob` is requester-only, so a job nobody accepted and whose
+    // requester lost its key held escrow forever with no deadline. R1 in the
+    // one state nobody examined, because it is where jobs are supposed to wait.
+    expect(sig('expireOpen')).toBe('uint256')
+    expect(fn('MAX_OPEN_WINDOW')?.stateMutability).toBe('view')
+    expect(has('event', 'OpenExpired')).toBe(true)
+  })
+
   it('exposes expireDispute, the stall the first draft of v2 missed', () => {
     // Disputed was reachable and its only door was resolveDispute, callable by
     // an immutable arbiter with no setter. A lost key froze every contested
@@ -57,16 +66,17 @@ describe('the exits from a stalled job — the whole reason for v2', () => {
     expect(sig('expireDispute')).toBe('uint256')
   })
 
-  it('makes ALL THREE exits permissionless — no operator, no owner, no arbiter arg', () => {
+  it('makes ALL FOUR exits permissionless — no operator, no owner, no arbiter arg', () => {
     // If any ever grows a caller restriction it will not show up in the ABI,
     // but an added address parameter would — and that is the shape a
     // "just let the operator do it" patch takes.
-    for (const exit of ['reclaimJob', 'expireReview', 'expireDispute']) {
+    for (const exit of ['expireOpen', 'reclaimJob', 'expireReview', 'expireDispute']) {
       expect(fn(exit)?.inputs?.length).toBe(1)
     }
   })
 
   it('lets the off-chain sweeps read the contract clock instead of keeping their own', () => {
+    expect(fn('openExpirable')?.stateMutability).toBe('view')
     expect(fn('reclaimable')?.stateMutability).toBe('view')
     expect(fn('reviewExpirable')?.stateMutability).toBe('view')
     expect(fn('disputeExpirable')?.stateMutability).toBe('view')

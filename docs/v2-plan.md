@@ -703,12 +703,27 @@ money already committed.
 terminates because **every job dies of old age**:
 
 ```
+MAX_OPEN_WINDOW      60 days   <- was missing, and it is the first term
 MAX_DELIVERY_WINDOW  30 days
 REVIEW_WINDOW         7 days
 DISPUTE_WINDOW       14 days
                      ────────
-worst case           51 days, after which v2 is empty
+worst case          111 days, after which v2 is empty
 ```
+
+**This table said 51 days and was wrong**, in the way worth recording: it summed
+the delivery/review/dispute chain and silently assumed every job gets accepted.
+A job nobody takes never enters that chain at all, and `Open` had no deadline —
+`cancelJob` is requester-only. A test "pinned" the 51-day bound and passed,
+because it measured the path being thought about rather than the worst one.
+Measured at ten simulated years, an unaccepted job with an absent requester
+still held its escrow, with `reclaimJob`/`expireReview`/`expireDispute` all
+answering `WrongStatus()` and `cancelJob` answering `NotRequester()`.
+
+`expireOpen` closes it. The window is long on purpose — a job waiting for the
+right worker is doing its job, and nobody has to wait for the deadline since
+the requester may cancel at any moment. It is a backstop for a requester who is
+gone, not a schedule.
 
 Every one of those deadlines is permissionless, so draining v2 needs nobody's
 cooperation — not the operator's, not the arbiter's. `tests/labor-market-v2.evm`
@@ -717,7 +732,10 @@ parked in the worst state actually empties when a stranger finishes it.
 
 **A future state without a permissionless deadline would break migration, not
 just recovery.** That is the property to defend the next time someone adds a
-state.
+state — and the way to defend it is not a sum. The sum is a proxy, and a proxy
+computed from the states you remembered is exactly how `Open` was missed.
+`tests/labor-market-v2.evm` now enumerates the four money-holding states
+against the status enum and requires each to expose a readable deadline.
 
 ### What is deliberately NOT in the contract
 

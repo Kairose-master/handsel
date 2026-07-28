@@ -119,13 +119,18 @@ contract LaborMarketV2 {
         Cancelled,
         Disputed,
         Refunded,
-        /// @dev Delivered, never judged, and the review window ran out. Its own
-        ///      state rather than `Refunded` for two reasons. The balances do
-        ///      not match a refund — the requester gets back less than it
-        ///      escrowed — so a reconciler reading `Refunded` would see a
-        ///      shortfall and have to decide whether it was a bug or a theft.
-        ///      And nobody graded this work, so the credit engine must not
-        ///      score it as a worker failure: unknown verdict, do nothing.
+        /// @dev Settled by a deadline, with no verdict from anyone. Three
+        ///      routes land here: the requester went silent (`expireReview`),
+        ///      the arbiter never ruled (`expireDispute`), or nobody ever took
+        ///      the job (`expireOpen`).
+        ///
+        ///      Its own state rather than `Refunded` for two reasons. On the
+        ///      silence path the balances do not match a refund — the requester
+        ///      gets back less than it escrowed — so a reconciler reading
+        ///      `Refunded` would see a shortfall and have to decide whether it
+        ///      was a bug or a theft. And nobody graded any of this work, so the
+        ///      credit engine must not score it as a worker failure: unknown
+        ///      verdict, do nothing.
         Expired
     }
 
@@ -137,6 +142,9 @@ contract LaborMarketV2 {
         Status status;
         bytes32 specHash;
         bytes32 resultHash;
+        /// @dev Absolute timestamp after which an unaccepted job can be
+        ///      returned to its poster by anyone. Set at post time.
+        uint64 openDeadline;
         /// @dev Absolute timestamp by which the worker must submit. Set when
         ///      the job is accepted; zero while Open.
         uint64 deliveryDeadline;
@@ -168,6 +176,29 @@ contract LaborMarketV2 {
     ///      Fixed rather than requester-chosen: it protects the WORKER, and a
     ///      value chosen by the party it constrains is not a protection.
     uint32 public constant REVIEW_WINDOW = 7 days;
+
+    /// @dev How long a job may sit `Open` before anyone can return it to its
+    ///      poster.
+    ///
+    ///      **`Open` was the fourth stall, and it is the state every job starts
+    ///      in.** `cancelJob` is requester-only, so a posted job that nobody
+    ///      accepted and whose requester lost its key held escrow forever, with
+    ///      no deadline and no permissionless exit — R1 exactly, in the state
+    ///      nobody thought to look at because it is where jobs are *supposed*
+    ///      to wait. Measured at ten simulated years: reclaimJob, expireReview
+    ///      and expireDispute all `WrongStatus()`, cancelJob `NotRequester()`,
+    ///      escrow intact.
+    ///
+    ///      It also falsified this contract's own migration story. "Deploy v3,
+    ///      stop posting to v2, wait" terminates only if every job dies of old
+    ///      age; a job that is never accepted never enters the
+    ///      delivery/review/dispute chain at all.
+    ///
+    ///      Long, deliberately. A job waiting for the right worker is doing its
+    ///      job, and a short window would force honest requesters to repost.
+    ///      Nobody has to wait for it — the requester may cancel at any moment.
+    ///      This is only a backstop for a requester who is gone.
+    uint32 public constant MAX_OPEN_WINDOW = 60 days;
 
     /// @dev How long the arbiter has to rule on a contested job. Longer than
     ///      the review window because this is the one window a human is meant
@@ -229,6 +260,11 @@ contract LaborMarketV2 {
         ///      the reader has to go and look up.
         uint256 fee
     );
+    // NOTE: `openDeadline` is deliberately NOT a parameter here. Adding an
+    // eighth made the function stack-too-deep, and the value is derivable by
+    // any reader that has the log: it is this event's own block timestamp plus
+    // the public `MAX_OPEN_WINDOW`. It is also on the job itself, and
+    // `openExpirable(jobId)` answers the question directly.
     event JobAccepted(uint256 indexed jobId, address indexed worker, uint256 workerScore, uint64 deliveryDeadline);
     event WorkSubmitted(uint256 indexed jobId, bytes32 resultHash, uint64 reviewDeadline);
     /// @dev `workerAmount` and `payeeAmount` are reported separately because a
@@ -252,6 +288,8 @@ contract LaborMarketV2 {
     event PayeeAssigned(uint256 indexed jobId, address indexed worker, address indexed payee, uint256 amount);
     /// @dev A worker missed its deadline; escrow returned to the requester.
     event JobReclaimed(uint256 indexed jobId, address indexed formerWorker);
+    /// @dev Nobody ever accepted it; escrow returned to the requester.
+    event OpenExpired(uint256 indexed jobId);
     /// @dev A requester neither approved nor disputed in time. Carries every
     ///      leg, because this is the one terminal state where the escrow goes
     ///      to more than one place and a reader that assumes "refund" would be
@@ -282,6 +320,8 @@ contract LaborMarketV2 {
     error ZeroFeeRecipient();
     error NothingToWithdraw();
     error RegistryUnavailable();
+    error TooLate(uint64 nowTs, uint64 deadline);
+    error NotAContract(address addr);
 
     constructor(address _usdc, address _registry, address _arbiter, uint16 _feeBps, address _feeRecipient) {
         if (_feeBps > MAX_FEE_BPS) revert FeeTooHigh();
@@ -289,6 +329,17 @@ contract LaborMarketV2 {
         // to address(0), permanently, with no way to notice until someone
         // reconciled revenue that never arrived.
         if (_feeBps > 0 && _feeRecipient == address(0)) revert ZeroFeeRecipient();
+        // Every address here is immutable, so a wrong one is not a bug to fix,
+        // it is a contract to redeploy. A token or registry that is an EOA or
+        // an empty address does not revert at deploy time — it deploys fine and
+        // then reverts on the first transferFrom, i.e. once real money is
+        // involved and the address is already published.
+        if (_usdc.code.length == 0) revert NotAContract(_usdc);
+        if (_registry.code.length == 0) revert NotAContract(_registry);
+        // The arbiter may be an EOA, so only the zero check applies: at zero
+        // no one could ever call resolveDispute, and every contested job would
+        // wait out DISPUTE_WINDOW for a ruling that cannot arrive.
+        if (_arbiter == address(0)) revert ZeroPayee();
         usdc = IERC20(_usdc);
         registry = ICreditRegistry(_registry);
         arbiter = _arbiter;
@@ -337,6 +388,7 @@ contract LaborMarketV2 {
         job.status = Status.Open;
         job.specHash = specHash;
         job.deliveryWindow = deliveryWindow;
+        job.openDeadline = uint64(block.timestamp) + MAX_OPEN_WINDOW;
         emit JobPosted(jobId, msg.sender, bounty, minScore, specHash, deliveryWindow, fee);
     }
 
@@ -412,12 +464,28 @@ contract LaborMarketV2 {
     /// @notice Worker submits the deliverable (referenced off-chain by hash).
     /// @dev    A submission that lands in the same block as a reclaim cannot
     ///         double-settle: whichever transaction is mined first moves the
-    ///         status, and the second reverts with WrongStatus. Block order is
-    ///         the tie-break, not whichever the platform noticed first.
+    ///         status, and the second reverts with WrongStatus.
+    ///
+    ///         **Past the deadline the worker loses the right to deliver**, and
+    ///         that is a stronger answer to the mech#470 race than block order.
+    ///         Without it the deadline meant only "the moment somebody else MAY
+    ///         reclaim", so a worker who blew it by a month could still submit
+    ///         first and win: the job would move to `Submitted`, restarting a
+    ///         seven-day review clock, and the requester would have to actively
+    ///         dispute or forfeit a tenth to a worker who had already failed.
+    ///         The requester would be defending against a deadline that had
+    ///         already passed in its favour.
+    ///
+    ///         So the race now has one answer instead of two. Before the
+    ///         deadline only `submitWork` can win; after it, only `reclaimJob`
+    ///         can. A worker one second late loses the claim — which is what a
+    ///         deadline is, and MIN_DELIVERY_WINDOW keeps the windows from
+    ///         being hair-trigger.
     function submitWork(uint256 jobId, bytes32 resultHash) external {
         Job storage job = jobs[jobId];
         if (job.status != Status.Accepted) revert WrongStatus();
         if (msg.sender != job.worker) revert NotWorker();
+        if (block.timestamp >= job.deliveryDeadline) revert TooLate(uint64(block.timestamp), job.deliveryDeadline);
         job.resultHash = resultHash;
         job.status = Status.Submitted;
         job.reviewDeadline = uint64(block.timestamp) + REVIEW_WINDOW;
@@ -558,6 +626,32 @@ contract LaborMarketV2 {
         job.status = Status.Refunded;
         _credit(job.requester, job.bounty);
         emit JobReclaimed(jobId, formerWorker);
+    }
+
+    /// @notice The fourth stall: a job nobody ever took.
+    /// @dev    Permissionless once `MAX_OPEN_WINDOW` has passed, for the same
+    ///         reason as every other exit here — a recovery path that requires
+    ///         a specific party makes that party an availability risk, and the
+    ///         missing party in this one is the requester itself.
+    ///
+    ///         Settles to `Expired`, not `Refunded`. No worker was ever
+    ///         involved, so there is nothing for the credit engine to score,
+    ///         and `Refunded` is the state that means a worker was judged or
+    ///         failed to deliver.
+    function expireOpen(uint256 jobId) external {
+        Job storage job = jobs[jobId];
+        if (job.status != Status.Open) revert WrongStatus();
+        if (block.timestamp < job.openDeadline) revert TooEarly(uint64(block.timestamp), job.openDeadline);
+
+        job.status = Status.Expired;
+        _credit(job.requester, job.bounty);
+        emit OpenExpired(jobId);
+    }
+
+    /// @notice Whether `expireOpen` would succeed right now.
+    function openExpirable(uint256 jobId) external view returns (bool) {
+        Job storage job = jobs[jobId];
+        return job.status == Status.Open && block.timestamp >= job.openDeadline;
     }
 
     /// @notice The mirror stall: work was delivered and the requester never
@@ -806,8 +900,21 @@ contract LaborMarketV2 {
     /// @dev    For a lender deciding whether to advance: it should not have to
     ///         reimplement the split to learn what it is owed, and a lender
     ///         that reimplements it is a lender that can get it wrong.
+    ///         **Status-aware, and it has to be.** A settled job still has a
+    ///         `payee` and a `payeeAmount` in storage; reporting them would
+    ///         tell a lender it has a live claim on money that was paid out
+    ///         days ago. The whole reason this function exists is that a lender
+    ///         should not have to reconstruct the answer — so an answer that is
+    ///         confidently wrong is worse than no function at all. Zeros here
+    ///         mean "this route can no longer pay you"; `withdrawable` is where
+    ///         an already-settled claim now lives.
     function releaseSplit(uint256 jobId) external view returns (address payee, uint256 toPayee, uint256 toWorker) {
         Job storage job = jobs[jobId];
+        // Only these states can still reach _release.
+        if (job.status != Status.Open && job.status != Status.Accepted && job.status != Status.Submitted
+            && job.status != Status.Disputed) {
+            return (address(0), 0, 0);
+        }
         payee = job.payee;
         toPayee = payee == address(0) ? 0 : job.payeeAmount;
         toWorker = job.bounty - toPayee;
@@ -861,12 +968,15 @@ contract LaborMarketV2 {
     ///         price of doing nothing while there is still time to do
     ///         something. Same waterfall as the release, so a lender can also
     ///         see what it recovers on this path.
+    ///         Status-aware for the same reason as `releaseSplit`: silence can
+    ///         only cost a requester while the job is actually awaiting review.
     function expirySplit(uint256 jobId)
         external
         view
         returns (uint256 toRequester, uint256 toPayee, uint256 toWorker)
     {
         Job storage job = jobs[jobId];
+        if (job.status != Status.Submitted) return (0, 0, 0);
         uint256 forfeit = (job.bounty * SILENCE_FORFEIT_BPS) / 10_000;
         toRequester = job.bounty - forfeit;
         if (job.payee != address(0)) toPayee = forfeit < job.payeeAmount ? forfeit : job.payeeAmount;

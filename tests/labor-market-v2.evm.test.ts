@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { ACCOUNTS, Chain } from './helpers/evm'
+import { ACCOUNTS, Chain, artifacts } from './helpers/evm'
 
 /**
  * LaborMarketV2 exercised in a real EVM.
@@ -60,10 +60,28 @@ async function post(ctx: Ctx, window = WINDOW): Promise<bigint> {
 const job = (ctx: Ctx, id: bigint) =>
   ctx.chain.call<unknown[]>('requester', ctx.market, 'LaborMarketV2', 'jobs', [id])
 
-// Positions in the generated `jobs` getter. Named rather than inlined, because
-// adding a struct field shifts every literal index after it — which is how a
-// test starts reading the wrong word and goes on passing.
-const FIELD = { status: 4, payee: 11 } as const
+/**
+ * Positions in the generated `jobs` getter, DERIVED from the compiled ABI.
+ *
+ * They used to be literals with a comment warning that adding a struct field
+ * shifts every index after it. Adding `openDeadline` then did exactly that, and
+ * the comment did not stop it — `payee` silently became `deliveryWindow` and a
+ * test compared an address to `3600`. It was caught only because the wrong
+ * value was obviously wrong; a shift between two addresses would have passed.
+ *
+ * A warning is not a mechanism. Reading the names out of the artifact is.
+ */
+const JOB_FIELDS = (
+  (artifacts.LaborMarketV2.abi as ReadonlyArray<{ type: string; name?: string; outputs?: { name: string }[] }>)
+    .find((e) => e.type === 'function' && e.name === 'jobs')?.outputs ?? []
+).map((o) => o.name)
+
+const fieldIndex = (name: string) => {
+  const i = JOB_FIELDS.indexOf(name)
+  if (i === -1) throw new Error(`jobs() has no field "${name}" — the struct changed`)
+  return i
+}
+const FIELD = { status: fieldIndex('status'), payee: fieldIndex('payee') } as const
 
 const status = async (ctx: Ctx, id: bigint) => Number((await job(ctx, id))[FIELD.status])
 const payee = async (ctx: Ctx, id: bigint) => String((await job(ctx, id))[FIELD.payee]).toLowerCase()
@@ -205,12 +223,33 @@ describe('reclaimJob — the exit from Accepted that v1 did not have', () => {
 })
 
 describe('the late delivery race — the question put to Olas in mech#470', () => {
-  it('a submission that lands first makes the reclaim revert', async () => {
+  it('refuses a submission once the deadline has passed, so the race has ONE answer', async () => {
+    // This used to assert the opposite — that a late submission landing first
+    // won, and block order was the tie-break. That answer let a worker who blew
+    // the deadline by a month still submit, restart a seven-day review clock,
+    // and put the requester on the hook to actively dispute or forfeit a tenth
+    // to someone who had already failed. The requester would have been
+    // defending against a deadline that had already passed in its favour.
+    //
+    // Now the deadline ends the right to deliver, so before it only submitWork
+    // can win and after it only reclaimJob can. One answer, not two.
     const id = await post(ctx)
     await ctx.chain.send('worker', ctx.market, 'LaborMarketV2', 'acceptJob', [id])
     ctx.chain.advance(WINDOW)
 
-    // Worker submits at exactly the deadline; reclaim was also eligible.
+    expect(
+      await ctx.chain.revertReason('worker', ctx.market, 'LaborMarketV2', 'submitWork', [id, RESULT]),
+    ).toContain('TooLate')
+    await ctx.chain.send('stranger', ctx.market, 'LaborMarketV2', 'reclaimJob', [id])
+    expect(await status(ctx, id)).toBe(Status.Refunded)
+  })
+
+  it('still lets a submission one second BEFORE the deadline win', async () => {
+    // The guard must end the claim, not shorten it. A worker that delivers
+    // inside its window keeps the ordinary race, and reclaim then loses.
+    const id = await post(ctx)
+    await ctx.chain.send('worker', ctx.market, 'LaborMarketV2', 'acceptJob', [id])
+    ctx.chain.advance(WINDOW - 1)
     await ctx.chain.send('worker', ctx.market, 'LaborMarketV2', 'submitWork', [id, RESULT])
     expect(await ctx.chain.revertReason('stranger', ctx.market, 'LaborMarketV2', 'reclaimJob', [id])).toBeTruthy()
     expect(await status(ctx, id)).toBe(Status.Submitted)
@@ -927,13 +966,34 @@ describe('every job dies of old age — the migration property', () => {
     // This contract has no upgrade hatch, so the upgrade path is: deploy v3,
     // stop posting to v2, wait. That only terminates because every state has a
     // permissionless deadline and the windows compose to a finite number.
-    // If any future state lacks one, migration stops being possible and this
-    // test is the thing that says so.
-    const max = await ctx.chain.call<bigint>('stranger', ctx.market, 'LaborMarketV2', 'MAX_DELIVERY_WINDOW')
-    const review = await ctx.chain.call<bigint>('stranger', ctx.market, 'LaborMarketV2', 'REVIEW_WINDOW')
-    const dispute = await ctx.chain.call<bigint>('stranger', ctx.market, 'LaborMarketV2', 'DISPUTE_WINDOW')
-    const worstCase = max + review + dispute
-    expect(worstCase).toBeLessThanOrEqual(BigInt(60 * 24 * 3600)) // 60 days
+    //
+    // This assertion was WRONG when first written: it summed delivery + review
+    // + dispute and called that the worst case, which silently assumed every
+    // job gets accepted. A job nobody takes never enters that chain, and `Open`
+    // had no deadline at all — so the bound was measured on a path the worst
+    // job never walks. MAX_OPEN_WINDOW is the term that was missing.
+    const w = (name: string) => ctx.chain.call<bigint>('stranger', ctx.market, 'LaborMarketV2', name)
+    const worstCase =
+      (await w('MAX_OPEN_WINDOW')) + (await w('MAX_DELIVERY_WINDOW')) + (await w('REVIEW_WINDOW')) + (await w('DISPUTE_WINDOW'))
+    expect(worstCase).toBeLessThanOrEqual(BigInt(120 * 24 * 3600))
+  })
+
+  it('every non-terminal state has a permissionless exit — by enumeration', async () => {
+    // The property the sum above is a proxy for, checked directly against the
+    // status enum rather than against the states anyone happened to remember.
+    // Open was missing from that list for exactly as long as nobody wrote this.
+    const exits: Record<string, string> = {
+      Open: 'openExpirable',
+      Accepted: 'reclaimable',
+      Submitted: 'reviewExpirable',
+      Disputed: 'disputeExpirable',
+    }
+    const abi = artifacts.LaborMarketV2.abi as ReadonlyArray<{ type: string; name?: string }>
+    for (const [state, view] of Object.entries(exits)) {
+      expect(abi.some((e) => e.type === 'function' && e.name === view), `${state} has no readable deadline`).toBe(true)
+    }
+    // Terminal states need none; the four above are every state that holds money.
+    expect(Object.keys(exits)).toHaveLength(4)
   })
 
   it('actually empties after the worst case, with nobody privileged acting', async () => {
