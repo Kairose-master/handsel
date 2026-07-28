@@ -22,6 +22,7 @@ import { eq } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { revalidatePath } from 'next/cache'
 import { logPlatformEvent } from '@/lib/platform-feed'
+import { sealForInsert } from '@/lib/spec-hash'
 
 type SeedJob = {
   title: string
@@ -190,7 +191,6 @@ export async function seedLaborMarketJobs() {
   if (!isLaborMarketConfigured()) throw new Error('Labor market is not configured on this deployment')
 
   const { readJobs, postJob } = await import('@/lib/onchain/labor')
-  const { keccak256, toHex } = await import('viem')
 
   const [existingJobs, existingSpecs] = await Promise.all([
     readJobs().catch(() => []),
@@ -212,14 +212,20 @@ export async function seedLaborMarketJobs() {
       continue
     }
     try {
-      const specHash = keccak256(toHex(JSON.stringify({ title: job.title, agent: houseAgentId, nonce: nanoid() })))
+      const sealed = sealForInsert(
+        houseAgentId,
+        {
+          title: job.title,
+          description: job.description,
+          acceptanceCriteria: job.acceptanceCriteria,
+          testCode: job.testCode,
+        },
+        nanoid(),
+      )
+      const specHash = sealed.specHash
       await db.insert(jobSpec).values({
-        specHash,
-        title: job.title,
-        description: job.description,
-        acceptanceCriteria: job.acceptanceCriteria,
+        ...sealed,
         requesterAgentId: houseAgentId,
-        testCode: job.testCode,
         autoApprove: true, // the house agent has no owner who'll ever click Approve
       })
       const txHash = await postJob(houseAgentId, job.bountyUsd, job.minScore, specHash)

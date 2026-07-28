@@ -35,6 +35,7 @@ import { revalidatePath } from 'next/cache'
 import { logPlatformEvent } from '@/lib/platform-feed'
 import { asActionError } from '@/lib/action-error'
 import { isDogfoodJobTitle } from '@/lib/test-suite-jobs'
+import { sealForInsert } from '@/lib/spec-hash'
 
 async function requireSuperAdmin() {
   const session = await getSession()
@@ -94,7 +95,6 @@ export async function postTestSuiteJobs() {
   const { TEST_SUITE_CATALOG, TESTS_JOB_BOUNTY_USD, TESTS_JOB_MIN_SCORE, testSuiteJobTitle, testSuiteJobDescription, testSuiteJobAcceptanceCriteria } =
     await import('@/lib/test-suite-jobs')
   const { postJob } = await import('@/lib/onchain/labor')
-  const { keccak256, toHex } = await import('viem')
 
   const existingSpecs = await db.select().from(jobSpec).where(eq(jobSpec.requesterAgentId, houseAgentId))
   const everPosted = new Set(existingSpecs.map((s) => s.title))
@@ -113,16 +113,22 @@ export async function postTestSuiteJobs() {
       continue
     }
     try {
-      const specHash = keccak256(toHex(JSON.stringify({ title, agent: houseAgentId, nonce: nanoid() })))
+      const sealed = sealForInsert(
+        houseAgentId,
+        {
+          title,
+          description: testSuiteJobDescription(suite),
+          acceptanceCriteria: testSuiteJobAcceptanceCriteria(suite),
+          // The binding recorded explicitly, by the code that chose it. Never
+          // re-derived from the title, which anyone can write.
+          testSuiteSlug: suite.slug,
+        },
+        nanoid(),
+      )
+      const specHash = sealed.specHash
       await db.insert(jobSpec).values({
-        specHash,
-        title,
-        description: testSuiteJobDescription(suite),
-        acceptanceCriteria: testSuiteJobAcceptanceCriteria(suite),
+        ...sealed,
         requesterAgentId: houseAgentId,
-        // The binding recorded explicitly, by the code that chose it. Never
-        // re-derived from the title, which anyone can write.
-        testSuiteSlug: suite.slug,
         autoApprove: true, // mutation grading is mechanical — pass releases escrow
       })
       await postJob(houseAgentId, TESTS_JOB_BOUNTY_USD, TESTS_JOB_MIN_SCORE, specHash)

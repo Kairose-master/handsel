@@ -399,6 +399,16 @@ export const jobSpec = pgTable('job_specs', {
    * column is the non-forgeable version of the same fact.
    */
   testSuiteSlug: text('test_suite_slug'),
+  /**
+   * The nonce inside the sealed brief, kept so the specHash can be RECOMPUTED.
+   *
+   * It was generated inline at every posting site and thrown away, which made
+   * the on-chain commitment unverifiable by construction — you could hash a
+   * brief but never check one. Rows written before this column exists return
+   * `unverifiable` from briefMatchesHash, never `mismatch`; see lib/spec-hash.ts
+   * for why that distinction is worth a third enum value.
+   */
+  briefNonce: text('brief_nonce'),
   testResult: jsonb('test_result').$type<{ passed: boolean | null; output: string; gradedAt: string }>(),
   // Requester's explicit, authenticated-at-posting-time consent to release
   // escrow automatically on a passing verdict, with no further approval

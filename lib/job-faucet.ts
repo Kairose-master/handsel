@@ -20,6 +20,7 @@ import { user, agent, jobSpec } from '@/lib/db/schema'
 import { and, eq, gte } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { logPlatformEvent } from '@/lib/platform-feed'
+import { sealForInsert } from '@/lib/spec-hash'
 
 export const FAUCET_EMAIL = 'faucet@handsel.internal'
 export const FAUCET_AGENT_NAME = 'Job Faucet'
@@ -428,24 +429,26 @@ export async function postHouseImageJobs(count = 3): Promise<ImagePostReport> {
   } catch (error) {
     console.error('[faucet] image refuel failed (posting may still succeed):', error)
   }
-
-  const { keccak256, toHex } = await import('viem')
   const { postJob } = await import('@/lib/onchain/labor')
   const report: ImagePostReport = { posted: 0, jobs: [] }
   for (let i = 0; i < n; i++) {
     const template = IMAGE_JOB_TEMPLATES[i % IMAGE_JOB_TEMPLATES.length]
     try {
-      const specHash = keccak256(
-        toHex(JSON.stringify({ title: template.title, agent: faucet.id, nonce: nanoid() })),
+      const sealed = sealForInsert(
+        faucet.id,
+        {
+          title: template.title,
+          description: template.description,
+          acceptanceCriteria: template.acceptanceCriteria,
+          deliverableKind: 'image',
+        },
+        nanoid(),
       )
+      const specHash = sealed.specHash
       await db.insert(jobSpec).values({
-        specHash,
-        title: template.title,
-        description: template.description,
-        acceptanceCriteria: template.acceptanceCriteria,
+        ...sealed,
         requesterAgentId: faucet.id,
         autoApprove: true, // a passing vision review releases escrow with no manual step
-        deliverableKind: 'image',
       })
       if (report.posted > 0) await new Promise((r) => setTimeout(r, 2000)) // bundler rate limit
       await postJob(faucet.id, template.bountyUsd, 0, specHash)
@@ -480,24 +483,24 @@ export async function postHouseCodeJobs(count = 1): Promise<ImagePostReport> {
   } catch (error) {
     console.error('[faucet] code refuel failed (posting may still succeed):', error)
   }
-
-  const { keccak256, toHex } = await import('viem')
   const { postJob } = await import('@/lib/onchain/labor')
   const report: ImagePostReport = { posted: 0, jobs: [] }
   for (let i = 0; i < n; i++) {
     const t = FAUCET_TEMPLATES[i % FAUCET_TEMPLATES.length]
     try {
-      const specHash = keccak256(toHex(JSON.stringify({ title: t.title, agent: faucet.id, nonce: nanoid() })))
-      await db.insert(jobSpec).values({
-        specHash,
-        title: t.title,
-        description: t.description,
-        acceptanceCriteria: t.acceptanceCriteria,
-        requesterAgentId: faucet.id,
-        testCode: t.testCode,
-        autoApprove: true,
-        deliverableKind: 'text',
-      })
+      const sealed = sealForInsert(
+        faucet.id,
+        {
+          title: t.title,
+          description: t.description,
+          acceptanceCriteria: t.acceptanceCriteria,
+          testCode: t.testCode,
+          deliverableKind: 'text',
+        },
+        nanoid(),
+      )
+      const specHash = sealed.specHash
+      await db.insert(jobSpec).values({ ...sealed, requesterAgentId: faucet.id, autoApprove: true })
       if (report.posted > 0) await new Promise((r) => setTimeout(r, 2000))
       await postJob(faucet.id, t.bountyUsd, 0, specHash)
       report.posted++
@@ -535,28 +538,30 @@ export async function postHouseAudioJobs(count = 3): Promise<ImagePostReport> {
   } catch (error) {
     console.error('[faucet] audio refuel failed (posting may still succeed):', error)
   }
-
-  const { keccak256, toHex } = await import('viem')
   const { postJob } = await import('@/lib/onchain/labor')
   const report: ImagePostReport = { posted: 0, jobs: [] }
   for (let i = 0; i < n; i++) {
     const script = AUDIO_JOB_SCRIPTS[i % AUDIO_JOB_SCRIPTS.length]
     const title = 'Read a short sentence aloud (text-to-speech)'
     try {
-      const specHash = keccak256(
-        toHex(JSON.stringify({ title, script, agent: faucet.id, nonce: nanoid() })),
+      const sealed = sealForInsert(
+        faucet.id,
+        {
+          title,
+          // The audio lane extracts the text after "Script to read:" and speaks
+          // only that — see generate_audio in the desktop worker.
+          description: `Produce clear spoken audio of the following line, nothing else.\n\nScript to read: "${script}"`,
+          // The grader's exact target — the transcript is checked against this.
+          acceptanceCriteria: script,
+          deliverableKind: 'audio',
+        },
+        nanoid(),
       )
+      const specHash = sealed.specHash
       await db.insert(jobSpec).values({
-        specHash,
-        title,
-        // The audio lane extracts the text after "Script to read:" and speaks
-        // only that — see generate_audio in the desktop worker.
-        description: `Produce clear spoken audio of the following line, nothing else.\n\nScript to read: "${script}"`,
-        // The grader's exact target — the transcript is checked against this.
-        acceptanceCriteria: script,
+        ...sealed,
         requesterAgentId: faucet.id,
         autoApprove: true, // a passing transcription review releases escrow with no manual step
-        deliverableKind: 'audio',
       })
       if (report.posted > 0) await new Promise((r) => setTimeout(r, 2000)) // bundler rate limit
       await postJob(faucet.id, AUDIO_JOB_BOUNTY_USD, 0, specHash)
@@ -650,24 +655,26 @@ export async function tickJobFaucet(opts?: { force?: boolean }): Promise<FaucetR
   } catch (error) {
     console.error('[faucet] refuel failed (posting may still succeed):', error)
   }
-
-  const { keccak256, toHex } = await import('viem')
   let posted = 0
   for (let i = 0; i < need; i++) {
     const template = FAUCET_TEMPLATES[Math.floor(Math.random() * FAUCET_TEMPLATES.length)]
     try {
-      const specHash = keccak256(
-        toHex(JSON.stringify({ title: template.title, agent: faucet.id, nonce: nanoid() })),
+      const sealed = sealForInsert(
+        faucet.id,
+        {
+          title: template.title,
+          description: template.description,
+          acceptanceCriteria: template.acceptanceCriteria,
+          testCode: template.testCode,
+          deliverableKind: 'text',
+        },
+        nanoid(),
       )
+      const specHash = sealed.specHash
       await db.insert(jobSpec).values({
-        specHash,
-        title: template.title,
-        description: template.description,
-        acceptanceCriteria: template.acceptanceCriteria,
+        ...sealed,
         requesterAgentId: faucet.id,
-        testCode: template.testCode,
         autoApprove: true, // mechanical pass releases escrow — the faucet never reviews
-        deliverableKind: 'text',
       })
       if (posted > 0) await new Promise((r) => setTimeout(r, 2000)) // bundler rate limit
       await postJob(faucet.id, template.bountyUsd, 0, specHash)

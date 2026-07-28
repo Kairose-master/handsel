@@ -247,25 +247,30 @@ export async function returnFailedJobToMarket(spec: typeof jobSpec.$inferSelect)
 
     // 2. Repost the same spec as a fresh on-chain job, blocking every worker
     //    that already failed this lineage.
-    const { keccak256, toHex } = await import('viem')
-    const newSpecHash = keccak256(
-      toHex(JSON.stringify({ title: spec.title, agent: spec.requesterAgentId, nonce: nanoid() })),
+    const { sealForInsert } = await import('@/lib/spec-hash')
+    const sealed = sealForInsert(
+      spec.requesterAgentId,
+      {
+        title: spec.title,
+        description: spec.description,
+        acceptanceCriteria: spec.acceptanceCriteria,
+        testCode: spec.testCode,
+        // Preserve what the deliverable actually IS — dropping these silently
+        // reset a reposted image/audio job to plain text, so it matched the
+        // wrong workers and skipped vision/transcription grading.
+        deliverableKind: spec.deliverableKind,
+        requiredCapabilities: spec.requiredCapabilities,
+        testSuiteSlug: spec.testSuiteSlug,
+      },
+      nanoid(),
     )
+    const newSpecHash = sealed.specHash
     const failedWorkers = [...new Set([...(spec.failedWorkerIds ?? []), spec.workerAgentId])]
     await db.insert(jobSpec).values({
-      specHash: newSpecHash,
-      title: spec.title,
-      description: spec.description,
-      acceptanceCriteria: spec.acceptanceCriteria,
+      ...sealed,
       requesterAgentId: spec.requesterAgentId,
       attachmentUrl: spec.attachmentUrl,
       attachmentName: spec.attachmentName,
-      testCode: spec.testCode,
-      // Preserve what the deliverable actually IS — dropping these silently
-      // reset a reposted image/audio job to plain text, so it matched the
-      // wrong workers and skipped vision/transcription grading.
-      deliverableKind: spec.deliverableKind,
-      requiredCapabilities: spec.requiredCapabilities,
       repostCount: spec.repostCount + 1,
       failedWorkerIds: failedWorkers,
       autoApprove: spec.autoApprove, // carry the requester's original consent choice forward, don't silently reset it
@@ -348,24 +353,32 @@ export async function returnDisputedJobToMarket(spec: typeof jobSpec.$inferSelec
     await retryRpc(() => resolveDispute(spec.onchainJobId!, false)) // false = refund the requester
     refunded = true
 
-    const { keccak256, toHex } = await import('viem')
-    const newSpecHash = keccak256(
-      toHex(JSON.stringify({ title: spec.title, agent: spec.requesterAgentId, nonce: nanoid() })),
+    const { sealForInsert } = await import('@/lib/spec-hash')
+    const sealed = sealForInsert(
+      spec.requesterAgentId,
+      {
+        title: spec.title,
+        description: spec.description,
+        acceptanceCriteria: spec.acceptanceCriteria,
+        testCode: spec.testCode,
+        // Preserve what the deliverable actually IS — dropping these silently
+        // reset a reposted image/audio job to plain text, so it matched the
+        // wrong workers and skipped vision/transcription grading.
+        deliverableKind: spec.deliverableKind,
+        requiredCapabilities: spec.requiredCapabilities,
+        testSuiteSlug: spec.testSuiteSlug,
+      },
+      nanoid(),
     )
+    const newSpecHash = sealed.specHash
     const failedWorkers = [
       ...new Set([...(spec.failedWorkerIds ?? []), spec.workerAgentId].filter(Boolean) as string[]),
     ]
     await db.insert(jobSpec).values({
-      specHash: newSpecHash,
-      title: spec.title,
-      description: spec.description,
-      acceptanceCriteria: spec.acceptanceCriteria,
+      ...sealed,
       requesterAgentId: spec.requesterAgentId,
       attachmentUrl: spec.attachmentUrl,
       attachmentName: spec.attachmentName,
-      testCode: spec.testCode,
-      deliverableKind: spec.deliverableKind, // preserve what the deliverable actually IS
-      requiredCapabilities: spec.requiredCapabilities,
       repostCount: spec.repostCount + 1,
       failedWorkerIds: failedWorkers,
       autoApprove: spec.autoApprove,

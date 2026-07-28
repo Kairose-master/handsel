@@ -131,23 +131,26 @@ export async function POST(request: Request) {
       return Response.json({ error: 'Labor market is not configured on this deployment' }, { status: 503 })
     }
 
-    const { keccak256, toHex } = await import('viem')
-    const specHash = keccak256(
-      toHex(JSON.stringify({ title, agent: houseAgentId, nonce: nanoid() })),
-    )
-
     // Externally-posted jobs rarely declare a deliverable kind, so infer it
     // from the ask — otherwise a "design a logo" job defaults to 'text' and a
     // text-only worker claims it and fails grading.
     const { inferDeliverableKind } = await import('@/lib/artifacts')
+    const { sealForInsert } = await import('@/lib/spec-hash')
+    const sealed = sealForInsert(
+      houseAgentId,
+      {
+        title,
+        description: description || null,
+        acceptanceCriteria,
+        testCode: testCode || null,
+        deliverableKind: inferDeliverableKind(title, description, acceptanceCriteria),
+      },
+      nanoid(),
+    )
+    const specHash = sealed.specHash
     await db.insert(jobSpec).values({
-      specHash,
-      title,
-      description: description || null,
-      acceptanceCriteria,
+      ...sealed,
       requesterAgentId: houseAgentId,
-      testCode: testCode || null,
-      deliverableKind: inferDeliverableKind(title, description, acceptanceCriteria),
       // Always attributed, even when the header could not be parsed — an
       // unattributable post still has to count against a bucket.
       externalPoster: payerKey,

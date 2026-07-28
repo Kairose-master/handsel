@@ -86,10 +86,20 @@ export async function raiseJobPrice(
   // since the sweep decided. Cancelling then would throw away real work.
   if (!job || job.status !== 'Open') return null
 
-  const { keccak256, toHex } = await import('viem')
-  const newSpecHash = keccak256(
-    toHex(JSON.stringify({ title: spec.title, agent: spec.requesterAgentId, price: nextUsd, nonce: nanoid() })),
+  const { sealForInsert } = await import('@/lib/spec-hash')
+  const sealed = sealForInsert(
+    spec.requesterAgentId,
+    {
+      title: spec.title,
+      description: spec.description,
+      acceptanceCriteria: spec.acceptanceCriteria,
+      testCode: spec.testCode,
+      deliverableKind: spec.deliverableKind,
+      requiredCapabilities: spec.requiredCapabilities,
+    },
+    nanoid(),
   )
+  const newSpecHash = sealed.specHash
 
   // 1. Write the INTENT down before any money moves. The cancel below can
   //    land while its receipt never arrives, and if the replacement row
@@ -99,16 +109,10 @@ export async function raiseJobPrice(
   //    visible orphan (pricing set, no onchainJobId) that resumeOrphanedRaises
   //    finishes on a later pass.
   await db.insert(jobSpec).values({
-    specHash: newSpecHash,
-    title: spec.title,
-    description: spec.description,
-    acceptanceCriteria: spec.acceptanceCriteria,
+    ...sealed,
     requesterAgentId: spec.requesterAgentId,
     attachmentUrl: spec.attachmentUrl,
     attachmentName: spec.attachmentName,
-    testCode: spec.testCode,
-    deliverableKind: spec.deliverableKind,
-    requiredCapabilities: spec.requiredCapabilities,
     repoFullName: spec.repoFullName,
     baseBranch: spec.baseBranch,
     issueNumber: spec.issueNumber, // the cancel key — see lib/labor-settle.ts

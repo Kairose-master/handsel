@@ -27,6 +27,7 @@ import { and, eq, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { jobSpec, agentTask, artifact } from '@/lib/db/schema'
 import { authorOfRule, decideRefund, type RefundGround } from '@/lib/decision-table'
+import { briefMatchesHash } from '@/lib/spec-hash'
 import { acquireOpsLease, releaseOpsLease } from '@/lib/ops-lease'
 
 const LEASE_MS = 4 * 60_000
@@ -56,15 +57,31 @@ export type Ruling = {
  * it is a fact about bytes rather than about quality — which is the entire
  * reason it is allowed to move escrow.
  */
-async function hasDeliverable(taskIds: string[]): Promise<boolean> {
-  if (taskIds.length === 0) return false
+async function gatherDelivery(taskIds: string[]): Promise<{ delivered: boolean; mimes: string[] }> {
+  if (taskIds.length === 0) return { delivered: false, mimes: [] }
   const tasks = await db
     .select({ output: agentTask.output })
     .from(agentTask)
     .where(inArray(agentTask.id, taskIds))
-  if (tasks.some((t) => (t.output ?? '').trim().length > 0)) return true
-  const arts = await db.select({ id: artifact.id }).from(artifact).where(inArray(artifact.taskId, taskIds))
-  return arts.length > 0
+  const arts = await db.select({ mime: artifact.mime }).from(artifact).where(inArray(artifact.taskId, taskIds))
+  const hasText = tasks.some((t) => (t.output ?? '').trim().length > 0)
+  return { delivered: hasText || arts.length > 0, mimes: arts.map((a) => a.mime) }
+}
+
+/**
+ * Does what arrived match the KIND the sealed brief asked for?
+ *
+ * Only meaningful when the seal verified — otherwise the brief's own claim
+ * about the kind is not something anyone committed to. A text job is satisfied
+ * by text output with no artifact at all, so an empty mime list is a match for
+ * 'text' and unknown for everything else.
+ */
+function deliverableMatches(kind: string, mimes: string[]): boolean {
+  if (kind === 'text') return true
+  if (mimes.length === 0) return false
+  const prefix = kind === 'image' ? 'image/' : kind === 'audio' ? 'audio/' : kind === 'video' ? 'video/' : null
+  if (!prefix) return true // a kind this function does not model — not evidence
+  return mimes.some((m) => m.toLowerCase().startsWith(prefix))
 }
 
 /**
@@ -120,16 +137,27 @@ export async function ruleOn(onchainJobId: number): Promise<Ruling | null> {
     .from(agentTask)
     .where(and(eq(agentTask.agentId, spec.workerAgentId ?? ''), eq(agentTask.task, spec.title)))
 
-  const delivered = await hasDeliverable(tasks.map((t) => t.id))
+  const { delivered, mimes: artifactMimes } = await gatherDelivery(tasks.map((t) => t.id))
+
+  // Did the posted terms survive? A row whose nonce predates the sealed brief
+  // is `unverifiable`, NOT `mismatch` — calling it a mismatch would mark every
+  // legacy job substituted, and SUBSTITUTED refunds, so it would have handed
+  // every legacy dispute back to the requester on the first pass.
+  const seal = briefMatchesHash(spec)
 
   const out = decideRefund({
     hasDeliverable: delivered,
-    // Both stay 'unknown' until the sealed brief lands: a legacy spec hash
-    // cannot be verified, and an unverifiable claim is not evidence. Unknown
-    // degrades toward no_refund, so the gap costs the requester a wait rather
-    // than costing the worker its money.
-    hashMismatch: 'unknown',
-    kindMismatch: 'unknown',
+    // The bytes the worker delivered are checked elsewhere; what this asserts
+    // is that the TERMS were not rewritten after posting. A requester who
+    // edits acceptanceCriteria mid-job is claiming a rule that was never
+    // agreed to, and the on-chain hash is the only thing that can say so.
+    hashMismatch: seal === 'mismatch' ? 'yes' : seal === 'match' ? 'no' : 'unknown',
+    kindMismatch:
+      seal === 'match' && spec.deliverableKind
+        ? deliverableMatches(spec.deliverableKind, artifactMimes)
+          ? 'no'
+          : 'yes'
+        : 'unknown',
     verdict: spec.testResult?.passed === false ? 'fail' : spec.testResult?.passed ? 'pass' : 'pending',
     ruleAuthor: authorOfRule(spec),
   })

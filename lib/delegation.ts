@@ -27,6 +27,7 @@ import { getUserByok } from '@/lib/user-keys'
 import { logPlatformEvent } from '@/lib/platform-feed'
 import { graphToDsl } from '@/lib/collab-dsl'
 import { fenceUntrusted, untrustedNonce } from '@/lib/untrusted-input'
+import { sealForInsert } from '@/lib/spec-hash'
 
 export const MAX_SUBTASKS = 5
 export const MIN_SUBTASK_BOUNTY_USD = 1
@@ -430,7 +431,6 @@ async function postOneSubtask(
   spaceOut: boolean,
   planDsl?: string,
 ): Promise<void> {
-  const { keccak256, toHex } = await import('viem')
   const { postJob, readJobs } = await import('@/lib/onchain/labor')
   // Give the worker situational context: the whole collaboration as a readable
   // program, and which line is theirs — so it delivers a piece that fits the
@@ -439,9 +439,6 @@ async function postOneSubtask(
   const description = planDsl
     ? `## The collaboration plan — you are one worker in a larger job\nDeliver exactly your piece below ("${st.title}") so it slots into this plan. Other pieces are handled by other workers; don't redo them.\n\n\`\`\`\n${planDsl}\`\`\`\n\n---\n\n${st.description}`
     : st.description
-  const specHash = keccak256(
-    toHex(JSON.stringify({ title: st.title, description, agent: primeAgentId, nonce: nanoid() })),
-  )
   // Trust an explicit non-text kind from the planner; otherwise infer from the
   // ask so a mistagged image/audio subtask isn't left as 'text'. Reviews and
   // syntheses are text by definition, so never re-infer those.
@@ -453,14 +450,21 @@ async function postOneSubtask(
       : forcedText
         ? 'text'
         : inferDeliverableKind(st.title, st.description, st.acceptanceCriteria)
+  const sealed = sealForInsert(
+    primeAgentId,
+    {
+      title: st.title,
+      description,
+      acceptanceCriteria: st.acceptanceCriteria,
+      testCode: st.testCode ?? null,
+      deliverableKind,
+    },
+    nanoid(),
+  )
+  const specHash = sealed.specHash
   await db.insert(jobSpec).values({
-    specHash,
-    title: st.title,
-    description,
-    acceptanceCriteria: st.acceptanceCriteria,
+    ...sealed,
     requesterAgentId: primeAgentId,
-    testCode: st.testCode ?? null,
-    deliverableKind,
     autoApprove: autoVerify || Boolean(st.testCode),
   })
   // Bundler rate-limits back-to-back userops (free tier) — space them.
