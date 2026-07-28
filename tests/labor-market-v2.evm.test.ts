@@ -672,21 +672,52 @@ describe('a job that was never posted is not a job', () => {
     ).toContain('NoSuchJob')
   })
 
-  it('seals the only door — every other transition needs a status a phantom cannot reach', async () => {
+  it('seals every door — and the list of doors comes from the ABI, not from memory', async () => {
+    // This test used to carry a hand-written list of nine functions. `expireOpen`
+    // was introduced by the same round that wrote the list, was left off it, and
+    // turned out to be the one function that let a phantom through — anyone
+    // could expire a job nobody posted into a terminal record. The test was
+    // written to pin an invariant and did not cover the function that broke it.
+    //
+    // That is the same failure as the struct field indices above, so it gets the
+    // same answer: read the doors out of the artifact. A future function taking
+    // a jobId has no entry in CALLER and fails here loudly, instead of being
+    // quietly not tested.
     const phantom = 424_242n
-    for (const [who, method, args] of [
-      ['worker', 'submitWork', [phantom, RESULT]],
-      ['worker', 'assignPayee', [phantom, ACCOUNTS.lender, 1n]],
-      ['requester', 'approveJob', [phantom]],
-      ['requester', 'raiseDispute', [phantom]],
-      ['requester', 'cancelJob', [phantom]],
-      ['stranger', 'reclaimJob', [phantom]],
-      ['stranger', 'expireReview', [phantom]],
-      ['stranger', 'expireDispute', [phantom]],
-      ['arbiter', 'resolveDispute', [phantom, true]],
-    ] as const) {
-      const reason = await ctx.chain.revertReason(who, ctx.market, 'LaborMarketV2', method, args as never)
-      expect(reason, `${method} let a phantom job through`).toBeTruthy()
+    const CALLER: Record<string, keyof typeof ACCOUNTS> = {
+      acceptJob: 'worker',
+      submitWork: 'worker',
+      assignPayee: 'worker',
+      approveJob: 'requester',
+      raiseDispute: 'requester',
+      cancelJob: 'requester',
+      // The REAL arbiter — anyone else reverts NotArbiter, which would mask
+      // whether the phantom guard exists at all.
+      resolveDispute: 'arbiter',
+      reclaimJob: 'stranger',
+      expireReview: 'stranger',
+      expireDispute: 'stranger',
+      expireOpen: 'stranger',
+    }
+    const argFor = (type: string): unknown =>
+      type === 'address' ? ACCOUNTS.lender : type === 'bytes32' ? RESULT : type === 'bool' ? true : 1n
+
+    type Fn = { type: string; name?: string; stateMutability?: string; inputs?: { name: string; type: string }[] }
+    const mutators = (artifacts.LaborMarketV2.abi as ReadonlyArray<Fn>).filter(
+      (e) =>
+        e.type === 'function' &&
+        e.stateMutability !== 'view' &&
+        e.stateMutability !== 'pure' &&
+        e.inputs?.[0]?.name === 'jobId',
+    )
+    expect(mutators.length, 'the ABI filter found no jobId-taking mutators').toBeGreaterThan(9)
+
+    for (const fn of mutators) {
+      const who = CALLER[fn.name!]
+      expect(who, `${fn.name} takes a jobId and is not in CALLER — decide what it should do`).toBeTruthy()
+      const args = [phantom, ...(fn.inputs ?? []).slice(1).map((i) => argFor(i.type))]
+      const reason = await ctx.chain.revertReason(who, ctx.market, 'LaborMarketV2', fn.name!, args as never)
+      expect(reason, `${fn.name} let a phantom job through`).toBeTruthy()
     }
   })
 })

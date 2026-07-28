@@ -16,6 +16,7 @@ import { Chain as EjsChain, Common, Hardfork } from '@ethereumjs/common'
 import { VM } from '@ethereumjs/vm'
 import { Address as EjsAddress, hexToBytes, bytesToHex } from '@ethereumjs/util'
 import {
+  decodeEventLog,
   decodeFunctionResult,
   encodeDeployData,
   encodeFunctionData,
@@ -47,9 +48,13 @@ export const ACCOUNTS = {
 
 export type Account = keyof typeof ACCOUNTS
 
+/** ethereumjs shape: [emitter, topics, data]. */
+type RawLog = [Uint8Array, Uint8Array[], Uint8Array]
+
 export class Chain {
   private vm!: VM
   private nextAddress = 0x100
+  private lastLogs: RawLog[] = []
   /** Seconds. Advanced explicitly by tests; never wall-clock. */
   timestamp = 1_800_000_000
 
@@ -121,6 +126,7 @@ export class Chain {
       gasLimit: 30_000_000n,
       block: { header: { timestamp: BigInt(this.timestamp), number: 1n } } as never,
     })
+    this.lastLogs = (result.execResult.logs ?? []) as RawLog[]
     if (result.execResult.exceptionError) {
       const returned = bytesToHex(result.execResult.returnValue) as Hex
       throw new Error(`${fn} reverted: ${decodeRevert(returned) ?? result.execResult.exceptionError.error}`)
@@ -130,6 +136,32 @@ export class Chain {
       ?.outputs
     if (!outputs || outputs.length === 0) return undefined as T
     return decodeFunctionResult({ abi: artifact.abi, functionName: fn, data: returned }) as T
+  }
+
+  /** Decoded events of one name emitted by the most recent send/call.
+   *
+   *  A settlement is two claims: it moves money, and it TELLS the outside world
+   *  what it moved. The balance assertions everywhere else cover the first. An
+   *  indexer — or a lender deciding whether it was repaid — only ever sees the
+   *  second, so it needs pinning too. Logs that do not decode against this
+   *  artifact are skipped rather than thrown on: a call may legitimately emit
+   *  another contract's events (the token's Transfer, most often). */
+  events<T = Record<string, unknown>>(name: string, event: string): T[] {
+    const abi = artifacts[name].abi
+    const out: T[] = []
+    for (const [, topics, data] of this.lastLogs) {
+      try {
+        const decoded = decodeEventLog({
+          abi,
+          topics: topics.map((t) => bytesToHex(t) as Hex) as [] | [Hex, ...Hex[]],
+          data: bytesToHex(data) as Hex,
+        })
+        if (decoded.eventName === event) out.push(decoded.args as T)
+      } catch {
+        // not this ABI's event
+      }
+    }
+    return out
   }
 
   /** Whether a call reverts, and with what — for the many "must be rejected"

@@ -52,8 +52,10 @@ interface ICreditRegistry {
 ///         3. NO CHANGE TO WHO JUDGES. Timeouts decide only what happens when
 ///            nobody acts. They never decide that work was good. Release on
 ///            merit still requires the requester, and a contested job still
-///            requires the arbiter — right up until the arbiter is demonstrably
-///            not coming.
+///            requires the arbiter — until DISPUTE_WINDOW passes, after which
+///            `resolveDispute` and `expireDispute` are both open and it is
+///            first-come-first-served between them. That is not a handover at a
+///            fixed moment; it is a second door appearing beside the first.
 contract LaborMarketV2 {
     IERC20 public immutable usdc;
     ICreditRegistry public immutable registry;
@@ -302,6 +304,11 @@ contract LaborMarketV2 {
     ///      this is the only one that means a token moved, and an indexer that
     ///      conflates the two will report a worker as paid before it has been.
     event Withdrawn(address indexed account, address indexed to, uint256 amount);
+    /// @dev Every movement of escrow into a withdrawable balance, with the
+    ///      creditor named and the amount stated. The per-status events say
+    ///      what HAPPENED to a job; this says who is owed what, which is the
+    ///      only question an indexer or a lender is actually asking.
+    event Credited(uint256 indexed jobId, address indexed to, uint256 amount);
 
     error WrongStatus();
     error NotRequester();
@@ -322,6 +329,7 @@ contract LaborMarketV2 {
     error RegistryUnavailable();
     error TooLate(uint64 nowTs, uint64 deadline);
     error NotAContract(address addr);
+    error TransferFailed();
 
     constructor(address _usdc, address _registry, address _arbiter, uint16 _feeBps, address _feeRecipient) {
         if (_feeBps > MAX_FEE_BPS) revert FeeTooHigh();
@@ -408,11 +416,32 @@ contract LaborMarketV2 {
         // the escrow is zero; a reputation record is minted from nothing, which
         // is what this system exists not to allow.
         //
-        // One check is enough, and it goes exactly here: every other transition
-        // requires a status a phantom cannot reach, or a msg.sender equal to a
-        // requester that is address(0). `acceptJob` is the only door in.
+        // `acceptJob` and `expireOpen` are the two doors reachable on a phantom,
+        // because both accept `Open` and `Open` is what an unwritten slot
+        // decodes to. Both check. Every other transition requires a status a
+        // phantom cannot reach, or a msg.sender equal to a requester that is
+        // address(0).
         if (job.requester == address(0)) revert NoSuchJob();
         if (job.status != Status.Open) revert WrongStatus();
+        // `expireOpen` did not CLOSE `Open`; it only added a door out of it. So
+        // without this, a job stays acceptable at day 61 — and taking it slams
+        // that door, and the requester's own `cancelJob` with it. A stranger who
+        // never intends to work then submits a junk hash and collects
+        // SILENCE_FORFEIT_BPS from a requester who is absent BY CONSTRUCTION:
+        // `openExpirable` is a free public view naming exactly the requesters
+        // for whom both stated mitigations of the forfeit are void. It converts
+        // a designed 100% recovery into 90% arriving up to 37 days later, for
+        // the price of gas — `acceptJob` takes no bond, so nothing is at stake.
+        //
+        // This was the only place an unrelated third party could pre-empt a
+        // permissionless exit. `reclaimJob` can only be pre-empted by the
+        // worker, `expireReview` by the requester, `expireDispute` by the
+        // arbiter — in each case by the deadline's own principal, which is the
+        // difference between a party acting late and a party being replaced.
+        //
+        // It cannot strand anything: past `openDeadline` both `expireOpen` and
+        // `cancelJob` remain callable on an Open job.
+        if (block.timestamp >= job.openDeadline) revert TooLate(uint64(block.timestamp), job.openDeadline);
         if (msg.sender == job.requester) revert SelfWork();
 
         uint256 score = _scoreOf(msg.sender, job.minScore);
@@ -549,10 +578,30 @@ contract LaborMarketV2 {
     ///         execution risk, it is exactly what the LTV in
     ///         lib/orchestration-risk.ts prices, and it is not the contract's
     ///         job to remove.
+    ///
+    ///         What IS the contract's job is not lying about the odds. Risk the
+    ///         lender prices and certainty it cannot see are different things,
+    ///         and the deadline check below is the line between them — see the
+    ///         comment on it.
     function assignPayee(uint256 jobId, address payee, uint256 amount) external {
         Job storage job = jobs[jobId];
         if (job.status != Status.Accepted) revert WrongStatus();
         if (msg.sender != job.worker) revert NotWorker();
+        // `Accepted` past `deliveryDeadline` is not a late job, it is a DEAD
+        // one: `submitWork` reverts TooLate, and the single remaining
+        // transition is `reclaimJob` — 100% to the requester. `deliveryDeadline`
+        // is written once, in `acceptJob`, and never rewritten, so this is a
+        // certainty and not a race.
+        //
+        // Before `submitWork` got its own TooLate guard this was merely
+        // unlikely; the guard is what made it provable, which is the kind of
+        // thing that only shows up when you compose two fixes. Without this
+        // check the contract lets a lender perfect a claim on escrow that is
+        // already unreachable by every release path at the moment it advances,
+        // and `releaseSplit` — the one function a lender is told to trust —
+        // then quotes it a positive number. A sybil requester/worker pair nets
+        // the advance for the price of a posting fee.
+        if (block.timestamp >= job.deliveryDeadline) revert TooLate(uint64(block.timestamp), job.deliveryDeadline);
         if (payee == address(0)) revert ZeroPayee();
         if (job.payee != address(0)) revert PayeeAlreadySet();
         // Zero would be an assignment that secures nothing while consuming the
@@ -588,7 +637,7 @@ contract LaborMarketV2 {
             _release(jobId, job);
         } else {
             job.status = Status.Refunded;
-            _credit(job.requester, job.bounty);
+            _credit(jobId, job.requester, job.bounty);
         }
         emit DisputeResolved(jobId, releaseToWorker);
     }
@@ -600,7 +649,7 @@ contract LaborMarketV2 {
         if (msg.sender != job.requester) revert NotRequester();
 
         job.status = Status.Cancelled;
-        _credit(job.requester, job.bounty);
+        _credit(jobId, job.requester, job.bounty);
         emit JobCancelled(jobId);
     }
 
@@ -624,7 +673,7 @@ contract LaborMarketV2 {
 
         address formerWorker = job.worker;
         job.status = Status.Refunded;
-        _credit(job.requester, job.bounty);
+        _credit(jobId, job.requester, job.bounty);
         emit JobReclaimed(jobId, formerWorker);
     }
 
@@ -640,18 +689,28 @@ contract LaborMarketV2 {
     ///         failed to deliver.
     function expireOpen(uint256 jobId) external {
         Job storage job = jobs[jobId];
+        // The same phantom `acceptJob` guards against, reached through the other
+        // door this function opened. An unwritten slot is `Open` (enum 0) with
+        // `openDeadline` 0, so BOTH guards below pass on a job nobody posted.
+        // No money moves — `_credit` early-returns on zero — but anyone can mint
+        // terminal-state records at arbitrary ids for the price of gas, in a
+        // product whose entire claim is a credit score derived from on-chain
+        // behaviour. The off-chain `onchainJobId` is a bare integer with no
+        // contract address beside it, so an indexer has no discriminator.
+        if (job.requester == address(0)) revert NoSuchJob();
         if (job.status != Status.Open) revert WrongStatus();
         if (block.timestamp < job.openDeadline) revert TooEarly(uint64(block.timestamp), job.openDeadline);
 
         job.status = Status.Expired;
-        _credit(job.requester, job.bounty);
+        _credit(jobId, job.requester, job.bounty);
         emit OpenExpired(jobId);
     }
 
     /// @notice Whether `expireOpen` would succeed right now.
     function openExpirable(uint256 jobId) external view returns (bool) {
         Job storage job = jobs[jobId];
-        return job.status == Status.Open && block.timestamp >= job.openDeadline;
+        return job.requester != address(0) && job.status == Status.Open
+            && block.timestamp >= job.openDeadline;
     }
 
     /// @notice The mirror stall: work was delivered and the requester never
@@ -688,8 +747,8 @@ contract LaborMarketV2 {
         uint256 refund = job.bounty - forfeit;
 
         job.status = Status.Expired;
-        (uint256 toPayee, uint256 toWorker) = _payWorkerSide(job, forfeit);
-        _credit(job.requester, refund);
+        (uint256 toPayee, uint256 toWorker) = _payWorkerSide(jobId, job, forfeit);
+        _credit(jobId, job.requester, refund);
         emit ReviewExpired(jobId, refund, toPayee, toWorker);
     }
 
@@ -736,7 +795,7 @@ contract LaborMarketV2 {
         //   Refunded  — someone decided it was not, or it never arrived
         //   Expired   — settled by a deadline; no verdict exists
         job.status = Status.Expired;
-        (uint256 toPayee, uint256 toWorker) = _payWorkerSide(job, job.bounty);
+        (uint256 toPayee, uint256 toWorker) = _payWorkerSide(jobId, job, job.bounty);
         emit DisputeExpired(jobId, toPayee, toWorker);
     }
 
@@ -760,15 +819,28 @@ contract LaborMarketV2 {
     ///      that forgets to decrement it makes the contract look permanently
     ///      over-collateralised — the direction that hides a real shortfall
     ///      behind an accounting one. Every settlement goes through here.
-    function _credit(address to, uint256 amount) private {
+    ///
+    ///      Emits `Credited`, and that is not decoration. Five of the eight
+    ///      credit-producing events omit either the address or the amount:
+    ///      `JobCancelled` and `OpenExpired` carry neither, `JobReclaimed` names
+    ///      the former WORKER while crediting the requester, `DisputeResolved`
+    ///      carries only a bool, and `ReviewExpired`/`DisputeExpired` carry
+    ///      amounts but no addresses. Everything is reconstructible by joining
+    ///      four event types on jobId and replaying `_payWorkerSide`'s min()
+    ///      waterfall off-chain — which is precisely the mistake `releaseSplit`
+    ///      exists to spare lenders, reintroduced one layer down. And nothing
+    ///      lets an indexer DISCOVER a creditor: `withdrawable(address)` needs
+    ///      an address you already have.
+    function _credit(uint256 jobId, address to, uint256 amount) private {
         if (amount == 0) return;
         totalEscrowed -= amount;
         withdrawable[to] += amount;
         totalWithdrawable += amount;
+        emit Credited(jobId, to, amount);
     }
 
     function _release(uint256 jobId, Job storage job) private {
-        (uint256 toPayee, uint256 toWorker) = _payWorkerSide(job, job.bounty);
+        (uint256 toPayee, uint256 toWorker) = _payWorkerSide(jobId, job, job.bounty);
         emit JobCompleted(jobId, job.worker, job.requester, job.bounty, job.payee, toPayee, toWorker);
     }
 
@@ -786,7 +858,10 @@ contract LaborMarketV2 {
     ///      `amount` is always <= bounty and `payeeAmount` is capped at bounty
     ///      by assignPayee, so neither subtraction can underflow and the two
     ///      transfers can never exceed what this job escrowed.
-    function _payWorkerSide(Job storage job, uint256 amount) private returns (uint256 toPayee, uint256 toWorker) {
+    function _payWorkerSide(uint256 jobId, Job storage job, uint256 amount)
+        private
+        returns (uint256 toPayee, uint256 toWorker)
+    {
         if (job.payee != address(0)) {
             toPayee = amount < job.payeeAmount ? amount : job.payeeAmount;
         }
@@ -796,8 +871,8 @@ contract LaborMarketV2 {
         // transfer that some tokens revert on, and stranding a settlement over
         // a zero-value leg would be the whole failure class this contract
         // exists to close.
-        _credit(job.payee, toPayee);
-        _credit(job.worker, toWorker);
+        _credit(jobId, job.payee, toPayee);
+        _credit(jobId, job.worker, toWorker);
     }
 
     /// @notice Collect everything settlement has credited to you.
@@ -849,6 +924,14 @@ contract LaborMarketV2 {
     ///         no path for anyone to move anyone else's.
     function withdrawTo(address to) external returns (uint256 amount) {
         if (to == address(0)) revert ZeroPayee();
+        // The other address that destroys the money. Paying this contract puts
+        // the tokens back where they came from as surplus nobody can sweep,
+        // while the caller's balance is already zeroed — the whole credit, gone,
+        // with the accounting perfectly consistent about it. Self-inflicted, so
+        // it is not an attack; but this function exists to be called
+        // PROGRAMMATICALLY by smart accounts passing an address, and the guard
+        // is one comparison.
+        if (to == address(this)) revert ZeroPayee();
         return _withdrawTo(to);
     }
 
@@ -860,8 +943,29 @@ contract LaborMarketV2 {
         // this contract must never do is pay the same balance twice.
         withdrawable[msg.sender] = 0;
         totalWithdrawable -= amount;
-        require(usdc.transfer(to, amount), "withdraw: transfer");
+        _safeTransfer(to, amount);
         emit Withdrawn(msg.sender, to, amount);
+    }
+
+    /// @dev The one token-upgrade scenario the pull-payment rewrite does not
+    ///      otherwise survive.
+    ///
+    ///      `require(usdc.transfer(...))` asks Solidity to ABI-decode a bool
+    ///      from the return data. USDC on Base is a proxy Circle can upgrade,
+    ///      and if an upgrade ever made `transfer` return NOTHING — the shape
+    ///      USDT has always had on Ethereum — that decode reverts and EVERY
+    ///      withdrawal in this contract is bricked. Permanently: there is no
+    ///      owner, no sweep, no rescue, by design. The design that makes the
+    ///      contract trustworthy is the same one that makes this unfixable.
+    ///
+    ///      So accept both conventions: success is "the call did not revert AND
+    ///      (it returned nothing OR it returned true)". A token that reverts on
+    ///      failure still reverts; a token that returns false still fails here.
+    function _safeTransfer(address to, uint256 amount) private {
+        (bool ok, bytes memory ret) = address(usdc).call(
+            abi.encodeWithSelector(IERC20.transfer.selector, to, amount)
+        );
+        if (!ok || (ret.length != 0 && !abi.decode(ret, (bool)))) revert TransferFailed();
     }
 
     /// @notice Exactly what `postJob(bounty, ...)` will pull from the caller.
@@ -910,9 +1014,17 @@ contract LaborMarketV2 {
     ///         an already-settled claim now lives.
     function releaseSplit(uint256 jobId) external view returns (address payee, uint256 toPayee, uint256 toWorker) {
         Job storage job = jobs[jobId];
-        // Only these states can still reach _release.
+        // Only these states can still reach _release — and status alone is not
+        // enough to say so. Open past `openDeadline`, Submitted past
+        // `reviewDeadline` and Disputed past `disputeDeadline` can all still
+        // release; `Accepted` past `deliveryDeadline` cannot, because
+        // `submitWork` is closed and `reclaimJob` pays the requester 100%. That
+        // one asymmetry is the whole reason for the second check.
         if (job.status != Status.Open && job.status != Status.Accepted && job.status != Status.Submitted
             && job.status != Status.Disputed) {
+            return (address(0), 0, 0);
+        }
+        if (job.status == Status.Accepted && block.timestamp >= job.deliveryDeadline) {
             return (address(0), 0, 0);
         }
         payee = job.payee;

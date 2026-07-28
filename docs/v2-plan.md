@@ -708,8 +708,22 @@ MAX_DELIVERY_WINDOW  30 days
 REVIEW_WINDOW         7 days
 DISPUTE_WINDOW       14 days
                      ────────
-worst case          111 days, after which v2 is empty
+worst case          111 days, after which no JOB holds escrow
 ```
+
+**"After which v2 is empty" was the wrong claim, and the difference matters to
+anyone actually writing the migration.** The 111 days is a bound on *escrow held
+by jobs*, and it survived an adversarial check — a griefer front-running every
+keeper lands at exactly 60+30+7+14 with `totalEscrowed` at zero. But settlement
+credits; it does not pay. At day 111 the contract still holds every
+`withdrawable` balance, nobody can move a balance on its owner's behalf, and
+there is deliberately no sweep.
+
+So a clean drain-and-redeploy is impossible, and not by oversight: the property
+that keeps a frozen party's money safe from the operator is the same one that
+leaves an absent party's money unreachable by anyone. v2 empties only as fast as
+its creditors call `withdraw`, which may be never. Plan for "no job holds escrow
+after day 111", not "the contract is done".
 
 **This table said 51 days and was wrong**, in the way worth recording: it summed
 the delivery/review/dispute chain and silently assumed every job gets accepted.
