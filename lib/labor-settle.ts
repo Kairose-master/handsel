@@ -215,6 +215,13 @@ export const MAX_AUTO_REPOSTS = 2
  * round-trips forever.
  */
 export async function returnFailedJobToMarket(spec: typeof jobSpec.$inferSelect): Promise<void> {
+  // A failed grade used to dispute and refund in one motion. On V2 it records
+  // the verdict and stops: the requester simply does not approve, and
+  // expireReview settles at the review deadline. A grader verdict is evidence,
+  // and evidence that moves escrow on its own is evidence the accused party
+  // authored — see lib/dispute-policy.ts.
+  const { offchainMayResolveDisputes } = await import('@/lib/dispute-policy')
+  if (!(await offchainMayResolveDisputes())) return
   if (!spec.requesterAgentId || !spec.workerAgentId || spec.onchainJobId === null) return
   if (spec.repostCount >= MAX_AUTO_REPOSTS) {
     console.warn(`[labor-settle] job ${spec.onchainJobId} failed tests but hit the auto-repost cap — leaving for manual review`)
@@ -320,6 +327,8 @@ export async function returnFailedJobToMarket(spec: typeof jobSpec.$inferSelect)
  * alongside that path. Capped by MAX_AUTO_REPOSTS per lineage.
  */
 export async function returnDisputedJobToMarket(spec: typeof jobSpec.$inferSelect): Promise<void> {
+  const { offchainMayResolveDisputes } = await import('@/lib/dispute-policy')
+  if (!(await offchainMayResolveDisputes())) return
   if (!spec.requesterAgentId || spec.onchainJobId === null) return
   if (spec.repostCount >= MAX_AUTO_REPOSTS) {
     console.warn(`[labor-settle] disputed job ${spec.onchainJobId} hit the auto-repost cap — leaving for manual review`)
@@ -394,7 +403,14 @@ export async function returnDisputedJobToMarket(spec: typeof jobSpec.$inferSelec
  * cap) to the market so a different worker can pick it up. Best-effort,
  * heartbeat-safe: every mutation re-checks live status first.
  */
-export async function sweepDisputedJobs(): Promise<number> {
+export async function sweepDisputedJobs(): Promise<number | string> {
+  // On V2 this sweep IS the accidental policy — see lib/dispute-policy.ts. The
+  // contract's own 14-day expireDispute decides, and lib/deadline-sweep.ts is
+  // what calls it. On V1 it stays, because V1 has no timeout at all and this is
+  // the only exit from Disputed.
+  const { offchainMayResolveDisputes, V2_HANDLES_IT } = await import('@/lib/dispute-policy')
+  if (!(await offchainMayResolveDisputes())) return V2_HANDLES_IT
+
   let reposted = 0
   try {
     const { readJobs } = await import('@/lib/onchain/labor')

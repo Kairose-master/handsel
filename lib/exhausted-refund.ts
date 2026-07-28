@@ -68,6 +68,13 @@ export async function refundExhaustedJobs(now = new Date()): Promise<ExhaustedRe
   const { isLaborMarketConfigured } = await import('@/lib/onchain/config')
   if (!isLaborMarketConfigured()) return { refunded: 0, examined: 0, skipped: 'labor market not configured' }
 
+  // Superseded on V2 by expireReview, which pays the requester 90% and the
+  // worker side 10% rather than refunding in full — the forfeit exists so that
+  // going silent is not free. This path would hand back the whole bounty and
+  // erase that. See lib/dispute-policy.ts.
+  const { offchainMayResolveDisputes, V2_HANDLES_IT } = await import('@/lib/dispute-policy')
+  if (!(await offchainMayResolveDisputes())) return { refunded: 0, examined: 0, skipped: V2_HANDLES_IT }
+
   const { readJobs, raiseDispute, resolveDispute } = await import('@/lib/onchain/labor')
   const jobs = await readJobs({ maxAgeMs: 0 }).catch(() => [])
   const submitted = jobs.filter((j) => j.status === 'Submitted')

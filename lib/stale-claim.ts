@@ -208,6 +208,14 @@ export async function reclaimAbandonedJobs(now = new Date()): Promise<ReclaimRep
   const { isLaborMarketConfigured } = await import('@/lib/onchain/config')
   if (!isLaborMarketConfigured()) return { reclaimed: 0, warned: 0, blocked: {}, examined: 0, skipped: 'labor market not configured' }
 
+  // V2 has reclaimJob: one permissionless call, no worker impersonation, no
+  // dispute, no arbiter. lib/deadline-sweep.ts makes it. The walk below exists
+  // only because V1 has no exit from Accepted at all — see lib/dispute-policy.ts.
+  const { offchainMayResolveDisputes, V2_HANDLES_IT } = await import('@/lib/dispute-policy')
+  if (!(await offchainMayResolveDisputes())) {
+    return { reclaimed: 0, warned: 0, blocked: {}, examined: 0, skipped: V2_HANDLES_IT }
+  }
+
   const { readJobs, submitWork, raiseDispute, resolveDispute } = await import('@/lib/onchain/labor')
   const jobs = await readJobs({ maxAgeMs: 0 }).catch(() => [])
   const accepted = jobs.filter((j) => j.status === 'Accepted')
