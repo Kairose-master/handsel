@@ -77,6 +77,32 @@ export const OPS_STEPS: OpsStep[] = [
     },
   },
   {
+    // The four permissionless exits, finally called by something.
+    //
+    // LaborMarketV2 grew expireOpen/reclaimJob/expireReview/expireDispute —
+    // each deadline-gated, each callable by a stranger, each proven against a
+    // real EVM — and a grep for their names across lib/, app/ and sdk/ returned
+    // NOTHING. "Permissionless" means anyone MAY call it; it does not mean
+    // anyone will. Until this step existed, the timeouts were a property of the
+    // bytecode and not of the product.
+    //
+    // Its own step, deliberately apart from anything that decides policy. This
+    // is the backstop the dispute design rests on — the answer to "what if
+    // nobody acts" is a deadline, and a deadline nobody calls is not an answer.
+    // A bug in a policy sweep must not be able to take it down with it, so they
+    // share no step, no lease, and no failure.
+    //
+    // Fast, and bounded by MAX_EXITS_PER_PASS rather than by how many jobs
+    // exist: escrow whose counterparty is gone is this file's own definition of
+    // what a visitor actually feels. No-ops entirely against a V1 market.
+    name: 'deadlines',
+    fast: true,
+    run: async () => {
+      const { sweepDeadlines } = await import('@/lib/deadline-sweep')
+      return sweepDeadlines()
+    },
+  },
+  {
     name: 'abandonedClaims',
     fast: true,
     run: async () => {
