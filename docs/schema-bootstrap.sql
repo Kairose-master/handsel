@@ -1,12 +1,9 @@
-// Idempotent schema migration for the Neon PostgreSQL database.
-// Usage: DATABASE_URL=postgres://... node scripts/migrate.mjs  (or `pnpm db:migrate`)
-//
-// `sql` is exported so app/api/admin/migrate/route.ts can run the exact same
-// statements against the app's own DB connection — eliminates any ambiguity
-// about which DATABASE_URL a locally-run migration actually targeted.
-import pg from 'pg'
+-- Handsel schema bootstrap for a fresh Neon database.
+-- Generated from scripts/migrate.mjs + lib/db/ensure-columns.ts.
+-- Every statement is IF NOT EXISTS or additive: safe to run repeatedly.
+-- Verified by running it twice against a clean PostgreSQL 16.
 
-export const sql = /* sql */ `
+
 -- ── Better Auth tables ─────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS "user" (
   id            text PRIMARY KEY,
@@ -675,28 +672,16 @@ UPDATE job_specs t
  WHERE t.spec_hash = c.spec_hash
    AND t.issue_number IS NULL
    AND a.issue_number IS NOT NULL;
-`
 
-async function main() {
-  if (!process.env.DATABASE_URL) {
-    console.error('DATABASE_URL is not set. Aborting.')
-    process.exit(1)
-  }
-  const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL })
-  try {
-    await pool.query(sql)
-    console.log('Migration complete.')
-  } finally {
-    await pool.end()
-  }
-}
 
-// Only auto-run when executed directly (`node scripts/migrate.mjs`), not
-// when imported as a module (e.g. by the admin migrate API route).
-const isDirectRun = process.argv[1] && process.argv[1].endsWith('migrate.mjs')
-if (isDirectRun) {
-  main().catch((err) => {
-    console.error('Migration failed:', err)
-    process.exit(1)
-  })
-}
+-- Runtime self-healing columns (lib/db/ensure-columns.ts)
+ALTER TABLE job_specs ADD COLUMN IF NOT EXISTS repo_full_name text;
+ALTER TABLE job_specs ADD COLUMN IF NOT EXISTS base_branch text;
+ALTER TABLE job_specs ADD COLUMN IF NOT EXISTS pr_number integer;
+ALTER TABLE job_specs ADD COLUMN IF NOT EXISTS ci_status text;
+ALTER TABLE job_specs ADD COLUMN IF NOT EXISTS pricing jsonb;
+ALTER TABLE job_specs ADD COLUMN IF NOT EXISTS issue_number integer;
+ALTER TABLE job_specs ADD COLUMN IF NOT EXISTS onchain_contract text;
+
+-- Lease table (lib/ops-lease.ts also creates this itself)
+CREATE TABLE IF NOT EXISTS ops_leases (name text PRIMARY KEY, leased_until timestamptz NOT NULL);

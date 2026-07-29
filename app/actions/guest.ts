@@ -25,19 +25,71 @@ function truncate(addr: string | null | undefined): string | null {
  *  Exported so GET /api/tasks (lib/task-spec.ts) can reuse the same
  *  session-less on-chain read instead of duplicating it — that route passes
  *  its own `limit`; the guest page keeps relying on the 10-row default. */
+/**
+ * Why the market returned no jobs — three values, not two.
+ *
+ * `publicJobs` collapsed all three into `[]`, and GET /api/tasks served that
+ * as `{ count: 0 }` with HTTP 200. Measured on the live deployment before
+ * `ONCHAIN_LABOR_MARKET_ADDRESS` was set: the documented public integration
+ * point told every polling agent "there is no work here" when the truth was
+ * "this deployment has no market."
+ *
+ * That is the same shape as the deliverable check in lib/spec-hash.ts, and it
+ * matters for the same reason: two values force "I cannot tell" to be reported
+ * as one of the two things it is not. It is also this repo's own first rule —
+ * no fake data — since a hardcoded `[]` standing in for a query result is a
+ * number on a page that nothing measured.
+ *
+ * A PAGE may degrade to zero cards; that reads as an empty market to a human
+ * looking at an otherwise-visibly-broken site. An API may not, because the
+ * caller is a program with no other signal.
+ */
+export type MarketReadState = 'ok' | 'unconfigured' | 'unreachable'
+
+/**
+ * `publicJobs` with the reason attached — what GET /api/tasks calls.
+ *
+ * The state is RETURNED and never stashed on the module. A `let` at module
+ * scope set by one call and read by the next is a race the moment two requests
+ * overlap, which on a serverless runtime is the normal case rather than the
+ * unusual one; the caller would get another request's verdict about a different
+ * market and have no way to know.
+ */
+export async function publicJobsResult(limit = 10) {
+  return readPublicJobs(limit)
+}
+
+/**
+ * The array form, for pages.
+ *
+ * A page rendering zero cards is an acceptable degradation — a human is looking
+ * at a site whose other numbers are visibly missing too. A program polling an
+ * API has no such context, which is the whole reason the two forms differ.
+ */
 export async function publicJobs(limit = 10) {
+  return (await readPublicJobs(limit)).jobs
+}
+
+async function readPublicJobs(limit: number) {
   // Close the window between a deploy and its migration: a column declared
   // in schema.ts but missing in the database breaks EVERY reader of the table.
   await (await import('@/lib/db/ensure-columns')).ensureJobSpecColumns()
 
   const { isLaborMarketConfigured } = await import('@/lib/onchain/config')
-  if (!isLaborMarketConfigured()) return []
+  if (!isLaborMarketConfigured()) return { state: 'unconfigured' as const, jobs: [] }
 
   const { readJobs } = await import('@/lib/onchain/labor')
   const { reapStuckTasks } = await import('@/lib/agent-tasks')
   await reapStuckTasks()
 
-  const onchainJobs = await readJobs().catch(() => [])
+  let state: MarketReadState = 'ok'
+  const onchainJobs = await readJobs().catch(() => {
+    // An unreachable RPC is not an empty market either. Same collapse, one
+    // layer down, and the one that will actually happen in production — an RPC
+    // provider rate-limiting is far likelier than a missing env var.
+    state = 'unreachable'
+    return []
+  })
 
   // Slice FIRST, then fetch only what the visible cards need. This used to
   // read every job_specs row and — worse — every agent_tasks row, because the
@@ -80,7 +132,7 @@ export async function publicJobs(limit = 10) {
     : []
   const nameByAgentId = new Map(parties.map((p) => [p.id, p.name]))
 
-  return visible
+  const jobs = visible
     .map((j) => {
       const spec = specByHash.get(j.specHash.toLowerCase())
       const task = spec?.agentTaskId ? taskById.get(spec.agentTaskId) : undefined
@@ -110,6 +162,8 @@ export async function publicJobs(limit = 10) {
         baseBranch: spec?.baseBranch ?? null,
       }
     })
+
+  return { state, jobs }
 }
 
 /** Public leaderboard: top-earning worker agents, ranked by real payouts

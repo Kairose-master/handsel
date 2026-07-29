@@ -150,12 +150,57 @@ export const USER_OP_COST_USD = envNum('USER_OP_COST_USD', 0.01)
 /** The rolling window every budget is measured over. */
 export const GAS_WINDOW_MS = 24 * 60 * 60 * 1000
 
+/**
+ * Create the ledger if it is not there.
+ *
+ * **The comment below used to claim this table self-migrated, and it did not.**
+ * `gas_spend` was declared in schema.ts, absent from scripts/migrate.mjs, and
+ * absent from the eight tables that genuinely do create themselves at runtime
+ * (ops_leases, work_proofs, platform_secrets, settlement_queue, …). On any real
+ * deployment every read threw `relation does not exist`, the catch below
+ * reported zero spend, and the answer was always SPONSOR.
+ *
+ * A fuse that cannot read its own ledger is not a conservative fuse, it is a
+ * decoration — and the failure is SILENT, because failing toward sponsoring is
+ * exactly what an empty ledger legitimately looks like. The ZeroDev cap
+ * underneath was doing all of the work the whole time.
+ *
+ * Same shape as ops-lease.ts: memoized per process, IF NOT EXISTS, has to
+ * succeed only once ever. It is also in scripts/migrate.mjs now, so a fresh
+ * database has it before the first request rather than after it.
+ */
+let ledgerReady: Promise<void> | null = null
+function ensureLedger(): Promise<void> {
+  ledgerReady ??= (async () => {
+    const { pool } = await import('@/lib/db')
+    await pool.query(
+      `CREATE TABLE IF NOT EXISTS gas_spend (
+         id         text PRIMARY KEY,
+         lane       text NOT NULL,
+         agent_id   text,
+         usd        numeric(12,6) NOT NULL,
+         label      text,
+         created_at timestamptz NOT NULL DEFAULT now()
+       )`,
+    )
+    // Every sponsored call filters on exactly this pair.
+    await pool.query('CREATE INDEX IF NOT EXISTS gas_spend_lane_created_idx ON gas_spend (lane, created_at)')
+  })().catch((error) => {
+    // Clear the memo so the next call retries, rather than caching one failure
+    // for the life of the process — which would reproduce the original bug.
+    ledgerReady = null
+    throw error
+  })
+  return ledgerReady
+}
+
 /** What has been spent, per lane and per agent, inside the window. */
 export async function gasSpentInWindow(
   lane: Lane,
   agentId?: string,
 ): Promise<{ lane: number; agent: number }> {
   try {
+    await ensureLedger()
     const { db } = await import('@/lib/db')
     const { gasSpend } = await import('@/lib/db/schema')
     const { and, eq, gte } = await import('drizzle-orm')
@@ -173,12 +218,17 @@ export async function gasSpentInWindow(
     }
     return { lane: laneTotal, agent: agentTotal }
   } catch (error) {
-    // The table self-migrates on first use, so "not there yet" is a normal
-    // startup state and must not block every sponsored call. Fail toward
-    // SPONSORING here rather than toward refusing: an unreadable ledger is an
-    // operator problem, and the ZeroDev cap is still underneath as the real
-    // fuse. Failing the other way would take the market down over a migration.
-    console.error('[gas-budget] ledger unreadable — treating spend as zero:', error)
+    // Fail toward SPONSORING rather than toward refusing: failing the other way
+    // would take the market down over a migration, and the ZeroDev cap is still
+    // underneath as the backstop.
+    //
+    // But notice what this direction costs, because it cost exactly this: an
+    // unreadable ledger and an empty one produce the SAME answer, so the fuse
+    // being entirely disconnected looked identical to a quiet day. That is why
+    // `ensureLedger` above exists rather than a comment asserting the table
+    // shows up on its own. Loud, because there is no longer an expected reason
+    // to be here.
+    console.error('[gas-budget] LEDGER UNREADABLE — sponsoring without a limit:', error)
     return { lane: 0, agent: 0 }
   }
 }
@@ -187,6 +237,7 @@ export async function gasSpentInWindow(
  *  write that fails must not undo an on-chain action that already happened. */
 export async function recordGasSpend(lane: Lane, agentId: string | null, label: string): Promise<void> {
   try {
+    await ensureLedger()
     const { db } = await import('@/lib/db')
     const { gasSpend } = await import('@/lib/db/schema')
     const { nanoid } = await import('nanoid')

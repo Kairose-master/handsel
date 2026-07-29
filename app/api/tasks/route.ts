@@ -1,5 +1,5 @@
 import { after } from 'next/server'
-import { publicJobs } from '@/app/actions/guest'
+import { publicJobsResult } from '@/app/actions/guest'
 import { jobToTaskSpec } from '@/lib/task-spec'
 
 export const dynamic = 'force-dynamic'
@@ -35,7 +35,7 @@ export async function GET(request: Request) {
   // afterward doesn't starve the result — publicJobs() slices by recency
   // before we ever see the rows, so asking for exactly `limit` here could
   // return fewer than `limit` Open jobs even when more exist further back.
-  const jobs = await publicJobs(Math.max(limit * 3, 60))
+  const { state, jobs } = await publicJobsResult(Math.max(limit * 3, 60))
   const tasks = jobs
     .filter((j) => statusFilter === 'all' || j.status === statusFilter)
     .slice(0, limit)
@@ -54,6 +54,34 @@ export async function GET(request: Request) {
     const { maybeRunTrafficTick } = await import('@/lib/ops-cycle')
     await maybeRunTrafficTick(`${proto}://${host}`)
   })
+
+  // "No open jobs" and "I could not read the market" are DIFFERENT ANSWERS, and
+  // this endpoint used to give both of them as `200 {count: 0}`. Measured on the
+  // live deployment before ONCHAIN_LABOR_MARKET_ADDRESS was set: every polling
+  // agent was told the market was empty when the truth was that there was no
+  // market. A human hitting the site would have seen a page visibly missing its
+  // other numbers; a program has no such context, and this is the documented
+  // integration point programs are pointed at.
+  //
+  // 503 rather than 500: the condition is expected to end, and it names a
+  // retry. The body still parses as a feed so a naive client sees `count: null`
+  // rather than a field that silently became zero.
+  if (state !== 'ok') {
+    return Response.json(
+      {
+        type: 'HandselTaskFeed',
+        schema: DOCS_URL,
+        count: null,
+        tasks: [],
+        error: state,
+        detail:
+          state === 'unconfigured'
+            ? 'This deployment has no labour market configured. It is not that there is no work — there is no market to have work in.'
+            : 'The labour market could not be read (RPC unavailable). Retry; this is not an empty market.',
+      },
+      { status: 503, headers: { 'retry-after': '30' } },
+    )
+  }
 
   return Response.json({
     type: 'HandselTaskFeed',
