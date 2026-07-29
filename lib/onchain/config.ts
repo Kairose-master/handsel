@@ -17,7 +17,7 @@
  *              one-key/N-agents property, no bundler dependency.
  */
 import { defineChain } from 'viem'
-import { base, sepolia } from 'viem/chains'
+import { base, baseSepolia, sepolia } from 'viem/chains'
 
 export const giwaSepolia = defineChain({
   id: 91342,
@@ -28,8 +28,40 @@ export const giwaSepolia = defineChain({
   testnet: true,
 })
 
-const CHAINS = { sepolia, 'giwa-sepolia': giwaSepolia, base } as const
-export const CHAIN = CHAINS[(process.env.ONCHAIN_CHAIN ?? 'sepolia') as keyof typeof CHAINS] ?? sepolia
+/**
+ * Every chain this app can be pointed at.
+ *
+ * **`base-sepolia` was missing, and it is where the deploy scripts default to.**
+ * `scripts/deploy-labor-v2.mjs` and `scripts/deploy-registry.mjs` accept
+ * `base-sepolia` (their default) or `base`; this list accepted `sepolia`,
+ * `giwa-sepolia` or `base`. The two overlapped on mainnet alone, so the chain a
+ * testnet deploy actually lands on was one the app could not name — and the
+ * `?? sepolia` below turned that into silence rather than an error: the app
+ * would read a real market address on the wrong chain, every call would revert,
+ * `isV2Market()` would answer false, and it would go on behaving as a V1
+ * market. Everything wired for V2 would simply not run, with nothing saying so.
+ *
+ * Pinned against the scripts by tests/chain-list-parity.test.ts.
+ */
+const CHAINS = { sepolia, 'giwa-sepolia': giwaSepolia, 'base-sepolia': baseSepolia, base } as const
+
+/**
+ * An UNSET chain defaults; an unrecognised one THROWS.
+ *
+ * Those are different mistakes. Absent means "no on-chain layer", which is a
+ * supported way to run this app. A value that is present and unknown is always
+ * a typo, and the old `?? sepolia` answered it by quietly picking a chain — the
+ * one failure mode where a wrong answer looks exactly like a right one.
+ */
+const chainName = process.env.ONCHAIN_CHAIN
+if (chainName && !(chainName in CHAINS)) {
+  throw new Error(
+    `ONCHAIN_CHAIN="${chainName}" is not a chain this app knows. ` +
+      `Expected one of: ${Object.keys(CHAINS).join(', ')}. ` +
+      `Falling back silently would point every contract read at the wrong chain.`,
+  )
+}
+export const CHAIN = CHAINS[(chainName ?? 'sepolia') as keyof typeof CHAINS]
 export const EXPLORER_URL = CHAIN.blockExplorers?.default.url ?? 'https://sepolia.etherscan.io'
 export const USDC_DECIMALS = 6
 
