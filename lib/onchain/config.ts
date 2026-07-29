@@ -148,11 +148,30 @@ export function isOnchainConfigured(): boolean {
   )
 }
 
-/** True when agents can transact. Kernel mode additionally needs the ZeroDev
- *  bundler RPC; EOA mode only needs the owner key (gas is topped up by the
- *  oracle account). */
+/**
+ * True when agents can transact.
+ *
+ * Exactly three things: an RPC to send to, the key that owns every agent
+ * account, and a transport — kernel mode needs the ZeroDev bundler, EOA mode
+ * needs nothing further (gas is topped up by the oracle account).
+ *
+ * **It used to also require `isOnchainConfigured()`, and that was wrong.** That
+ * predicate is about talking to the registry and the VAULT as the oracle, so it
+ * demands `CREDIT_VAULT_ADDRESS` — and through this function the requirement
+ * reached `isLaborMarketConfigured`, `isVerifiedEscrowConfigured` and
+ * `isGovernanceOnchainConfigured`, none of which touch the vault. The vault is
+ * used in `lib/onchain/credit.ts` alone, for borrow and repay.
+ *
+ * So a labour market deployed, funded and correct was reported unconfigured
+ * because an unrelated contract had not been deployed — and the symptom was
+ * `GET /api/tasks` answering 503 with the market address sitting right there in
+ * the env. Measured against 0xbd0fb5… on Base Sepolia.
+ *
+ * `isOnchainConfigured` itself is unchanged and still means what it says; its
+ * own callers are the credit paths that really do need the vault.
+ */
 export function isAgentAccountConfigured(): boolean {
-  if (!onchainEnv.agentOwnerPrivateKey || !isOnchainConfigured()) return false
+  if (!onchainEnv.rpcUrl || !onchainEnv.agentOwnerPrivateKey) return false
   return agentAccountMode === 'eoa' || Boolean(onchainEnv.zerodevRpc)
 }
 
