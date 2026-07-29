@@ -50,15 +50,54 @@ a money path is a warning that gets scrolled past.
 
 ## 2. Deploy the registry
 
+```bash
+ONCHAIN_CHAIN=base ONCHAIN_RPC_URL=... DEPLOYER_PRIVATE_KEY=... \
+ORACLE_ADDRESS=<hardware-backed key, NOT the deployer, NOT the arbiter> \
+node scripts/deploy-registry.mjs --confirm-mainnet
+```
+
 `LaborMarketV2`'s constructor requires `registry` to be a contract, and its
 address is **immutable**. Replacing a compromised registry later means replacing
 the market too, and waiting out every live job.
 
-Before deploying it: the registry's `setOracle` is a single-step transfer with no
-two-step accept, so a compromised oracle key is a race the attacker wins if they
-move first. A stolen oracle key cannot reach escrowed money — that was executed
-end-to-end during the audit and confirmed — but it can forge every score the
-market gates on. Use a hardware-backed key.
+The oracle key deserves more care than a backend key usually gets. It **cannot**
+touch escrowed money — that was executed end-to-end during the audit with a
+stolen key and the answer was zero, because the market never pays on the strength
+of a score, only on approval, ruling, or silence. It **can** forge every score
+the market gates on, and hand itself the registry via `setOracle`, which is a
+single-step transfer with no two-step accept — so a compromise is a race the
+attacker wins if they move first.
+
+The script warns if you pass the deployer key as the oracle. Take the warning:
+by then that key has touched a deploy script and an RPC endpoint, and the oracle
+key should be one that has touched neither.
+
+---
+
+## Deploying twice on purpose
+
+A perfectly reasonable plan, and Base Sepolia genuinely does not test the thing
+that is actually unknown — Sepolia's USDC is a different contract, so a testnet
+rehearsal validates the script and the app wiring, not the contract's behaviour
+against real USDC or a real sequencer.
+
+The one condition: **redeploying is cheap only while the first deployment holds
+no money you care about.** Credited balances stay in a v2 forever — nobody can
+move a credited balance for its owner and there is deliberately no sweep — so a
+first attempt that has taken someone else's escrow cannot be abandoned, only
+apologised for.
+
+So treat deployment #1 as the rehearsal:
+
+- Do not publish the address. Do not let anyone else post to it.
+- Drive one full lap with your own money, in cents: post → accept → submit →
+  approve → **withdraw** (settlement credits; it does not transfer, so a lap
+  that stops at "approved" has not tested the half that pays).
+- Drive one deadline lap too — post, let it sit past `reviewWindow`, and confirm
+  the sweep calls `expireReview`. That path is the default outcome of the whole
+  dispute design and nothing off-chain has ever executed it.
+- If anything is wrong, deploy #2, repoint `LABOR_MARKET_ADDRESS`, and write off
+  whatever dust is in #1.
 
 ---
 
