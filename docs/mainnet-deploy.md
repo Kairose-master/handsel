@@ -134,6 +134,48 @@ observed before any of it is worth money.
 
 ---
 
+## 1b. Base Sepolia first — and NOT at the defaults
+
+The defaults in `scripts/deploy-labor-v2.mjs` are tuned for a real deployment.
+Used on testnet they hide the two things a testnet exists to find.
+
+**Every window at its floor.** The defaults are a 1-day review window, a 14-day
+dispute window and a 60-day open window, so the four permissionless exits — the
+entire reason v2 exists — are unreachable for a fortnight. `MIN_WINDOW` in the
+contract is 10 minutes, so set all of them to `600` and every timeout becomes
+testable the same afternoon:
+
+    reclaimJob      accept, wait 10 min, never submit
+    expireReview    submit, wait 10 min, never approve  → 10% forfeit
+    expireDispute   dispute, wait 10 min, never rule    → pays the worker
+    expireOpen      post, wait 10 min, nobody accepts
+
+**Fee and bond NON-ZERO.** They default to zero, which is right for a first
+mainnet deployment and wrong here: zero is exactly the branch that has already
+been exercised. Non-zero is what runs the code that has not —
+
+- `postJobV2` reading `postCost()` and approving `bounty + fee` rather than the
+  bounty. At `feeBps = 0` an allowance of the bounty happens to be correct, so
+  the bug this fixes stays invisible.
+- `acceptJobV2` reading `bondFor()` and approving it. At zero the approval is a
+  no-op call and proves nothing.
+- `_burnBond` on `reclaimJob` — the round-3 change. At zero there is no bond to
+  burn.
+
+Suggested testnet values, all one address since deployment #1 is single-key:
+
+| var | value | |
+|---|---|---|
+| `USDC_ADDRESS` | Circle's Base Sepolia USDC | Same proxy-and-blocklist shape as mainnet. MockUSDC would not exercise what the pull-payment design defends against. |
+| `FEE_BPS` / `FLAT_FEE` | `200` / `30000` | 2% + 3¢. Runs the `postCost` path. |
+| `BOND_BPS` / `FLAT_BOND` | `500` / `30000` | 5% + 3¢. Runs the bond approval and the burn. |
+| `MIN_DELIVERY_WINDOW_S` … `DISPUTE_WINDOW_S` | `600` each | The contract floor. Makes every exit reachable. |
+| `MIN_BOUNTY` | `1` | Default. One token unit. |
+
+Cost: nothing. Faucet ETH, faucet USDC.
+
+---
+
 ## 2. Deploy the registry
 
 ```bash
