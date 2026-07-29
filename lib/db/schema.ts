@@ -91,6 +91,36 @@ export const platformEvent = pgTable('platform_events', {
 })
 
 /**
+ * dispute_rulings — every decision the refund gate has made, append-only.
+ *
+ * The point is not an audit trail for the operator; it is that the rule is
+ * PUBLISHED and each ruling can be checked against it. `REFUND_GATE_TABLE`
+ * renders to markdown, so a reader sees the table and the rows it produced side
+ * by side and can tell whether the two agree. A policy nobody can check is a
+ * policy in name only, which is what "an admin clicked refund" was.
+ *
+ * Deliberately NOT `job_specs.disputeNote`, which the machine paths used to
+ * write: that is a single last-writer-wins prose column, rendered publicly and
+ * unauthenticated on the guest board, and it cannot hold more than one ruling
+ * or say which rule produced it.
+ */
+export const disputeRuling = pgTable('dispute_rulings', {
+  id: text('id').primaryKey(),
+  onchainJobId: integer('onchain_job_id').notNull(),
+  /** 'refund' | 'no_refund' */
+  decision: text('decision').notNull(),
+  /** Which row of REFUND_GATE_TABLE fired: NO_DELIVERABLE, SUBSTITUTED, … */
+  ground: text('ground').notNull(),
+  reason: text('reason').notNull(),
+  /** The evidence vector the decision was made from, so a ruling can be
+   *  recomputed later against a table that may since have changed. */
+  evidence: jsonb('evidence').$type<Record<string, unknown>>(),
+  /** Null when the ruling was no_refund — nothing moved, so nothing to link. */
+  txHash: text('tx_hash'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+/**
  * task_progress — live, per-task step feed (PLAN_CREATED, TOOL_EXECUTED,
  * TASK_COMPLETED, ...) pushed by the runtime as a task actually runs, so the
  * UI can show what an agent is doing in real time instead of only a final

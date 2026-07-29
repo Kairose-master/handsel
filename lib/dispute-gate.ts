@@ -25,9 +25,10 @@
  */
 import { and, eq, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db'
-import { jobSpec, agentTask, artifact } from '@/lib/db/schema'
+import { jobSpec, agentTask, artifact, disputeRuling } from '@/lib/db/schema'
 import { authorOfRule, decideRefund, type RefundGround } from '@/lib/decision-table'
 import { briefMatchesHash } from '@/lib/spec-hash'
+import { nanoid } from 'nanoid'
 import { acquireOpsLease, releaseOpsLease } from '@/lib/ops-lease'
 
 const LEASE_MS = 4 * 60_000
@@ -47,6 +48,11 @@ export type Ruling = {
   decision: 'refund' | 'no_refund'
   ground: RefundGround
   reason: string
+  /** What the decision was made FROM. Stored so a published ruling can be
+   *  recomputed later against a table that may since have changed — otherwise
+   *  "here is the rule, here is the ruling" is two claims a reader has to take
+   *  on trust separately. */
+  evidence: Record<string, unknown>
 }
 
 /**
@@ -109,11 +115,24 @@ export async function settleDisputes(): Promise<string> {
         const ruling = await ruleOn(job.id)
         if (!ruling) continue
         rulings.push(ruling)
+        let txHash: string | null = null
         if (ruling.decision === 'refund') {
           const { resolveDispute } = await import('@/lib/onchain/labor')
-          await resolveDispute(job.id, false)
+          txHash = await resolveDispute(job.id, false)
           refunded++
         }
+        // Recorded AFTER the money moved, so a row here always means the
+        // outcome actually happened. The reverse ordering would publish a
+        // ruling that a failed transaction silently made untrue.
+        await db.insert(disputeRuling).values({
+          id: `dr-${nanoid()}`,
+          onchainJobId: job.id,
+          decision: ruling.decision,
+          ground: ruling.ground,
+          reason: ruling.reason,
+          evidence: ruling.evidence,
+          txHash,
+        })
       } catch (e) {
         console.error(`[dispute-gate] job ${job.id}:`, e)
       }
@@ -145,7 +164,7 @@ export async function ruleOn(onchainJobId: number): Promise<Ruling | null> {
   // every legacy dispute back to the requester on the first pass.
   const seal = briefMatchesHash(spec)
 
-  const out = decideRefund({
+  const evidence = {
     hasDeliverable: delivered,
     // The bytes the worker delivered are checked elsewhere; what this asserts
     // is that the TERMS were not rewritten after posting. A requester who
@@ -160,7 +179,8 @@ export async function ruleOn(onchainJobId: number): Promise<Ruling | null> {
         : 'unknown',
     verdict: spec.testResult?.passed === false ? 'fail' : spec.testResult?.passed ? 'pass' : 'pending',
     ruleAuthor: authorOfRule(spec),
-  })
+  } as const
+  const out = decideRefund(evidence)
 
-  return { jobId: onchainJobId, ...out }
+  return { jobId: onchainJobId, ...out, evidence }
 }
