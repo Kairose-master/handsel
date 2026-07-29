@@ -77,3 +77,52 @@ describe('the scripts can run on a machine that is not this one', () => {
     expect(fixture.solc.startsWith(declared.solc!)).toBe(true)
   })
 })
+
+/**
+ * One lockfile, and it has to agree with package.json.
+ *
+ * Adding `solc` to package.json and updating the wrong lockfile broke the
+ * Vercel build with ERR_PNPM_OUTDATED_LOCKFILE. This repo installs with pnpm;
+ * an `npm install` beside it produces a second lockfile that resolves the same
+ * dependency tree differently and is authoritative for nobody.
+ *
+ * The failure surfaced on the deploy platform rather than here, which is the
+ * wrong place for it: `pnpm install --frozen-lockfile` is what CI and Vercel
+ * run, and it is exactly the check nothing local was making.
+ */
+describe('the lockfile agrees with package.json', () => {
+  const lock = readFileSync('pnpm-lock.yaml', 'utf8')
+
+  it('has one lockfile, not two', () => {
+    // A repo with both is a repo where `npm install` and `pnpm install` give
+    // different trees and neither is wrong.
+    let npmLockExists = true
+    try {
+      readFileSync('package-lock.json', 'utf8')
+    } catch {
+      npmLockExists = false
+    }
+    expect(npmLockExists, 'package-lock.json must not exist — this repo installs with pnpm').toBe(false)
+  })
+
+  it('resolves every declared dependency', () => {
+    // Not a full resolution check — that needs the network — but it catches the
+    // case that actually happens: a package added to package.json and never
+    // installed, so the lockfile has no entry for it and --frozen-lockfile
+    // refuses the whole install.
+    // Collect the names pnpm actually recorded, rather than string-matching
+    // guesses at its formatting: it quotes scoped names ('@scope/pkg':) and
+    // leaves plain ones bare (viem:), at an indentation that is not ours to
+    // depend on. Getting this wrong makes every scoped dependency read as
+    // missing, which is noise rather than a guard.
+    const inLock = new Set(
+      [...lock.matchAll(/^\s+'?(@?[a-z0-9][^'\s:]*)'?:$/gim)].map((m) => m[1]),
+    )
+    const missing = Object.keys(declared).filter((name) => !inLock.has(name))
+    expect(missing, `in package.json but absent from pnpm-lock.yaml: ${missing.join(', ')}`).toEqual([])
+  })
+
+  it('pins the same solc the fixture was built with', () => {
+    expect(lock).toMatch(/solc@0\.8\.24/)
+  })
+})
