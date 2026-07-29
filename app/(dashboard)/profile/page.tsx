@@ -925,9 +925,26 @@ export default function ProfilePage() {
                     )}
                   </p>
                   {treasury.tokenAddress && (
-                    <p className="break-all font-mono text-[10px] leading-relaxed text-muted-foreground">
-                      {t('profile.treasury.tokenLabel')} {treasury.tokenAddress}
-                    </p>
+                    <>
+                      {/* EIP-681 payment URI. A plain anchor — no wallet
+                          connector, no wagmi, no bundle. A wallet that
+                          understands it opens prefilled with the right token,
+                          the right chain and the right recipient, which is the
+                          part of a Connect button that actually matters here.
+                          Support varies by wallet, so it sits BESIDE the copy
+                          button rather than replacing it: the address is the
+                          thing that always works. */}
+                      <a
+                        href={`ethereum:${treasury.tokenAddress}@${treasury.chainId}/transfer?address=${treasury.address}`}
+                        className="inline-flex w-fit items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[11px] font-medium transition hover:bg-secondary"
+                      >
+                        <Wallet className="size-3" />
+                        {t('profile.treasury.openInWallet')}
+                      </a>
+                      <p className="break-all font-mono text-[10px] leading-relaxed text-muted-foreground">
+                        {t('profile.treasury.tokenLabel')} {treasury.tokenAddress}
+                      </p>
+                    </>
                   )}
                 </div>
               ) : (
