@@ -352,6 +352,14 @@ function StatCard({ icon: Icon, label, value }: { icon: typeof Pickaxe; label: s
 function PayoutCard({ hasProvisionedWorker }: { hasProvisionedWorker: boolean }) {
   const { t } = useI18n()
   const [address, setAddress] = useState('')
+  // What the SERVER has, tracked apart from what is in the input box. Withdraw
+  // was gated on the input, so typing an address and clicking Withdraw instead
+  // of Save enabled the button while the server still had nothing saved — and
+  // the resulting throw reaches the client in production as the generic
+  // "An error occurred in the Server Components render" with a digest, because
+  // Next.js strips server-action error messages. The catch below faithfully
+  // shows e.message; in production e.message IS the redaction notice.
+  const [savedAddress, setSavedAddress] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [withdrawing, setWithdrawing] = useState(false)
@@ -360,7 +368,10 @@ function PayoutCard({ hasProvisionedWorker }: { hasProvisionedWorker: boolean })
 
   useEffect(() => {
     getPayoutAddress()
-      .then((r) => setAddress(r.payoutAddress ?? ''))
+      .then((r) => {
+        setAddress(r.payoutAddress ?? '')
+        setSavedAddress(r.payoutAddress ?? '')
+      })
       .catch(() => {})
   }, [])
 
@@ -369,7 +380,11 @@ function PayoutCard({ hasProvisionedWorker }: { hasProvisionedWorker: boolean })
     setError(null)
     setSaved(false)
     try {
-      await setPayoutAddress(address)
+      const r = await setPayoutAddress(address)
+      // The server's echo, not the input: setPayoutAddress trims, and stores
+      // NULL for a blank one — so clearing the box really does clear the saved
+      // address, and Withdraw must go back to disabled when it does.
+      setSavedAddress(r.payoutAddress ?? '')
       setSaved(true)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -378,12 +393,22 @@ function PayoutCard({ hasProvisionedWorker }: { hasProvisionedWorker: boolean })
     }
   }
 
+  /** Typed something, has not saved it. The reason Withdraw stays disabled. */
+  const unsavedEdit = address.trim() !== '' && address.trim() !== savedAddress.trim()
+
   const withdraw = async () => {
     setWithdrawing(true)
     setError(null)
     setResult(null)
     try {
       const r = await withdrawAllEarnings()
+      // A returned precondition failure (no payout address saved) — reported
+      // before the balance messages below, since none of them apply when
+      // nothing was attempted.
+      if (r.error) {
+        setError(r.error)
+        return
+      }
       // "No earnings yet" only holds when every agent had a zero balance
       // (withdrawAllEarnings skips those entirely, so r.results is empty).
       // When totalSent is 0 but r.results is non-empty, at least one agent
@@ -429,13 +454,28 @@ function PayoutCard({ hasProvisionedWorker }: { hasProvisionedWorker: boolean })
         </button>
         <button
           onClick={withdraw}
-          disabled={withdrawing || !address || !hasProvisionedWorker}
+          // savedAddress, NOT address: the server sweeps to what it has stored,
+          // so that is the only value whose presence makes this button safe to
+          // press. Gating on the input box let a typed-but-unsaved address
+          // through to a 500 whose reason production strips.
+          disabled={withdrawing || !savedAddress || !hasProvisionedWorker}
           className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
         >
           {withdrawing ? <Loader2 className="size-3.5 animate-spin" /> : <CircleDollarSign className="size-3.5" />}
           {withdrawing ? t('mine.payout.withdrawing') : t('mine.payout.withdraw')}
         </button>
       </div>
+      {/* A disabled button with no reason is the same puzzle as the digest was.
+          Say which of the two preconditions is missing. */}
+      {unsavedEdit && (
+        <p className="mt-2 text-sm text-muted-foreground">{t('mine.payout.saveFirst')}</p>
+      )}
+      {!unsavedEdit && !savedAddress && (
+        <p className="mt-2 text-sm text-muted-foreground">{t('mine.payout.needAddress')}</p>
+      )}
+      {savedAddress && !hasProvisionedWorker && (
+        <p className="mt-2 text-sm text-muted-foreground">{t('mine.payout.needWorker')}</p>
+      )}
       {saved && !error && <p className="mt-2 text-sm text-success">{t('mine.payout.saved')}</p>}
       {result && <p className="mt-2 text-sm text-success">{result}</p>}
       {error && <p className="mt-2 text-sm text-destructive">{error}</p>}

@@ -170,7 +170,22 @@ export async function withdrawAgentEarnings(agentId: string) {
   const userId = await requireUserId()
   const [row] = await db.select({ payoutAddress: user.payoutAddress }).from(user).where(eq(user.id, userId))
   const to = row?.payoutAddress
-  if (!to) throw new Error('Set a payout wallet first')
+  if (!to) {
+    // RETURNED, not thrown. A server action that throws reaches the browser as
+    // "An error occurred in the Server Components render" with the message
+    // replaced by a digest — so `throw new Error('Set a payout wallet first')`
+    // told the user nothing at all in production, which is exactly how this was
+    // found (POST /mine 500, digest 1363688840).
+    //
+    // A returned value crosses the boundary intact. WorkerCard already renders
+    // `result.error`, so this needs no client change — and it cannot be gated
+    // client-side the way the Withdraw-all button now is, because the per-agent
+    // card never receives the payout address.
+    return {
+      to: '',
+      result: { agentId: ag.id, name: ag.name, sent: 0, error: 'Set a payout wallet on this page first' },
+    }
+  }
 
   const result = await sweepAgentToAddress(ag, to, 'Withdraw earnings')
   revalidatePath('/mine')
@@ -186,11 +201,23 @@ export async function withdrawAgentEarnings(agentId: string) {
  * reports the shortfall rather than failing the whole batch — the rest
  * still settle.
  */
-export async function withdrawAllEarnings() {
+export async function withdrawAllEarnings(): Promise<{
+  to: string
+  totalSent: number
+  results: SweepResult[]
+  /** A precondition the caller can fix, returned rather than thrown — see the
+   *  note in withdrawAgentEarnings. Absent on success. */
+  error?: string
+}> {
   const userId = await requireUserId()
   const [row] = await db.select({ payoutAddress: user.payoutAddress }).from(user).where(eq(user.id, userId))
   const to = row?.payoutAddress
-  if (!to) throw new Error('Set a payout wallet first')
+  if (!to) {
+    // Returning empty `results` alone would make the client say "No USDC to
+    // withdraw yet", which is a different and false claim — nothing was
+    // checked. So the reason travels with it.
+    return { to: '', totalSent: 0, results: [], error: 'Set a payout wallet on this page first' }
+  }
 
   const agents = await db
     .select()
