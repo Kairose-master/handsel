@@ -138,7 +138,36 @@ export const agentAccountMode: 'kernel' | 'eoa' =
       ? 'kernel'
       : 'eoa'
 
-/** True when enough is configured to talk to the registry/vault as the oracle. */
+/**
+ * True when the oracle can WRITE A CREDIT SCORE to the registry.
+ *
+ * Narrower than `isOnchainConfigured` on purpose, and the difference is the
+ * whole product. `setLimit` is a registry call by the oracle; it does not touch
+ * the vault, and neither does the EAS attestation beside it. Requiring
+ * `CREDIT_VAULT_ADDRESS` to publish a score made the credit engine's on-chain
+ * mirror return early on a deployment where the registry was deployed, the
+ * oracle key was right and the agents were provisioned.
+ *
+ * Measured: two agents provisioned against registry 0xA5C1…, both reading
+ * `creditScore = 0`, and ZERO `LimitUpdated` events in the log — so nothing had
+ * been published rather than zero having been. Storage cannot tell those apart;
+ * the event can, which is the only reason this was found.
+ *
+ * A score nobody publishes is the claim this product is built on, quietly not
+ * happening.
+ */
+export function isRegistryConfigured(): boolean {
+  return Boolean(onchainEnv.rpcUrl && onchainEnv.oraclePrivateKey && onchainEnv.registryAddress)
+}
+
+/**
+ * True when enough is configured to talk to the registry AND THE VAULT as the
+ * oracle — i.e. for borrow/repay, which is the only thing that reads the vault.
+ *
+ * Do not reach for this to gate anything else. It has now been the wrong
+ * predicate three times: it hid the Provision button, it blocked
+ * `isAgentAccountConfigured`, and it silenced the registry mirror above.
+ */
 export function isOnchainConfigured(): boolean {
   return Boolean(
     onchainEnv.rpcUrl &&

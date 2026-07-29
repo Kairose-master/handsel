@@ -289,8 +289,15 @@ async function mirrorOnchain(
 ): Promise<void> {
   if (!smartAccountAddress) return
   try {
-    const { isOnchainConfigured, onchainEnv } = await import('@/lib/onchain/config')
-    if (!isOnchainConfigured()) return
+    // The REGISTRY predicate, not the registry-AND-VAULT one. `publishLimit`
+    // writes setLimit and `attestCredit` writes EAS; neither reads the vault,
+    // and the vault arithmetic described below is computed off-chain from the
+    // database. Gating this on the vault meant a deployment with a live
+    // registry, a correct oracle key and two provisioned agents published
+    // NOTHING — found by an empty LimitUpdated log against a registry reading
+    // all zeros, which storage alone cannot tell from a published zero.
+    const { isRegistryConfigured, onchainEnv } = await import('@/lib/onchain/config')
+    if (!isRegistryConfigured()) return
     const { publishLimit, attestCredit } = await import('@/lib/onchain/credit')
 
     // The vault computes available = registry.creditLimit(agent) −

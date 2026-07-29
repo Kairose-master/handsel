@@ -69,6 +69,30 @@ describe('agent accounts are gated on what an agent account needs', () => {
     }
   })
 
+  it('publishes a score without the vault — the third time this coupling bit', () => {
+    // isOnchainConfigured has now been the wrong predicate three times:
+    //   1. isAgentAccountConfigured    → agents could not transact
+    //   2. profile/page.tsx card gate  → the Provision button vanished
+    //   3. credit-engine mirrorOnchain → NO SCORE WAS EVER PUBLISHED
+    //
+    // The third is the product's own claim. Verified against a live deployment:
+    // two provisioned agents, a registry reading creditScore = 0 for both, and
+    // an empty LimitUpdated log — so nothing had been written rather than zero
+    // having been written. Storage cannot distinguish those; the event can.
+    const src = readFileSync('lib/credit-engine/index.ts', 'utf8')
+    expect(src).toContain('isRegistryConfigured')
+    expect(src).not.toMatch(/if \(!isOnchainConfigured\(\)\) return/)
+  })
+
+  it('keeps the vault predicate to the paths that read the vault', () => {
+    // lib/onchain/credit.ts is the only file that touches vaultAddress, and its
+    // borrow/repay functions are what isOnchainConfigured is FOR.
+    expect(body('isRegistryConfigured')).not.toContain('vaultAddress')
+    for (const need of ['rpcUrl', 'oraclePrivateKey', 'registryAddress']) {
+      expect(body('isRegistryConfigured')).toContain(need)
+    }
+  })
+
   it('gates each feature on its own contract address', () => {
     expect(body('isLaborMarketConfigured')).toContain('laborMarketAddress')
     expect(body('isVerifiedEscrowConfigured')).toContain('verifiedEscrowAddress')

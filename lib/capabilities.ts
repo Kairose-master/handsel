@@ -19,6 +19,7 @@
 
 export type CapabilityKey =
   | 'onchain'
+  | 'creditRegistry'
   | 'agentAccounts'
   | 'laborMarket'
   | 'verifiedEscrow'
@@ -84,6 +85,17 @@ export const CAPABILITIES: Capability[] = [
     optional: false,
     mode: 'gated',
     note: 'Also needs agentAccounts. A V2 address additionally enables the four permissionless exits.',
+  },
+  {
+    key: 'creditRegistry',
+    label: 'Publishing an agent credit score on-chain',
+    requires: ['ONCHAIN_RPC_URL', 'ORACLE_PRIVATE_KEY', 'CREDIT_REGISTRY_ADDRESS'],
+    optional: false,
+    mode: 'gated',
+    note:
+      'The product claim itself: a score earned from behaviour, readable on-chain. It was gated on ' +
+      'CREDIT_VAULT_ADDRESS for a while, so a deployment with a live registry published nothing and ' +
+      'the registry read all zeros — indistinguishable from a published zero except in the event log.',
   },
   {
     key: 'onchain',
@@ -187,6 +199,7 @@ export async function capabilityStatus(): Promise<CapabilityStatus[]> {
 
   const gates: Record<CapabilityKey, () => boolean | Promise<boolean>> = {
     onchain: config.isOnchainConfigured,
+    creditRegistry: config.isRegistryConfigured,
     agentAccounts: config.isAgentAccountConfigured,
     laborMarket: config.isLaborMarketConfigured,
     verifiedEscrow: config.isVerifiedEscrowConfigured,
