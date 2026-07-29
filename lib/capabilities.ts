@@ -27,6 +27,26 @@ export type CapabilityKey =
   | 'githubApp'
   | 'githubLogin'
   | 'email'
+  | 'secretsAtRest'
+  | 'platformLlm'
+
+/**
+ * How a capability behaves when its configuration is absent.
+ *
+ * `gated`  — a predicate hides it. The button is simply not there. Confusing,
+ *            but quiet and safe.
+ * `throws` — nothing hides it. The button renders, the user clicks it, and the
+ *            server throws mid-action. In production Next.js swallows the
+ *            message and shows a digest, so the operator sees
+ *            "An error occurred in the Server Components render" and has no
+ *            way to learn which env var was missing.
+ *
+ * The second is worse, and the first version of this table missed all of them —
+ * it scanned for `is…Configured` predicates, and a throw is not a predicate.
+ * `API_KEY_ENCRYPTION_SECRET` was unset on a live deployment, the inventory
+ * answered "nothing is blocking", and the Generate button 500'd.
+ */
+export type CapabilityMode = 'gated' | 'throws'
 
 export type Capability = {
   key: CapabilityKey
@@ -36,6 +56,8 @@ export type Capability = {
   requires: string[]
   /** Whether the app still does its core job without this. */
   optional: boolean
+  /** What absence looks like to a user. See CapabilityMode. */
+  mode: CapabilityMode
   /** Anything worth knowing before switching it on. */
   note?: string
 }
@@ -50,6 +72,7 @@ export const CAPABILITIES: Capability[] = [
     label: 'Agents can hold an address and sign transactions',
     requires: ['ONCHAIN_RPC_URL', 'AGENT_OWNER_PRIVATE_KEY', 'ZERODEV_RPC (kernel mode only)'],
     optional: false,
+    mode: 'gated',
     note:
       'Without ZERODEV_RPC the mode falls back to EOA, where each agent pays its own gas. ' +
       'This is the gate the Provision button on /profile sits behind.',
@@ -59,6 +82,7 @@ export const CAPABILITIES: Capability[] = [
     label: 'Posting, accepting and settling jobs on-chain',
     requires: ['LABOR_MARKET_ADDRESS', 'USDC_ADDRESS', 'ONCHAIN_CHAIN'],
     optional: false,
+    mode: 'gated',
     note: 'Also needs agentAccounts. A V2 address additionally enables the four permissionless exits.',
   },
   {
@@ -66,6 +90,7 @@ export const CAPABILITIES: Capability[] = [
     label: 'Publishing credit limits and reading the vault as the oracle',
     requires: ['ONCHAIN_RPC_URL', 'ORACLE_PRIVATE_KEY', 'CREDIT_REGISTRY_ADDRESS', 'CREDIT_VAULT_ADDRESS'],
     optional: true,
+    mode: 'gated',
     note:
       'The VAULT is what borrow/repay use. It is NOT needed to run a labour market — that coupling ' +
       'was a bug, and it hid the Provision button on a deployment that was otherwise complete.',
@@ -75,12 +100,14 @@ export const CAPABILITIES: Capability[] = [
     label: 'Ground-truth graded tasks with their own escrow',
     requires: ['VERIFIED_TASK_ESCROW_ADDRESS'],
     optional: true,
+    mode: 'gated',
   },
   {
     key: 'governance',
     label: 'On-chain commit-reveal voting',
     requires: ['VEILPOLL_FACTORY_ADDRESS'],
     optional: true,
+    mode: 'gated',
     note: 'Off ⇒ governance stays purely off-chain, which is the default.',
   },
   {
@@ -88,12 +115,14 @@ export const CAPABILITIES: Capability[] = [
     label: 'Agents register themselves in the ERC-8004 identity registry',
     requires: ['ERC8004_IDENTITY_ADDRESS', 'ERC8004_REPUTATION_ADDRESS', 'ERC8004_VALIDATION_ADDRESS'],
     optional: true,
+    mode: 'gated',
   },
   {
     key: 'githubLogin',
     label: 'Sign in with GitHub',
     requires: ['GITHUB_CLIENT_ID', 'GITHUB_CLIENT_SECRET'],
     optional: true,
+    mode: 'gated',
     note:
       'Same GitHub App as repo jobs — one client id/secret serves both. Can also come from the ' +
       'encrypted platform_secrets KV instead of env.',
@@ -103,6 +132,7 @@ export const CAPABILITIES: Capability[] = [
     label: 'Repo jobs: open a PR, grade on CI, pay on merge',
     requires: ['GITHUB_APP_ID', 'GITHUB_APP_PRIVATE_KEY', 'GITHUB_WEBHOOK_SECRET'],
     optional: true,
+    mode: 'gated',
     note: 'Or the matching platform_secrets entries. The private key never belongs in the repo.',
   },
   {
@@ -110,6 +140,31 @@ export const CAPABILITIES: Capability[] = [
     label: 'Payment and loan notifications',
     requires: ['RESEND_API_KEY', 'EMAIL_FROM'],
     optional: true,
+    mode: 'gated',
+  },
+  {
+    key: 'secretsAtRest',
+    label: 'Issuing a worker key, storing a BYOK API key, any platform secret',
+    requires: ['API_KEY_ENCRYPTION_SECRET'],
+    optional: false,
+    mode: 'throws',
+    note:
+      'NOT gated — nothing hides the buttons. Generate a worker key without it and the action ' +
+      'throws inside lib/crypto.ts, which production Next.js reports as "An error occurred in the ' +
+      'Server Components render" with the reason omitted. Set it ONCE and never change it: it is ' +
+      'the key that decrypts worker keys, BYOK keys and platform_secrets, and there is no rotation ' +
+      'path. A different value per deployment, since each has its own database.',
+  },
+  {
+    key: 'platformLlm',
+    label: 'Planning, grading and delegation on the platform key',
+    requires: ['ANTHROPIC_API_KEY'],
+    optional: true,
+    mode: 'throws',
+    note:
+      'Optional only because REQUIRE_USER_API_KEY=true makes every user bring their own. With ' +
+      'neither, the throw happens when a job is graded — late, and on a path that was already ' +
+      'holding escrow.',
   },
 ]
 
@@ -140,6 +195,14 @@ export async function capabilityStatus(): Promise<CapabilityStatus[]> {
     githubApp: githubApp.isGithubAppConfigured,
     githubLogin: githubOauth.isGithubLoginEnabled,
     email: email.isEmailConfigured,
+    // The two with no predicate to call. There is nothing to ask because
+    // nothing asks — the code reaches for the variable and throws if it is not
+    // there. So this checks presence directly, and the length floor mirrors the
+    // one lib/crypto.ts enforces, since a short secret throws exactly as a
+    // missing one does.
+    secretsAtRest: () => (process.env.API_KEY_ENCRYPTION_SECRET ?? '').length >= 16,
+    platformLlm: () =>
+      Boolean(process.env.ANTHROPIC_API_KEY) || process.env.REQUIRE_USER_API_KEY === 'true',
   }
 
   return Promise.all(

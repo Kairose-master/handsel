@@ -34,6 +34,7 @@ export async function GET() {
       optional: s.optional,
       // NAMES only. A value here would be a credential in a public response.
       requires: s.requires,
+      mode: s.mode,
       note: s.note,
     })),
   })

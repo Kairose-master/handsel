@@ -34,6 +34,18 @@ describe('the table is well-formed', () => {
     }
   })
 
+  it('distinguishes a hidden feature from one that throws when clicked', () => {
+    // The distinction the first version of this table did not have, and the
+    // reason it reported "nothing is blocking" while the Generate button 500'd.
+    const throwers = CAPABILITIES.filter((c) => c.mode === 'throws').map((c) => c.key)
+    expect(throwers).toContain('secretsAtRest')
+    // A `throws` entry MUST carry a note: its whole problem is that the failure
+    // arrives with the reason stripped out, so the explanation has to live here.
+    for (const cap of CAPABILITIES.filter((c) => c.mode === 'throws')) {
+      expect(cap.note, `${cap.key} throws and explains nothing`).toBeTruthy()
+    }
+  })
+
   it('marks the two the market cannot run without', () => {
     const essential = CAPABILITIES.filter((c) => !c.optional).map((c) => c.key)
     expect(essential).toContain('agentAccounts')
