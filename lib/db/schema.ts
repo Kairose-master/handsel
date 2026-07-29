@@ -104,6 +104,29 @@ export const platformEvent = pgTable('platform_events', {
  * unauthenticated on the guest board, and it cannot hold more than one ruling
  * or say which rule produced it.
  */
+/**
+ * gas_spend — what sponsorship has actually cost, per lane.
+ *
+ * The budget in lib/gas-budget.ts is only as real as the ledger it reads. This
+ * is deliberately separate from `creditTransaction` and the treasury tables:
+ * those are USDC moving between parties, this is the operator's ETH leaving and
+ * never coming back except through the fee.
+ */
+export const gasSpend = pgTable('gas_spend', {
+  id: text('id').primaryKey(),
+  /** 'user' | 'keeper' — the keeper reserve exists so that draining the user
+   *  lane cannot disable the sweeps that free other people's escrow. */
+  lane: text('lane').notNull(),
+  agentId: text('agent_id'),
+  /** Estimated USD. Estimated because the true cost is known only after the
+   *  bundler settles, and a budget that waits for certainty is a budget that
+   *  has already been overspent. */
+  usd: decimal('usd', { precision: 12, scale: 6 }).notNull(),
+  /** What it paid for, for the ops log. */
+  label: text('label'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
 export const disputeRuling = pgTable('dispute_rulings', {
   id: text('id').primaryKey(),
   onchainJobId: integer('onchain_job_id').notNull(),

@@ -240,10 +240,41 @@ export function isUserOpPending(error: unknown): error is UserOpPendingError {
 export async function sendAgentCall(
   agentId: string,
   call: { to: Address; data: Hex; value?: bigint },
+  opts: { lane?: 'user' | 'keeper'; label?: string } = {},
 ): Promise<Hex> {
   // EOA mode is not sponsored — the gas lands on the agent's own balance, so
   // there is nothing of the operator's to meter.
   if (agentAccountMode === 'eoa') return sendEoaCall(agentId, call)
+
+  // The fuse. Sponsored gas is the one pool an attacker drains without paying
+  // anything, so exhaustion has to have an answer that is not "the market is
+  // down" — see lib/gas-budget.ts. Keeper traffic draws on a reserve user
+  // traffic cannot touch, because a single pool would let a gas attack disable
+  // the permissionless exits that free OTHER people's escrow.
+  const lane = opts.lane ?? 'user'
+  const { decideSponsorship, gasSpentInWindow, recordGasSpend } = await import('@/lib/gas-budget')
+  const spent = await gasSpentInWindow(lane, agentId)
+  const verdict = decideSponsorship({
+    lane,
+    agentSpentUsd: spent.agent,
+    laneSpentUsd: spent.lane,
+    // An agent always has an EOA derived from the owner key, so self-pay is
+    // reachable whenever that account holds gas. sendEoaCall throws a clear
+    // error if it does not, which is a better failure than a silent refusal.
+    canSelfPay: lane === 'user',
+  })
+
+  if (verdict.decision === 'refuse') {
+    throw new Error(`gas sponsorship refused: ${verdict.reason}`)
+  }
+  if (verdict.decision === 'self_pay') {
+    console.warn(`[onchain] ${verdict.reason} — agent ${agentId} paying its own gas`)
+    return sendEoaCall(agentId, call)
+  }
+  // Recorded BEFORE the send. An op that lands and is never billed is how a
+  // budget silently stops bounding anything; an op billed and then rejected
+  // only over-counts, which errs toward degrading sooner.
+  await recordGasSpend(lane, agentId, opts.label ?? 'agent call')
 
   const { account, kernelClient } = await getAgentKernel(agentId)
   const userOpHash = await kernelClient.sendUserOperation({

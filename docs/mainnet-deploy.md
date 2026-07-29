@@ -46,6 +46,37 @@ your acknowledgement that you did. `lib/onchain/mainnet-guard.ts` **refuses**
 every money path without it, and refuses rather than warns, because a warning on
 a money path is a warning that gets scrolled past.
 
+### The app-side fuse, in front of ZeroDev's
+
+ZeroDev's cap is all-or-nothing: when it blows, every sponsored call stops,
+including the sweeps that free other people's escrow. So `lib/gas-budget.ts`
+sits in front of it with two properties the dashboard cannot express.
+
+**Exhaustion degrades to self-pay.** A budget that simply refuses turns a gas
+attack into a denial of service — the attacker spends your money *and* takes the
+market offline. Over budget, the agent's own account pays instead, which on Base
+is a fraction of a cent. The honest user goes from "free" to "nearly free", not
+from "working" to "broken".
+
+**Keeper traffic has a reserve user traffic cannot touch.** This is the part
+worth understanding: with one shared pool, draining it also disables
+`expireReview`, `expireDispute`, `reclaimJob` and `expireOpen` — so a gas attack
+becomes a way to **freeze everyone's escrow**, which is strictly worse than the
+gas and is the exact failure class v2 was written to close. The reserve stays
+small because the sweeps are already capped at six calls per pass.
+
+| | default | |
+|---|---|---|
+| `AGENT_GAS_BUDGET_USD` | `0.5` | Per AGENT, not per user — a Sybil's whole point is not being traced to one user, so a per-user cap bites too late. |
+| `USER_LANE_GAS_BUDGET_USD` | `5` | The sum across all agents, rolling 24h. This is what stops many cheap identities. |
+| `KEEPER_LANE_GAS_BUDGET_USD` | `2` | The reserve. If this ever empties, something is retrying without bound — a bigger number will not fix it. |
+| `USER_OP_COST_USD` | `0.01` | The per-op estimate. Over-estimating degrades sooner, which is the safe direction. Replace with the measured figure from deployment #1. |
+
+An unreadable ledger fails toward SPONSORING, not refusing — the table
+self-migrates on first use, and taking the market down over a pending migration
+would be a worse failure than a day of unmetered gas. ZeroDev's cap is still
+underneath as the real fuse.
+
 ---
 
 ## 2. Deploy the registry

@@ -127,10 +127,17 @@ export async function readJobsV2(): Promise<V2Job[]> {
  * privileged sender available.
  */
 export async function callExit(agentId: string, fn: ExitFn, jobId: number): Promise<Hex> {
-  return sendAgentCall(agentId, {
-    to: onchainEnv.laborMarketAddress as Address,
-    data: encodeFunctionData({ abi: LABOR_MARKET_V2_ABI, functionName: fn, args: [BigInt(jobId)] }),
-  })
+  return sendAgentCall(
+    agentId,
+    {
+      to: onchainEnv.laborMarketAddress as Address,
+      data: encodeFunctionData({ abi: LABOR_MARKET_V2_ABI, functionName: fn, args: [BigInt(jobId)] }),
+    },
+    // KEEPER lane. These free somebody else's escrow, so they must not be
+    // starved by a user who spent the user lane — that would turn a gas attack
+    // into a way to freeze the market's money.
+    { lane: 'keeper', label: fn },
+  )
 }
 
 /** What settlement has credited an address and not yet handed over. */
