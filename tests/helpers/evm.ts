@@ -65,7 +65,9 @@ export type Account = keyof typeof ACCOUNTS
 export type MarketConfig = {
   feeBps: number
   feeRecipient: string
+  flatFee: bigint
   bondBps: number
+  flatBond: bigint
   minDeliveryWindow: number
   maxDeliveryWindow: number
   reviewWindow: number
@@ -78,7 +80,12 @@ export type MarketConfig = {
 export const DEFAULT_CONFIG: MarketConfig = {
   feeBps: 200,
   feeRecipient: ACCOUNTS.house,
+  // Zero by default so the whole existing suite keeps exercising the
+  // proportional-only pricing it was written against; the flat components have
+  // their own file.
+  flatFee: 0n,
   bondBps: 0,
+  flatBond: 0n,
   minDeliveryWindow: 10 * 60,
   maxDeliveryWindow: 30 * 24 * 3600,
   reviewWindow: 7 * 24 * 3600,

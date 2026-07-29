@@ -24,8 +24,10 @@
  * Config overrides, all optional — the defaults are the recommended FIRST
  * mainnet deployment and are deliberately conservative:
  *
- *   FEE_BPS=0              a fee makes squatting a grief the victim pays for
- *   BOND_BPS=0             a bond needs capital a new worker does not have
+ *   FEE_BPS=0              proportional fee, scales with the value at risk
+ *   FLAT_FEE=0             flat fee in TOKEN UNITS — this is what covers gas
+ *   BOND_BPS=0             proportional bond
+ *   FLAT_BOND=0            flat bond in TOKEN UNITS — what makes accept cost something
  *   REVIEW_WINDOW_S        default 1 day, not 7 — jobs here finish in minutes
  *   MAX_OPEN_WINDOW_S, DISPUTE_WINDOW_S, MIN/MAX_DELIVERY_WINDOW_S, MIN_BOUNTY
  *
@@ -68,6 +70,17 @@ const addr = (name, { required = true } = {}) => {
   if (!isAddress(v)) die(`${name} is not an address: ${v}`)
   return v
 }
+const big = (name, fallback) => {
+  const v = process.env[name]
+  if (v === undefined || v === '') return fallback
+  try {
+    const n = BigInt(v)
+    if (n < 0n) throw new Error()
+    return n
+  } catch {
+    die(`${name} must be a non-negative integer in TOKEN UNITS (USDC has 6 decimals, so $0.03 is 30000), got ${v}`)
+  }
+}
 const num = (name, fallback) => {
   const v = process.env[name]
   if (v === undefined || v === '') return fallback
@@ -80,13 +93,23 @@ const usdc = addr('USDC_ADDRESS')
 const registry = addr('CREDIT_REGISTRY_ADDRESS')
 const arbiter = addr('ARBITER_ADDRESS')
 const feeBps = num('FEE_BPS', 0)
-const feeRecipient = addr('FEE_RECIPIENT', { required: feeBps > 0 })
+// A percentage cannot cover a fixed cost. Every job burns roughly the same
+// sponsored gas whatever its bounty, so a bps-only fee is solvent on large jobs
+// and a subsidy on small ones — and MAX_FEE_BPS caps the percentage at a
+// fraction of a number that is already tiny, so it cannot simply be raised.
+// Size this at the measured gas envelope for one job's full lifecycle.
+const flatFee = big('FLAT_FEE', 0n)
+const feeRecipient = addr('FEE_RECIPIENT', { required: feeBps > 0 || flatFee > 0n })
 
 const DAY = 24 * 60 * 60
 const cfg = {
   feeBps,
   feeRecipient,
+  flatFee,
   bondBps: num('BOND_BPS', 0),
+  // The same arithmetic on the worker side: 5% of a cent-scale bounty deters
+  // nobody, so `acceptJob` stays free exactly where the market is thinnest.
+  flatBond: big('FLAT_BOND', 0n),
   minDeliveryWindow: num('MIN_DELIVERY_WINDOW_S', 10 * 60),
   maxDeliveryWindow: num('MAX_DELIVERY_WINDOW_S', 30 * DAY),
   // One day, not the seven the constant used to hardcode. Seven days is very

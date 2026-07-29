@@ -126,12 +126,71 @@ with no recipient.
 
 Every one of these is **immutable**. There is no setter for any of them.
 
-| | Default | Why |
+| | Suggested | Why |
 |---|---|---|
-| `FEE_BPS` | `0` | The audit's must-fix #3: a non-refundable posting fee turns squatting into a grief **the victim pays for**. Measured over five cycles at a 1,000,000 bounty and 200bps: requester −100,000, house +100,000, squatter's balance byte-identical. At `feeBps=0` the same five cycles cost nothing. |
-| `BOND_BPS` | `0` | The bond is the real answer to squatting, but it requires a worker to hold capital before it can earn. On a market whose scarce side is supply, that kills supply. Turn it on when there is enough supply to bear it. |
+| `FLAT_FEE` | **the measured gas envelope** | See below. This is the number that makes sponsorship solvent. |
+| `FEE_BPS` | `200` | Scales with the value at risk. It cannot cover gas on its own — see below — but it is the right shape for the part that *is* proportional. |
+| `FLAT_BOND` | **≈ `FLAT_FEE`** | Makes `acceptJob` cost something at every bounty size. Returned in full unless the job is reclaimed. |
+| `BOND_BPS` | `500` | The proportional half of the same. |
 | `REVIEW_WINDOW_S` | `1 day` | Not the 7 the constant used to hardcode. Seven days is very long for a market whose jobs finish in minutes, and it is the exposure window for both the accept-squat and the silence forfeit. |
 | `SILENCE_FORFEIT_BPS` | `1000` | A worker submitting garbage earns 10% from any inattentive requester. That was chosen when the money was testnet. **Re-choose it now that it is not.** |
+
+### Why a percentage alone cannot work
+
+**Revenue is per-POST; cost is per-ACTION.** A job's fee is charged once, at
+`postJob`. Its gas is spent five or six times — post, accept, submit, approve,
+and the withdrawals — and each of those is a sponsored UserOp the operator pays
+for.
+
+Worse, that expense is **flat**. A $0.05 job and a $100 job burn the same gas. A
+bps fee scales with bounty; the cost does not. So:
+
+| bounty | fee at 200bps | gas envelope (≈5 UserOps) | |
+|---|---|---|---|
+| $100 | $2.00 | ~$0.05 | solvent |
+| $1 | $0.02 | ~$0.05 | underwater |
+| $0.05 | $0.001 | ~$0.05 | **50× underwater** |
+
+And it cannot be fixed by raising the percentage: `MAX_FEE_BPS` is 500, so the
+most a deployment can ever charge on a $0.05 job is $0.0025. The ceiling is a
+fraction of a number that is already tiny. **`MIN_BOUNTY`'s own comment says the
+mainnet plan turns on cent-scale bounties**, which is precisely where the
+proportional model has no solution.
+
+`FLAT_FEE` is the fix: a floor sized at the gas envelope, charged once, never
+refunded — because the gas was spent posting, and a refundable gas reimbursement
+is a loan.
+
+### And why the bond needs the same treatment
+
+The identical arithmetic breaks the defence on the worker side. 5% of a $0.05
+bounty puts $0.0025 at risk, which deters nobody — so `acceptJob` stays
+effectively free exactly where the market is thinnest. **A free `acceptJob` is
+the one action an attacker can repeat at zero cost while the operator pays gas
+for every one of them**, which is the DDoS shape the ZeroDev cap exists to
+survive rather than prevent.
+
+`FLAT_BOND` prices it. An honest worker locks it for the length of one job and
+gets every unit back; only `reclaimJob` — a deadline passed with an empty
+`resultHash`, no judgement involved — takes it.
+
+### How the money actually gets back to the paymaster
+
+The fee accrues as **USDC**, credited to `feeRecipient` inside the contract. The
+loop is manual and it does close: `withdraw()` the accrued USDC → convert to ETH
+→ top up the ZeroDev paymaster. Watch it on `/admin/health`; if fee revenue is
+not keeping pace with paymaster burn, `FLAT_FEE` was set below the real envelope
+and the only fix is a redeploy.
+
+### Sizing FLAT_FEE
+
+Deployment #1 is how you measure it. Drive one full lap, read the actual gas from
+Basescan, multiply by the number of sponsored UserOps in a job's lifecycle, add
+margin, and set `FLAT_FEE` on deployment #2. This is a concrete reason the
+two-deployment plan is the right one rather than a concession: **the first
+deployment produces the number the second one needs.**
+
+Token units, not dollars. USDC has 6 decimals, so $0.03 is `30000`.
 
 `ARBITER_ADDRESS` should be a **dedicated key**, not the oracle. The oracle
 publishes scores; the arbiter moves money. One key doing both means one

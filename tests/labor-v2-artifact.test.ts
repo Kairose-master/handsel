@@ -290,7 +290,9 @@ describe('the protocol fee', () => {
     expect((cfg.components ?? []).map((c) => `${c.name}:${c.type}`)).toEqual([
       'feeBps:uint16',
       'feeRecipient:address',
+      'flatFee:uint256',
       'bondBps:uint16',
+      'flatBond:uint256',
       'minDeliveryWindow:uint32',
       'maxDeliveryWindow:uint32',
       'reviewWindow:uint32',
@@ -324,6 +326,8 @@ describe('the protocol fee', () => {
       'setBondBps',
       'setForfeit',
       'setMinBounty',
+      'setFlatFee',
+      'setFlatBond',
       'setConfig',
     ]) {
       expect(has('function', setter), `${setter} must not exist`).toBe(false)
@@ -335,6 +339,11 @@ describe('the protocol fee', () => {
     // into a grief the victim paid for: measured at requester −100_000 and
     // house +100_000 over five cycles, with the squatter's balance unchanged.
     expect(fn('bondFor')?.stateMutability).toBe('view')
+    expect(fn('feeOn')?.stateMutability).toBe('view')
+    // A percentage cannot cover a fixed cost, and gas is a fixed cost — so both
+    // sides carry a flat component and both are immutable views, not setters.
+    expect(fn('flatFee')?.stateMutability).toBe('view')
+    expect(fn('flatBond')?.stateMutability).toBe('view')
     expect(fn('MAX_BOND_BPS')?.stateMutability).toBe('view')
     expect(has('error', 'BondTooHigh')).toBe(true)
     expect(has('error', 'ForfeitTooHigh')).toBe(true)

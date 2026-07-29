@@ -87,6 +87,42 @@ contract LaborMarketV2 {
     uint16 public immutable feeBps;
     address public immutable feeRecipient;
 
+    /// @notice A FLAT posting fee, in token units, on top of `feeBps`.
+    /// @dev    **A percentage cannot cover a fixed cost, and gas is a fixed
+    ///         cost.** Every job consumes roughly the same number of sponsored
+    ///         UserOps whatever its bounty — post, accept, submit, approve, two
+    ///         withdrawals — so the operator's expense per job is flat while a
+    ///         bps fee scales with bounty. At the cent-scale bounties this
+    ///         market is aimed at, `MAX_FEE_BPS` (5%) on a $0.05 job is
+    ///         $0.0025 against an expense an order of magnitude larger. The
+    ///         proportional fee is not merely too low there; it CANNOT be
+    ///         raised enough, because its ceiling is a fraction of a number
+    ///         that is itself tiny.
+    ///
+    ///         So the two components price two different things. `feeBps`
+    ///         scales with the value at risk. `flatFee` covers the gas envelope
+    ///         the job will consume no matter how small it is, which is what
+    ///         makes sponsorship solvent rather than a subsidy that grows with
+    ///         adoption.
+    ///
+    ///         Charged at post and never refunded, for the same reason the bps
+    ///         fee is: the gas was spent posting. A refundable toll is not a
+    ///         toll, and a refundable gas reimbursement is a loan.
+    uint256 public immutable flatFee;
+
+    /// @notice A FLAT worker bond, in token units, on top of `bondBps`.
+    /// @dev    The same arithmetic on the other side. A 5% bond on a $0.05 job
+    ///         puts $0.0025 at risk, which deters nobody — so a proportional
+    ///         bond alone leaves `acceptJob` effectively free exactly where the
+    ///         market is thinnest, and a free `acceptJob` is the one action an
+    ///         attacker can repeat at zero cost while the operator pays gas for
+    ///         each one.
+    ///
+    ///         Returned in full on every path where the work arrived, so an
+    ///         honest worker locks it briefly and gets it back; only a reclaim
+    ///         takes it. See `bondBps` for why the slash trigger is mechanical.
+    uint256 public immutable flatBond;
+
     /// @dev Hard ceiling on what a deployment may charge, checked in the
     ///      constructor. Immutability means a fat-fingered fee is permanent,
     ///      so the bound is in the code rather than in the deploy script.
@@ -401,7 +437,9 @@ contract LaborMarketV2 {
     struct Config {
         uint16 feeBps;
         address feeRecipient;
+        uint256 flatFee;
         uint16 bondBps;
+        uint256 flatBond;
         uint32 minDeliveryWindow;
         uint32 maxDeliveryWindow;
         uint32 reviewWindow;
@@ -416,7 +454,7 @@ contract LaborMarketV2 {
         // A non-zero fee with nowhere to send it would burn every posting fee
         // to address(0), permanently, with no way to notice until someone
         // reconciled revenue that never arrived.
-        if (cfg.feeBps > 0 && cfg.feeRecipient == address(0)) revert ZeroFeeRecipient();
+        if ((cfg.feeBps > 0 || cfg.flatFee > 0) && cfg.feeRecipient == address(0)) revert ZeroFeeRecipient();
         if (cfg.bondBps > MAX_BOND_BPS) revert BondTooHigh();
         if (cfg.silenceForfeitBps > MAX_SILENCE_FORFEIT_BPS) revert ForfeitTooHigh();
         // Each window inside the global bounds, and the delivery pair ordered.
@@ -446,7 +484,9 @@ contract LaborMarketV2 {
         arbiter = _arbiter;
         feeBps = cfg.feeBps;
         feeRecipient = cfg.feeRecipient;
+        flatFee = cfg.flatFee;
         bondBps = cfg.bondBps;
+        flatBond = cfg.flatBond;
         MIN_DELIVERY_WINDOW = cfg.minDeliveryWindow;
         MAX_DELIVERY_WINDOW = cfg.maxDeliveryWindow;
         REVIEW_WINDOW = cfg.reviewWindow;
@@ -482,7 +522,7 @@ contract LaborMarketV2 {
         // mean the number on the board is not the number that arrives, and a
         // market where the posted price is not the paid price is a market
         // nobody can price against.
-        uint256 fee = (bounty * feeBps) / 10_000;
+        uint256 fee = feeOn(bounty);
         _safeTransferFrom(msg.sender, bounty + fee);
         // The fee is CREDITED, not sent. Sending it here put a third party's
         // ability to receive on the critical path of every posting: one
@@ -574,7 +614,7 @@ contract LaborMarketV2 {
     ///         charged. `bondBps` is immutable, so this answer never changes for
     ///         a given bounty.
     function bondFor(uint256 bounty) public view returns (uint256) {
-        return (bounty * bondBps) / 10_000;
+        return flatBond + (bounty * bondBps) / 10_000;
     }
 
     /// @dev Read a worker's score without letting the registry take the market
@@ -1139,7 +1179,12 @@ contract LaborMarketV2 {
     ///         lender that can get it wrong, and a requester that reimplements
     ///         the fee is a requester whose posting reverts.
     function postCost(uint256 bounty) public view returns (uint256) {
-        return bounty + (bounty * feeBps) / 10_000;
+        return bounty + feeOn(bounty);
+    }
+
+    /// @notice The fee alone, for a caller that wants the two numbers apart.
+    function feeOn(uint256 bounty) public view returns (uint256) {
+        return flatFee + (bounty * feeBps) / 10_000;
     }
 
     /// @notice Whether `reclaimJob` would succeed right now — for the
