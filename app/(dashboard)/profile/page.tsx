@@ -29,7 +29,7 @@ import {
 } from 'lucide-react'
 import { getAgents } from '@/app/actions/agents'
 import { drawCredit, repayCredit, getCreditDraws } from '@/app/actions/credit'
-import { getTreasury, sendFromTreasury, mintTestUsdc } from '@/app/actions/treasury'
+import { getTreasury, sendFromTreasury } from '@/app/actions/treasury'
 import { CLOUD_PRESETS } from '@/lib/cloud-providers'
 import {
   getWebhookConfig,
@@ -152,6 +152,11 @@ type Treasury = {
   spent24h: number
   maxPerTx: number
   dailyCap: number
+  /** For the receive panel: which chain to send on, and which contract will
+   *  actually be counted. "Send USDC" names a token; these name the one. */
+  chainName: string
+  chainId: number
+  tokenAddress: string | null
 }
 
 /**
@@ -240,23 +245,8 @@ export default function ProfilePage() {
     }
   }
 
-  const [mintAmount, setMintAmount] = useState('1000')
-  const [mintBusy, setMintBusy] = useState(false)
+  const [copied, setCopied] = useState(false)
 
-  const handleMint = async () => {
-    if (!agentId || mintBusy) return
-    setMintBusy(true)
-    setTreasuryMsg(null)
-    try {
-      const { txHash } = await mintTestUsdc(agentId, parseFloat(mintAmount))
-      setTreasuryMsg(t('profile.treasury.mintedMsg', { amount: mintAmount, tx: txHash.slice(0, 14) }))
-      await refresh(agentId)
-    } catch (error) {
-      setTreasuryMsg(error instanceof Error ? error.message : String(error))
-    } finally {
-      setMintBusy(false)
-    }
-  }
 
   const onchainReady = Boolean(onchain?.agentConfigured && onchain?.smartAccountAddress)
 
@@ -895,30 +885,54 @@ export default function ProfilePage() {
 
           {/* Actions — two clean panels */}
           <div className="mx-auto grid max-w-md gap-3 sm:grid-cols-2">
+            {/* RECEIVE. This replaced a "mint test USDC" button, which was
+                dead on any deployment using a real token — Circle's USDC
+                restricts mint() to a masterMinter, so the call reverted. It
+                only ever worked against MockUSDC, and a button that hands out
+                money in a market whose first rule is that every number is real
+                does not belong on the same card as a live balance.
+
+                The full address, not the truncated one on the card above:
+                someone pasting this into an exchange has to be able to check
+                what they pasted, and `0x1234 •••• abcd` cannot be checked. */}
             <div className="rounded-xl border border-border p-4">
               <p className="mb-2.5 flex items-center gap-1.5 text-xs font-semibold">
-                <Coins className="size-3.5 text-primary" />
-                {t('profile.treasury.getTestUsdc', { chain: onchain?.chainName ?? 'Sepolia' })}
+                <Wallet className="size-3.5 text-primary" />
+                {t('profile.treasury.receive')}
               </p>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min="0"
-                  max="5000"
-                  value={mintAmount}
-                  onChange={(e) => setMintAmount(e.target.value)}
-                  className="h-9 min-w-0 flex-1 rounded-md border border-border bg-background px-3 text-sm"
-                  disabled={mintBusy}
-                />
-                <button
-                  onClick={handleMint}
-                  disabled={mintBusy || !mintAmount || parseFloat(mintAmount) <= 0}
-                  className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-primary px-3.5 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
-                >
-                  {mintBusy ? <Loader2 className="size-4 animate-spin" /> : <Coins className="size-4" />}
-                  {t('profile.treasury.mint')}
-                </button>
-              </div>
+              {treasury.address ? (
+                <div className="flex flex-col gap-2">
+                  <button
+                    onClick={() => {
+                      navigator.clipboard?.writeText(treasury.address ?? '')
+                      setCopied(true)
+                      setTimeout(() => setCopied(false), 1600)
+                    }}
+                    className="group flex w-full items-start gap-2 rounded-md border border-border bg-background p-2.5 text-left transition hover:bg-secondary"
+                  >
+                    <span className="min-w-0 flex-1 break-all font-mono text-[11px] leading-relaxed">
+                      {treasury.address}
+                    </span>
+                    <Copy className="mt-0.5 size-3.5 shrink-0 opacity-50 transition-opacity group-hover:opacity-100" />
+                  </button>
+                  <p className="text-[11px] leading-relaxed text-muted-foreground">
+                    {copied ? (
+                      <span className="font-medium text-success">{t('profile.treasury.copied')}</span>
+                    ) : (
+                      t('profile.treasury.receiveHint', {
+                        chain: treasury.chainName ?? onchain?.chainName ?? '—',
+                      })
+                    )}
+                  </p>
+                  {treasury.tokenAddress && (
+                    <p className="break-all font-mono text-[10px] leading-relaxed text-muted-foreground">
+                      {t('profile.treasury.tokenLabel')} {treasury.tokenAddress}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">{t('profile.treasury.provisionFirst')}</p>
+              )}
             </div>
 
             <div className="rounded-xl border border-border p-4">

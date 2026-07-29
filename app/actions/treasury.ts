@@ -38,6 +38,8 @@ export async function getTreasury(agentId: string) {
   const { isAgentAccountConfigured } = await import('@/lib/onchain/config')
   const policy = await policyForAgent(agentId)
 
+  const { CHAIN, onchainEnv } = await import('@/lib/onchain/config')
+
   const info = {
     configured: isAgentAccountConfigured() && Boolean(ag.smartAccountAddress),
     address: ag.smartAccountAddress,
@@ -45,6 +47,14 @@ export async function getTreasury(agentId: string) {
     spent24h: 0,
     maxPerTx: policy.maxPerTxUsd,
     dailyCap: policy.dailyCapUsd,
+    // Reported so a deposit can be VERIFIED rather than trusted. "Send USDC" is
+    // ambiguous: a chain carries many contracts willing to answer to that name,
+    // and the only one this balance counts is the configured one. Someone
+    // pasting an address into an exchange should be able to check the token
+    // they are picking against the token that will actually arrive.
+    chainName: CHAIN.name,
+    chainId: CHAIN.id,
+    tokenAddress: (onchainEnv.usdcAddress || null) as string | null,
   }
   if (info.configured) {
     try {
