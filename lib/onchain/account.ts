@@ -328,11 +328,48 @@ export async function sendAgentCalls(
 ): Promise<Hex> {
   if (calls.length === 0) throw new Error('sendAgentCalls: nothing to send')
 
-  /** Sequentially, returning the hash of the LAST call — the one that carries
-   *  the meaning. An approve's hash is of no interest to any caller. */
+  /**
+   * Sequentially, returning the hash of the LAST call — the one that carries the
+   * meaning. An approve's hash is of no interest to any caller.
+   *
+   * Every call after the first is RETRIED, because a sequential batch on a
+   * load-balanced RPC has a race an atomic UserOp does not. `sendEoaCall` waits
+   * for the approve's receipt, so the approve is genuinely mined — but the next
+   * request may be routed to a different node that has not yet seen that block.
+   * It reads the allowance as still zero and the gas estimate reverts.
+   *
+   * Observed exactly once and then unreproducible: `postJob` reverted with the
+   * allowance already correctly set to `postCost` on chain, and the identical
+   * call simulated fine a minute later. A retry converges as soon as the node
+   * catches up, and a GENUINE revert still fails — just after a few seconds
+   * more, with the same error. That is the right trade: this cannot turn a real
+   * revert into a success, only a propagation lag into one.
+   *
+   * Not a substitute for a dedicated RPC endpoint, which is the actual fix for
+   * read-after-write consistency.
+   */
   const sendSequentially = async (lane: 'user' | 'keeper'): Promise<Hex> => {
     let hash: Hex | undefined
-    for (const c of calls) hash = await sendEoaCall(agentId, c, lane)
+    for (const [i, c] of calls.entries()) {
+      // The first call depends on no earlier call in this batch, so a revert
+      // there is always real and must surface immediately.
+      const attempts = i === 0 ? 1 : 3
+      for (let attempt = 1; ; attempt++) {
+        try {
+          hash = await sendEoaCall(agentId, c, lane)
+          break
+        } catch (error) {
+          if (attempt >= attempts) throw error
+          const delay = 2000 * attempt
+          console.warn(
+            `[onchain] call ${i + 1}/${calls.length} of ${opts.label ?? 'batch'} failed on attempt ` +
+              `${attempt} — retrying in ${delay}ms in case the preceding call has not propagated: ` +
+              `${error instanceof Error ? error.message.slice(0, 160) : String(error)}`,
+          )
+          await new Promise((r) => setTimeout(r, delay))
+        }
+      }
+    }
     return hash as Hex
   }
 

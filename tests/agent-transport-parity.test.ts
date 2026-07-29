@@ -96,8 +96,11 @@ describe('the batch sender preserves what the single sender guaranteed', () => {
     expect(account).toContain('sendSequentially')
     // The LAST hash is the meaningful one: an approve's hash tells a caller
     // nothing, and returning it would make a successful post look like it
-    // landed somewhere else.
-    expect(account).toMatch(/for \(const c of calls\) hash = await sendEoaCall\(agentId, c, lane\)/)
+    // landed somewhere else. So `hash` is overwritten on every iteration and
+    // whatever the final call produced is what is returned.
+    expect(account).toMatch(/for \(const \[i, c\] of calls\.entries\(\)\)/)
+    expect(account).toMatch(/hash = await sendEoaCall\(agentId, c, lane\)/)
+    expect(account).toMatch(/return hash as Hex/)
   })
 
   it('batches into one UserOp in kernel mode', () => {
@@ -106,6 +109,22 @@ describe('the batch sender preserves what the single sender guaranteed', () => {
 
   it('refuses an empty batch rather than returning a meaningless hash', () => {
     expect(account).toContain("throw new Error('sendAgentCalls: nothing to send')")
+  })
+
+  it('retries the dependent calls, and only those', () => {
+    // A sequential batch on a load-balanced RPC has a race an atomic UserOp does
+    // not: the approve is mined and its receipt awaited, then the next request
+    // lands on a node that has not seen that block, reads the allowance as zero
+    // and reverts the gas estimate. Seen once on `postJob`, with the allowance
+    // already correct on chain and the same call simulating fine a minute later.
+    //
+    // The FIRST call depends on nothing earlier in the batch, so a revert there
+    // is always real and must surface at once. Retrying it would delay a genuine
+    // error for no possible benefit.
+    expect(account).toMatch(/const attempts = i === 0 \? 1 : 3/)
+    // And a retry can only convert a propagation lag into a success — never a
+    // real revert, which still throws once the attempts are spent.
+    expect(account).toMatch(/if \(attempt >= attempts\) throw error/)
   })
 })
 
