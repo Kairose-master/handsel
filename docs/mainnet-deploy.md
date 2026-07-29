@@ -72,10 +72,65 @@ small because the sweeps are already capped at six calls per pass.
 | `KEEPER_LANE_GAS_BUDGET_USD` | `2` | The reserve. If this ever empties, something is retrying without bound — a bigger number will not fix it. |
 | `USER_OP_COST_USD` | `0.01` | The per-op estimate. Over-estimating degrades sooner, which is the safe direction. Replace with the measured figure from deployment #1. |
 
-An unreadable ledger fails toward SPONSORING, not refusing — the table
-self-migrates on first use, and taking the market down over a pending migration
-would be a worse failure than a day of unmetered gas. ZeroDev's cap is still
-underneath as the real fuse.
+An unreadable ledger fails toward SPONSORING, not refusing: taking the market
+down over a pending migration would be worse than a day of unmetered gas.
+
+**Understand what that direction cost once already.** `gas_spend` was declared
+in `schema.ts` and created nowhere — not by the migration, not by the eight
+tables that really do self-create. So every read threw, the catch reported zero
+spend, and the whole app-side fuse answered SPONSOR to everything **while
+looking exactly like a quiet day**. An unreadable ledger and an empty one are
+the same picture. ZeroDev's cap was doing all of the work and nothing said so.
+
+Fixed in two places — `ensureLedger()` in `lib/gas-budget.ts` and the migration
+— and guarded by `tests/schema-migration-parity.test.ts`. But the lesson sets
+the ZeroDev number: **size it as though the app-side fuse is disconnected,
+because it has been.**
+
+### Ordering the two layers
+
+They must blow in this order:
+
+1. **App fuse** — degrades to self-pay. The market keeps working.
+2. **ZeroDev cap** — all-or-nothing. Sponsorship stops, including the sweeps.
+3. **Paymaster balance** — physics.
+
+So the ZeroDev cap sits *above* the app's ceiling
+(`USER_LANE` 5 + `KEEPER_LANE` 2 = **$7/day**), or the graceful layer never
+runs. And the hardest cap needs no dashboard at all: **you cannot spend a
+deposit you did not make.** Fund the paymaster with what you would accept
+losing outright, and every policy above it is convenience.
+
+### Base mainnet
+
+| setting | start at | why |
+|---|---|---|
+| paymaster deposit | what you would accept losing | The only cap that cannot be misconfigured. |
+| monthly cap | ≈ the deposit | A cap above your balance is decoration. |
+| daily cap | **$10** | Above the app's $7 so the app degrades first; bounded so a disconnected fuse costs $10/day, not the deposit in an afternoon. |
+| per-UserOp ceiling | ~10× a measured `postJob` | Set it AFTER deployment #1, from the real number. A gas-price spike must not halt the market; a pathological op must not go through. |
+| per-sender rate | **200/day** | The keeper is one address doing ≤6 calls per pass at one pass per 5 min (`TRAFFIC_TICK_INTERVAL_MS`). Normal traffic is far under this; a retry loop is not. |
+| contract allowlist | the market + registry, after step 3 | A paymaster that sponsors calls to any address sponsors calls to contracts you did not write. |
+
+### Base Sepolia
+
+Same dashboard, **separate project** — never reuse the mainnet one.
+
+The point here is not money; testnet ETH is free. It is that **the one thing you
+must never meet for the first time on mainnet is your own app hitting the cap.**
+The designed behaviour — degrade to self-pay, keeper reserve untouched — has
+never executed. So set testnet TIGHT, deliberately, to make it fire:
+
+| setting | set to | why |
+|---|---|---|
+| daily cap | **$1** | Below the app's $7 ceiling, so ZeroDev blows FIRST. That is backwards for production and exactly right here: it is the only way to watch what happens when sponsorship stops. |
+| per-sender rate | **50/day** | Low enough that a runaway loop trips it in minutes instead of overnight. |
+| per-UserOp ceiling | leave generous | You are measuring the cost, not bounding it yet. |
+| contract allowlist | same two addresses | Rehearse the step so it is not new on mainnet. |
+
+Then raise the daily cap above $7 and confirm the order flips: the app degrades
+to self-pay and the sweeps keep running. Two runs, opposite outcomes, both
+observed before any of it is worth money.
 
 ---
 
