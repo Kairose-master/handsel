@@ -166,6 +166,17 @@ Every one of these is **immutable**. There is no setter for any of them.
 | `REVIEW_WINDOW_S` | `1 day` | Not the 7 the constant used to hardcode. Seven days is very long for a market whose jobs finish in minutes, and it is the exposure window for both the accept-squat and the silence forfeit. |
 | `SILENCE_FORFEIT_BPS` | `1000` | A worker submitting garbage earns 10% from any inattentive requester. That was chosen when the money was testnet. **Re-choose it now that it is not.** |
 
+> **`FLAT_FEE`, `FLAT_BOND` and `MIN_BOUNTY` are TOKEN UNITS, not whole tokens.**
+> USDC has six decimals, so one dollar is `1000000` and three cents is `30000`.
+> Writing `1e18` out of ETH habit is wrong by a factor of a trillion, and until
+> round 3 it deployed without complaint: a `FLAT_FEE` at `1e18` made every
+> `postJob` revert forever, and a `FLAT_BOND` at `1e18` was worse — posting still
+> worked, so requesters went on escrowing into jobs no worker could accept.
+> `MAX_TOKEN_PARAM` (1,000 units) now rejects all three in the constructor, and
+> the deploy script checks them before spending gas. It is a **typo bound, not a
+> policy**: it permits ~33,000× the intended flat fee, so it must never be the
+> thing that decides what this deployment charges.
+
 ### Why a percentage alone cannot work
 
 **Revenue is per-POST; cost is per-ACTION.** A job's fee is charged once, at

@@ -170,6 +170,39 @@ contract LaborMarketV2 {
     ///      live in the code for the same reason `MAX_FEE_BPS` does.
     uint16 public constant MAX_BOND_BPS = 2000; // 20% of the bounty
     uint16 public constant MAX_SILENCE_FORFEIT_BPS = 2000; // 20%
+
+    /// @dev A ceiling on every TOKEN-DENOMINATED deploy parameter — `flatFee`,
+    ///      `flatBond` and `minBounty`.
+    ///
+    ///      **These three were the only `Config` fields with no bound at all,
+    ///      and the reason was units rather than importance.** Every other
+    ///      number a deployment chooses is dimensionless — basis points,
+    ///      seconds — so a ceiling was easy to name and one got written. These
+    ///      three are amounts of a token whose decimals this contract
+    ///      deliberately never learns, so there was no obvious number, and
+    ///      nothing was written. That is precisely the gap `MAX_FEE_BPS` exists
+    ///      to close: "a fat-fingered fee is permanent, so the bound is in the
+    ///      code rather than in the deploy script."
+    ///
+    ///      What it catches is a decimals typo — `1e18` typed out of ETH habit
+    ///      for a six-decimal token, wrong by a factor of 1e12. Measured: a
+    ///      `flatFee` at 1e18 deploys clean and every `postJob` reverts
+    ///      forever; a `flatBond` at 1e18 is worse, because posting still works
+    ///      and requesters go on escrowing into jobs no worker can accept.
+    ///
+    ///      1_000e6 — a thousand units of a six-decimal token. Chosen wide on
+    ///      purpose: the design contemplates a flat fee around 30_000 (three
+    ///      cents), so this permits thirty thousand times the intended value
+    ///      and still rejects the typo by a factor of a billion. It is a typo
+    ///      bound, not a policy: it must never be the thing that decides what a
+    ///      deployment may charge.
+    ///
+    ///      Against a token with MORE decimals this ceiling is tight rather
+    ///      than wrong — an 18-decimal token could not set a meaningful flat
+    ///      component, and would run proportional-only at `flatFee = 0`, which
+    ///      is a legal and fully working configuration. Degrades, does not
+    ///      brick, which is the direction every bound in this contract points.
+    uint256 public constant MAX_TOKEN_PARAM = 1_000_000_000;
     /// @dev A floor on every window, because a zero-length one is a trap that
     ///      settles before anyone could act, and a ceiling because an unbounded
     ///      window is V1's frozen escrow wearing a number. The sum of the four
@@ -418,6 +451,12 @@ contract LaborMarketV2 {
     error TransferFailed();
     error BondTooHigh();
     error ForfeitTooHigh();
+    /// @dev Its own error rather than reusing `BountyTooLow` for the ceiling.
+    ///      A deploy that fails with "too low" while the number is too high
+    ///      sends whoever is reading the revert in the wrong direction, and
+    ///      this is a revert that only ever fires once, under time pressure,
+    ///      with an unpublished address.
+    error MinBountyTooHigh();
 
     /// @notice Every number a deployment gets to choose.
     /// @dev    A STRUCT and not eleven positional arguments, deliberately. These
@@ -457,6 +496,10 @@ contract LaborMarketV2 {
         if ((cfg.feeBps > 0 || cfg.flatFee > 0) && cfg.feeRecipient == address(0)) revert ZeroFeeRecipient();
         if (cfg.bondBps > MAX_BOND_BPS) revert BondTooHigh();
         if (cfg.silenceForfeitBps > MAX_SILENCE_FORFEIT_BPS) revert ForfeitTooHigh();
+        // The three token-denominated fields. See MAX_TOKEN_PARAM: a decimals
+        // typo in any of them deploys without complaint and there is no setter.
+        if (cfg.flatFee > MAX_TOKEN_PARAM) revert FeeTooHigh();
+        if (cfg.flatBond > MAX_TOKEN_PARAM) revert BondTooHigh();
         // Each window inside the global bounds, and the delivery pair ordered.
         // A max below the min would make `postJob` reject EVERY window and the
         // market would accept no work at all — deployable, and dead.
@@ -466,8 +509,12 @@ contract LaborMarketV2 {
             revert BadWindow();
         }
         // Zero would make free completions possible again, which is the raw
-        // material the credit engine scores. See MIN_BOUNTY.
+        // material the credit engine scores. See MIN_BOUNTY. The ceiling is the
+        // other end of the same mistake: a `minBounty` typed with eighteen
+        // decimals rejects every bounty anyone would post, and the market is
+        // deployable and dead.
         if (cfg.minBounty == 0) revert BountyTooLow();
+        if (cfg.minBounty > MAX_TOKEN_PARAM) revert MinBountyTooHigh();
         // Every address here is immutable, so a wrong one is not a bug to fix,
         // it is a contract to redeploy. A token or registry that is an EOA or
         // an empty address does not revert at deploy time — it deploys fine and

@@ -142,7 +142,16 @@ export class Chain {
       block: { header: { timestamp: BigInt(this.timestamp), number: 1n } } as never,
     })
     if (result.execResult.exceptionError) {
-      throw new Error(`deploy ${name} reverted: ${result.execResult.exceptionError.error}`)
+      // Decoded, like every other revert in this harness. A constructor guard
+      // is the one revert that fires exactly once — on a deploy, under time
+      // pressure, against an address about to be published — so "revert" with
+      // no name is the least useful place in the whole system to lose it. This
+      // used to print `exceptionError.error`, which for a custom error is the
+      // bare string "revert" and names nothing.
+      const returned = bytesToHex(result.execResult.returnValue) as Hex
+      throw new Error(
+        `deploy ${name} reverted: ${decodeRevert(returned) ?? result.execResult.exceptionError.error}`,
+      )
     }
     const created = result.createdAddress
     if (!created) throw new Error(`deploy ${name} produced no address`)

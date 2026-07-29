@@ -122,6 +122,26 @@ const cfg = {
   minBounty: BigInt(process.env.MIN_BOUNTY ?? '1'),
 }
 
+// The three token-denominated numbers, checked here for the same reason the
+// usdc/registry addresses are: the constructor rejects them, but only after you
+// have paid deploy gas. The value this catches is `1e18` typed out of ETH habit
+// for a six-decimal token — wrong by a factor of a trillion, and before
+// MAX_TOKEN_PARAM existed it deployed clean and left the market dead.
+const MAX_TOKEN_PARAM = 1_000_000_000n // 1,000 units at six decimals
+for (const [name, value] of [
+  ['FLAT_FEE', cfg.flatFee],
+  ['FLAT_BOND', cfg.flatBond],
+  ['MIN_BOUNTY', cfg.minBounty],
+]) {
+  if (value > MAX_TOKEN_PARAM) {
+    die(
+      `${name}=${value} exceeds MAX_TOKEN_PARAM (${MAX_TOKEN_PARAM}). ` +
+        `These are TOKEN UNITS, not whole tokens: USDC has six decimals, so one dollar is 1000000. ` +
+        `If you meant one dollar and wrote 1e18, that is the mistake this bound exists to catch.`,
+    )
+  }
+}
+
 const account = privateKeyToAccount(pk.startsWith('0x') ? pk : `0x${pk}`)
 const wallet = createWalletClient({ account, chain, transport: http(rpcUrl) })
 const pub = createPublicClient({ chain, transport: http(rpcUrl) })

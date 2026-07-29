@@ -355,6 +355,18 @@ describe('the protocol fee', () => {
     expect(has('error', 'ZeroFeeRecipient')).toBe(true)
   })
 
+  it('bounds the token-denominated parameters too, not only the dimensionless ones', () => {
+    // The three uint256 fields in Config had no ceiling at all while every
+    // uint16 and uint32 beside them did — a gap about UNITS rather than about
+    // care, since this contract never learns the token's decimals. A `1e18`
+    // typed out of ETH habit for a six-decimal token deployed clean and left the
+    // market dead, with no setter and a published address.
+    expect(fn('MAX_TOKEN_PARAM')?.stateMutability).toBe('view')
+    expect(has('error', 'MinBountyTooHigh')).toBe(true)
+    // Both ends of the one parameter that has both.
+    expect(has('error', 'BountyTooLow')).toBe(true)
+  })
+
   it('reports what was charged in the posting event', () => {
     const ev = abi.find((e) => e.type === 'event' && e.name === 'JobPosted')
     expect((ev?.inputs ?? []).map((i) => i.name)).toContain('fee')
