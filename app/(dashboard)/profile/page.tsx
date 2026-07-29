@@ -596,8 +596,20 @@ export default function ProfilePage() {
         )}
       </div>
 
-      {/* On-chain layer (agent account · EAS · configured chain) */}
-      {onchain?.configured && (
+      {/* On-chain layer (agent account · EAS · configured chain)
+       *
+       * Gated on `agentConfigured`, NOT `configured`. `configured` is
+       * isOnchainConfigured(), which is about talking to the registry AND the
+       * credit vault as the oracle — so it demands CREDIT_VAULT_ADDRESS, and
+       * this card is where an agent's smart account gets provisioned in the
+       * first place. With a labour market deployed and no vault, the whole
+       * card vanished and with it the only Provision button in the app: the
+       * one action that has to happen before anything on-chain can.
+       *
+       * The credit figures inside genuinely do need the vault, and they are
+       * already guarded separately — `getOnchainInfo` only fills them when
+       * `configured` is true, and they render as em dashes otherwise. */}
+      {onchain?.agentConfigured && (
         <div className="border border-border rounded-lg p-6">
           <h3 className="font-bold text-lg mb-1 flex items-center gap-2">
             <Link2 className="size-5" /> {t('profile.onchain.title', { chain: onchain.chainName ?? 'Sepolia' })}
