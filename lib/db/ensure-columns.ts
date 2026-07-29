@@ -35,6 +35,11 @@ const JOB_SPEC_ADDITIONS = [
   // Which LaborMarket an onchain_job_id belongs to. Without it a redeploy makes
   // every stored id ambiguous — see the column comment in schema.ts.
   'ALTER TABLE job_specs ADD COLUMN IF NOT EXISTS onchain_contract text',
+  // Sealed-brief columns. These reached schema.ts without reaching any CREATE or
+  // ALTER, and drizzle names every declared column in its INSERT — so this pair
+  // did not break one feature, it broke POSTING A JOB.
+  'ALTER TABLE job_specs ADD COLUMN IF NOT EXISTS test_suite_slug text',
+  'ALTER TABLE job_specs ADD COLUMN IF NOT EXISTS brief_nonce text',
 ]
 
 const CREDIT_TX_ADDITIONS = [

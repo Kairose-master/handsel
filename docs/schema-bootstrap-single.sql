@@ -319,6 +319,16 @@ BEGIN
   ALTER TABLE job_specs ADD COLUMN IF NOT EXISTS ci_status text;
   ALTER TABLE job_specs ADD COLUMN IF NOT EXISTS pricing jsonb;
   ALTER TABLE job_specs ADD COLUMN IF NOT EXISTS issue_number integer;
+  -- Which LaborMarket an onchain_job_id belongs to. Every deployment restarts the
+  -- jobId counter at 1, so without this the id alone is not an identifier.
+  ALTER TABLE job_specs ADD COLUMN IF NOT EXISTS onchain_contract text;
+  -- The two columns the sealed-brief work added to schema.ts and to no CREATE or
+  -- ALTER anywhere. drizzle names every declared column in its INSERT, so posting
+  -- a job failed on: column "test_suite_slug" of relation "job_specs" does not
+  -- exist — with the reason stripped to a digest by production Next.js. The
+  -- table-level parity guard passed the whole time: job_specs existed.
+  ALTER TABLE job_specs ADD COLUMN IF NOT EXISTS test_suite_slug text;
+  ALTER TABLE job_specs ADD COLUMN IF NOT EXISTS brief_nonce text;
   -- The "creditTransaction" ALTERs used to sit here, ~80 lines ABOVE the CREATE
   -- TABLE that makes it. ADD COLUMN IF NOT EXISTS skips a column that exists; it
   -- does not skip a TABLE that does not, so on a fresh database this raised

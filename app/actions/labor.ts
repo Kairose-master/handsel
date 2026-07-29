@@ -196,6 +196,15 @@ export async function postJobAction(input: {
    *  review even on a passing verdict. */
   autoApprove?: boolean
 }) {
+  // The WRITE path needs this as much as the reads do, and it did not have it.
+  // Six read paths called ensureJobSpecColumns and no write path did, which is
+  // backwards: drizzle names every declared column in the INSERT it builds, so
+  // one column missing from the database fails the insert outright rather than
+  // degrading a feature. And in serverless each invocation is its own process
+  // with its own memoized ensure, so rendering the page never covered posting
+  // from it.
+  await (await import('@/lib/db/ensure-columns')).ensureJobSpecColumns()
+
   const userId = await requireUser()
   const ag = await requireOwnedAgent(input.requesterAgentId, userId)
   if (!ag.smartAccountAddress) throw new Error('Provision the requester agent first')
