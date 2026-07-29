@@ -129,8 +129,8 @@ contract LaborMarketV2 {
     uint16 public constant MAX_FEE_BPS = 500; // 5%
 
     /// @notice What a worker stakes to accept a job, in basis points of the
-    ///         bounty. Slashed to the requester if the worker takes the job and
-    ///         never delivers; returned in full on every other path.
+    ///         bounty. DESTROYED if the worker takes the job and never
+    ///         delivers; returned in full on every other path.
     /// @dev    **Accepting used to be free, and the posting fee turned that into
     ///         a grief the VICTIM paid for.** A squatter accepted any
     ///         `minScore == 0` job and never delivered; `cancelJob` is Open-only
@@ -155,6 +155,15 @@ contract LaborMarketV2 {
     ///         the squatter pay instead of merely making the victim whole, and
     ///         because `reclaimJob` is already a purely mechanical trigger — no
     ///         judgement, no new privileged party, nobody to appeal to.
+    ///
+    ///         **And it makes the squatter pay NOBODY.** The slashed bond is
+    ///         burned, not handed to the requester. Paying it to the requester
+    ///         made the same grief profitable in the other direction — the
+    ///         requester picks `deliveryWindow`, so it picks whether the work
+    ///         could possibly have arrived. See `_burnBond` for the measurement.
+    ///         The sentence above is the reason: making the squatter pay and
+    ///         making the victim whole were always two different goals, and only
+    ///         the first one is this instrument's.
     ///
     ///         What it costs, stated plainly: a worker now needs capital to
     ///         accept work. That is friction on the side of this market that is
@@ -409,6 +418,12 @@ contract LaborMarketV2 {
     event PayeeAssigned(uint256 indexed jobId, address indexed worker, address indexed payee, uint256 amount);
     /// @dev A worker missed its deadline; escrow returned to the requester.
     event JobReclaimed(uint256 indexed jobId, address indexed formerWorker);
+    /// @dev A bond destroyed. The one movement of money in this contract that
+    ///      credits NOBODY, so it has no `Credited` leg beside it and an indexer
+    ///      summing credits would silently lose it. Emitted with the address it
+    ///      was taken from, because the credit engine needs to score the squat
+    ///      and `JobReclaimed` alone does not say how much was at stake.
+    event BondBurned(uint256 indexed jobId, address indexed from, uint256 amount);
     /// @dev Nobody ever accepted it; escrow returned to the requester.
     event OpenExpired(uint256 indexed jobId);
     /// @dev A requester neither approved nor disputed in time. Carries every
@@ -890,13 +905,10 @@ contract LaborMarketV2 {
 
         address formerWorker = job.worker;
         job.status = Status.Refunded;
-        // Bounty back, and the squatter's bond ON TOP. The only path in this
-        // contract that moves the bond to anyone but the worker, and the only
-        // one where the worker held a job through its entire delivery window and
-        // delivered nothing. No judgement is involved: the trigger is a deadline
-        // that has passed with an empty `resultHash`, which is why this needed no
-        // new privileged party and nobody to appeal to.
-        _credit(jobId, job.requester, job.bounty + bondFor(job.bounty));
+        // The bounty, and ONLY the bounty. The requester is made exactly whole.
+        _credit(jobId, job.requester, job.bounty);
+        // The bond is destroyed rather than paid to anyone. See `_burnBond`.
+        _burnBond(jobId, formerWorker, bondFor(job.bounty));
         emit JobReclaimed(jobId, formerWorker);
     }
 
@@ -1062,6 +1074,45 @@ contract LaborMarketV2 {
         emit Credited(jobId, to, amount);
     }
 
+    /// @dev Destroy a slashed bond: drop it out of escrow and credit nobody.
+    ///
+    ///      **A slash paid to a party who can influence whether the slash
+    ///      happens is an incentive to manufacture it.** `reclaimJob` used to
+    ///      hand the bond to the requester, and the requester chooses
+    ///      `deliveryWindow` at post time while the spec lives off-chain — so
+    ///      nothing on-chain relates the size of the work to the time allowed
+    ///      for it. Post at MIN_DELIVERY_WINDOW, wait, reclaim: bounty back plus
+    ///      the bond, mechanically, with no judgement and nobody to appeal to.
+    ///      Measured over five cycles at a 10% bond and a 2% fee: requester
+    ///      +5x(bond − fee), worker −5x bond, and the bounty never at risk
+    ///      because the job was designed never to complete. MAX_BOND_BPS is 2000
+    ///      and MAX_FEE_BPS is 500, so the two ceilings CANNOT be chosen to make
+    ///      that unprofitable.
+    ///
+    ///      That is the accept-squat this bond was built to stop, with the two
+    ///      parties swapped — the fix applied to the side somebody was thinking
+    ///      about. Routing it to `feeRecipient` instead would close it for every
+    ///      third-party requester and leave it open for the operator, who is
+    ///      also a requester while the market bootstraps.
+    ///
+    ///      Burning closes it for everyone, and it is what the bond's own stated
+    ///      purpose already asked for: "it makes the squatter pay INSTEAD OF
+    ///      MERELY MAKING THE VICTIM WHOLE." Compensation was never the goal;
+    ///      deterrence was. The requester gets its bounty back and nothing more,
+    ///      so it gains nothing from a squat and has no reason to arrange one.
+    ///
+    ///      "Destroyed" means left here, uncredited, as surplus — the same place
+    ///      tokens sent by mistake land, and there is deliberately no sweep, so
+    ///      no party including the operator can ever reach it. `totalEscrowed`
+    ///      must still drop: leaving it up would report a permanent liability
+    ///      against money nobody can claim, and a solvency number that overstates
+    ///      what is owed is as useless as one that flatters.
+    function _burnBond(uint256 jobId, address from, uint256 amount) private {
+        if (amount == 0) return;
+        totalEscrowed -= amount;
+        emit BondBurned(jobId, from, amount);
+    }
+
     function _release(uint256 jobId, Job storage job) private {
         (uint256 toPayee, uint256 toWorker) = _payWorkerSide(jobId, job, job.bounty);
         emit JobCompleted(jobId, job.worker, job.requester, job.bounty, job.payee, toPayee, toWorker);
@@ -1098,7 +1149,9 @@ contract LaborMarketV2 {
         // `resolveDispute(false)`, which calls it with amount 0 precisely so the
         // worker's own stake is not confiscated for losing an argument about
         // quality. `reclaimJob` is the ONLY path that does not come through
-        // here, and it is the only path where the worker never delivered.
+        // here, and it is the only path where the worker never delivered — there
+        // the bond is burned rather than returned, and burned rather than paid
+        // to anyone, so no party profits from the failure.
         //
         // Credited as its own leg rather than folded into `toWorker`, so the
         // per-status events keep meaning "how the BOUNTY was split" and the
@@ -1297,12 +1350,19 @@ contract LaborMarketV2 {
     ///         costing a scan over every job ever posted is a check nobody
     ///         runs, and an invariant nobody runs is not an invariant.
     ///
-    ///         `held` should sit slightly above `owed` forever. Tokens sent
-    ///         here by mistake land in the surplus and stay. There is
-    ///         deliberately NO sweep: a function that moves tokens the contract
-    ///         does not owe is a function that can move tokens it does, and
-    ///         "nobody has that button" is this contract's one real security
-    ///         property.
+    ///         `held` should sit slightly above `owed` forever. Two things land
+    ///         in the surplus and stay: tokens sent here by mistake, and every
+    ///         bond burned by `reclaimJob`. There is deliberately NO sweep — a
+    ///         function that moves tokens the contract does not owe is a
+    ///         function that can move tokens it does, and "nobody has that
+    ///         button" is this contract's one real security property. It is also
+    ///         what makes the burn a burn: an operator who could sweep the
+    ///         surplus would be a party that profits from a slash, which is the
+    ///         whole thing `_burnBond` exists to rule out.
+    ///
+    ///         So a GROWING surplus is not by itself an alarm here; it is the
+    ///         squat rate, denominated in money. `BondBurned` is the event that
+    ///         says which it is.
     ///
     ///         **`held < owed` is the alarm.** No path here can produce it, so
     ///         if it ever reads that way the token is not behaving like USDC —

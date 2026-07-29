@@ -123,8 +123,15 @@ describe('the bond bites at cent scale too', () => {
     await send('worker', 'acceptJob', [id])
     ctx.chain.advance(DELIVERY_WINDOW)
     await send('stranger', 'reclaimJob', [id])
+    // Read the log BEFORE anything else: `events` reports the most recent call,
+    // and the balance reads below are calls.
+    const burned = ctx.chain.events<{ amount: bigint }>('LaborMarketV2', 'BondBurned')
 
-    expect(await claimable(ACCOUNTS.requester)).toBe(TINY + bond)
+    // Lost, and lost to NOBODY — the requester is made exactly whole and the
+    // bond is burned. It went to the requester until round 3, which made the
+    // mirror grief profitable: the requester picks the delivery window.
+    expect(burned[0].amount).toBe(bond)
+    expect(await claimable(ACCOUNTS.requester)).toBe(TINY)
     expect(await claimable(ACCOUNTS.worker)).toBe(0n)
   })
 
@@ -152,15 +159,20 @@ describe('the books still balance with both flat components live', () => {
     expect(await read<bigint>('totalEscrowed')).toBe(0n)
   })
 
-  it('holds exactly what it owes when the squatter is slashed', async () => {
+  it('holds MORE than it owes when the squatter is slashed, by exactly the bond', async () => {
     const id = await post(TINY)
+    const bond = await read<bigint>('bondFor', [TINY])
     await send('worker', 'acceptJob', [id])
     ctx.chain.advance(DELIVERY_WINDOW)
     await send('stranger', 'reclaimJob', [id])
 
     const [owed, held, surplus] = await read<[bigint, bigint, bigint]>('escrowSolvency')
-    expect(held).toBe(owed)
-    expect(surplus).toBe(0n)
+    // A burned bond is money the contract holds and owes to no one. `owed` must
+    // drop with it — leaving `totalEscrowed` up would report a permanent
+    // liability against something nobody can ever claim.
+    expect(held - owed).toBe(bond)
+    expect(surplus).toBe(bond)
+    expect(await read<bigint>('totalEscrowed')).toBe(0n)
   })
 
   it('works at MIN_BOUNTY, where the fee dwarfs the bounty', async () => {

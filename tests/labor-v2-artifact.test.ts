@@ -18,7 +18,10 @@ import { LABOR_MARKET_V2_ABI, LABOR_MARKET_V2_BYTECODE } from '@/lib/onchain/lab
 type AbiEntry = {
   type: string
   name?: string
-  inputs?: readonly { readonly name: string; readonly type: string }[]
+  // `indexed` is event-only and absent on function inputs, so it is optional
+  // here — but it has to exist on the type, because whether a log field is
+  // topic-indexed decides whether an indexer can filter on it at all.
+  inputs?: readonly { readonly name: string; readonly type: string; readonly indexed?: boolean }[]
   outputs?: readonly { readonly name: string }[]
   stateMutability?: string
 }
@@ -347,6 +350,26 @@ describe('the protocol fee', () => {
     expect(fn('MAX_BOND_BPS')?.stateMutability).toBe('view')
     expect(has('error', 'BondTooHigh')).toBe(true)
     expect(has('error', 'ForfeitTooHigh')).toBe(true)
+  })
+
+  it('announces a burned bond, because nothing else in the log describes it', () => {
+    // `reclaimJob` paid the slashed bond to the requester until round 3. The
+    // requester picks `deliveryWindow` at post time and the spec is off-chain,
+    // so it also picks whether the work could have arrived — post at
+    // MIN_DELIVERY_WINDOW, wait, reclaim, and collect the bond of every worker
+    // who could not finish. Profitable by construction, since MAX_BOND_BPS
+    // (2000) exceeds MAX_FEE_BPS (500). A slash paid to a party who can
+    // influence whether the slash happens is an incentive to manufacture it.
+    //
+    // Burning it is the one money movement in this contract that credits
+    // NOBODY, so it has no `Credited` leg and an indexer summing credits would
+    // lose it silently.
+    const ev = abi.find((e) => e.type === 'event' && e.name === 'BondBurned')
+    expect(ev, 'BondBurned must exist').toBeTruthy()
+    expect((ev?.inputs ?? []).map((i) => i.name)).toEqual(['jobId', 'from', 'amount'])
+    // Named with whom it was taken from: the credit engine has to score the
+    // squat, and JobReclaimed alone does not say how much was at stake.
+    expect((ev?.inputs ?? []).find((i) => i.name === 'from')?.indexed).toBe(true)
   })
 
   it('publishes its own ceiling, and refuses to exceed it', () => {

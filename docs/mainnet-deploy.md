@@ -161,7 +161,7 @@ Every one of these is **immutable**. There is no setter for any of them.
 |---|---|---|
 | `FLAT_FEE` | **the measured gas envelope** | See below. This is the number that makes sponsorship solvent. |
 | `FEE_BPS` | `200` | Scales with the value at risk. It cannot cover gas on its own — see below — but it is the right shape for the part that *is* proportional. |
-| `FLAT_BOND` | **≈ `FLAT_FEE`** | Makes `acceptJob` cost something at every bounty size. Returned in full unless the job is reclaimed. |
+| `FLAT_BOND` | **≈ `FLAT_FEE`** | Makes `acceptJob` cost something at every bounty size. Returned in full unless the job is reclaimed, in which case it is **burned** — see below. |
 | `BOND_BPS` | `500` | The proportional half of the same. |
 | `REVIEW_WINDOW_S` | `1 day` | Not the 7 the constant used to hardcode. Seven days is very long for a market whose jobs finish in minutes, and it is the exposure window for both the accept-squat and the silence forfeit. |
 | `SILENCE_FORFEIT_BPS` | `1000` | A worker submitting garbage earns 10% from any inattentive requester. That was chosen when the money was testnet. **Re-choose it now that it is not.** |
@@ -176,6 +176,29 @@ Every one of these is **immutable**. There is no setter for any of them.
 > the deploy script checks them before spending gas. It is a **typo bound, not a
 > policy**: it permits ~33,000× the intended flat fee, so it must never be the
 > thing that decides what this deployment charges.
+
+> **A slashed bond is burned, not paid to the requester.** It went to the
+> requester until round 3, and that made the accept-squat profitable in the
+> other direction: the requester chooses `deliveryWindow` at post time and the
+> spec is off-chain, so nothing on-chain relates the size of the work to the time
+> allowed for it. Post at `MIN_DELIVERY_WINDOW`, wait, `reclaimJob` — bounty back
+> plus the bond of every worker who could not have finished, with the bounty
+> never at risk. Measured over five cycles at a 10% bond and a 2% fee: requester
+> `+5×(bond − fee)`, worker `−5×bond`. And `MAX_BOND_BPS` (2000) exceeds
+> `MAX_FEE_BPS` (500), so the two ceilings **cannot** be chosen to make it
+> unprofitable — the fix had to be about where the bond goes, not how big it is.
+>
+> A slash paid to a party who can influence whether the slash occurs is an
+> incentive to manufacture it. Routing it to `FEE_RECIPIENT` would close it for
+> every third-party requester and leave it open for you, since you are also a
+> requester while the market bootstraps. Burning closes it for everyone, and it
+> is what the bond's stated purpose already asked for: *make the squatter pay*,
+> which was never the same goal as *make the victim whole*.
+>
+> Operationally: burned bonds accumulate as `escrowSolvency().surplus`, which no
+> one — including you — can sweep. **A growing surplus on this contract is not an
+> alarm; it is the squat rate denominated in money.** `BondBurned` is the event
+> that tells you which.
 
 ### Why a percentage alone cannot work
 

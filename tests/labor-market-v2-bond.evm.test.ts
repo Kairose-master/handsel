@@ -24,13 +24,22 @@ import { ACCOUNTS, Chain, marketConfig } from './helpers/evm'
  * The rule, and every test below is one line of it:
  *
  *   the bond is returned to the worker on EVERY path out of Submitted or
- *   Disputed, and slashed to the requester by reclaimJob alone.
+ *   Disputed, and destroyed by reclaimJob alone.
  *
  * That asymmetry is the whole design. Losing a dispute means the work was judged
  * bad; only reclaimJob means it never arrived, and the bond answers the second
  * question. It lives inside `_payWorkerSide` — the single release path — for the
  * same reason the payee split does: a return written at each call site is one
  * that gets honoured on some routes and forgotten on others.
+ *
+ * DESTROYED, not paid to the requester, which is where round 3 moved it. The
+ * requester chooses `deliveryWindow` at post time and the spec is off-chain, so
+ * nothing on-chain relates the size of the work to the time allowed for it —
+ * post at MIN_DELIVERY_WINDOW, wait, reclaim, and collect the bond of every
+ * worker who could not have finished. That is this same squat with the parties
+ * swapped, and it was profitable by construction because MAX_BOND_BPS exceeds
+ * MAX_FEE_BPS. A slash paid to a party who can influence whether the slash
+ * happens is an incentive to manufacture it.
  */
 
 const BOUNTY = 1_000_000n
@@ -179,20 +188,55 @@ describe('the bond comes back on every path where the work arrived', () => {
   })
 })
 
-describe('reclaimJob is the only path that takes it', () => {
-  it('slashes the bond to the requester the worker stranded', async () => {
+describe('reclaimJob is the only path that takes it, and it gives it to nobody', () => {
+  it('makes the requester exactly whole and destroys the bond', async () => {
     const id = await accepted()
     ctx.chain.advance(DELIVERY_WINDOW)
     await send('stranger', 'reclaimJob', [id])
 
-    // The requester is now made MORE than whole: bounty back plus the
-    // squatter's stake, which is what covers the unrefunded posting fee.
-    expect(await claimable(ACCOUNTS.requester)).toBe(BOUNTY + BOND)
+    // EXACTLY whole — the bounty and not a unit more. Paying the bond to the
+    // requester made the mirror grief profitable: the requester picks
+    // `deliveryWindow`, so it picks whether the work could have arrived at all.
+    expect(await claimable(ACCOUNTS.requester)).toBe(BOUNTY)
     expect(await claimable(ACCOUNTS.worker)).toBe(0n)
+    // Nobody holds it, and it is out of escrow — leaving `totalEscrowed` up
+    // would report a permanent liability against money nobody can claim.
     expect(await read<bigint>('totalEscrowed')).toBe(0n)
+    expect(await read<bigint>('totalWithdrawable')).toBe(BOUNTY + FEE)
   })
 
-  it('prices the squat that the posting fee used to make profitable', async () => {
+  it('leaves the burned bond in the contract as surplus nobody can reach', async () => {
+    const id = await accepted()
+    ctx.chain.advance(DELIVERY_WINDOW)
+    await send('stranger', 'reclaimJob', [id])
+
+    const [owed, held, surplus] = await read<[bigint, bigint, bigint]>('escrowSolvency')
+    expect(owed).toBe(BOUNTY + FEE)
+    expect(held).toBe(BOUNTY + FEE + BOND)
+    // The burn IS the surplus. There is deliberately no sweep, which is what
+    // makes it a burn rather than a transfer to the operator — an operator who
+    // could sweep this would be a party that profits from a slash.
+    expect(surplus).toBe(BOND)
+  })
+
+  it('announces the burn, because no Credited leg describes it', async () => {
+    const id = await accepted()
+    ctx.chain.advance(DELIVERY_WINDOW)
+    await send('stranger', 'reclaimJob', [id])
+
+    const burned = ctx.chain.events<{ from: string; amount: bigint }>('LaborMarketV2', 'BondBurned')
+    expect(burned).toHaveLength(1)
+    expect(burned[0].amount).toBe(BOND)
+    // Named with the address it was taken from: the credit engine has to score
+    // the squat, and JobReclaimed alone does not say how much was at stake.
+    expect(burned[0].from.toLowerCase()).toBe(ACCOUNTS.worker)
+    // And it is the one money movement with no Credited leg beside it, so an
+    // indexer summing credits would silently lose it.
+    const credits = ctx.chain.events<{ to: string; amount: bigint }>('LaborMarketV2', 'Credited')
+    expect(credits.map((c) => c.amount)).toEqual([BOUNTY])
+  })
+
+  it('prices the squat without paying anyone to arrange one', async () => {
     // The measured attack, run five times. Before the bond the requester was
     // down one fee per cycle and the squatter's balance never moved.
     const requesterStart = await got(ACCOUNTS.requester)
@@ -204,11 +248,14 @@ describe('reclaimJob is the only path that takes it', () => {
       await send('stranger', 'reclaimJob', [id])
     }
 
-    // Five fees paid, five bonds collected. The bond is 10% of bounty and the
-    // fee is 2%, so the requester now comes out AHEAD of a squatter who keeps
-    // paying to grief — and the squatter is down real money per attempt.
-    expect(await got(ACCOUNTS.requester)).toBe(requesterStart - 5n * FEE + 5n * BOND)
+    // The squatter is down real money per attempt — which was the goal, and it
+    // still holds.
     expect(await got(ACCOUNTS.worker)).toBe(squatterStart - 5n * BOND)
+    // The requester is still down one fee per cycle, exactly as before the bond
+    // existed. It is NOT made better off by being squatted, and that is the
+    // property: a requester that profits from a squat is a requester with a
+    // reason to arrange one.
+    expect(await got(ACCOUNTS.requester)).toBe(requesterStart - 5n * FEE)
   })
 
   it('does not let a lender reach the bond — it is not part of the bounty', async () => {

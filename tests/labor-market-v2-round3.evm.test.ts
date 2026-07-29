@@ -53,30 +53,34 @@ async function got(d: Deployed, who: string): Promise<bigint> {
 // 1. The requester picks the deadline the worker's bond is slashed against
 // ---------------------------------------------------------------------------
 
-describe('a requester can farm worker bonds with a window nobody could meet', () => {
+describe('a requester cannot farm worker bonds with a window nobody could meet', () => {
   /**
    * The bond exists because accepting used to be free, which made squatting a
-   * grief the victim paid for. It fixes that. What it also does — and this is
-   * new, and nothing above it is checked — is make the mirror-image grief
-   * PROFITABLE, where before the bond it cost the attacker a posting fee and
-   * earned nothing.
+   * grief the victim paid for. It fixes that. What it ALSO did, while the slash
+   * went to the requester, was make the mirror-image grief profitable — where
+   * before the bond it cost the attacker a posting fee and earned nothing.
    *
    * The requester chooses `deliveryWindow` at post time, within
    * [MIN_DELIVERY_WINDOW, MAX_DELIVERY_WINDOW]. The job SPEC is off-chain. So
    * nothing on-chain relates the size of the work to the time allowed for it,
-   * and a requester can post a three-hour job with a ten-minute window, wait,
-   * and call `reclaimJob` — which returns its whole bounty AND the worker's
-   * bond, mechanically, with no judgement and nobody to appeal to.
+   * and a requester could post a three-hour job with a ten-minute window, wait,
+   * and call `reclaimJob` — which returned its whole bounty AND the worker's
+   * bond, mechanically, with no judgement and nobody to appeal to. The bounty
+   * was never at risk, because the job was designed never to complete.
    *
-   * The bounty is never at risk: the job is designed never to complete.
+   * Measured on the paying-the-requester contract, five cycles at a 10% bond and
+   * a 2% fee: requester +5x(bond − fee) and strictly positive, worker −5x bond.
+   *
+   * The bond is now BURNED. The test below is the same attack, inverted.
    */
-  it('nets the requester the bond, cycle after cycle, at no risk to the bounty', async () => {
+  it('leaves the attacker down one fee per cycle, with the bond destroyed', async () => {
     const d = await deploy({ bondBps: 1000, feeBps: 200 }) // 10% bond, 2% fee
     const bond = await d.chain.call<bigint>('stranger', d.market, 'LaborMarketV2', 'bondFor', [BOUNTY])
     const fee = await d.chain.call<bigint>('stranger', d.market, 'LaborMarketV2', 'feeOn', [BOUNTY])
 
     const requesterBefore = await got(d, ACCOUNTS.requester)
     const workerBefore = await got(d, ACCOUNTS.worker)
+    const heldBefore = await d.chain.call<bigint>('stranger', d.market, 'LaborMarketV2', 'usdcBalance')
 
     const CYCLES = 5
     for (let i = 0; i < CYCLES; i++) {
@@ -92,22 +96,64 @@ describe('a requester can farm worker bonds with a window nobody could meet', ()
     const requesterNet = (await got(d, ACCOUNTS.requester)) - requesterBefore
     const workerNet = (await got(d, ACCOUNTS.worker)) - workerBefore
 
-    // The attacker is up by the bond minus the fee, every cycle. This is the
-    // exact accounting the bond's own NatSpec presents as the DEFECT it fixes,
-    // with the two parties swapped.
-    expect(requesterNet).toBe(BigInt(CYCLES) * (bond - fee))
-    expect(requesterNet).toBeGreaterThan(0n)
+    // The attacker pays to run the attack and collects nothing. Exactly the
+    // position it was in before the bond existed.
+    expect(requesterNet).toBe(-BigInt(CYCLES) * fee)
+    expect(requesterNet).toBeLessThan(0n)
+    // The squatter still loses its stake — the deterrent is unchanged.
     expect(workerNet).toBe(-BigInt(CYCLES) * bond)
+
+    // And the bonds are in the contract, owed to nobody, reachable by nobody.
+    const [owed, held, surplus] = await d.chain.call<[bigint, bigint, bigint]>(
+      'stranger',
+      d.market,
+      'LaborMarketV2',
+      'escrowSolvency',
+    )
+    // Everything ever pulled is still here: settlement credits rather than
+    // transfers, so the refunded bounties and the house fees sit in the contract
+    // until someone withdraws.
+    expect(held - heldBefore).toBe(BigInt(CYCLES) * (BOUNTY + fee + bond))
+    expect(owed).toBe(BigInt(CYCLES) * (BOUNTY + fee))
+    // The difference is exactly the burned bonds — owed to nobody.
+    expect(surplus).toBe(BigInt(CYCLES) * bond)
   })
 
-  it('costs the attacker nothing but the fee, and the fee is capped below the bond', async () => {
-    // MAX_FEE_BPS is 500 and MAX_BOND_BPS is 2000, so on a proportional-only
-    // deployment the take is at least 4x the cost by construction — the two
-    // ceilings cannot be chosen to make this attack unprofitable.
+  it('holds at the ceilings, where the attack used to be most profitable', async () => {
+    // MAX_FEE_BPS is 500 and MAX_BOND_BPS is 2000, so on the old contract the
+    // take was at least 4x the cost BY CONSTRUCTION — the two ceilings could not
+    // be chosen to make it unprofitable, which is why the answer had to be about
+    // where the bond goes rather than about how big it is.
     const d = await deploy({ bondBps: 2000, feeBps: 500 })
     const maxFee = await d.chain.call<number>('stranger', d.market, 'LaborMarketV2', 'MAX_FEE_BPS')
     const maxBond = await d.chain.call<number>('stranger', d.market, 'LaborMarketV2', 'MAX_BOND_BPS')
     expect(maxBond).toBeGreaterThan(maxFee)
+
+    const before = await got(d, ACCOUNTS.requester)
+    await d.chain.send('requester', d.market, 'LaborMarketV2', 'postJob', [BOUNTY, 0n, SPEC, MIN_WINDOW])
+    const id = await d.chain.call<bigint>('stranger', d.market, 'LaborMarketV2', 'jobCount')
+    await d.chain.send('worker', d.market, 'LaborMarketV2', 'acceptJob', [id])
+    d.chain.advance(MIN_WINDOW + 1)
+    await d.chain.send('requester', d.market, 'LaborMarketV2', 'reclaimJob', [id])
+
+    // Still negative at the most extreme legal configuration.
+    expect((await got(d, ACCOUNTS.requester)) - before).toBeLessThan(0n)
+  })
+
+  it('does not hand the bond to the operator either', async () => {
+    // Routing the slash to `feeRecipient` would close this for every
+    // third-party requester and leave it open for the operator, who is also a
+    // requester while the market bootstraps. The house collects its fee and
+    // nothing else.
+    const d = await deploy({ bondBps: 1000, feeBps: 200 })
+    const fee = await d.chain.call<bigint>('stranger', d.market, 'LaborMarketV2', 'feeOn', [BOUNTY])
+    await d.chain.send('requester', d.market, 'LaborMarketV2', 'postJob', [BOUNTY, 0n, SPEC, MIN_WINDOW])
+    const id = await d.chain.call<bigint>('stranger', d.market, 'LaborMarketV2', 'jobCount')
+    await d.chain.send('worker', d.market, 'LaborMarketV2', 'acceptJob', [id])
+    d.chain.advance(MIN_WINDOW + 1)
+    await d.chain.send('requester', d.market, 'LaborMarketV2', 'reclaimJob', [id])
+
+    expect(await got(d, ACCOUNTS.house)).toBe(fee)
   })
 
   it('is not a race the worker can win: the deadline is fixed at accept and submitWork closes on it', async () => {
