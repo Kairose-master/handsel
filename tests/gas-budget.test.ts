@@ -4,6 +4,8 @@ import {
   decideSponsorship,
   keeperStarved,
   KEEPER_LANE_BUDGET_USD,
+  AGENT_TOPUP_COST_USD,
+  USER_OP_COST_USD,
   type SponsorInput,
 } from '@/lib/gas-budget'
 
@@ -143,5 +145,58 @@ describe('the wiring, asserted at the source', () => {
     // free other people's escrow — a gas attack becomes a way to freeze the
     // market's money.
     expect(code('lib/onchain/labor-v2.ts')).toMatch(/lane:\s*'keeper'/)
+  })
+})
+
+describe('EOA top-ups are the operator spending too', () => {
+  /**
+   * The path that was uncapped.
+   *
+   * `sendAgentCall` returned early for EOA mode with the reason "the gas lands
+   * on the agent's own balance, so there is nothing of the operator's to
+   * meter". But the agent's balance is where it lands only because
+   * `ensureAgentGas` PUT IT THERE, out of the oracle wallet. There was plenty
+   * to meter and none of it was metered — no budget, no ledger, no cap — on the
+   * path that is live whenever ZERODEV_RPC is unset, which is the default.
+   *
+   * The attack is one sentence: create agents, cause one send each, and every
+   * one draws AGENT_GAS_TOPUP from the oracle.
+   *
+   * And on this project's one-key deployment the oracle IS the arbiter, so
+   * draining it does not merely cost money — it takes `resolveDispute` offline.
+   * Same shape as the keeper reserve above, which exists so a gas attack cannot
+   * disable settlement.
+   */
+  const code = (p: string) =>
+    readFileSync(p, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+
+  it('meters the top-up through the same fuse', () => {
+    const src = code('lib/onchain/account.ts')
+    expect(src).toMatch(/function ensureAgentGas[\s\S]{0,900}decideSponsorship/)
+    expect(src).toMatch(/function ensureAgentGas[\s\S]{0,900}recordGasSpend/)
+  })
+
+  it('does not top up when the fuse says no', () => {
+    expect(code('lib/onchain/account.ts')).toMatch(/verdict\.decision !== 'sponsor'[\s\S]{0,160}return/)
+  })
+
+  it('threads the lane through EOA mode, so keeper sweeps keep their reserve', () => {
+    // Losing the lane here would put the permissionless exits on the user lane,
+    // where a drained budget stops them — the exact thing the reserve prevents.
+    expect(code('lib/onchain/account.ts')).toMatch(/sendEoaCall\(agentId, call, opts\.lane \?\? 'user'\)/)
+  })
+
+  it('prices a top-up as a top-up, not as a UserOp', () => {
+    // AGENT_GAS_TOPUP is ~60x a sponsored UserOp at mainnet ether prices.
+    // Charging it at USER_OP_COST_USD would under-count by that factor, and a
+    // budget that under-counts does not bind.
+    expect(AGENT_TOPUP_COST_USD).toBeGreaterThan(USER_OP_COST_USD * 10)
+    expect(code('lib/onchain/account.ts')).toMatch(/recordGasSpend\([\s\S]{0,80}AGENT_TOPUP_COST_USD\)/)
+  })
+
+  it('cannot self-pay its way out, because the account is empty by definition', () => {
+    // "Degrade to self-pay" is right for a UserOp and meaningless here: the
+    // whole reason we are topping up is that this account has no ether.
+    expect(code('lib/onchain/account.ts')).toMatch(/function ensureAgentGas[\s\S]{0,900}canSelfPay: false/)
   })
 })

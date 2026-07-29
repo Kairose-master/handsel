@@ -69,10 +69,63 @@ function agentEoaAccount(agentId: string) {
 const AGENT_GAS_FLOOR = 50_000_000_000_000n // 0.00005 ETH
 const AGENT_GAS_TOPUP = 200_000_000_000_000n // 0.0002 ETH
 
-async function ensureAgentGas(address: Address): Promise<void> {
+/**
+ * Top up an agent's EOA — METERED, because this is the operator's money.
+ *
+ * **This used to be unconditional, and the reason given was false.**
+ * `sendAgentCall` returned early for EOA mode saying "the gas lands on the
+ * agent's own balance, so there is nothing of the operator's to meter". But the
+ * agent's balance is where it lands only because THIS FUNCTION PUT IT THERE,
+ * out of the oracle wallet. There was plenty to meter and none of it was
+ * metered: no budget, no ledger, no cap, on the path that is live whenever
+ * ZERODEV_RPC is unset — which is the default.
+ *
+ * The attack is a sentence long: create agents, cause one send each, and every
+ * one draws 0.0002 ETH from the oracle. Agent creation is rate-limited
+ * (MAX_AGENTS_PER_ACCOUNT, REGISTER_HOURLY_MAX_USERS) but not free-limited, and
+ * the drain has no ceiling of its own.
+ *
+ * What makes it worse than the money: on the one-key deployment this project
+ * chose, the oracle IS the arbiter. An oracle with no ETH cannot call
+ * `resolveDispute`, so draining gas takes the market's only judge offline —
+ * the same shape as the keeper-lane reserve in lib/gas-budget.ts, which exists
+ * precisely so a gas attack cannot disable settlement.
+ *
+ * So it goes through the same fuse as every other sponsored call, with the same
+ * two lanes. Exhaustion here cannot "degrade to self-pay" — an agent with no
+ * ether has nothing to pay with — so it simply does not top up, and the send
+ * that follows fails on its own terms. That is the honest outcome: the
+ * operator's subsidy has a limit, and reaching it is not the same as the
+ * market being broken.
+ */
+async function ensureAgentGas(address: Address, agentId: string, lane: 'user' | 'keeper'): Promise<void> {
   const client = publicClient()
   const balance = await client.getBalance({ address })
   if (balance >= AGENT_GAS_FLOOR) return
+
+  const { decideSponsorship, gasSpentInWindow, recordGasSpend, AGENT_TOPUP_COST_USD } = await import(
+    '@/lib/gas-budget'
+  )
+  const spent = await gasSpentInWindow(lane, agentId)
+  const verdict = decideSponsorship({
+    lane,
+    agentSpentUsd: spent.agent,
+    laneSpentUsd: spent.lane,
+    // There is no self-pay for a top-up: the whole point is that this account
+    // has no ether. `sponsor` or nothing.
+    canSelfPay: false,
+  })
+  if (verdict.decision !== 'sponsor') {
+    console.error(`[agent-gas] not topping up ${agentId}: ${verdict.reason}`)
+    return
+  }
+
+  // Recorded BEFORE the send, like every other spend in this file: a top-up
+  // that lands and is not recorded is one the budget will hand out again. And
+  // recorded at the TOP-UP price, not a UserOp's — this is roughly sixty times
+  // the smaller unit, and a ledger that prices every spend at the cheapest one
+  // agrees with itself rather than with the bank.
+  await recordGasSpend(lane, agentId, 'eoa-topup', AGENT_TOPUP_COST_USD)
   const hash = await oracleWallet().sendTransaction({ to: address, value: AGENT_GAS_TOPUP })
   await client.waitForTransactionReceipt({ hash })
 }
@@ -80,9 +133,10 @@ async function ensureAgentGas(address: Address): Promise<void> {
 async function sendEoaCall(
   agentId: string,
   call: { to: Address; data: Hex; value?: bigint },
+  lane: 'user' | 'keeper' = 'user',
 ): Promise<Hex> {
   const account = agentEoaAccount(agentId)
-  await ensureAgentGas(account.address)
+  await ensureAgentGas(account.address, agentId, lane)
   const wallet = createWalletClient({ account, chain: CHAIN, transport: http(onchainEnv.rpcUrl) })
   const hash = await wallet.sendTransaction({
     to: call.to,
@@ -242,9 +296,12 @@ export async function sendAgentCall(
   call: { to: Address; data: Hex; value?: bigint },
   opts: { lane?: 'user' | 'keeper'; label?: string } = {},
 ): Promise<Hex> {
-  // EOA mode is not sponsored — the gas lands on the agent's own balance, so
-  // there is nothing of the operator's to meter.
-  if (agentAccountMode === 'eoa') return sendEoaCall(agentId, call)
+  // EOA mode still spends the operator's money — `ensureAgentGas` refills the
+  // agent out of the ORACLE wallet — so the lane is threaded through and the
+  // top-up is metered by the same fuse. The comment that used to sit here said
+  // there was nothing of the operator's to meter, which was the opposite of
+  // true and left this path uncapped.
+  if (agentAccountMode === 'eoa') return sendEoaCall(agentId, call, opts.lane ?? 'user')
 
   // The fuse. Sponsored gas is the one pool an attacker drains without paying
   // anything, so exhaustion has to have an answer that is not "the market is

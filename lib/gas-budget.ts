@@ -147,6 +147,27 @@ export function keeperStarved(laneSpentUsd: number, budgetUsd = KEEPER_LANE_BUDG
  */
 export const USER_OP_COST_USD = envNum('USER_OP_COST_USD', 0.01)
 
+/**
+ * Estimated USD for one EOA top-up — a much larger unit than a UserOp.
+ *
+ * `ensureAgentGas` sends AGENT_GAS_TOPUP (0.0002 ETH) from the oracle to an
+ * agent that has run dry. At mainnet ether prices that is dollars-scale, some
+ * sixty times a sponsored UserOp, so charging it to the budget at
+ * USER_OP_COST_USD would under-count the operator's real exposure by that
+ * factor — and a budget that under-counts is a budget that does not bind.
+ *
+ * A generous default on purpose: over-estimating stops the subsidy sooner,
+ * which is the safe direction. Note the consequence and choose deliberately —
+ * at this figure against AGENT_GAS_BUDGET_USD, one top-up is roughly an
+ * agent's entire daily allowance, so a Sybil gets one refill per identity and
+ * the LANE cap bounds the total. That is the intended shape; raise
+ * USER_LANE_GAS_BUDGET_USD if a real market needs more, rather than pretending
+ * a top-up is cheap.
+ *
+ * Replace with the measured figure once deployment #1 has burned some.
+ */
+export const AGENT_TOPUP_COST_USD = envNum('AGENT_TOPUP_COST_USD', 0.6)
+
 /** The rolling window every budget is measured over. */
 export const GAS_WINDOW_MS = 24 * 60 * 60 * 1000
 
@@ -235,7 +256,16 @@ export async function gasSpentInWindow(
 
 /** Record what a sponsored call is expected to cost. Never throws: a ledger
  *  write that fails must not undo an on-chain action that already happened. */
-export async function recordGasSpend(lane: Lane, agentId: string | null, label: string): Promise<void> {
+export async function recordGasSpend(
+  lane: Lane,
+  agentId: string | null,
+  label: string,
+  /** What this one cost. Defaults to a UserOp; an EOA top-up is far larger and
+   *  passes AGENT_TOPUP_COST_USD, because charging every kind of spend at the
+   *  cheapest kind's price is a ledger that agrees with itself and not with
+   *  the bank. */
+  usd: number = USER_OP_COST_USD,
+): Promise<void> {
   try {
     await ensureLedger()
     const { db } = await import('@/lib/db')
@@ -245,7 +275,7 @@ export async function recordGasSpend(lane: Lane, agentId: string | null, label: 
       id: `gs-${nanoid()}`,
       lane,
       agentId,
-      usd: String(USER_OP_COST_USD),
+      usd: String(usd),
       label,
     })
   } catch (error) {
