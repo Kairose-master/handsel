@@ -120,6 +120,29 @@ export const OPS_STEPS: OpsStep[] = [
     },
   },
   {
+    // The other half of pull payments: something that pulls.
+    //
+    // V2 settlement credits rather than transfers, because pushing let one
+    // blocklisted recipient revert an entire settlement. The price is a second
+    // transaction — and `withdraw()` sat in lib/onchain/labor-v2.ts with zero
+    // callers, exactly as the four exits did before `deadlines` existed. A
+    // worker would finish jobs, see the dashboard say it earned, and hold no
+    // tokens.
+    //
+    // AFTER `deadlines` and sharing nothing with it. Uncollected money is safe
+    // where it is — `withdrawable` is a balance, not a deadline, and nothing
+    // expires it — so this is allowed to be best-effort in a way the backstop is
+    // not, and it must not be able to consume the lease the backstop needs.
+    // Bounded by MAX_WITHDRAWALS_PER_PASS, which is smaller than
+    // MAX_EXITS_PER_PASS for that reason. No-ops entirely against a V1 market.
+    name: 'withdrawals',
+    fast: true,
+    run: async () => {
+      const { sweepWithdrawals } = await import('@/lib/withdraw-sweep')
+      return sweepWithdrawals()
+    },
+  },
+  {
     name: 'abandonedClaims',
     fast: true,
     run: async () => {

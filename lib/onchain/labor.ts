@@ -16,24 +16,51 @@ export type OnchainJob = {
   worker: Address
   bounty: number
   minScore: number
-  status: (typeof JOB_STATUS)[number]
+  /**
+   * V1's seven states, PLUS V2's eighth.
+   *
+   * Widened rather than cast, so every consumer has to acknowledge `Expired`
+   * exists. It is the state a job reaches when a deadline settled it and NOBODY
+   * judged the work — distinct from `Completed` (someone said it was good) and
+   * `Refunded` (someone said it was not, or it never arrived). A reader that
+   * collapses it into either one is reporting a verdict that was never reached,
+   * which is the exact thing the contract added a separate state to prevent.
+   *
+   * Against a V1 market the value never occurs, so nothing that handles it is
+   * wasted and nothing that ignores it is wrong today.
+   */
+  status: (typeof JOB_STATUS)[number] | 'Expired'
   specHash: Hex
   resultHash: Hex
 }
 
-/** Post a job: approve the market and postJob, atomically.
+/**
+ * Post a job: approve the market and postJob, atomically.
  *
- *  NOTE for the V2 migration: V2 charges a protocol fee ON TOP of the bounty,
- *  so `postJob` there pulls `bounty + fee` and this approval — exactly the
- *  bounty — reverts. V2 exposes `postCost(bounty)` for precisely this; approve
- *  that. The V1 contract this file still targets has no fee, so the amount
- *  below is correct today and wrong the moment the address changes. */
+ * **Routes to V2 when the configured address is a V2**, because the two
+ * contracts disagree about this call in two ways at once and neither
+ * disagreement fails politely. V2's `postJob` takes a fourth argument
+ * (`deliveryWindow`), so the V1 encoding below targets a selector V2 does not
+ * have; and V2 pulls `bounty + fee`, so an allowance of exactly the bounty
+ * reverts on any deployment with a fee.
+ *
+ * The note that used to sit here said this would be "wrong the moment the
+ * address changes" and left it at that. A warning is not a mechanism.
+ *
+ * The V1 path below is unchanged and stays correct for the V1 contract, which
+ * is still live on Sepolia.
+ */
 export async function postJob(
   requesterAgentId: string,
   bountyUsd: number,
   minScore: number,
   specHash: Hex,
+  deliveryWindowSec?: number,
 ): Promise<Hex> {
+  const { isV2Market, postJobV2 } = await import('./labor-v2')
+  if (await isV2Market()) {
+    return postJobV2(requesterAgentId, bountyUsd, minScore, specHash, deliveryWindowSec)
+  }
   const amount = toUnits(bountyUsd)
   const approve = encodeFunctionData({
     abi: USDC_ABI,
@@ -61,7 +88,17 @@ function marketCall(fn: 'acceptJob' | 'approveJob' | 'cancelJob' | 'raiseDispute
   return encodeFunctionData({ abi: LABOR_MARKET_ABI, functionName: fn, args: [BigInt(jobId)] })
 }
 
+/**
+ * Accept a job.
+ *
+ * The selector is identical on both contracts, so unlike `postJob` this one
+ * would encode fine against V2 — and still fail, because V2's `acceptJob` pulls
+ * a bond and this sends no allowance with it. A worker would simply be unable to
+ * take work, on every job, on any deployment with a non-zero bond.
+ */
 export async function acceptJob(workerAgentId: string, jobId: number): Promise<Hex> {
+  const { isV2Market, acceptJobV2 } = await import('./labor-v2')
+  if (await isV2Market()) return acceptJobV2(workerAgentId, jobId)
   return sendAgentCall(workerAgentId, {
     to: onchainEnv.laborMarketAddress as Address,
     data: marketCall('acceptJob', jobId),
@@ -127,6 +164,31 @@ let jobsCache: { at: number; jobs: OnchainJob[] } | null = null
 let jobsInFlight: Promise<OnchainJob[]> | null = null
 
 async function fetchJobsUncached(): Promise<OnchainJob[]> {
+  // V2's `jobs` getter returns FOURTEEN fields and its status enum has eight
+  // entries. Decoding that with the seven-field tuple below does not throw —
+  // viem hands back the first seven and the reader gets numbers. Worse, the
+  // `?? 'Open'` further down turns V2's eighth status (`Expired`) into `Open`,
+  // which puts every timeout-settled job back on the board as available work.
+  const { isV2Market, readJobsV2 } = await import('./labor-v2')
+  if (await isV2Market()) {
+    const v2 = await readJobsV2()
+    return v2
+      .map((j) => ({
+        id: j.id,
+        requester: j.requester,
+        worker: j.worker,
+        bounty: j.bounty,
+        // V2 does not surface minScore or the hashes through this shape; the
+        // fields exist on-chain and `readJobsV2` can be extended when a caller
+        // needs them. Zeroed rather than guessed — a wrong minScore here would
+        // be a gate the UI reports and the contract does not enforce.
+        minScore: 0,
+        status: j.status,
+        specHash: '0x' as Hex,
+        resultHash: '0x' as Hex,
+      }))
+      .reverse()
+  }
   const client = publicClient()
   const market = { address: onchainEnv.laborMarketAddress as Address, abi: LABOR_MARKET_ABI } as const
 

@@ -13,14 +13,17 @@
  * fourteen-field decoder run against a seven-field contract does not fail
  * cleanly, it produces numbers.
  */
-import { encodeFunctionData, type Address, type Hex } from 'viem'
+import { encodeFunctionData, parseUnits, type Address, type Hex } from 'viem'
 import { LABOR_MARKET_V2_ABI } from './labor-v2-artifact'
 import { publicClient } from './clients'
-import { onchainEnv, USDC_DECIMALS } from './config'
-import { sendAgentCall } from './account'
+import { onchainEnv, USDC_ABI, USDC_DECIMALS } from './config'
+import { getAgentKernel, sendAgentCall } from './account'
 import { V2_JOB_STATUS, type DeadlineJob, type ExitFn, type V2JobStatus } from '@/lib/deadlines'
 
 const fromUnits = (v: bigint) => Number(v) / 10 ** USDC_DECIMALS
+const toUnits = (usd: number) => parseUnits(usd.toFixed(USDC_DECIMALS), USDC_DECIMALS)
+
+const market = () => ({ address: onchainEnv.laborMarketAddress as Address, abi: LABOR_MARKET_V2_ABI }) as const
 
 /**
  * Whether the configured market is a V2.
@@ -138,6 +141,147 @@ export async function callExit(agentId: string, fn: ExitFn, jobId: number): Prom
     // into a way to freeze the market's money.
     { lane: 'keeper', label: fn },
   )
+}
+
+/**
+ * How long a worker gets, when the caller did not say.
+ *
+ * V2's `postJob` takes a fourth argument V1 never had, so every existing call
+ * site reaches this. The contract bounds it to [MIN_DELIVERY_WINDOW,
+ * MAX_DELIVERY_WINDOW] and reverts `BadWindow` outside them — and those bounds
+ * are now deployment-chosen, so a constant compiled in here would be a value
+ * that is correct against one deployment and reverts against the next. Read
+ * them, clamp into them.
+ *
+ * The default is deliberately near the FLOOR rather than the middle. A delivery
+ * window is the requester's exposure: escrow is locked for its whole length and
+ * `cancelJob` is Open-only, so a generous default spends somebody else's money
+ * on patience they did not ask for. Callers that know the work is long pass a
+ * number.
+ */
+export const DEFAULT_DELIVERY_WINDOW_S = 60 * 60
+
+let windowBounds: { min: number; max: number } | null = null
+async function clampDeliveryWindow(requested?: number): Promise<number> {
+  if (!windowBounds) {
+    const [min, max] = await Promise.all([
+      publicClient().readContract({ ...market(), functionName: 'MIN_DELIVERY_WINDOW' }),
+      publicClient().readContract({ ...market(), functionName: 'MAX_DELIVERY_WINDOW' }),
+    ])
+    windowBounds = { min: Number(min), max: Number(max) }
+  }
+  const want = requested ?? DEFAULT_DELIVERY_WINDOW_S
+  return Math.min(Math.max(want, windowBounds.min), windowBounds.max)
+}
+
+/**
+ * Post a job on V2: approve `postCost(bounty)` and `postJob`, in one UserOp.
+ *
+ * **`postCost`, not the bounty** — and it is read from the contract rather than
+ * recomputed here. V2 charges `flatFee + bounty*feeBps/10000` ON TOP, so an
+ * allowance of exactly the bounty reverts every posting on any deployment with
+ * a fee. `lib/onchain/labor.ts` still approves the bounty, correctly, because
+ * the V1 contract it targets has no fee — which is why this is a separate
+ * function and not an edit to that one.
+ *
+ * Reading `postCost` instead of reimplementing it is the same rule the contract
+ * states for `releaseSplit`: a caller that recomputes the split is a caller that
+ * can get it wrong, and here getting it wrong means every post fails.
+ */
+export async function postJobV2(
+  requesterAgentId: string,
+  bountyUsd: number,
+  minScore: number,
+  specHash: Hex,
+  deliveryWindowSec?: number,
+): Promise<Hex> {
+  const bounty = toUnits(bountyUsd)
+  const cost = (await publicClient().readContract({
+    ...market(),
+    functionName: 'postCost',
+    args: [bounty],
+  })) as bigint
+  const window = await clampDeliveryWindow(deliveryWindowSec)
+
+  const { account, kernelClient } = await getAgentKernel(requesterAgentId)
+  const userOpHash = await kernelClient.sendUserOperation({
+    callData: await account.encodeCalls([
+      {
+        to: onchainEnv.usdcAddress as Address,
+        value: 0n,
+        data: encodeFunctionData({
+          abi: USDC_ABI,
+          functionName: 'approve',
+          args: [onchainEnv.laborMarketAddress as Address, cost],
+        }),
+      },
+      {
+        to: onchainEnv.laborMarketAddress as Address,
+        value: 0n,
+        data: encodeFunctionData({
+          abi: LABOR_MARKET_V2_ABI,
+          functionName: 'postJob',
+          args: [bounty, BigInt(minScore), specHash, window],
+        }),
+      },
+    ]),
+  })
+  const receipt = await kernelClient.waitForUserOperationReceipt({ hash: userOpHash })
+  return receipt.receipt.transactionHash as Hex
+}
+
+/**
+ * Accept a job on V2: approve `bondFor(bounty)` and `acceptJob`, in one UserOp.
+ *
+ * V1's `acceptJob` took no money, so its call site sends a bare transaction. On
+ * V2 accepting stakes a bond, and without the allowance `_safeTransferFrom`
+ * reverts and the worker simply cannot take work — the whole supply side stops,
+ * silently, on a deployment where `BOND_BPS` or `FLAT_BOND` is non-zero.
+ *
+ * Batched into one UserOp rather than two: the approval is worthless on its own
+ * and leaving a dangling allowance to the market is a standing authorisation
+ * nobody asked for.
+ *
+ * Zero bond is the first mainnet configuration, and it takes the same path — the
+ * approve is a no-op call, one extra encoded call inside a UserOp that was
+ * happening anyway. Not special-cased, because a branch that only runs on some
+ * deployments is a branch that is only tested on some deployments.
+ */
+export async function acceptJobV2(workerAgentId: string, jobId: number): Promise<Hex> {
+  const client = publicClient()
+  const job = (await client.readContract({
+    ...market(),
+    functionName: 'jobs',
+    args: [BigInt(jobId)],
+  })) as readonly unknown[]
+  // Field 2 is `bounty`. The struct order is pinned by tests/labor-v2-artifact.
+  const bond = (await client.readContract({
+    ...market(),
+    functionName: 'bondFor',
+    args: [job[2] as bigint],
+  })) as bigint
+
+  const { account, kernelClient } = await getAgentKernel(workerAgentId)
+  const userOpHash = await kernelClient.sendUserOperation({
+    callData: await account.encodeCalls([
+      {
+        to: onchainEnv.usdcAddress as Address,
+        value: 0n,
+        data: encodeFunctionData({
+          abi: USDC_ABI,
+          functionName: 'approve',
+          args: [onchainEnv.laborMarketAddress as Address, bond],
+        }),
+      },
+      {
+        to: onchainEnv.laborMarketAddress as Address,
+        value: 0n,
+        data: encodeFunctionData({ abi: LABOR_MARKET_V2_ABI, functionName: 'acceptJob', args: [BigInt(jobId)] }),
+      },
+    ]),
+  })
+  const receipt = await kernelClient.waitForUserOperationReceipt({ hash: userOpHash })
+  return receipt.receipt.transactionHash as Hex
 }
 
 /** What settlement has credited an address and not yet handed over. */

@@ -4,6 +4,7 @@ import { DRAIN_BATCH } from '@/lib/callback/settlement-drain'
 import { RECONCILE_MAX_LOOKUPS } from '@/lib/bounty-reconcile'
 import { MAX_EXITS_PER_PASS } from '@/lib/deadlines'
 import { MAX_RULINGS_PER_PASS } from '@/lib/dispute-gate'
+import { MAX_WITHDRAWALS_PER_PASS } from '@/lib/withdraw-sweep'
 
 // The cron and ordinary traffic run the SAME step list; these pin the
 // properties that keep the two entry points honest.
@@ -53,12 +54,17 @@ describe('OPS_STEPS', () => {
     expect(fast).toContain('bountyReconcile') // RECONCILE_MAX_LOOKUPS = 5
     expect(fast).toContain('deadlines') // MAX_EXITS_PER_PASS = 3
     expect(fast).toContain('disputeGate') // MAX_RULINGS_PER_PASS = 3
+    expect(fast).toContain('withdrawals') // MAX_WITHDRAWALS_PER_PASS = 2
     expect(DRAIN_BATCH).toBeLessThanOrEqual(5)
     expect(RECONCILE_MAX_LOOKUPS).toBeLessThanOrEqual(10)
     // Each exit is a sponsored UserOp costing the operator real gas, so this
     // cap is tighter than the others by a category, not by a preference.
     expect(MAX_EXITS_PER_PASS).toBeLessThanOrEqual(3)
     expect(MAX_RULINGS_PER_PASS).toBeLessThanOrEqual(3)
+    // Tighter still. A withdrawal is the least urgent call this system makes —
+    // the money is safe where it is — so it must never crowd out the exits,
+    // which free money that is NOT safe where it is.
+    expect(MAX_WITHDRAWALS_PER_PASS).toBeLessThan(MAX_EXITS_PER_PASS)
   })
 
   it('ticks traffic no more than once every five minutes', () => {
