@@ -163,6 +163,42 @@ console.log(`  ${'arbiter'.padEnd(20)} ${arbiter}`)
 console.log(`  ${'usdc'.padEnd(20)} ${usdc}`)
 console.log(`  ${'registry'.padEnd(20)} ${registry}`)
 
+// Which roles this deployment puts on one key, stated at deploy time.
+//
+// Sharing them is a legitimate choice and it costs NOTHING in gas — gas is
+// charged per transaction, not per address, so three keys and one key pay the
+// same fees. What sharing actually saves is the bother of funding three
+// addresses and the dust left in each.
+//
+// What it costs is blast radius, and that is worth seeing on the screen at the
+// moment it becomes permanent rather than reconstructing it from memory later:
+//
+//   registry oracle  setLimit() writes ANY agent's credit score and limit —
+//                    the whole product claim is that a score is earned — and
+//                    setOracle() can hand the registry to someone else
+//                    PERMANENTLY. That one is not recoverable; it is a
+//                    redeployment of the registry and every score in it.
+//   market arbiter    resolveDispute(id, false) refunds any contested job.
+//                    IMMUTABLE here: no setter, so this address cannot be
+//                    rotated after the fact the way the oracle can.
+//   deployer          nothing, once this transaction lands. LaborMarketV2 has
+//                    no owner and the registry takes its oracle as a
+//                    constructor argument, so merging THIS role in is free.
+//
+// The two that matter fail in opposite directions: a leaked oracle key can be
+// rotated only if you notice before the attacker calls setOracle, and a leaked
+// arbiter key cannot be rotated at all.
+if (arbiter.toLowerCase() === account.address.toLowerCase()) {
+  console.log('\n⚠ deployer and arbiter are the SAME address.')
+  console.log('  Deployer authority ends with this transaction, so the risk here is the')
+  console.log('  arbiter half: it is immutable and can never be rotated.')
+}
+if (process.env.ORACLE_ADDRESS && process.env.ORACLE_ADDRESS.toLowerCase() === arbiter.toLowerCase()) {
+  console.log('\n⚠ arbiter and registry oracle are the SAME address.')
+  console.log('  One leaked key then forges credit scores, refunds disputes, AND can call')
+  console.log('  setOracle to lock you out of the registry permanently.')
+}
+
 const balance = await pub.getBalance({ address: account.address })
 if (balance === 0n) die('Deployer has no ETH on this chain.')
 

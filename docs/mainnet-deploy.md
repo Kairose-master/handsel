@@ -153,6 +153,47 @@ It refuses, rather than warns, on: `base` without `--confirm-mainnet`, any unset
 address, a `usdc`/`registry` with no code on the target chain, and a non-zero fee
 with no recipient.
 
+### Keys: one, and what that buys and costs
+
+Deployment #1 runs **deployer = registry oracle = market arbiter on one key**.
+Recorded here because it is a decision, not an oversight.
+
+**Splitting keys saves no gas.** Gas is charged per transaction, not per
+address, so three keys and one key pay identical fees. What splitting actually
+costs is funding three addresses and leaving dust in each — which is the real
+reason not to bother at this size.
+
+Merging the **deployer** in is free: its authority ends when the deploy
+transaction lands. `LaborMarketV2` has no owner and no setter, and the registry
+takes its oracle as a constructor argument rather than assuming the deployer.
+
+The other two are where the exposure is:
+
+| role | what one leaked key does | rotatable? |
+|---|---|---|
+| registry oracle | `setLimit()` writes **any** agent's score and limit — the product's entire claim is that a score is *earned* | yes, until the attacker calls `setOracle` first |
+| registry oracle | `setOracle()` hands the registry to someone else **permanently** | **no** — a redeployment of the registry and every score in it |
+| market arbiter | `resolveDispute(id, false)` refunds any contested job | **no** — immutable, no setter |
+
+They fail in opposite directions: the oracle can be rotated only if you notice
+before the attacker does, and the arbiter cannot be rotated at all. One key
+means one leak reaches both.
+
+`CRON_SECRET` has already reached Vercel's logs once in this project's history,
+so "the env leaks" is a thing that has happened here, not a hypothetical.
+
+**Acceptable for deployment #1** — no real users, no real money, and its whole
+purpose is measuring the gas envelope. `scripts/deploy-labor-v2.mjs` prints
+which roles share an address at deploy time, so the choice is visible at the
+moment it becomes permanent.
+
+**Revisit for deployment #2.** The cheapest split, if you want one: give the
+arbiter its own address and leave it at **zero balance**. It never needs funding
+until you actually want to refund a dispute by hand, and `DISPUTE_WINDOW` gives
+you fourteen days to get ETH into it. The cost is that `lib/dispute-gate.ts`
+cannot run automatically — every dispute then settles by `expireDispute`, which
+pays the worker. That is the designed default, not a failure.
+
 ### The recommended first config, and why
 
 Every one of these is **immutable**. There is no setter for any of them.
