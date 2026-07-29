@@ -296,12 +296,52 @@ export async function sendAgentCall(
   call: { to: Address; data: Hex; value?: bigint },
   opts: { lane?: 'user' | 'keeper'; label?: string } = {},
 ): Promise<Hex> {
+  return sendAgentCalls(agentId, [call], opts)
+}
+
+/**
+ * Send one OR MORE calls from the agent's account.
+ *
+ * Two writes needed a batch — `approve` then `postJob`, `approve` then
+ * `acceptJob` — and both reached for `getAgentKernel` + `sendUserOperation`
+ * directly because `sendAgentCall` took a single call. That made posting a job
+ * and accepting a job the only two labour-market writes that were **kernel
+ * only**. On an EOA-mode deployment there is no bundler and no paymaster, so
+ * both were structurally impossible while submit, approve, dispute, withdraw
+ * and every transfer worked — which reads exactly like "posting is broken and
+ * mining is broken" and nothing else.
+ *
+ * They also bypassed the gas fuse completely: no `decideSponsorship`, no
+ * `recordGasSpend`. Two of the most expensive operations in the system were
+ * the two the budget could not see.
+ *
+ * In kernel mode the calls land as one atomic UserOp, as before. In EOA mode
+ * there is nothing to batch with, so they are sent in order. That is NOT
+ * atomic, and the ordering is what makes it safe: the approve is for exactly
+ * the amount the following call spends, so a failure in between leaves a
+ * dangling allowance to this market — recoverable, and never lost funds.
+ */
+export async function sendAgentCalls(
+  agentId: string,
+  calls: { to: Address; data: Hex; value?: bigint }[],
+  opts: { lane?: 'user' | 'keeper'; label?: string } = {},
+): Promise<Hex> {
+  if (calls.length === 0) throw new Error('sendAgentCalls: nothing to send')
+
+  /** Sequentially, returning the hash of the LAST call — the one that carries
+   *  the meaning. An approve's hash is of no interest to any caller. */
+  const sendSequentially = async (lane: 'user' | 'keeper'): Promise<Hex> => {
+    let hash: Hex | undefined
+    for (const c of calls) hash = await sendEoaCall(agentId, c, lane)
+    return hash as Hex
+  }
+
   // EOA mode still spends the operator's money — `ensureAgentGas` refills the
   // agent out of the ORACLE wallet — so the lane is threaded through and the
   // top-up is metered by the same fuse. The comment that used to sit here said
   // there was nothing of the operator's to meter, which was the opposite of
   // true and left this path uncapped.
-  if (agentAccountMode === 'eoa') return sendEoaCall(agentId, call, opts.lane ?? 'user')
+  if (agentAccountMode === 'eoa') return sendSequentially(opts.lane ?? 'user')
 
   // The fuse. Sponsored gas is the one pool an attacker drains without paying
   // anything, so exhaustion has to have an answer that is not "the market is
@@ -326,7 +366,7 @@ export async function sendAgentCall(
   }
   if (verdict.decision === 'self_pay') {
     console.warn(`[onchain] ${verdict.reason} — agent ${agentId} paying its own gas`)
-    return sendEoaCall(agentId, call)
+    return sendSequentially('user')
   }
   // Recorded BEFORE the send. An op that lands and is never billed is how a
   // budget silently stops bounding anything; an op billed and then rejected
@@ -335,9 +375,9 @@ export async function sendAgentCall(
 
   const { account, kernelClient } = await getAgentKernel(agentId)
   const userOpHash = await kernelClient.sendUserOperation({
-    callData: await account.encodeCalls([
-      { to: call.to, value: call.value ?? 0n, data: call.data },
-    ]),
+    callData: await account.encodeCalls(
+      calls.map((c) => ({ to: c.to, value: c.value ?? 0n, data: c.data })),
+    ),
   })
 
   for (const timeout of [30_000, 60_000]) {

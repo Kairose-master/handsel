@@ -81,13 +81,34 @@ describe('what the V2 writes must get right', () => {
     expect(src).toMatch(/export async function acceptJobV2[\s\S]{0,1400}functionName: 'approve'/)
   })
 
-  it('batches the approval with the call that consumes it', () => {
-    // Two UserOps would leave a standing allowance to the market if the second
-    // never landed — an authorisation nobody asked for, on a contract holding
-    // everyone's escrow.
+  it('sends the approval together with the call that consumes it', () => {
+    // Two SEPARATE sends would leave a standing allowance to the market if the
+    // second never landed — an authorisation nobody asked for, on a contract
+    // holding everyone's escrow. So they must travel in one call to the sender.
+    //
+    // This used to assert `encodeCalls([`, the KERNEL batch encoder, and that is
+    // precisely what made these two functions kernel-only: in EOA mode there is
+    // no bundler, so posting a job and accepting a job were both impossible while
+    // every other market write worked. They now go through `sendAgentCalls`,
+    // which batches atomically in kernel mode and sends in order in EOA mode.
+    //
+    // The concern above survives that fallback only partly, and the honest
+    // statement is that in EOA mode these are NOT atomic. Ordering is what keeps
+    // it safe: approve first, for exactly the amount the next call spends, so a
+    // failure in between leaves a recoverable allowance rather than lost funds.
+    // Atomic where the transport allows it and ordered where it does not beats
+    // not working at all.
     const src = laborV2()
     for (const fn of ['postJobV2', 'acceptJobV2']) {
-      expect(src).toMatch(new RegExp(`function ${fn}[\\s\\S]{0,1600}encodeCalls\\(\\[`))
+      const body = src.slice(src.indexOf(`function ${fn}`))
+      const send = body.indexOf('sendAgentCalls(')
+      expect(send, `${fn} must send through sendAgentCalls`).toBeGreaterThan(-1)
+      const args = body.slice(send, send + 1600)
+      const approveAt = args.indexOf("functionName: 'approve'")
+      const consumeAt = args.search(/functionName: '(postJob|acceptJob)'/)
+      expect(approveAt, `${fn} must approve`).toBeGreaterThan(-1)
+      expect(consumeAt, `${fn} must call the market`).toBeGreaterThan(-1)
+      expect(approveAt, `${fn} must approve BEFORE it spends`).toBeLessThan(consumeAt)
     }
   })
 })

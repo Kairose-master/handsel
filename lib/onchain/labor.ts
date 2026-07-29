@@ -5,7 +5,7 @@
 import { encodeFunctionData, parseUnits, type Address, type Hex } from 'viem'
 import { LABOR_MARKET_ABI, USDC_ABI, USDC_DECIMALS, JOB_STATUS, onchainEnv } from './config'
 import { publicClient, oracleWallet } from './clients'
-import { getAgentKernel, sendAgentCall } from './account'
+import { sendAgentCall, sendAgentCalls } from './account'
 
 const toUnits = (usd: number) => parseUnits(usd.toFixed(USDC_DECIMALS), USDC_DECIMALS)
 const fromUnits = (v: bigint) => Number(v) / 10 ** USDC_DECIMALS
@@ -73,15 +73,17 @@ export async function postJob(
     args: [amount, BigInt(minScore), specHash],
   })
 
-  const { account, kernelClient } = await getAgentKernel(requesterAgentId)
-  const userOpHash = await kernelClient.sendUserOperation({
-    callData: await account.encodeCalls([
+  // The V1 path has the same kernel-only defect its V2 replacement had. Fixed
+  // here too rather than left as a trap for whoever points a deployment at a V1
+  // market address.
+  return sendAgentCalls(
+    requesterAgentId,
+    [
       { to: onchainEnv.usdcAddress as Address, value: 0n, data: approve },
       { to: onchainEnv.laborMarketAddress as Address, value: 0n, data: post },
-    ]),
-  })
-  const receipt = await kernelClient.waitForUserOperationReceipt({ hash: userOpHash })
-  return receipt.receipt.transactionHash as Hex
+    ],
+    { label: 'postJob' },
+  )
 }
 
 function marketCall(fn: 'acceptJob' | 'approveJob' | 'cancelJob' | 'raiseDispute', jobId: number) {

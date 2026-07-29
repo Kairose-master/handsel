@@ -7,7 +7,7 @@
 import { encodeFunctionData, encodePacked, keccak256, parseUnits, toHex, type Address, type Hex } from 'viem'
 import { USDC_ABI, USDC_DECIMALS, VERIFIED_ESCROW_ABI, onchainEnv } from './config'
 import { publicClient } from './clients'
-import { getAgentKernel, sendAgentCall } from './account'
+import { getAgentAccountAddress, sendAgentCall, sendAgentCalls } from './account'
 
 const toUnits = (usd: number) => parseUnits(usd.toFixed(USDC_DECIMALS), USDC_DECIMALS)
 
@@ -32,14 +32,15 @@ export async function postVerifiedTask(
     args: [amount, BigInt(minScore), specHash, answerHash],
   })
 
-  const { account, kernelClient } = await getAgentKernel(requesterAgentId)
-  const userOpHash = await kernelClient.sendUserOperation({
-    callData: await account.encodeCalls([
+  // Same kernel-only batch the labour market had.
+  const txHash = await sendAgentCalls(
+    requesterAgentId,
+    [
       { to: onchainEnv.usdcAddress as Address, value: 0n, data: approve },
       { to: onchainEnv.verifiedEscrowAddress as Address, value: 0n, data: post },
-    ]),
-  })
-  const receipt = await kernelClient.waitForUserOperationReceipt({ hash: userOpHash })
+    ],
+    { label: 'postTask' },
+  )
 
   const count = (await publicClient().readContract({
     address: onchainEnv.verifiedEscrowAddress as Address,
@@ -47,7 +48,7 @@ export async function postVerifiedTask(
     functionName: 'taskCount',
   })) as bigint
 
-  return { txHash: receipt.receipt.transactionHash as Hex, taskId: Number(count) }
+  return { txHash, taskId: Number(count) }
 }
 
 /** Compute the commitment binding (taskId, solver, salt, answer). */
@@ -67,7 +68,11 @@ export async function commitAndReveal(
   answer: string,
   salt: Hex,
 ): Promise<{ commitTx: Hex; revealTx: Hex }> {
-  const { address } = await getAgentKernel(solverAgentId)
+  // getAgentAccountAddress, not getAgentKernel: this needed only an ADDRESS, and
+  // the kernel one is the wrong address in EOA mode. A commitment bound to an
+  // account that never reveals cannot be revealed by anyone — the solver's work
+  // would be unrecoverable rather than merely rejected.
+  const address = await getAgentAccountAddress(solverAgentId)
   const commitment = buildCommitment(taskId, address, salt, answer)
 
   const commitTx = await sendAgentCall(solverAgentId, {

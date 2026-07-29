@@ -135,9 +135,12 @@ describe('the wiring, asserted at the source', () => {
 
   it('exhaustion routes to the self-pay path that already existed', () => {
     // Not a new code path — sendEoaCall predates this and is the unsponsored
-    // mode the file already documented.
+    // mode the file already documented. It is now reached through
+    // `sendSequentially`, the local helper that walks a batch, because the sender
+    // takes N calls rather than one. The invariant is unchanged.
     const src = code('lib/onchain/account.ts')
-    expect(src).toMatch(/self_pay[\s\S]{0,200}sendEoaCall/)
+    expect(src).toMatch(/self_pay[\s\S]{0,200}sendSequentially\('user'\)/)
+    expect(src).toMatch(/sendSequentially[\s\S]{0,300}sendEoaCall\(agentId, c, lane\)/)
   })
 
   it('the permissionless exits are on the KEEPER lane', () => {
@@ -183,7 +186,11 @@ describe('EOA top-ups are the operator spending too', () => {
   it('threads the lane through EOA mode, so keeper sweeps keep their reserve', () => {
     // Losing the lane here would put the permissionless exits on the user lane,
     // where a drained budget stops them — the exact thing the reserve prevents.
-    expect(code('lib/onchain/account.ts')).toMatch(/sendEoaCall\(agentId, call, opts\.lane \?\? 'user'\)/)
+    // Via sendSequentially now, which forwards the lane to EVERY call in the
+    // batch — a batch whose second call lost the lane would put half of a keeper
+    // sweep on the user lane.
+    expect(code('lib/onchain/account.ts')).toMatch(/sendSequentially\(opts\.lane \?\? 'user'\)/)
+    expect(code('lib/onchain/account.ts')).toMatch(/sendEoaCall\(agentId, c, lane\)/)
   })
 
   it('prices a top-up as a top-up, not as a UserOp', () => {

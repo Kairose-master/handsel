@@ -17,7 +17,7 @@ import { encodeFunctionData, parseUnits, type Address, type Hex } from 'viem'
 import { LABOR_MARKET_V2_ABI } from './labor-v2-artifact'
 import { publicClient } from './clients'
 import { onchainEnv, USDC_ABI, USDC_DECIMALS } from './config'
-import { getAgentKernel, sendAgentCall } from './account'
+import { sendAgentCall, sendAgentCalls } from './account'
 import { V2_JOB_STATUS, type DeadlineJob, type ExitFn, type V2JobStatus } from '@/lib/deadlines'
 
 const fromUnits = (v: bigint) => Number(v) / 10 ** USDC_DECIMALS
@@ -203,9 +203,11 @@ export async function postJobV2(
   })) as bigint
   const window = await clampDeliveryWindow(deliveryWindowSec)
 
-  const { account, kernelClient } = await getAgentKernel(requesterAgentId)
-  const userOpHash = await kernelClient.sendUserOperation({
-    callData: await account.encodeCalls([
+  // sendAgentCalls, not getAgentKernel: going straight to the kernel made
+  // posting a job impossible in EOA mode, and invisible to the gas fuse.
+  return sendAgentCalls(
+    requesterAgentId,
+    [
       {
         to: onchainEnv.usdcAddress as Address,
         value: 0n,
@@ -224,10 +226,9 @@ export async function postJobV2(
           args: [bounty, BigInt(minScore), specHash, window],
         }),
       },
-    ]),
-  })
-  const receipt = await kernelClient.waitForUserOperationReceipt({ hash: userOpHash })
-  return receipt.receipt.transactionHash as Hex
+    ],
+    { label: 'postJob' },
+  )
 }
 
 /**
@@ -261,9 +262,12 @@ export async function acceptJobV2(workerAgentId: string, jobId: number): Promise
     args: [job[2] as bigint],
   })) as bigint
 
-  const { account, kernelClient } = await getAgentKernel(workerAgentId)
-  const userOpHash = await kernelClient.sendUserOperation({
-    callData: await account.encodeCalls([
+  // Same defect as postJobV2, and the other half of the reported symptom:
+  // accepting a job IS mining, so the kernel-only batch took the worker side
+  // down too on an EOA deployment.
+  return sendAgentCalls(
+    workerAgentId,
+    [
       {
         to: onchainEnv.usdcAddress as Address,
         value: 0n,
@@ -278,10 +282,9 @@ export async function acceptJobV2(workerAgentId: string, jobId: number): Promise
         value: 0n,
         data: encodeFunctionData({ abi: LABOR_MARKET_V2_ABI, functionName: 'acceptJob', args: [BigInt(jobId)] }),
       },
-    ]),
-  })
-  const receipt = await kernelClient.waitForUserOperationReceipt({ hash: userOpHash })
-  return receipt.receipt.transactionHash as Hex
+    ],
+    { label: 'acceptJob' },
+  )
 }
 
 /** What settlement has credited an address and not yet handed over. */

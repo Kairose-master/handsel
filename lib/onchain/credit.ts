@@ -125,14 +125,16 @@ export async function repayOnchain(agentId: string, amountUsd: number): Promise<
   })
   const repay = encodeFunctionData({ abi: VAULT_ABI, functionName: 'repay', args: [amount] })
 
-  // Two calls in one UserOp via the account's batch encoder.
-  const { account, kernelClient } = await import('./account').then((m) => m.getAgentKernel(agentId))
-  const userOpHash = await kernelClient.sendUserOperation({
-    callData: await account.encodeCalls([
+  // Two calls, through the mode-aware sender. This was a direct kernel batch, so
+  // REPAYING A LOAN was impossible in EOA mode — the worst member of this family,
+  // because a borrower who cannot repay accrues a default it did not earn.
+  const { sendAgentCalls } = await import('./account')
+  return sendAgentCalls(
+    agentId,
+    [
       { to: onchainEnv.usdcAddress as Address, value: 0n, data: approve },
       { to: onchainEnv.vaultAddress as Address, value: 0n, data: repay },
-    ]),
-  })
-  const receipt = await kernelClient.waitForUserOperationReceipt({ hash: userOpHash })
-  return receipt.receipt.transactionHash as Hex
+    ],
+    { label: 'repay' },
+  )
 }
