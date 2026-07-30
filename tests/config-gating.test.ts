@@ -54,7 +54,7 @@ describe('agent accounts are gated on what an agent account needs', () => {
     const src = body('isAgentAccountConfigured')
     expect(src).toContain('rpcUrl')
     expect(src).toContain('agentOwnerPrivateKey')
-    expect(src).toMatch(/agentAccountMode === 'eoa' \|\| Boolean\(onchainEnv\.zerodevRpc\)/)
+    expect(src).toMatch(/agentAccountMode === 'eoa' \|\| Boolean\(onchainEnv\.bundlerRpc\)/)
     // Not the oracle key either: that publishes scores and resolves disputes,
     // which is a different job from an agent signing its own transaction.
     expect(src).not.toContain('oraclePrivateKey')

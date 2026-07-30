@@ -194,7 +194,7 @@ export async function getAgentKernel(agentId: string, opts: { sponsored?: boolea
   const kernelClient = createKernelAccountClient({
     account,
     chain: CHAIN,
-    bundlerTransport: http(onchainEnv.zerodevRpc),
+    bundlerTransport: http(onchainEnv.bundlerRpc),
     client,
     // Whichever paymaster this deployment is configured for — ZeroDev's, an
     // ERC-7677 endpoint like CDP's, or none. The bundler above is unaffected;

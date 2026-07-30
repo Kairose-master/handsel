@@ -20,7 +20,7 @@ export const dynamic = 'force-dynamic'
 export async function GET() {
   const statuses = await capabilityStatus()
   const missing = missingEssentials(statuses)
-  const { agentAccountMode, onchainEnv, CHAIN } = await import('@/lib/onchain/config')
+  const { agentAccountMode, agentAccountModeSource, onchainEnv, CHAIN } = await import('@/lib/onchain/config')
   return Response.json({
     type: 'HandselCapabilities',
     /**
@@ -38,10 +38,20 @@ export async function GET() {
      */
     runtime: {
       agentAccountMode,
+      /**
+       * Whether anybody chose that, or it fell out of a missing variable.
+       *
+       * `inferred` is not a warning by itself — it is the right answer for most
+       * deployments. It matters because the two modes derive DIFFERENT agent
+       * addresses from the same owner key, so an unnoticed flip moves where
+       * every agent's money lives, and a mainnet meant to be `kernel` came up
+       * `eoa` here purely because ZERODEV_RPC was not set yet.
+       */
+      agentAccountModeSource,
       chain: CHAIN.name,
       chainId: CHAIN.id,
       // Presence only, never the URL — it carries an API key.
-      bundlerConfigured: Boolean(onchainEnv.zerodevRpc),
+      bundlerConfigured: Boolean(onchainEnv.bundlerRpc),
       /**
        * WHICH paymaster, because "sponsored" stopped being one answer.
        *

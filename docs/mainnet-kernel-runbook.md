@@ -165,7 +165,7 @@ real chain is the operator's money, spendable by anyone who can cause an
 operation, and it is what `PAYMASTER_METERED` exists to make you acknowledge.
 Save the bounded one.
 
-### The paymaster does not have to be the bundler's
+### Neither the paymaster nor the bundler has to be ZeroDev's
 
 They arrived behind one URL — `ZERODEV_RPC` is both — which made a broken
 paymaster look like a choice between keeping account abstraction and keeping
@@ -175,11 +175,23 @@ and a Kernel account does not care who signs the sponsorship.
 
 ```
 PAYMASTER_RPC=https://api.developer.coinbase.com/rpc/v1/base/<key>
+BUNDLER_RPC=https://api.developer.coinbase.com/rpc/v1/base/<key>
 ```
 
-Set it and the bundler stays ZeroDev while the paymaster becomes CDP's — on Base,
-the same chain as the market, with monthly free credits. Unset, nothing changes.
+The same value twice, because CDP serves both roles from one url. Unset, nothing
+changes: `BUNDLER_RPC` falls back to `ZERODEV_RPC` and the testnet keeps working.
 `PAYMASTER_DISABLED` still wins over both.
+
+`ZERODEV_RPC` named a vendor for a role, and that cost nothing while the vendor
+supplied both roles. It cost something the moment the paymaster moved — pointing
+at CDP meant setting a variable named for a competitor, or not being able to
+leave. The name was the lock-in, not the code.
+
+One trap worth naming, because it is the shape of everything else here:
+`BUNDLER_RPC` set to CDP with no `PAYMASTER_RPC` resolves to NO paymaster, not to
+ZeroDev's client aimed at CDP. Only ZeroDev's own URL gets ZeroDev's client.
+Otherwise one provider's request shape would go to another and the confusion
+would read as a refusal.
 
 Two things to establish before relying on it, neither of which the Base docs
 answer:

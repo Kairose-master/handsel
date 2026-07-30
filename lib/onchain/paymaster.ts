@@ -45,7 +45,10 @@ export function resolvePaymaster(): PaymasterChoice {
   }
   const explicit = process.env.PAYMASTER_RPC?.trim()
   if (explicit) return { kind: 'erc7677', url: explicit }
-  if (onchainEnv.zerodevRpc) return { kind: 'zerodev', url: onchainEnv.zerodevRpc }
+  // Only ZeroDev's own URL falls back to ZeroDev's client. A BUNDLER_RPC set to
+  // some other provider is a bundler; assuming it also sponsors would send
+  // ZeroDev-shaped requests to whoever answers.
+  if (process.env.ZERODEV_RPC) return { kind: 'zerodev', url: process.env.ZERODEV_RPC }
   return { kind: 'none', why: 'neither PAYMASTER_RPC nor ZERODEV_RPC is set' }
 }
 

@@ -96,7 +96,18 @@ const EAS_DEFAULTS: Record<number, `0x${string}`> = {
 
 export const onchainEnv = {
   rpcUrl: process.env.ONCHAIN_RPC_URL ?? process.env.SEPOLIA_RPC_URL ?? '',
-  zerodevRpc: process.env.ZERODEV_RPC ?? '', // bundler + paymaster (ZeroDev v3 RPC), kernel mode only
+  zerodevRpc: process.env.ZERODEV_RPC ?? '', // legacy name: ZeroDev's URL was bundler AND paymaster
+  /**
+   * The bundler, whoever runs it.
+   *
+   * `ZERODEV_RPC` named a vendor for a role, and while that vendor supplied both
+   * roles the name cost nothing. It costs something the moment the paymaster
+   * moves: CDP serves bundling and sponsorship from ONE url, so pointing at it
+   * meant either setting a variable named for a competitor or not being able to
+   * leave. `BUNDLER_RPC` is the role. The old name still works, and on the
+   * testnet nothing changes.
+   */
+  bundlerRpc: (process.env.BUNDLER_RPC?.trim() || process.env.ZERODEV_RPC) ?? '',
   oraclePrivateKey: process.env.ORACLE_PRIVATE_KEY ?? '', // publishes limits + attests
   agentOwnerPrivateKey: process.env.AGENT_OWNER_PRIVATE_KEY ?? '', // signer behind every agent account
   registryAddress: (process.env.CREDIT_REGISTRY_ADDRESS ?? '') as `0x${string}` | '',
@@ -129,14 +140,32 @@ export const onchainEnv = {
   easSchemaUid: (process.env.EAS_SCHEMA_UID ?? '') as `0x${string}` | '',
 }
 
-/** How agent accounts transact. Explicit env wins; otherwise infer from
- *  whether a ZeroDev RPC is configured. */
+/**
+ * How agent accounts transact. Explicit env wins; otherwise inferred from
+ * whether a bundler is configured.
+ *
+ * The inference is convenient and it is also how a mainnet deployment intended
+ * to run in kernel mode came up in EOA mode with nothing said. Forgetting
+ * ZERODEV_RPC is not obviously a decision about account type, but it is one, and
+ * the two modes derive DIFFERENT ADDRESSES from the same owner key — so the
+ * fallback silently relocates every agent's money.
+ *
+ * Kept, because removing it breaks every deployment that relies on it. Made
+ * audible instead: `agentAccountModeSource` says whether a human chose this, and
+ * /api/capabilities reports it.
+ */
 export const agentAccountMode: 'kernel' | 'eoa' =
   process.env.AGENT_ACCOUNT_MODE === 'eoa' || process.env.AGENT_ACCOUNT_MODE === 'kernel'
     ? process.env.AGENT_ACCOUNT_MODE
-    : onchainEnv.zerodevRpc
+    : onchainEnv.bundlerRpc
       ? 'kernel'
       : 'eoa'
+
+/** Whether a human set the mode, or it fell out of another variable's absence. */
+export const agentAccountModeSource: 'explicit' | 'inferred' =
+  process.env.AGENT_ACCOUNT_MODE === 'eoa' || process.env.AGENT_ACCOUNT_MODE === 'kernel'
+    ? 'explicit'
+    : 'inferred'
 
 /**
  * True when the oracle can WRITE A CREDIT SCORE to the registry.
@@ -201,7 +230,7 @@ export function isOnchainConfigured(): boolean {
  */
 export function isAgentAccountConfigured(): boolean {
   if (!onchainEnv.rpcUrl || !onchainEnv.agentOwnerPrivateKey) return false
-  return agentAccountMode === 'eoa' || Boolean(onchainEnv.zerodevRpc)
+  return agentAccountMode === 'eoa' || Boolean(onchainEnv.bundlerRpc)
 }
 
 /** True when on-chain commit-reveal governance is available: a deployed

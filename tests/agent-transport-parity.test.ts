@@ -142,8 +142,10 @@ describe('the transport is visible from outside', () => {
   it('reports presence of the bundler, never its URL', () => {
     // The ZeroDev RPC carries an API key and this endpoint is public.
     const route = code('app/api/capabilities/route.ts')
-    expect(route).toContain('Boolean(onchainEnv.zerodevRpc)')
-    expect(route).not.toMatch(/zerodevRpc\s*,/)
+    // The property is presence-without-the-URL; WHICH variable holds it moved
+    // when the bundler stopped being named after one vendor.
+    expect(route).toContain('Boolean(onchainEnv.bundlerRpc)')
+    expect(route).not.toMatch(/bundlerRpc\s*,/)
   })
 })
 

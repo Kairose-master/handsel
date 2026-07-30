@@ -42,14 +42,21 @@
  * are separate here because they are separate services — they were only ever
  * coupled by sharing ZeroDev's URL.
  */
-const BUNDLER = process.env.ZERODEV_RPC
+const BUNDLER = process.env.BUNDLER_RPC?.trim() || process.env.ZERODEV_RPC
 if (!BUNDLER) {
-  console.error('ZERODEV_RPC is required — the bundler, even when another service is the paymaster.')
+  console.error('BUNDLER_RPC (or the legacy ZERODEV_RPC) is required — bundling is needed even when')
+  console.error('another service is the paymaster, and CDP serves both from one url.')
   process.exit(1)
 }
 const PAYMASTER = process.env.PAYMASTER_DISABLED === 'true' ? null : (process.env.PAYMASTER_RPC?.trim() || BUNDLER)
 const PAYMASTER_KIND =
-  PAYMASTER === null ? 'none (PAYMASTER_DISABLED)' : process.env.PAYMASTER_RPC?.trim() ? 'erc7677' : 'zerodev'
+  PAYMASTER === null
+    ? 'none (PAYMASTER_DISABLED)'
+    : process.env.PAYMASTER_RPC?.trim()
+      ? 'erc7677'
+      : process.env.ZERODEV_RPC
+        ? 'zerodev'
+        : 'erc7677'
 // Kept for the redactor and the raw chain/entrypoint probes below.
 const RPC = BUNDLER
 
@@ -76,7 +83,7 @@ async function rpc(method, params) {
 
 // Never print the URL — it carries the project id, which is the credential.
 const redact = (s) => {
-  let out = String(s).replaceAll(BUNDLER, '<ZERODEV_RPC>')
+  let out = String(s).replaceAll(BUNDLER, '<BUNDLER_RPC>')
   if (PAYMASTER && PAYMASTER !== BUNDLER) out = out.replaceAll(PAYMASTER, '<PAYMASTER_RPC>')
   return out
 }

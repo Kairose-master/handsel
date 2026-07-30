@@ -130,7 +130,7 @@ describe('the send path asks for it', () => {
   it('builds the kernel client with whatever was resolved', () => {
     expect(src).toContain('paymasterClient()')
     // The bundler is a separate argument and must not have been swapped with it.
-    expect(src).toContain('bundlerTransport: http(onchainEnv.zerodevRpc)')
+    expect(src).toContain('bundlerTransport: http(onchainEnv.bundlerRpc)')
   })
 
   it('no longer hardcodes one vendor at the call site', () => {
@@ -147,7 +147,7 @@ describe('the preflight resolves what the app resolves', () => {
   const script = readFileSync('scripts/check-sponsorship.mjs', 'utf8')
 
   it('reads the same three variables', () => {
-    for (const name of ['PAYMASTER_DISABLED', 'PAYMASTER_RPC', 'ZERODEV_RPC']) {
+    for (const name of ['PAYMASTER_DISABLED', 'PAYMASTER_RPC', 'ZERODEV_RPC', 'BUNDLER_RPC']) {
       expect(script).toContain(name)
     }
   })
@@ -162,14 +162,14 @@ describe('the preflight resolves what the app resolves', () => {
   it('redacts both URLs, not just the one it started with', () => {
     // The generic endpoint carries a key as surely as ZeroDev's does, and the
     // script prints request bodies.
-    expect(script).toContain("replaceAll(BUNDLER, '<ZERODEV_RPC>')")
+    expect(script).toContain("replaceAll(BUNDLER, '<BUNDLER_RPC>')")
     expect(script).toContain("replaceAll(PAYMASTER, '<PAYMASTER_RPC>')")
   })
 
   it('still needs a bundler even when the paymaster is elsewhere', () => {
     // Sponsorship can move; bundling cannot. Without a bundler there is no
     // ERC-4337 at all, sponsored or not.
-    expect(script).toMatch(/ZERODEV_RPC is required — the bundler/)
+    expect(script).toMatch(/BUNDLER_RPC \(or the legacy ZERODEV_RPC\) is required/)
   })
 })
 
@@ -180,5 +180,52 @@ describe('it is visible from outside', () => {
     const route = code('app/api/capabilities/route.ts')
     expect(route).toContain('paymasterLabel')
     expect(route).not.toMatch(/PAYMASTER_RPC|zerodevRpc\s*\}/)
+  })
+})
+
+describe('the bundler is a role, not a vendor', () => {
+  /**
+   * `ZERODEV_RPC` named a vendor for a role, which cost nothing while that
+   * vendor supplied both roles. It cost something the moment the paymaster
+   * moved: CDP serves bundling and sponsorship from ONE url, so pointing at it
+   * meant setting a variable named for a competitor — or not being able to
+   * leave. The name was the lock-in, not the code.
+   */
+  it('prefers BUNDLER_RPC and keeps ZERODEV_RPC working', async () => {
+    const saved = { ...process.env }
+    try {
+      process.env.BUNDLER_RPC = 'https://cdp.example.invalid/rpc'
+      process.env.ZERODEV_RPC = 'https://zd.example.invalid'
+      vi.resetModules()
+      let cfg = await import('@/lib/onchain/config')
+      expect(cfg.onchainEnv.bundlerRpc).toBe('https://cdp.example.invalid/rpc')
+
+      delete process.env.BUNDLER_RPC
+      vi.resetModules()
+      cfg = await import('@/lib/onchain/config')
+      expect(cfg.onchainEnv.bundlerRpc).toBe('https://zd.example.invalid')
+    } finally {
+      process.env = saved
+      vi.resetModules()
+    }
+  })
+
+  it('does not treat a foreign bundler as a ZeroDev paymaster', async () => {
+    // The trap in decoupling these: BUNDLER_RPC set to CDP with no PAYMASTER_RPC
+    // must resolve to no paymaster, not to ZeroDev's client aimed at CDP. That
+    // would send one provider's request shape to another and read the confusion
+    // as a refusal — which is the whole afternoon this change came out of.
+    const choice = await resolveWith({
+      PAYMASTER_DISABLED: undefined,
+      PAYMASTER_RPC: undefined,
+      ZERODEV_RPC: undefined,
+      BUNDLER_RPC: 'https://cdp.example.invalid/rpc',
+    })
+    expect(choice.kind).toBe('none')
+  })
+
+  it('sends the kernel client to the bundler, not to the paymaster', () => {
+    const src = code('lib/onchain/account.ts')
+    expect(src).toContain('bundlerTransport: http(onchainEnv.bundlerRpc)')
   })
 })
