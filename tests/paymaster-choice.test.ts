@@ -229,3 +229,51 @@ describe('the bundler is a role, not a vendor', () => {
     expect(src).toContain('bundlerTransport: http(onchainEnv.bundlerRpc)')
   })
 })
+
+describe('the bundler dialect, which the URL did not carry', () => {
+  /**
+   * Every URL had been made vendor-neutral and the first real mainnet posting
+   * still failed with `request denied` — because `createKernelAccountClient`
+   * estimates fees by calling `zd_getUserOperationGasPrice`, a ZeroDev
+   * extension rather than ERC-4337. The endpoint moved; the dialect stayed.
+   *
+   * That is the same shape as the rest of this file: something vendor-specific
+   * hiding inside something that looked generic, and reported by the far side
+   * as a denial rather than as a wrong question.
+   */
+  async function dialectWith(env: Record<string, string | undefined>) {
+    const saved = { ...process.env }
+    for (const [k, v] of Object.entries(env)) {
+      if (v === undefined) delete process.env[k]
+      else process.env[k] = v
+    }
+    vi.resetModules()
+    try {
+      return (await import('@/lib/onchain/paymaster')).bundlerDialect()
+    } finally {
+      process.env = saved
+      vi.resetModules()
+    }
+  }
+
+  it('keeps ZeroDev on its own estimator', async () => {
+    // The testnet runs on this. A uniform replacement would be tidier and would
+    // change the path that currently works.
+    expect(await dialectWith({ BUNDLER_RPC: undefined, ZERODEV_RPC: 'https://zd.example.invalid' })).toBe('zerodev')
+    expect(
+      await dialectWith({ BUNDLER_RPC: 'https://zd.example.invalid', ZERODEV_RPC: 'https://zd.example.invalid' }),
+    ).toBe('zerodev')
+  })
+
+  it('switches to chain fees for any other bundler', async () => {
+    expect(
+      await dialectWith({ BUNDLER_RPC: 'https://api.developer.coinbase.com/rpc/v1/base/k', ZERODEV_RPC: undefined }),
+    ).toBe('standard')
+  })
+
+  it('is wired into the client, not merely decided', () => {
+    const src = code('lib/onchain/account.ts')
+    expect(src).toContain("bundlerDialect() === 'standard'")
+    expect(src).toContain('estimateFeesPerGas')
+  })
+})

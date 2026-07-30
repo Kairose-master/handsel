@@ -74,3 +74,23 @@ export function paymasterLabel(): string {
   const choice = resolvePaymaster()
   return choice.kind === 'none' ? `none (${choice.why})` : choice.kind
 }
+
+/**
+ * Which dialect the bundler speaks.
+ *
+ * `createKernelAccountClient` estimates fees by calling
+ * `zd_getUserOperationGasPrice` — a ZeroDev extension, not part of ERC-4337.
+ * Pointing the bundler at CDP therefore failed with `request denied` on the
+ * first real posting, from inside a client that had been made vendor-neutral
+ * everywhere it was visible. The URL moved; the dialect did not.
+ *
+ * So the fee estimator is replaced ONLY for a foreign bundler. ZeroDev keeps
+ * its own path, which is what the testnet has been running on all along, and
+ * swapping a working path for a uniform one is how something that worked this
+ * morning stops working this afternoon.
+ */
+export function bundlerDialect(): 'zerodev' | 'standard' {
+  const explicit = process.env.BUNDLER_RPC?.trim()
+  if (!explicit) return 'zerodev'
+  return explicit === process.env.ZERODEV_RPC ? 'zerodev' : 'standard'
+}

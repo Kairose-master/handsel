@@ -30,7 +30,7 @@ import {
 import { getEntryPoint, KERNEL_V3_1 } from '@zerodev/sdk/constants'
 import { signerToEcdsaValidator } from '@zerodev/ecdsa-validator'
 import { CHAIN, agentAccountMode, onchainEnv } from './config'
-import { paymasterClient } from './paymaster'
+import { bundlerDialect, paymasterClient } from './paymaster'
 import { publicClient, oracleWallet } from './clients'
 import { withRetry } from '@/lib/retry'
 
@@ -200,6 +200,25 @@ export async function getAgentKernel(agentId: string, opts: { sponsored?: boolea
     // ERC-7677 endpoint like CDP's, or none. The bundler above is unaffected;
     // the two were only ever coupled by sharing a URL.
     ...(sponsored ? (() => { const pm = paymasterClient(); return pm ? { paymaster: pm } : {} })() : {}),
+    /**
+     * Fees from the chain when the bundler is not ZeroDev's.
+     *
+     * The SDK's default estimator calls `zd_getUserOperationGasPrice`, which is
+     * a ZeroDev extension rather than ERC-4337, so CDP answers `request denied`
+     * — the failure the first real mainnet posting hit, from inside a client
+     * that looked vendor-neutral because every URL had been made so. viem's
+     * own estimate is what any standard bundler expects.
+     */
+    ...(bundlerDialect() === 'standard'
+      ? {
+          userOperation: {
+            estimateFeesPerGas: async () => {
+              const { maxFeePerGas, maxPriorityFeePerGas } = await client.estimateFeesPerGas()
+              return { maxFeePerGas, maxPriorityFeePerGas }
+            },
+          },
+        }
+      : {}),
   })
 
   // Serialize UserOp submission per smart account. Two UserOps from the same
