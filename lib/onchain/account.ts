@@ -211,6 +211,17 @@ export async function getAgentKernel(agentId: string, opts: { sponsored?: boolea
      */
     ...(bundlerDialect() === 'standard'
       ? {
+          /**
+           * An empty object rather than nothing.
+           *
+           * viem puts `context` in the fourth position of
+           * `pm_getPaymasterStubData` and leaves it `undefined` unless told
+           * otherwise, which serialises to `null` inside the params array. CDP
+           * answers `Missing or invalid parameters`. ERC-7677 describes context
+           * as an optional OBJECT, so `{}` is the empty case spelled the way
+           * the spec spells it.
+           */
+          paymasterContext: {},
           userOperation: {
             estimateFeesPerGas: async () => {
               const { maxFeePerGas, maxPriorityFeePerGas } = await client.estimateFeesPerGas()
