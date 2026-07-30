@@ -222,7 +222,13 @@ editor. One statement, 44 tables. Verify with:
 SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public';
 ```
 
-45 is correct (44 + the migrations bookkeeping table).
+**44** is correct — the number of `CREATE TABLE` statements in that file, counted
+rather than recalled.
+
+45 was written here, on the reasoning that migrate.mjs's bookkeeping table makes
+one more. It does, but only when you run migrate.mjs; the bootstrap file does not
+contain it, so the SQL-editor path ends at 44 and is complete. Two lines apart,
+this section said both numbers.
 
 ## 2.5 The addresses, before any of them is immutable
 
