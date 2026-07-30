@@ -161,7 +161,7 @@ DEPLOYER_PRIVATE_KEY=... \
 USDC_ADDRESS=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913 \
 CREDIT_REGISTRY_ADDRESS=<from step 3> \
 ARBITER_ADDRESS=<new oracle address> \
-FEE_BPS=200 FLAT_FEE=30000 FEE_RECIPIENT=<YOUR OWN WALLET — see below> \
+FEE_BPS=500 FLAT_FEE=30000 FEE_RECIPIENT=<YOUR OWN WALLET — see below> \
 BOND_BPS=500 FLAT_BOND=30000 \
 node scripts/deploy-labor-v2.mjs
 ```
@@ -194,7 +194,7 @@ kernel account, so the paymaster does not cover it.
 
 | | |
 |---|---|
-| `feeBps` | 200 (2%); `MAX_FEE_BPS` is 500, chosen at deploy and immutable |
+| `feeBps` | 500 (**5%**) on mainnet — `MAX_FEE_BPS`, the ceiling. Immutable. The testnet contract reads 200 |
 | `flatFee` | 0.03 USDC |
 | charged | at `postJob`, on `bounty + feeOn(bounty)` |
 | credited | `withdrawable[feeRecipient] += fee` — never transferred, so a blocklisted recipient cannot stop the market accepting work |
@@ -214,15 +214,22 @@ That is not a coincidence — `flatFee`'s own comment says it covers the gas
 envelope while `feeBps` prices the value at risk. But it means the margin at
 micro-bounties is the 2% and nothing else:
 
-| bounty | fee collected | gas spent | margin |
-|---|---|---|---|
-| 0.1 | 0.032 | ~0.029 | ~0.003 |
-| 1 | 0.05 | ~0.029 | ~0.021 |
-| 5 | 0.13 | ~0.029 | ~0.10 |
+At `FEE_BPS=500`:
+
+| bounty | fee collected | gas spent | margin | requester's overhead |
+|---|---|---|---|---|
+| 0.1 | 0.035 | ~0.029 | ~0.006 | **35%** |
+| 1 | 0.08 | ~0.029 | ~0.051 | 8% |
+| 5 | 0.28 | ~0.029 | ~0.25 | 5.6% |
+
+The flat fee is what makes the small end expensive, not the rate: 0.03 on a 0.1
+bounty is 30 points of that 35%. Raising `feeBps` fixes the large end and leaves
+the small end where it was, so if micro-jobs are meant to be a real segment the
+lever is a minimum bounty, not the rate.
 
 The five-op count is read off the flow, not measured. Step 8 measures it, and if
-it comes in higher than five the flat fee is under water at small bounties —
-raise `FLAT_FEE` before deploying rather than after, because it is immutable too.
+it comes in higher than five the flat fee is under water at the smallest
+bounties — `FLAT_FEE` is immutable too, so that is the same pre-deploy decision.
 
 `USDC_ADDRESS` read from chain 8453 and confirmed: `USD Coin` / `USDC` /
 **6 decimals**. Six matters — every bounty, cap and fee is scaled by a
