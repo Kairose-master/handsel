@@ -368,12 +368,34 @@ is how the Base Sepolia contract got a 600-second floor.
 Then verify before trusting it:
 
 ```bash
-node scripts/verify-bundle-labor-v2.mjs <new address> --rpc <mainnet rpc>
+node scripts/verify-bundle-labor-v2.mjs <new address> --rpc <mainnet rpc> \
+  --tx <the deployment transaction hash>
 ```
+
+`--tx` is worth passing. Without it the script reads eighteen getters one at a
+time and a public endpoint answers `over rate limit` partway through; with it,
+the constructor arguments come from the deployment transaction's input in a
+single request — the creation bytecode this script just reproduced, followed by
+the arguments exactly as the chain received them. It also proves that
+transaction deployed this code.
 
 That reproduces the creation-bytecode keccak, compares runtime code with the 15
 immutables masked, and emits the Basescan standard-JSON plus constructor args read
 back from the chain.
+
+### Deployed — Base mainnet, 2026-07-30
+
+| | |
+|---|---|
+| AgentCreditRegistry | `0x91acc4c081d3a364d3b713be8eec39a77f647290` |
+| LaborMarketV2 | `0x96064ef0a6742d5b7bc8abf2584273bd2f022c8c` |
+| creation keccak | `0xf9e4abc1…0bc3bcd` — reproduces the committed source |
+| runtime | 8943 bytes local and on chain, 15 immutables masked |
+| fee / bond | 5% + 0.03 USDC / 5% + 0.03 USDC |
+| delivery window | 14400s floor (4h), 30d ceiling |
+
+The creation keccak matches the Base Sepolia deployment's, which is what identical
+source and identical solc settings are supposed to produce.
 
 ## 5. Vercel
 

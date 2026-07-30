@@ -25,7 +25,7 @@
  */
 import { readFileSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { createPublicClient, http, keccak256, encodeAbiParameters, getAddress } from 'viem'
+import { createPublicClient, http, keccak256, encodeAbiParameters, decodeAbiParameters, getAddress } from 'viem'
 import { baseSepolia, base, sepolia } from 'viem/chains'
 
 const require = createRequire(import.meta.url)
@@ -165,36 +165,94 @@ const abi = JSON.parse(
     /export const LABOR_MARKET_V2_ABI = (\[[\s\S]*?\]) as const/,
   )[1],
 )
-const get = (fn) => client.readContract({ address: getAddress(address), abi, functionName: fn })
-const cfg = {
-  feeBps: Number(await get('feeBps')),
-  feeRecipient: await get('feeRecipient'),
-  flatFee: await get('flatFee'),
-  bondBps: Number(await get('bondBps')),
-  flatBond: await get('flatBond'),
-  minDeliveryWindow: Number(await get('MIN_DELIVERY_WINDOW')),
-  maxDeliveryWindow: Number(await get('MAX_DELIVERY_WINDOW')),
-  reviewWindow: Number(await get('REVIEW_WINDOW')),
-  maxOpenWindow: Number(await get('MAX_OPEN_WINDOW')),
-  disputeWindow: Number(await get('DISPUTE_WINDOW')),
-  silenceForfeitBps: Number(await get('SILENCE_FORFEIT_BPS')),
-  minBounty: await get('MIN_BOUNTY'),
-}
-const ctor = abi.find((x) => x.type === 'constructor')
-const encoded = encodeAbiParameters(ctor.inputs, [
-  await get('usdc'),
-  await get('registry'),
-  await get('arbiter'),
-  cfg,
-])
+/**
+ * One call when the deploy transaction is known, eighteen when it is not.
+ *
+ * The readback below issues a request per getter, and a public RPC answered
+ * `over rate limit` partway through — after both verification checks had already
+ * passed. The process then died and took the passing result with it, which is
+ * the wrong shape entirely: a rate limit while fetching a convenience is not a
+ * failure to verify.
+ *
+ * `--tx <hash>` avoids the problem rather than surviving it. The deployment
+ * transaction's input is the creation bytecode followed by the ABI-encoded
+ * constructor arguments, and the creation bytecode is the string this script just
+ * reproduced — so slicing it off yields the arguments exactly as the chain
+ * received them, in a single request. It also checks something the getters
+ * cannot: that the transaction really deployed THIS code.
+ */
+const txArg = process.argv.indexOf('--tx')
+const deployTx = txArg > -1 ? process.argv[txArg + 1] : null
 
-console.log('\nconstructor arguments, read from the chain:')
-console.log(`  usdc      ${await get('usdc')}`)
-console.log(`  registry  ${await get('registry')}`)
-console.log(`  arbiter   ${await get('arbiter')}`)
-for (const [k, v] of Object.entries(cfg)) console.log(`  ${k.padEnd(18)} ${v}`)
-console.log('\nABI-encoded constructor arguments (paste WITHOUT the 0x):')
-console.log(encoded.slice(2))
+const memo = new Map()
+const get = async (fn) => {
+  if (memo.has(fn)) return memo.get(fn)
+  let lastError
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      const v = await client.readContract({ address: getAddress(address), abi, functionName: fn })
+      memo.set(fn, v)
+      return v
+    } catch (error) {
+      lastError = error
+      // Public endpoints throttle by request rate, so backing off is the fix
+      // rather than retrying immediately.
+      await new Promise((r) => setTimeout(r, 400 * 2 ** attempt))
+    }
+  }
+  throw lastError
+}
+
+try {
+  let encoded = null
+  if (deployTx) {
+    const tx = await client.getTransaction({ hash: deployTx })
+    if (!tx.input.toLowerCase().startsWith(creation.toLowerCase())) {
+      console.log(`\n⚠ ${deployTx} did not deploy this creation bytecode — arguments not derived from it.`)
+    } else {
+      encoded = `0x${tx.input.slice(creation.length)}`
+      console.log(`\nconstructor arguments, taken from ${deployTx}`)
+    }
+  }
+
+  if (!encoded) {
+    const cfg = {
+      feeBps: Number(await get('feeBps')),
+      feeRecipient: await get('feeRecipient'),
+      flatFee: await get('flatFee'),
+      bondBps: Number(await get('bondBps')),
+      flatBond: await get('flatBond'),
+      minDeliveryWindow: Number(await get('MIN_DELIVERY_WINDOW')),
+      maxDeliveryWindow: Number(await get('MAX_DELIVERY_WINDOW')),
+      reviewWindow: Number(await get('REVIEW_WINDOW')),
+      maxOpenWindow: Number(await get('MAX_OPEN_WINDOW')),
+      disputeWindow: Number(await get('DISPUTE_WINDOW')),
+      silenceForfeitBps: Number(await get('SILENCE_FORFEIT_BPS')),
+      minBounty: await get('MIN_BOUNTY'),
+    }
+    const ctor = abi.find((x) => x.type === 'constructor')
+    encoded = encodeAbiParameters(ctor.inputs, [await get('usdc'), await get('registry'), await get('arbiter'), cfg])
+    console.log('\nconstructor arguments, read from the chain:')
+  }
+
+  // Decoded from the bytes either way, so what is printed is what will be
+  // pasted — not a second reading that could disagree with it.
+  const ctor = abi.find((x) => x.type === 'constructor')
+  const [usdc, registry, arbiter, cfg] = decodeAbiParameters(ctor.inputs, encoded)
+  console.log(`  usdc      ${usdc}`)
+  console.log(`  registry  ${registry}`)
+  console.log(`  arbiter   ${arbiter}`)
+  for (const [k, v] of Object.entries(cfg)) console.log(`  ${k.padEnd(18)} ${v}`)
+  console.log('\nABI-encoded constructor arguments (paste WITHOUT the 0x):')
+  console.log(encoded.slice(2))
+} catch (error) {
+  // Both verification checks are already done and the standard JSON is written.
+  // Losing them to a throttled convenience read would be the more expensive
+  // failure, so this reports and continues.
+  console.log(`\n⚠ could not read the constructor arguments: ${error.shortMessage ?? error.message}`)
+  console.log('  The two checks above still hold. Re-run with --tx <deployment hash> for a')
+  console.log('  single-request path, or with --rpc pointing at an endpoint that is not throttled.')
+}
 
 console.log(`
 Basescan form
