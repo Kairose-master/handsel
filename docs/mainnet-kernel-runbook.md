@@ -161,10 +161,68 @@ DEPLOYER_PRIVATE_KEY=... \
 USDC_ADDRESS=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913 \
 CREDIT_REGISTRY_ADDRESS=<from step 3> \
 ARBITER_ADDRESS=<new oracle address> \
-FEE_BPS=200 FLAT_FEE=30000 FEE_RECIPIENT=<new oracle address> \
+FEE_BPS=200 FLAT_FEE=30000 FEE_RECIPIENT=<YOUR OWN WALLET — see below> \
 BOND_BPS=500 FLAT_BOND=30000 \
 node scripts/deploy-labor-v2.mjs
 ```
+
+### `FEE_RECIPIENT` is the revenue, and it is immutable
+
+`feeRecipient` is `immutable` — written by the constructor, no setter, forever.
+Whatever address is passed here owns the entire fee stream for the life of the
+contract, and the only remedy for a wrong one is a redeploy.
+
+**Do not use the oracle address.** The runbook said to, and that was wrong for
+what this address is. The oracle key lives in Vercel's environment so the server
+can sign `resolveDispute` — a hot key, on a machine, rotatable precisely because
+nothing irreversible depends on it. Making it the fee recipient welds the
+revenue to it: the key can no longer be rotated without abandoning every dollar
+credited to the old address, and anyone who reads that env reads the takings.
+
+Use a wallet you hold the key to and the server does not — a hardware wallet or a
+MetaMask account. Then:
+
+- fees accrue to it with no involvement from the deployment at all
+- the server never has the ability to move them
+- you collect with `withdraw()`, or `withdrawTo(anywhere)` if you want them
+  somewhere else
+
+That wallet needs a cent or two of ETH to call `withdraw` — it is not an agent
+kernel account, so the paymaster does not cover it.
+
+### How the fee behaves, read off the deployed testnet contract
+
+| | |
+|---|---|
+| `feeBps` | 200 (2%); `MAX_FEE_BPS` is 500, chosen at deploy and immutable |
+| `flatFee` | 0.03 USDC |
+| charged | at `postJob`, on `bounty + feeOn(bounty)` |
+| credited | `withdrawable[feeRecipient] += fee` — never transferred, so a blocklisted recipient cannot stop the market accepting work |
+| refunds | `expireOpen`, `reclaimJob`, `expireReview` and `cancel` all credit back `job.bounty` **only** — the fee is not returned. A job that never completes has still paid |
+
+Live on Base Sepolia at `0xd9bcf174…04a09`: `jobCount 2`,
+`withdrawable[feeRecipient] 0.064 USDC` — 2 × 0.032, exactly the two postings.
+
+### What it earns against what it spends
+
+One completed cycle is roughly five sponsored UserOperations (requester
+approve+post batched, worker approve+accept batched, submit, approve, withdraw).
+At the measured $0.0058 that is about **$0.029 of gas per job**, against a flat
+fee of **$0.03**.
+
+That is not a coincidence — `flatFee`'s own comment says it covers the gas
+envelope while `feeBps` prices the value at risk. But it means the margin at
+micro-bounties is the 2% and nothing else:
+
+| bounty | fee collected | gas spent | margin |
+|---|---|---|---|
+| 0.1 | 0.032 | ~0.029 | ~0.003 |
+| 1 | 0.05 | ~0.029 | ~0.021 |
+| 5 | 0.13 | ~0.029 | ~0.10 |
+
+The five-op count is read off the flow, not measured. Step 8 measures it, and if
+it comes in higher than five the flat fee is under water at small bounties —
+raise `FLAT_FEE` before deploying rather than after, because it is immutable too.
 
 `USDC_ADDRESS` read from chain 8453 and confirmed: `USD Coin` / `USDC` /
 **6 decimals**. Six matters — every bounty, cap and fee is scaled by a
