@@ -95,26 +95,32 @@ They must blow in this order:
 2. **ZeroDev cap** — all-or-nothing. Sponsorship stops, including the sweeps.
 3. **Paymaster balance** — physics.
 
-> **Step 1 is EOA-mode only, and that is deliberate.** In kernel mode the app fuse
-> REFUSES rather than degrading. "Self-pay" sends from the agent's EOA, but in
-> kernel mode the agent's USDC *and its identity* live at the kernel address.
-> Every user-lane call needs the kernel account as `msg.sender`: `postJob` and
-> `acceptJob` need its allowance, `submitWork` reverts `NotWorker` from any other
-> sender, `approveJob` reverts `NotRequester`. So self-pay there would not change
-> who pays gas, it would change which account acts — and the call fails on
-> identity with nothing in the error naming a gas budget.
+> **Step 1 means something different in each mode, and kernel mode has a
+> prerequisite.**
 >
-> The consequence, stated rather than left to be discovered: **kernel mode has no
-> graceful degradation.** Exhausting the user lane stops user actions until the
-> 24h window rolls or `AGENT_GAS_BUDGET_USD` is raised. The keeper reserve is a
-> separate budget and unaffected, so the sweeps that free other people's escrow
-> keep running either way.
+> In EOA mode self-pay is trivial: the agent's account funds its own transaction.
 >
-> The proper fix is not to re-enable EOA self-pay. It is to send the UserOp
-> *without* the paymaster, funded by the kernel account's own ETH — preserving
-> identity and dropping the paymaster dependence in one move. That is not
-> implemented, so **kernel mode is not production-ready on this point**, which is
-> a reason to run mainnet in EOA mode, where step 1 is true as written.
+> In kernel mode it cannot mean "send from the agent's EOA". The agent's USDC
+> *and its identity* live at the kernel address — `postJob` and `acceptJob` need
+> its allowance, `submitWork` reverts `NotWorker` from any other sender,
+> `approveJob` reverts `NotRequester`. Sending from the EOA would change which
+> account acts, not who pays gas, and the call would fail on identity with nothing
+> in the error naming a budget.
+>
+> So kernel self-pay **drops the paymaster instead**: an unsponsored UserOp from
+> the same kernel account, funded by that account's own ETH. Identity preserved,
+> operator no longer paying.
+>
+> **The prerequisite: each agent's kernel account needs a small ETH float.**
+> Nothing tops it up. `ensureAgentGas` spends the *oracle's* ether and is gated by
+> this same budget, so it would refuse exactly when self-pay is needed — and if it
+> did not, self-pay would be operator-funded, which is sponsorship under another
+> name and would leave the budget unenforceable. Without a float the fuse refuses
+> with the address to fund and the two budget variables to raise, rather than
+> letting the bundler answer with an AA21.
+>
+> A few cents per agent is enough on Base. Send it when you provision, and step 1
+> above holds in kernel mode too.
 
 So the ZeroDev cap sits *above* the app's ceiling
 (`USER_LANE` 5 + `KEEPER_LANE` 2 = **$7/day**), or the graceful layer never

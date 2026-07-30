@@ -152,7 +152,27 @@ async function sendEoaCall(
 // ---------------------------------------------------------------------------
 
 /** Build the Kernel account + client for one agent. */
-export async function getAgentKernel(agentId: string) {
+/**
+ * Build the Kernel account + client for one agent.
+ *
+ * `sponsored: false` omits the paymaster, so the UserOp is paid for out of the
+ * KERNEL ACCOUNT's own ETH. That is what kernel-mode self-pay has to be: the
+ * account that acts is the account that pays, so identity is preserved. Sending
+ * from the agent's EOA instead — which is what "self-pay" meant before — swaps
+ * the sender for an account holding none of the agent's tokens, and the call
+ * fails on `NotWorker` or an allowance rather than on a budget.
+ *
+ * An unsponsored op also skips `requireSponsoredOp`, and must: that meter exists
+ * to bound the operator's sponsored spend, and an op the operator is not paying
+ * for is not part of what it bounds. Charging it there would make exhaustion
+ * permanent — the fallback would be metered by the thing it is the fallback for.
+ *
+ * The nonce serialization stays in both cases. It is a property of the ACCOUNT,
+ * not of who pays: two concurrent ops from one smart account collide on nonce
+ * (AA25) regardless of funding.
+ */
+export async function getAgentKernel(agentId: string, opts: { sponsored?: boolean } = {}) {
+  const sponsored = opts.sponsored ?? true
   const client = publicClient()
   const ecdsaValidator = await signerToEcdsaValidator(client, {
     signer: ownerSigner(),
@@ -167,17 +187,19 @@ export async function getAgentKernel(agentId: string) {
     index: accountIndex(agentId),
   })
 
-  const paymaster = createZeroDevPaymasterClient({
-    chain: CHAIN,
-    transport: http(onchainEnv.zerodevRpc),
-  })
-
   const kernelClient = createKernelAccountClient({
     account,
     chain: CHAIN,
     bundlerTransport: http(onchainEnv.zerodevRpc),
     client,
-    paymaster,
+    ...(sponsored
+      ? {
+          paymaster: createZeroDevPaymasterClient({
+            chain: CHAIN,
+            transport: http(onchainEnv.zerodevRpc),
+          }),
+        }
+      : {}),
   })
 
   // Serialize UserOp submission per smart account. Two UserOps from the same
@@ -195,8 +217,13 @@ export async function getAgentKernel(agentId: string) {
     // default. Wrapping the client means a sponsored operation cannot be sent
     // without passing the meter, including from code not written yet.
     // lib/onchain/gas-policy.ts explains the allowance.
-    const { requireSponsoredOp } = await import('./gas-meter')
-    await requireSponsoredOp(agentId)
+    // Only when the operator is paying. An unsponsored op is the self-pay
+    // fallback, and metering it with the sponsored budget would make exhaustion
+    // permanent: the escape hatch would be gated by the thing it escapes.
+    if (sponsored) {
+      const { requireSponsoredOp } = await import('./gas-meter')
+      await requireSponsoredOp(agentId)
+    }
 
     return serializedSend(address, () =>
       withRetry(() => rawSend(args as Parameters<typeof rawSend>[0]), {
@@ -392,43 +419,62 @@ export async function sendAgentCalls(
     lane,
     agentSpentUsd: spent.agent,
     laneSpentUsd: spent.lane,
-    // KERNEL MODE HAS NO SELF-PAY, and this is not a gas question.
+    // Kernel mode CAN self-pay — but from the kernel account, not the EOA.
     //
-    // An agent always has an EOA derived from the owner key, so in EOA mode
-    // "pay your own gas" is coherent: same account, same assets, it just funds
-    // its own transaction. In kernel mode it is not. The agent's USDC lives at
-    // the KERNEL address, and this fallback sends from the EOA — a different
-    // account holding none of it. So `self_pay` silently changes WHICH ACCOUNT
-    // ACTS, and the failure surfaces as an allowance or balance error on the
-    // approve, with nothing pointing at a gas budget.
+    // This was false for a while, and the reason it was false is still true: the
+    // EOA is a different account holding none of the agent's tokens, so sending
+    // from it changes WHICH ACCOUNT ACTS rather than who pays gas, and the call
+    // fails on `NotWorker` or an allowance with nothing naming a budget.
     //
-    // Reachable today, not hypothetically: `gas_spend` is keyed by agentId and
-    // survives re-provisioning, EOA top-ups bill AGENT_TOPUP_COST_USD ($0.60)
-    // against AGENT_GAS_BUDGET_USD ($0.50), and the window is 24h. So an agent
-    // that took one top-up in EOA mode is already over budget when the mode
-    // flips, and its first kernel action would have been routed to an empty EOA.
+    // The answer is not to route elsewhere, it is to drop the PAYMASTER: an
+    // unsponsored UserOp from the same kernel account, funded by that account's
+    // own ETH. Identity preserved, operator no longer paying — which is exactly
+    // what "self-pay" is supposed to mean.
     //
-    // So: false. Flatly, not `lane === 'user' && agentAccountMode === 'eoa'` —
-    // tsc rejected that as provably false, which was the right correction: the
-    // EOA branch returns above, so execution only reaches here in kernel mode and
-    // the lane test was dead code dressed as a condition. The verdict is now an
-    // honest `refuse` naming the budget.
-    canSelfPay: false,
+    // Only for the user lane. The keeper reserve exists so the permissionless
+    // exits keep freeing other people's escrow when the user lane is drained; if
+    // keeper ops fell back to agent ETH, a drained reserve would silently become
+    // the agents' problem instead of surfacing as the operator's.
+    canSelfPay: lane === 'user',
   })
 
   if (verdict.decision === 'refuse') {
     throw new Error(`gas sponsorship refused: ${verdict.reason}`)
   }
-  if (verdict.decision === 'self_pay') {
-    console.warn(`[onchain] ${verdict.reason} — agent ${agentId} paying its own gas`)
-    return sendSequentially('user')
+  const sponsored = verdict.decision === 'sponsor'
+  if (sponsored) {
+    // Recorded BEFORE the send. An op that lands and is never billed is how a
+    // budget silently stops bounding anything; an op billed and then rejected
+    // only over-counts, which errs toward degrading sooner.
+    await recordGasSpend(lane, agentId, opts.label ?? 'agent call')
+  } else {
+    console.warn(`[onchain] ${verdict.reason} — agent ${agentId} self-paying from its kernel account`)
   }
-  // Recorded BEFORE the send. An op that lands and is never billed is how a
-  // budget silently stops bounding anything; an op billed and then rejected
-  // only over-counts, which errs toward degrading sooner.
-  await recordGasSpend(lane, agentId, opts.label ?? 'agent call')
 
-  const { account, kernelClient } = await getAgentKernel(agentId)
+  const { account, kernelClient, address } = await getAgentKernel(agentId, { sponsored })
+
+  // Self-pay needs the KERNEL account to hold ETH, and nothing tops it up.
+  //
+  // `ensureAgentGas` cannot: it spends the ORACLE's ether and is gated by this
+  // same budget, so it would refuse precisely when self-pay is needed — and if it
+  // did not, "self-pay" would be operator-funded, which is sponsorship with
+  // another name and would make the budget unenforceable.
+  //
+  // So the account either has a float or it does not, and the difference has to
+  // be said out loud. Checked here rather than left to the bundler, whose answer
+  // to an underfunded sender is an AA21 nobody reads as "fund this address".
+  if (!sponsored) {
+    const balance = await publicClient().getBalance({ address })
+    if (balance < AGENT_GAS_FLOOR) {
+      throw new Error(
+        `${verdict.reason}, and the agent cannot self-pay: kernel account ${address} holds ` +
+          `${balance} wei, under the ${AGENT_GAS_FLOOR} floor. Either send it a little ETH so it can ` +
+          `fund its own operations, or raise AGENT_GAS_BUDGET_USD / USER_LANE_GAS_BUDGET_USD. ` +
+          `Sponsored gas is the operator's money and this budget is what bounds it, so it is not ` +
+          `topped up automatically here.`,
+      )
+    }
+  }
   const userOpHash = await kernelClient.sendUserOperation({
     callData: await account.encodeCalls(
       calls.map((c) => ({ to: c.to, value: c.value ?? 0n, data: c.data })),

@@ -133,14 +133,20 @@ describe('the wiring, asserted at the source', () => {
     expect(src).toContain('recordGasSpend')
   })
 
-  it('exhaustion routes to the self-pay path that already existed', () => {
-    // Not a new code path — sendEoaCall predates this and is the unsponsored
-    // mode the file already documented. It is now reached through
-    // `sendSequentially`, the local helper that walks a batch, because the sender
-    // takes N calls rather than one. The invariant is unchanged.
+  it('exhaustion degrades rather than refusing, in both modes', () => {
+    // The invariant is unchanged and the mechanism differs per mode, because the
+    // fuse in sendAgentCalls is only ever reached in KERNEL mode — EOA returns
+    // through `sendSequentially` before it, and is metered inside ensureAgentGas.
+    //
+    // EOA: the agent's own account funds its own transaction.
+    // Kernel: the paymaster is DROPPED and the same kernel account pays, because
+    // sending from the EOA would change which account acts rather than who pays.
     const src = code('lib/onchain/account.ts')
-    expect(src).toMatch(/self_pay[\s\S]{0,200}sendSequentially\('user'\)/)
-    expect(src).toMatch(/sendSequentially[\s\S]{0,300}sendEoaCall\(agentId, c, lane\)/)
+    expect(src).toMatch(/agentAccountMode === 'eoa'\) return sendSequentially\(opts\.lane \?\? 'user'\)/)
+    expect(src).toMatch(/sendSequentially[\s\S]{0,400}sendEoaCall\(agentId, c, lane\)/)
+    // Kernel: sponsorship is a flag on the client, and its absence is the fallback.
+    expect(src).toMatch(/const sponsored = verdict\.decision === 'sponsor'/)
+    expect(src).toMatch(/getAgentKernel\(agentId, \{ sponsored \}\)/)
   })
 
   it('the permissionless exits are on the KEEPER lane', () => {

@@ -147,56 +147,78 @@ describe('the transport is visible from outside', () => {
   })
 })
 
-describe('self-pay is an EOA-mode concept only', () => {
+describe('self-pay in kernel mode drops the paymaster, not the identity', () => {
   const account = code('lib/onchain/account.ts')
 
-  it('never offers self-pay on the path that only kernel mode reaches', () => {
-    // In EOA mode "pay your own gas" is coherent: same account, same assets. In
-    // kernel mode the agent's USDC is at the KERNEL address and this fallback
-    // sends from the EOA — a different account holding none of it. So it does not
-    // change who pays gas, it changes WHICH ACCOUNT ACTS, and the failure lands
-    // as an allowance error on the approve with nothing naming a gas budget.
+  it('offers self-pay on the user lane and never on the keeper lane', () => {
+    // The keeper reserve exists so the permissionless exits keep freeing other
+    // people's escrow when the user lane is drained. If keeper ops fell back to
+    // agent ETH, a drained reserve would quietly become the agents' problem
+    // instead of surfacing as the operator's.
+    expect(account).toMatch(/canSelfPay: lane === 'user',/)
+  })
+
+  it('self-pays by removing the paymaster, from the same kernel account', () => {
+    // The earlier bug, and why the fix is not "route elsewhere": sending from the
+    // agent's EOA changes WHICH ACCOUNT ACTS, not who pays gas, so the call fails
+    // on NotWorker or an allowance with nothing naming a budget. An unsponsored
+    // UserOp keeps the sender and moves the cost.
+    expect(account).toMatch(/getAgentKernel\(agentId, \{ sponsored \}\)/)
+    expect(account).toMatch(/export async function getAgentKernel\(agentId: string, opts: \{ sponsored\?: boolean \} = \{\}\)/)
+    // The paymaster is attached conditionally — its absence IS the mechanism.
+    expect(account).toMatch(/\.\.\.\(sponsored[\s\S]{0,200}createZeroDevPaymasterClient/)
+  })
+
+  it('does not meter an op the operator is not paying for', () => {
+    // requireSponsoredOp bounds sponsored spend. Charging the self-pay fallback
+    // against it would make exhaustion permanent: the escape hatch gated by the
+    // thing it escapes.
+    expect(account).toMatch(/if \(sponsored\) \{[\s\S]{0,200}requireSponsoredOp\(agentId\)/)
+  })
+
+  it('bills the ledger only when sponsored', () => {
+    expect(account).toMatch(/if \(sponsored\) \{[\s\S]{0,400}recordGasSpend\(lane, agentId/)
+  })
+
+  it('refuses with an actionable message when the account cannot self-pay', () => {
+    // ensureAgentGas cannot fund this: it spends the ORACLE's ether and is gated
+    // by the same budget, so it would refuse exactly when self-pay is needed —
+    // and if it did not, self-pay would be operator-funded, which is sponsorship
+    // under another name and would make the budget unenforceable.
     //
-    // Two `canSelfPay: false` sites now: ensureAgentGas (the account being topped
-    // up is by definition the one with no ether) and this one. The first attempt
-    // wrote `lane === 'user' && agentAccountMode === 'eoa'` and tsc rejected it as
-    // provably false — the EOA branch returns earlier, so this line is only ever
-    // reached in kernel mode and the lane test was dead code dressed as a guard.
-    expect((account.match(/canSelfPay: false/g) ?? []).length).toBe(2)
-    expect(account).not.toMatch(/canSelfPay: lane === 'user',/)
+    // So the balance is checked here, not left to the bundler, whose answer to an
+    // underfunded sender is an AA21 that nobody reads as "fund this address".
+    expect(account).toMatch(/cannot self-pay: kernel account/)
+    expect(account).toMatch(/AGENT_GAS_FLOOR/)
+    expect(account).not.toMatch(/if \(!sponsored\) await ensureAgentGas/)
   })
 
-  it('would have fired on the very next mode switch', () => {
-    // Not hypothetical. gas_spend is keyed by agentId and survives
-    // re-provisioning; EOA top-ups bill AGENT_TOPUP_COST_USD against
-    // AGENT_GAS_BUDGET_USD over a 24h window, and the top-up costs MORE than the
-    // per-agent budget. So any agent that took one top-up in EOA mode is already
-    // over budget the moment kernel mode starts.
-    const budget = readFileSync('lib/gas-budget.ts', 'utf8')
-    const topup = Number(budget.match(/AGENT_TOPUP_COST_USD', ([\d.]+)\)/)![1])
-    const perAgent = Number(budget.match(/AGENT_GAS_BUDGET_USD', ([\d.]+)\)/)![1])
-    expect(topup).toBeGreaterThan(perAgent)
-    expect(budget).toContain('GAS_WINDOW_MS = 24 * 60 * 60 * 1000')
+  it('keeps nonce serialization on both funding paths', () => {
+    // A property of the ACCOUNT, not of who pays: two concurrent ops from one
+    // smart account collide on nonce (AA25) regardless of funding.
+    expect(account).toMatch(/serializedSend\(address/)
   })
 
-  it('still allows self-pay for a top-up nowhere, in either mode', () => {
+  it('still refuses a top-up nowhere, in either mode', () => {
     // ensureAgentGas passes canSelfPay: false because the account being topped up
-    // is by definition the one with no ether. That reasoning is mode-independent
-    // and must not pick up the mode check.
+    // is by definition the one with no ether. Mode-independent.
     expect(account).toMatch(/canSelfPay: false/)
   })
 })
 
-describe('the deploy doc does not promise what the code stopped doing', () => {
-  it('marks self-pay degradation as EOA-only', () => {
-    // docs/mainnet-deploy.md orders three fuses and says the first "degrades to
-    // self-pay. The market keeps working." That was true when written and is now
-    // EOA-only, because canSelfPay is false on the kernel path. A deploy document
-    // promising graceful degradation that the code no longer provides is worse
-    // than no document: it is read once, on the day it matters.
+describe('the deploy doc and the fuse describe the same behaviour', () => {
+  it('states the kernel-mode prerequisite the code enforces', () => {
+    // The doc orders three fuses and says the first "degrades to self-pay. The
+    // market keeps working." That is now true in BOTH modes — but kernel mode
+    // reaches it by dropping the paymaster, which only works if the kernel account
+    // holds a little ETH, and nothing tops that up. A deploy document that
+    // promises graceful degradation without naming its prerequisite is read once,
+    // on the day it matters, and believed.
     const doc = readFileSync('docs/mainnet-deploy.md', 'utf8')
-    expect(doc).toMatch(/Step 1 is EOA-mode only/)
-    // The phrase wraps across a line and a `> ` quote prefix, so match across both.
-    expect(doc).toMatch(/kernel mode has no[\s>]+graceful degradation/i)
+    expect(doc).toMatch(/kernel account[s]? need[s]? a small ETH float/i)
+    expect(doc).toMatch(/drops the paymaster/i)
+    // And it must not still claim the old, now-fixed limitation.
+    expect(doc).not.toMatch(/kernel mode has no[\s>]+graceful degradation/i)
+    expect(doc).not.toMatch(/not production-ready on this point/i)
   })
 })
