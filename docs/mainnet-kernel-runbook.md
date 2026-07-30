@@ -110,6 +110,25 @@ failure, and the one the split exists to prevent.
 Then `PAYMASTER_METERED=true` — the acknowledgement, not the policy. The guard
 refuses every money path without it.
 
+### Confirm the project before deploying anything
+
+```bash
+ZERODEV_RPC=<the mainnet project URL> node scripts/check-sponsorship.mjs
+```
+
+Asks the bundler which chain it is on, which EntryPoint it accepts, and — the
+part that matters — asks the paymaster to quote sponsorship for an unsigned
+operation. Sends nothing and spends nothing; a quote is not an operation.
+
+This is deliberately not a deposit read. The deposit read for this paymaster
+returned 0 while the account balance was $10, because a deposit that a provider
+funds just in time and a paymaster that is genuinely dry look identical on chain.
+Asking it to quote is the question whose answer differs between the two.
+
+With the default throwaway sender, a project whose allowlist is already narrowed
+will refuse — and that refusal is a PASS for the allowlist. Re-run with
+`--sender <a provisioned kernel address>` after step 7 to see it quote.
+
 ## 2. Database
 
 Create the Neon project, then run `docs/schema-bootstrap-single.sql` in its SQL
