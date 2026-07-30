@@ -162,6 +162,17 @@ try {
    * a paymaster can return data and still be rejected downstream. This asks the
    * question end to end.
    */
+  /**
+   * The fees are forced to a real number, and that is the whole test.
+   *
+   * With `maxFeePerGas` left at zero the required prefund is also zero, so an
+   * account holding nothing satisfies it and BOTH runs pass — which is what
+   * happened, and it proved nothing in a way that looked like it had. The
+   * discriminator only exists when the operation actually costs something.
+   */
+  const fees = await pub.estimateFeesPerGas()
+  console.log(`maxFeePerGas     : ${Number(fees.maxFeePerGas) / 1e9} gwei (forced; a zero fee needs no prefund)`)
+
   const prepare = (paymaster) =>
     createKernelAccountClient({
       account,
@@ -169,7 +180,11 @@ try {
       bundlerTransport: http(RPC),
       client: pub,
       ...(paymaster ? { paymaster: createZeroDevPaymasterClient({ chain: base, transport: http(RPC) }) } : {}),
-    }).prepareUserOperation({ calls: [{ to: account.address, value: 0n, data: '0x' }] })
+    }).prepareUserOperation({
+      calls: [{ to: account.address, value: 0n, data: '0x' }],
+      maxFeePerGas: fees.maxFeePerGas,
+      maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
+    })
 
   const attempt = async (paymaster) => {
     try {
@@ -200,9 +215,16 @@ try {
     console.log('sponsorship, demonstrated rather than reported.')
     quoted = true
   } else if (sponsored.ok && unsponsored.ok) {
+    const bal = await pub.getBalance({ address: account.address })
     console.log('')
-    console.log('Both passed, so this proves nothing: the account can apparently pay its own')
-    console.log('way, and the sponsored run may not have needed the paymaster at all.')
+    console.log(`Both passed, and the account holds ${Number(bal) / 1e18} ETH.`)
+    if (bal === 0n) {
+      console.log('An account with nothing cannot pay a prefund, so this bundler is not enforcing')
+      console.log('one at estimation time. The A/B cannot discriminate here — not a failure of the')
+      console.log('project, a limit of this test. The sponsored run DID pass, which is the weaker')
+      console.log('half of the same evidence; the remaining question is settled by the first real')
+      console.log('operation, and the deploy that gets you there costs cents.')
+    }
   }
   const pm = null
   void pm
