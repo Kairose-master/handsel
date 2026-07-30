@@ -83,35 +83,23 @@ describe('the windows a new deployment gets', () => {
     const d = deployDefaults()
     expect(d.reviewWindow).toBe(86400)
     expect(d.disputeWindow).toBe(14 * 86400)
-    expect(d.minDeliveryWindow).toBe(600)
-  })
-
-  it('has review and dispute windows that outlast the backstop', () => {
-    const d = deployDefaults()
-    const checks = checkWindows({ reviewWindow: d.reviewWindow, disputeWindow: d.disputeWindow })
-    expect(tooShort(checks), explain(checks)).toEqual([])
+    expect(d.minDeliveryWindow).toBe(4 * 60 * 60)
   })
 
   /**
-   * The one that does NOT satisfy it, recorded rather than hidden.
+   * All three now, including the delivery floor.
    *
-   * `minDeliveryWindow` defaults to 600s — a floor a requester may ask for. With
-   * a ~100 minute backstop, a job that asks for the floor can sit past its
-   * delivery deadline for ten times the window before `reclaimJob` arrives.
-   *
-   * This is a real, currently-accepted gap, and it is deliberately asserted as a
-   * KNOWN violation rather than excused: if someone raises the floor or speeds up
-   * the backstop, this test fails and tells them to delete it. A skipped test
-   * would rot silently; an inverted one cannot.
+   * `minDeliveryWindow` was 600s and was recorded here as a KNOWN violation —
+   * asserted as failing rather than skipped, so that fixing it would break the
+   * test and say so. It did exactly that: raising the deploy default to 4h turned
+   * `tooShort` from 1 to 0 and the inverted assertion demanded its own deletion.
+   * That is the whole reason to invert rather than skip. A skipped test rots
+   * quietly; this one reported that the world had changed.
    */
-  it('records minDeliveryWindow as a known, unresolved violation', () => {
+  it('has every waiting window outlast the backstop', () => {
     const d = deployDefaults()
-    const checks = checkWindows({ minDeliveryWindow: d.minDeliveryWindow })
-    expect(
-      tooShort(checks).length,
-      'minDeliveryWindow now satisfies the invariant — delete this test and add ' +
-        'minDeliveryWindow to the check above',
-    ).toBe(1)
+    const checks = checkWindows(d)
+    expect(tooShort(checks), explain(checks)).toEqual([])
   })
 })
 

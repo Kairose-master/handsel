@@ -110,7 +110,14 @@ const cfg = {
   // The same arithmetic on the worker side: 5% of a cent-scale bounty deters
   // nobody, so `acceptJob` stays free exactly where the market is thinnest.
   flatBond: big('FLAT_BOND', 0n),
-  minDeliveryWindow: num('MIN_DELIVERY_WINDOW_S', 10 * 60),
+  // 4h, not the 10 minutes this defaulted to. This is a FLOOR a requester may
+  // ask for, so it sets the shortest window a real job can run with — and a
+  // window only means something if something arrives to settle it when it
+  // closes. The backstop that calls the exits lands every 80-100 minutes
+  // (measured, see lib/market-clock.ts), so a 10-minute floor let escrow sit
+  // locked for ten times its own window. Observed on the live deployment: job
+  // #1's window closed and 0.13 USDC stayed put for 112 minutes.
+  minDeliveryWindow: num('MIN_DELIVERY_WINDOW_S', 4 * 60 * 60),
   maxDeliveryWindow: num('MAX_DELIVERY_WINDOW_S', 30 * DAY),
   // One day, not the seven the constant used to hardcode. Seven days is very
   // long for a market whose jobs finish in minutes, and it is the exposure
