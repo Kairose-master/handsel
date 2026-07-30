@@ -139,9 +139,14 @@ try {
 const { createKernelAccount, createKernelAccountClient } = await import('@zerodev/sdk')
 const { getEntryPoint, KERNEL_V3_1 } = await import('@zerodev/sdk/constants')
 const { signerToEcdsaValidator } = await import('@zerodev/ecdsa-validator')
-const { createPublicClient, http } = await import('viem')
+const { createPublicClient, http, encodeFunctionData } = await import('viem')
 const { privateKeyToAccount, generatePrivateKey } = await import('viem/accounts')
 const { base } = await import('viem/chains')
+
+// Sponsorship is granted per contract, so the probe has to touch one of ours.
+const marketArg = process.argv.indexOf('--market')
+const MARKET =
+  marketArg > -1 ? process.argv[marketArg + 1] : '0x96064ef0a6742d5b7bc8abf2584273bd2f022c8c'
 
 const rpcArg = process.argv.indexOf('--rpc')
 const publicRpc = rpcArg > -1 ? process.argv[rpcArg + 1] : 'https://mainnet.base.org'
@@ -202,6 +207,44 @@ try {
    * happened, and it proved nothing in a way that looked like it had. The
    * discriminator only exists when the operation actually costs something.
    */
+  /**
+   * A real call, not an empty one.
+   *
+   * The probe used to be a no-op to the account itself, which reached the
+   * paymaster and then got `internal error: failed to trace calls` — a provider
+   * asked to price an operation that does nothing has nothing to trace. It also
+   * tested nothing about the allowlist, which is the part most likely to be
+   * wrong: sponsorship is granted per CONTRACT, so an operation touching none of
+   * them proves only that the endpoint answers.
+   *
+   * `approve` on USDC is the honest probe. It is the first call the market
+   * actually makes — a worker posting a bond and a requester funding escrow both
+   * start there — so if the allowlist is missing USDC, the cycle stops at step
+   * one and this says so now rather than then. Approving zero to the market
+   * changes nothing on chain even if it were sent, and nothing is sent.
+   */
+  const probeCall = {
+    to: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+    value: 0n,
+    data: encodeFunctionData({
+      abi: [
+        {
+          type: 'function',
+          name: 'approve',
+          stateMutability: 'nonpayable',
+          inputs: [
+            { name: 'spender', type: 'address' },
+            { name: 'value', type: 'uint256' },
+          ],
+          outputs: [{ type: 'bool' }],
+        },
+      ],
+      functionName: 'approve',
+      args: [MARKET, 0n],
+    }),
+  }
+  console.log(`probe            : USDC.approve(market, 0) — a call the market really makes`)
+
   const fees = await pub.estimateFeesPerGas()
   console.log(`maxFeePerGas     : ${Number(fees.maxFeePerGas) / 1e9} gwei (forced; a zero fee needs no prefund)`)
 
@@ -213,7 +256,7 @@ try {
       client: pub,
       ...(paymaster && makePaymaster() ? { paymaster: makePaymaster() } : {}),
     }).prepareUserOperation({
-      calls: [{ to: account.address, value: 0n, data: '0x' }],
+      calls: [probeCall],
       maxFeePerGas: fees.maxFeePerGas,
       maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
       // Supplied, so viem skips estimation and the paymaster is asked about an
@@ -332,6 +375,14 @@ if (quoted) {
   console.log('                      expressed the decline as a downstream simulation failure.')
   console.log('                      That is a POLICY answer wearing a funding answer\'s clothes:')
   console.log('                      no active gas policy, or one this call does not match.')
+  console.log('  "failed to trace calls"             → the provider\'s simulator, not your config.')
+  console.log('                                        Seen on CDP for a counterfactual sender with')
+  console.log('                                        both an empty call and a real one, after')
+  console.log('                                        billing resolved. This script assembles the')
+  console.log('                                        request by hand; the app uses the SDK\'s full')
+  console.log('                                        stub-estimate-sign flow. Stop here and test')
+  console.log('                                        the real path — it is deployed and one job')
+  console.log('                                        cycle costs cents.')
   console.log('  "payment method not found"          → the plan\'s monthly figure is a LIMIT, not a')
   console.log('                                        credit. Nothing is sponsored until a payment')
   console.log('                                        method sits behind it. Everything else about')
