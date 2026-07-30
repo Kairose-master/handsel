@@ -10,6 +10,8 @@
  *
  * Pure and unit-tested: give it the error, get the sentence.
  */
+import { LABOR_MARKET_V2_ABI } from './labor-v2-artifact'
+import { decodeCustomError, extractRevertData } from './custom-errors'
 
 /** Decode a hex-encoded `Error(string)` payload if one is embedded anywhere
  *  in the message. Returns null when there is nothing decodable. */
@@ -51,8 +53,54 @@ const REVERT_GUIDE: Array<{ match: RegExp; explain: string }> = [
  * One sentence an operator can act on. Falls back to a trimmed version of the
  * original message (never the raw multi-KB UserOperation dump).
  */
+/**
+ * Every ABI whose errors could plausibly reach here, tried in turn.
+ *
+ * One thrown error could have come from the market, the vault or the escrow, and
+ * `decodeCustomError` returns null rather than guessing — so a payload this ABI
+ * does not recognise falls through to the next instead of being named with the
+ * wrong contract's vocabulary.
+ *
+ * Statically imported. A lazy `require` here would have kept this module free of
+ * the ~40KB generated ABI, and it does not work under ESM — the first run threw
+ * `Cannot find module './custom-errors'` from inside the very function whose job
+ * is to stop errors being unreadable. The ABI is already in the bundle because
+ * labor-v2.ts imports it, so the saving was imaginary.
+ */
+function explainAgainstKnownAbis(error: unknown): { name: string; message: string } | null {
+  const data = extractRevertData(error)
+  if (!data) return null
+  for (const abi of [LABOR_MARKET_V2_ABI]) {
+    try {
+      const decoded = decodeCustomError(data, abi as never)
+      // `Error(string)` and `Panic(uint256)` are Solidity BUILTINS, and viem
+      // decodes them against any ABI. So a plain `require("USDC: balance...")`
+      // came back as name `Error` and fell into the generic branch, which
+      // reported "the contract rejected the call with Error" and threw the
+      // string away — a regression this ordering caused on its first run, caught
+      // by the test that already covered the empty-wallet case.
+      //
+      // They are not custom errors and `decodeRevertReason` + REVERT_GUIDE below
+      // already turn them into good sentences, so hand them straight over.
+      if (decoded && decoded.name !== 'Error' && decoded.name !== 'Panic') return decoded
+    } catch {
+      // Decoding must never itself be the reason a message is lost.
+    }
+  }
+  return null
+}
+
 export function explainOnchainError(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error)
+
+  // Custom errors FIRST, because LaborMarketV2 raises nothing else and the
+  // decoder below cannot see them. All 23 of its failure modes are a four-byte
+  // selector plus ABI-encoded args, so `Error(string)` decoding finds nothing and
+  // viem's own fallback — "Execution reverted for an unknown reason" — is what an
+  // operator got for every one of them. The reason was in the response the whole
+  // time; three of the errors even carry the numbers that explain themselves.
+  const custom = explainAgainstKnownAbis(error)
+  if (custom) return `On-chain call reverted (${custom.name}) — ${custom.message}`
 
   const reason = decodeRevertReason(raw) ?? raw.match(/reverted with reason:?\s*([A-Za-z][^.\n]{0,60})/)?.[1]?.trim()
   if (reason) {
