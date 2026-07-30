@@ -392,10 +392,28 @@ export async function sendAgentCalls(
     lane,
     agentSpentUsd: spent.agent,
     laneSpentUsd: spent.lane,
-    // An agent always has an EOA derived from the owner key, so self-pay is
-    // reachable whenever that account holds gas. sendEoaCall throws a clear
-    // error if it does not, which is a better failure than a silent refusal.
-    canSelfPay: lane === 'user',
+    // KERNEL MODE HAS NO SELF-PAY, and this is not a gas question.
+    //
+    // An agent always has an EOA derived from the owner key, so in EOA mode
+    // "pay your own gas" is coherent: same account, same assets, it just funds
+    // its own transaction. In kernel mode it is not. The agent's USDC lives at
+    // the KERNEL address, and this fallback sends from the EOA — a different
+    // account holding none of it. So `self_pay` silently changes WHICH ACCOUNT
+    // ACTS, and the failure surfaces as an allowance or balance error on the
+    // approve, with nothing pointing at a gas budget.
+    //
+    // Reachable today, not hypothetically: `gas_spend` is keyed by agentId and
+    // survives re-provisioning, EOA top-ups bill AGENT_TOPUP_COST_USD ($0.60)
+    // against AGENT_GAS_BUDGET_USD ($0.50), and the window is 24h. So an agent
+    // that took one top-up in EOA mode is already over budget when the mode
+    // flips, and its first kernel action would have been routed to an empty EOA.
+    //
+    // So: false. Flatly, not `lane === 'user' && agentAccountMode === 'eoa'` —
+    // tsc rejected that as provably false, which was the right correction: the
+    // EOA branch returns above, so execution only reaches here in kernel mode and
+    // the lane test was dead code dressed as a condition. The verdict is now an
+    // honest `refuse` naming the budget.
+    canSelfPay: false,
   })
 
   if (verdict.decision === 'refuse') {

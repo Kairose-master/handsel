@@ -146,3 +146,43 @@ describe('the transport is visible from outside', () => {
     expect(route).not.toMatch(/zerodevRpc\s*,/)
   })
 })
+
+describe('self-pay is an EOA-mode concept only', () => {
+  const account = code('lib/onchain/account.ts')
+
+  it('never offers self-pay on the path that only kernel mode reaches', () => {
+    // In EOA mode "pay your own gas" is coherent: same account, same assets. In
+    // kernel mode the agent's USDC is at the KERNEL address and this fallback
+    // sends from the EOA — a different account holding none of it. So it does not
+    // change who pays gas, it changes WHICH ACCOUNT ACTS, and the failure lands
+    // as an allowance error on the approve with nothing naming a gas budget.
+    //
+    // Two `canSelfPay: false` sites now: ensureAgentGas (the account being topped
+    // up is by definition the one with no ether) and this one. The first attempt
+    // wrote `lane === 'user' && agentAccountMode === 'eoa'` and tsc rejected it as
+    // provably false — the EOA branch returns earlier, so this line is only ever
+    // reached in kernel mode and the lane test was dead code dressed as a guard.
+    expect((account.match(/canSelfPay: false/g) ?? []).length).toBe(2)
+    expect(account).not.toMatch(/canSelfPay: lane === 'user',/)
+  })
+
+  it('would have fired on the very next mode switch', () => {
+    // Not hypothetical. gas_spend is keyed by agentId and survives
+    // re-provisioning; EOA top-ups bill AGENT_TOPUP_COST_USD against
+    // AGENT_GAS_BUDGET_USD over a 24h window, and the top-up costs MORE than the
+    // per-agent budget. So any agent that took one top-up in EOA mode is already
+    // over budget the moment kernel mode starts.
+    const budget = readFileSync('lib/gas-budget.ts', 'utf8')
+    const topup = Number(budget.match(/AGENT_TOPUP_COST_USD', ([\d.]+)\)/)![1])
+    const perAgent = Number(budget.match(/AGENT_GAS_BUDGET_USD', ([\d.]+)\)/)![1])
+    expect(topup).toBeGreaterThan(perAgent)
+    expect(budget).toContain('GAS_WINDOW_MS = 24 * 60 * 60 * 1000')
+  })
+
+  it('still allows self-pay for a top-up nowhere, in either mode', () => {
+    // ensureAgentGas passes canSelfPay: false because the account being topped up
+    // is by definition the one with no ether. That reasoning is mode-independent
+    // and must not pick up the mode check.
+    expect(account).toMatch(/canSelfPay: false/)
+  })
+})
