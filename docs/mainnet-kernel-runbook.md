@@ -140,6 +140,30 @@ SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public';
 
 45 is correct (44 + the migrations bookkeeping table).
 
+## 2.5 The addresses, before any of them is immutable
+
+`arbiter`, `feeRecipient`, `feeBps` and `flatFee` have no setters. Check them
+while checking is still cheap:
+
+```bash
+ORACLE_ADDRESS=0x… ARBITER_ADDRESS=0x… FEE_RECIPIENT=0x… DEPLOYER_ADDRESS=0x… \
+node scripts/preflight-addresses.mjs
+```
+
+Addresses only — never a key. It reads balances and code size, and refuses two
+combinations that deploy perfectly and fail later:
+
+**`ARBITER_ADDRESS` that is not the oracle.** There is no `ARBITER_PRIVATE_KEY`
+anywhere in this codebase; `resolveDispute` is signed by `oracleWallet()`
+(`lib/onchain/labor.ts`). Separating the arbiter from the oracle — which reads
+like good key hygiene — makes every dispute unresolvable, and nothing shows it
+until the first dispute, because posting, accepting and settling all work.
+They must be the same address.
+
+**`FEE_RECIPIENT` that is a contract with no way to call `withdraw()`.** Fees are
+pulled, not pushed. An address that cannot make a call cannot be paid, and the
+money accrues correctly and permanently out of reach.
+
 ## 3. Registry
 
 The current `CREDIT_REGISTRY_ADDRESS` is Base Sepolia. A mainnet market pointing
