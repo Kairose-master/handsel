@@ -6,6 +6,7 @@ import { encodeFunctionData, parseUnits, type Address, type Hex } from 'viem'
 import { LABOR_MARKET_ABI, USDC_ABI, USDC_DECIMALS, JOB_STATUS, onchainEnv } from './config'
 import { publicClient, oracleWallet } from './clients'
 import { sendAgentCall, sendAgentCalls } from './account'
+import { governingDeadline, hasLapsed } from '@/lib/deadlines'
 
 const toUnits = (usd: number) => parseUnits(usd.toFixed(USDC_DECIMALS), USDC_DECIMALS)
 const fromUnits = (v: bigint) => Number(v) / 10 ** USDC_DECIMALS
@@ -32,6 +33,24 @@ export type OnchainJob = {
   status: (typeof JOB_STATUS)[number] | 'Expired'
   specHash: Hex
   resultHash: Hex
+  /**
+   * The deadline governing the CURRENT state, unix seconds, or null on a V1
+   * market which has none.
+   *
+   * Needed because `status` alone is not enough to know what may be done to a
+   * job. The contract's enum changes only when somebody CALLS an exit, so a job
+   * whose open window lapsed an hour ago still reads `Open` until `expireOpen`
+   * runs. `Open` therefore means "open, or lapsed and not yet settled", and the
+   * two differ in whether `acceptJob` reverts.
+   *
+   * Dropping it is why the board offered Accept on job #1 for 46 minutes after
+   * it became unacceptable, and why pressing it produced a digest instead of a
+   * sentence. `readJobsV2` decoded all four deadlines; this shape kept none.
+   */
+  deadline: number | null
+  /** True when `deadline` has passed: the state is stale and the only thing
+   *  left to do is call the exit that settles it. */
+  lapsed: boolean
 }
 
 /**
@@ -172,6 +191,7 @@ async function fetchJobsUncached(): Promise<OnchainJob[]> {
   // `?? 'Open'` further down turns V2's eighth status (`Expired`) into `Open`,
   // which puts every timeout-settled job back on the board as available work.
   const { isV2Market, readJobsV2 } = await import('./labor-v2')
+  const nowSec = Math.floor(Date.now() / 1000)
   if (await isV2Market()) {
     const v2 = await readJobsV2()
     return v2
@@ -190,6 +210,8 @@ async function fetchJobsUncached(): Promise<OnchainJob[]> {
         status: j.status,
         specHash: j.specHash,
         resultHash: j.resultHash,
+        deadline: governingDeadline(j),
+        lapsed: hasLapsed(j, nowSec),
       }))
       .reverse()
   }
@@ -214,6 +236,11 @@ async function fetchJobsUncached(): Promise<OnchainJob[]> {
     status: JOB_STATUS[j[4]] ?? 'Open',
     specHash: j[5],
     resultHash: j[6],
+    // V1 has no deadlines at all — that is the whole reason V2 exists. Null and
+    // false are the honest answers here, not placeholders: nothing lapses on a
+    // contract with nothing to lapse.
+    deadline: null,
+    lapsed: false,
   }))
   return jobs.reverse() // newest first
 }

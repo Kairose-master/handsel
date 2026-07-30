@@ -22,7 +22,13 @@ type Job = {
   worker: string
   bounty: number
   minScore: number
-  status: 'Open' | 'Accepted' | 'Submitted' | 'Completed' | 'Cancelled' | 'Disputed' | 'Refunded'
+  status: 'Open' | 'Accepted' | 'Submitted' | 'Completed' | 'Cancelled' | 'Disputed' | 'Refunded' | 'Expired'
+  /** Unix seconds for the deadline governing `status`; null on a V1 market. */
+  deadline: number | null
+  /** `deadline` has passed and no exit has settled it yet. `status` still reads
+   *  as the live state, so this is the only thing distinguishing a job that can
+   *  be acted on from one that only looks like it can. */
+  lapsed: boolean
   title: string
   description: string | null
   acceptanceCriteria: string | null
@@ -70,6 +76,10 @@ const STATUS_STYLE: Record<Job['status'], string> = {
   Cancelled: 'bg-muted text-muted-foreground',
   Disputed: 'bg-destructive/15 text-destructive',
   Refunded: 'bg-muted text-muted-foreground',
+  // A deadline settled this and NOBODY judged the work — not Completed (someone
+  // said it was good) and not Refunded (someone said it was not). Neutral, since
+  // it is an absence of a verdict rather than a bad one.
+  Expired: 'bg-muted text-muted-foreground',
 }
 
 export default function JobsPage() {
@@ -575,7 +585,13 @@ export default function JobsPage() {
                       )}
                     </div>
                     <div className="flex shrink-0 flex-col gap-2">
-                      {job.status === 'Open' && workerFor(job) && (
+                      {/* `status === 'Open'` is not sufficient. The contract's
+                          enum changes only when somebody CALLS an exit, so a job
+                          whose open window lapsed still reads Open until
+                          expireOpen runs — and acceptJob reverts on it. Offering
+                          the button anyway is how pressing Accept produced a
+                          digest with no readable reason. */}
+                      {job.status === 'Open' && workerFor(job) && !job.lapsed && (
                         <button
                           onClick={() => run(job.id, () => acceptJobAction(workerFor(job)!, job.id))}
                           disabled={busy === job.id}
@@ -583,6 +599,11 @@ export default function JobsPage() {
                         >
                           {busy === job.id ? '…' : t('jobs.actions.accept')}
                         </button>
+                      )}
+                      {job.lapsed && (
+                        <p className="max-w-[11rem] text-xs text-muted-foreground">
+                          {t('jobs.lapsed.note')}
+                        </p>
                       )}
                       {job.status === 'Submitted' && job.mine && (
                         <>

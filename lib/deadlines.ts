@@ -77,6 +77,34 @@ const EXITS: ReadonlyArray<{ status: V2JobStatus; deadline: keyof DeadlineJob; f
 ]
 
 /**
+ * The deadline governing a job's current state, or null when that state holds no
+ * money and has nothing pending.
+ *
+ * The same table `dueDeadlines` uses, exposed for READERS rather than sweepers.
+ * A UI needs it for the reason the sweep exists at all: the contract's status
+ * enum changes only when somebody CALLS an exit, so `Open` means "open, OR
+ * lapsed and not yet settled". Those two are identical in `status` and differ in
+ * whether `acceptJob` reverts — which is how the board came to offer Accept on a
+ * job that had been unacceptable for 46 minutes, and why pressing it produced a
+ * digest instead of a sentence.
+ */
+export function governingDeadline(job: DeadlineJob): number | null {
+  const exit = EXITS.find((e) => e.status === job.status)
+  if (!exit) return null
+  const at = job[exit.deadline] as number
+  // Same zero-guard as dueDeadlines: a missing deadline is "unknown", never
+  // "overdue since 1970".
+  return at > 0 ? at : null
+}
+
+/** Whether the state is stale: the deadline passed and no exit has run yet. */
+export function hasLapsed(job: DeadlineJob, nowSec: number): boolean {
+  const at = governingDeadline(job)
+  // `>=` matches every guard in the contract, and dueDeadlines below.
+  return at !== null && nowSec >= at
+}
+
+/**
  * The calls that are due right now, oldest deadline first.
  *
  * Oldest-first because a capped pass must not starve the job that has been

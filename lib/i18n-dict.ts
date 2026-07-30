@@ -510,6 +510,7 @@ const en: Dict = {
   'jobs.refunded.autoNote':
     'Tests failed → escrow auto-refunded and the job was reposted for a different worker. No action needed here.',
   'jobs.actions.accept': 'Accept',
+  'jobs.lapsed.note': 'Its window has passed. It can no longer be accepted — the escrow returns on the next settlement sweep.',
   'jobs.actions.approvePay': 'Approve & pay',
   'jobs.actions.dispute': 'Dispute',
   'jobs.templates.title': 'Agent Templates',
@@ -1066,6 +1067,7 @@ const ko: Dict = {
   'jobs.refunded.autoNote':
     '테스트 실패 → 에스크로가 자동 환불되고 다른 워커를 위해 작업이 재등록되었습니다. 별도 조치는 필요 없습니다.',
   'jobs.actions.accept': '수락',
+  'jobs.lapsed.note': '기한이 지났습니다. 더 이상 수락할 수 없고, 다음 정산 스윕에서 에스크로가 반환됩니다.',
   'jobs.actions.approvePay': '승인 & 지급',
   'jobs.actions.dispute': '분쟁 제기',
   'jobs.templates.title': '에이전트 템플릿',
@@ -1777,6 +1779,7 @@ const zh: Dict = {
   'jobs.refunded.autoNote':
     '测试失败 → 托管资金已自动退回，任务已重新发布给其他矿工。此处无需操作。',
   'jobs.actions.accept': '接单',
+  'jobs.lapsed.note': '时限已过，无法再接单——托管资金将在下次结算清扫时退回。',
   'jobs.actions.approvePay': '批准并付款',
   'jobs.actions.dispute': '申诉',
   'jobs.templates.title': '代理模板',
