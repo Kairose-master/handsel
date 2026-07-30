@@ -53,13 +53,59 @@ bounded to misdirecting a *disputed* job's escrow between worker and requester
 
 Separate project from the testnet one. Never reuse.
 
+The project for this deployment exists. Its paymaster is
+`0xEB49a384cCeAA47238d97cb1Dc5629e3f624e4d3`, and reading it on Base mainnet
+rather than taking it on trust:
+
+| read | value |
+|---|---|
+| bytecode at that address, chain 8453 | 4422 bytes — a `VerifyingPaymaster` |
+| `entryPoint()` | `0x0000000071727De22E5E9d8BAf0edAc6f37da032` (v0.7) |
+| `owner()` = `verifyingSigner()` | `0xEcbC06bD5E6EceBed60196E469b7559fFC584479` — ZeroDev's, not ours |
+| `getDepositInfo(pm).deposit` at the EntryPoint | **0** |
+| same address on Base Sepolia | no contract |
+
+**Mainnet-only, and the $10 is not an on-chain deposit.** It is a balance on the
+sandbox plan, held ZeroDev-side; the EntryPoint deposit reads zero. That is
+consistent with a provider funding the deposit as it routes operations, and it is
+also exactly what an unfunded paymaster looks like — the two are
+indistinguishable from chain state. So do not read `sponsored: true` as proof of
+anything until step 8: the first sponsored UserOp either lands or fails
+validation with `AA31 paymaster deposit too low`, and that is the only test that
+settles it.
+
+**What a UserOp costs**, measured at block 49316999 (base fee 0.005 gwei;
+ETH/USD 1916.07 from the Chainlink feed on Base) rather than estimated:
+
+| gas | ETH | USD |
+|---|---|---|
+| 300k | 0.0000018 | $0.0035 |
+| 500k | 0.0000030 | **$0.0058** |
+| 800k | 0.0000048 | $0.0092 |
+
+L2 execution only — Base's L1 data fee is extra, small enough post-blobs that the
+honest figure comes off the first real receipt. At 500k gas the grant is about
+**1,700 operations**, or ~280 full job cycles at six ops each.
+
+So $10 is not tight. What is wrong is the shape of the app's budget, not its
+size:
+
 | setting | value | why |
 |---|---|---|
-| paymaster deposit | what you accept losing | the only cap that cannot be misconfigured |
-| daily cap | **$10** | above the app's `USER_LANE` 5 + `KEEPER_LANE` 2 = $7, so the app degrades first |
+| `SPONSOR_GRANT_TOTAL_USD` | **8** | the axis the app was missing — every other budget is a 24h window, and a window cannot see a total. $5 + $2 a day is ~1,200 ops, so two days empties a grant nobody refills. $2 of headroom against ZeroDev's own accounting |
+| `USER_LANE_GAS_BUDGET_USD` | **0.50** | ~87 ops/day, ~14 user-side job cycles — fourteen days of runway at full burn |
+| `KEEPER_LANE_GAS_BUDGET_USD` | **0.20** | ~35 ops/day against a sweep bounded at 6 calls a pass |
+| ZeroDev daily cap | **$1** | above the app's $0.70, so the app degrades first — the outer wall, not the only one |
 | per-sender rate | 200/day | keeper does ≤6 calls per 5-minute pass |
-| per-UserOp ceiling | ~10× a measured `postJob` | set after step 4, from the real number |
+| per-UserOp ceiling | **$0.06** | ~10× the measured $0.0058 |
 | contract allowlist | market + registry | add after step 4 |
+
+The grant ceiling splits the way the daily lanes already do: the user lane stops
+at `USER_GRANT_SHARE` (75%, so $6 of $8) and degrades to self-pay, and the last
+quarter is reachable only by the keeper. Someone who burns sponsored gas costs
+the operator money; someone who thereby stops `expireOpen`, `reclaimJob`,
+`expireReview` and `expireDispute` freezes everyone else's escrow — the worse
+failure, and the one the split exists to prevent.
 
 Then `PAYMASTER_METERED=true` — the acknowledgement, not the policy. The guard
 refuses every money path without it.
@@ -132,6 +178,9 @@ CREDIT_REGISTRY_ADDRESS=<step 3>
 ARBITER_ADDRESS=<new oracle address>
 ZERODEV_RPC=<step 1>
 PAYMASTER_METERED=true
+SPONSOR_GRANT_TOTAL_USD=8
+USER_LANE_GAS_BUDGET_USD=0.50
+KEEPER_LANE_GAS_BUDGET_USD=0.20
 PLATFORM_FEE_BPS=0
 FAUCET_MAX_PER_DAY=0
 ANTHROPIC_API_KEY=...

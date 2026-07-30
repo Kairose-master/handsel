@@ -60,6 +60,52 @@ export const USER_LANE_BUDGET_USD = envNum('USER_LANE_GAS_BUDGET_USD', 5)
  */
 export const KEEPER_LANE_BUDGET_USD = envNum('KEEPER_LANE_GAS_BUDGET_USD', 2)
 
+/**
+ * The whole grant, spent once — the axis every other budget in this file is
+ * missing.
+ *
+ * `AGENT_GAS_BUDGET_USD`, `USER_LANE_BUDGET_USD` and `KEEPER_LANE_BUDGET_USD`
+ * are all measured over GAS_WINDOW_MS, which silently assumes the pool refills.
+ * A prepaid paymaster balance does not refill. $7 a day against a $10 grant that
+ * nobody tops up is not a cap, it is a two-day countdown — and every one of
+ * those budgets would read as "within budget" on the last day exactly as it did
+ * on the first, because a rolling window cannot see a total.
+ *
+ * Unset means no lifetime ceiling, which is today's behaviour and the right
+ * default for a funded operator. A number — including an explicit `0` — is the
+ * ceiling. `0` is honoured rather than treated as "unset" on purpose: that is
+ * the FAUCET_MAX_PER_DAY mistake, where `Number(x) || 15` turned a deliberate
+ * off switch into fifteen.
+ */
+export const SPONSOR_GRANT_USD = envGrant('SPONSOR_GRANT_TOTAL_USD')
+
+/**
+ * The share of the grant the user lane may spend, leaving the rest for keepers.
+ *
+ * The same reasoning as the two per-day lanes, applied to the total: an attacker
+ * who drains the grant must not thereby stop `expireReview`, `expireDispute`,
+ * `reclaimJob` and `expireOpen`, because those free OTHER people's escrow.
+ * Draining sponsored gas costs the operator money; draining it *and* freezing
+ * everyone's escrow is the strictly worse failure the v2 rewrite exists to close.
+ * So user traffic hits its wall at 75% of the grant and degrades to self-pay,
+ * and the last quarter is reachable only by the backstop.
+ */
+export const USER_GRANT_SHARE = 0.75
+
+/** Grant ceiling: a number (0 allowed) or null for "no lifetime ceiling". */
+function envGrant(name: string): number | null {
+  const raw = process.env[name]
+  if (raw === undefined || raw.trim() === '') return null
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n < 0) {
+    // Loud, and unbounded rather than zero: a typo must not silently switch off
+    // sponsorship for the whole deployment.
+    console.error(`[gas-budget] ${name}=${JSON.stringify(raw)} is not a usable amount — no lifetime ceiling applied`)
+    return null
+  }
+  return n
+}
+
 function envNum(name: string, fallback: number): number {
   const raw = process.env[name]
   if (raw === undefined || raw.trim() === '') return fallback
@@ -80,6 +126,12 @@ export type SponsorInput = {
   canSelfPay: boolean
   agentBudgetUsd?: number
   laneBudgetUsd?: number
+  /**
+   * Sponsored USD consumed since the beginning, across every lane and agent —
+   * NOT windowed. Omit when the total is not being tracked.
+   */
+  grantSpentUsd?: number
+  grantUsd?: number | null
 }
 
 export type SponsorVerdict = { decision: SponsorDecision; reason: string }
@@ -94,6 +146,34 @@ export type SponsorVerdict = { decision: SponsorDecision; reason: string }
 export function decideSponsorship(input: SponsorInput): SponsorVerdict {
   const laneBudget =
     input.laneBudgetUsd ?? (input.lane === 'keeper' ? KEEPER_LANE_BUDGET_USD : USER_LANE_BUDGET_USD)
+
+  // The lifetime ceiling is checked BEFORE the per-day ones, because it is the
+  // only one that can be true on a day when nothing has been spent yet. A
+  // rolling window reads "within budget" on the day the money runs out.
+  const grant = input.grantUsd === undefined ? SPONSOR_GRANT_USD : input.grantUsd
+  const grantSpent = input.grantSpentUsd
+  if (grant !== null && typeof grantSpent === 'number' && Number.isFinite(grantSpent)) {
+    const ceiling = input.lane === 'keeper' ? grant : grant * USER_GRANT_SHARE
+    if (grantSpent >= ceiling) {
+      if (input.lane === 'keeper') {
+        return {
+          decision: 'refuse',
+          reason:
+            'the sponsorship grant is spent — settlement sweeps are not running. This is not a daily limit that ' +
+            'resets tomorrow; the paymaster needs funding.',
+        }
+      }
+      return input.canSelfPay
+        ? {
+            decision: 'self_pay',
+            reason: `the user lane's share of the sponsorship grant is spent — caller pays its own gas`,
+          }
+        : {
+            decision: 'refuse',
+            reason: `the user lane's share of the sponsorship grant is spent and the caller cannot pay its own gas`,
+          }
+    }
+  }
 
   if (input.lane === 'keeper') {
     // The reserve is not shared and does not degrade to self-pay: there is no
@@ -251,6 +331,28 @@ export async function gasSpentInWindow(
     // to be here.
     console.error('[gas-budget] LEDGER UNREADABLE — sponsoring without a limit:', error)
     return { lane: 0, agent: 0 }
+  }
+}
+
+/**
+ * Everything ever sponsored, across both lanes and every agent.
+ *
+ * No window and no lane filter, because the grant has neither. Returns null when
+ * the ledger cannot be read — and the caller must NOT substitute zero. Zero is
+ * the reading that says "spend freely", which is exactly what an unreadable
+ * ledger produced the last time this file trusted one (see `ensureLedger`), and
+ * on a finite grant the cost of that mistake is the whole grant rather than one
+ * day of it.
+ */
+export async function gasSpentTotal(): Promise<number | null> {
+  try {
+    await ensureLedger()
+    const { pool } = await import('@/lib/db')
+    const { rows } = await pool.query<{ total: string | null }>('SELECT sum(usd) AS total FROM gas_spend')
+    return Number(rows[0]?.total ?? 0) || 0
+  } catch (error) {
+    console.error('[gas-budget] lifetime spend unreadable — grant ceiling not applied this call:', error)
+    return null
   }
 }
 

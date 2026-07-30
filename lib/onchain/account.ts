@@ -103,14 +103,18 @@ async function ensureAgentGas(address: Address, agentId: string, lane: 'user' | 
   const balance = await client.getBalance({ address })
   if (balance >= AGENT_GAS_FLOOR) return
 
-  const { decideSponsorship, gasSpentInWindow, recordGasSpend, AGENT_TOPUP_COST_USD } = await import(
+  const { decideSponsorship, gasSpentInWindow, gasSpentTotal, recordGasSpend, AGENT_TOPUP_COST_USD } = await import(
     '@/lib/gas-budget'
   )
   const spent = await gasSpentInWindow(lane, agentId)
+  const grantSpent = await gasSpentTotal()
   const verdict = decideSponsorship({
     lane,
     agentSpentUsd: spent.agent,
     laneSpentUsd: spent.lane,
+    // Undefined, not zero, when the total could not be read — zero would mean
+    // "the grant is untouched", which is the answer that spends it.
+    grantSpentUsd: grantSpent ?? undefined,
     // There is no self-pay for a top-up: the whole point is that this account
     // has no ether. `sponsor` or nothing.
     canSelfPay: false,
@@ -413,12 +417,14 @@ export async function sendAgentCalls(
   // traffic cannot touch, because a single pool would let a gas attack disable
   // the permissionless exits that free OTHER people's escrow.
   const lane = opts.lane ?? 'user'
-  const { decideSponsorship, gasSpentInWindow, recordGasSpend } = await import('@/lib/gas-budget')
+  const { decideSponsorship, gasSpentInWindow, gasSpentTotal, recordGasSpend } = await import('@/lib/gas-budget')
   const spent = await gasSpentInWindow(lane, agentId)
+  const grantSpent = await gasSpentTotal()
   const verdict = decideSponsorship({
     lane,
     agentSpentUsd: spent.agent,
     laneSpentUsd: spent.lane,
+    grantSpentUsd: grantSpent ?? undefined,
     // Kernel mode CAN self-pay — but from the kernel account, not the EOA.
     //
     // This was false for a while, and the reason it was false is still true: the
