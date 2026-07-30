@@ -119,3 +119,75 @@ describe('the fee trap this exists to catch', () => {
     expect(src).toContain('decimalsCache')
   })
 })
+
+/**
+ * The blockers fire on a realistic mainnet config — proven before deploying.
+ *
+ * Wiring the guard is worth nothing if the config assembled from a real
+ * environment happens to satisfy every condition by accident. These use the pure
+ * function directly with the values a Base-mainnet deployment would actually
+ * have, so what refuses is known before anybody flips ONCHAIN_CHAIN.
+ */
+describe('what a Base mainnet deployment would be refused for', () => {
+  const base = {
+    isRealMoney: true,
+    escrowTokenAddress: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+    laborMarketAddress: '0xd9bcf1740d4721988ec2c579e2ec71d0eb904a09',
+    paymasterMeteredAck: true,
+    faucetEnabled: false,
+    contractFeeBps: 200,
+    offchainFeeBps: 0,
+  }
+
+  it('passes when everything the deploy checklist names is done', async () => {
+    const { realMoneyBlockers } = await import('@/lib/onchain/mainnet-guard')
+    expect(realMoneyBlockers(base)).toEqual([])
+  })
+
+  it('refuses the double fee an unset PLATFORM_FEE_BPS produces', async () => {
+    // The single likeliest mainnet misconfiguration, because the variable
+    // DEFAULTS to 200 — forgetting it is the failure, not mistyping it.
+    const { realMoneyBlockers } = await import('@/lib/onchain/mainnet-guard')
+    const codes = realMoneyBlockers({ ...base, offchainFeeBps: 200 }).map((b) => b.code)
+    expect(codes).toContain('fee-charged-twice')
+  })
+
+  it('refuses a faucet that spends real money on practice work', async () => {
+    const { realMoneyBlockers } = await import('@/lib/onchain/mainnet-guard')
+    const codes = realMoneyBlockers({ ...base, faucetEnabled: true }).map((b) => b.code)
+    expect(codes).toContain('faucet-enabled')
+  })
+
+  it('refuses an unacknowledged paymaster', async () => {
+    const { realMoneyBlockers } = await import('@/lib/onchain/mainnet-guard')
+    const codes = realMoneyBlockers({ ...base, paymasterMeteredAck: false }).map((b) => b.code)
+    expect(codes).toContain('paymaster-unmetered')
+  })
+
+  it('refuses a token whose decimals are not six', async () => {
+    // Not paranoia about USDC — paranoia about pointing at the wrong token. Every
+    // bounty, cap and fee is scaled by a compile-time 6, so an 18-decimal token
+    // escrows a $5 bounty as $5,000,000 and nothing errors until settlement.
+    const { decimalsBlocker } = await import('@/lib/onchain/mainnet-guard')
+    expect(decimalsBlocker(18, 6)?.code).toBe('token-decimals-mismatch')
+    expect(decimalsBlocker(6, 6)).toBeNull()
+    // A failed read is not a mismatch: an RPC blip must not stop a working market.
+    expect(decimalsBlocker(null, 6)).toBeNull()
+  })
+
+  it('stays silent on every testnet, so nobody switches it off', async () => {
+    const { realMoneyBlockers } = await import('@/lib/onchain/mainnet-guard')
+    // Every blocker tripped at once, and still nothing — because it is a testnet.
+    expect(
+      realMoneyBlockers({
+        isRealMoney: false,
+        escrowTokenAddress: '',
+        laborMarketAddress: '',
+        paymasterMeteredAck: false,
+        faucetEnabled: true,
+        contractFeeBps: 200,
+        offchainFeeBps: 200,
+      }),
+    ).toEqual([])
+  })
+})
