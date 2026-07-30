@@ -148,6 +148,24 @@ its own gas, and the paymaster is not involved until agents transact. If the
 answer is slow, `PAYMASTER_DISABLED` in `.env.example` runs the market without
 one.
 
+### CDP accepts Kernel accounts; the monthly figure is a limit, not a credit
+
+Confirmed against the real endpoint on Base mainnet. `pm_getPaymasterStubData`
+for a counterfactual Kernel v3.1 sender returned **`payment method not found`** —
+which is the answer to the question the Base docs do not cover, because reaching
+a billing check means the chain, the EntryPoint version, the sender type and the
+contract allowlist were all accepted first. A provider that rejected Kernel
+accounts would have said so earlier.
+
+So the only blocker is billing. "$10 monthly gas sponsorship limit" is a ceiling
+on what may be charged, not a balance that was granted; with no payment method
+behind it, nothing is sponsored.
+
+Worth contrasting with the same condition at the other provider, which surfaced
+as `AA21 didn't pay prefund` — a funding error, for a billing cause, that
+survived actually funding the paymaster's on-chain deposit. One sentence versus
+two hours.
+
 ### A policy that was never saved refuses everything
 
 Worth knowing before reading any error from this project: **an unsaved policy is
