@@ -65,14 +65,24 @@ rather than taking it on trust:
 | `getDepositInfo(pm).deposit` at the EntryPoint | **0** |
 | same address on Base Sepolia | no contract |
 
-**Mainnet-only, and the $10 is not an on-chain deposit.** It is a balance on the
-sandbox plan, held ZeroDev-side; the EntryPoint deposit reads zero. That is
-consistent with a provider funding the deposit as it routes operations, and it is
-also exactly what an unfunded paymaster looks like — the two are
-indistinguishable from chain state. So do not read `sponsored: true` as proof of
-anything until step 8: the first sponsored UserOp either lands or fails
-validation with `AA31 paymaster deposit too low`, and that is the only test that
-settles it.
+**Mainnet-only, and the $10 is not an on-chain deposit — and it is not reaching
+the paymaster either.** The deposit above reads zero, and asking the project to
+sponsor a real operation returns `AA21 didn't pay prefund` from
+`pm_getPaymasterStubData`. An operation that names a paymaster makes the
+PAYMASTER owe the EntryPoint's prefund, so a deposit of zero fails precisely
+there.
+
+The chain read alone was written off here as ambiguous — a provider might fund
+the deposit just in time, and an empty deposit looks the same either way. It was
+not ambiguous; it was correct, and the sponsorship attempt is what showed it. A
+balance in a dashboard is an accounting entry. `getDepositInfo(pm).deposit` is
+whether anything can actually be paid.
+
+**Sponsorship does not work on this project today.** That does not block steps 2
+through 6: contracts are deployed by an EOA paying its own gas, and the paymaster
+is not involved until agents transact. Take it up with ZeroDev — whether the
+sandbox balance covers mainnet at all, and what funds the paymaster's deposit —
+while the rest proceeds.
 
 **What a UserOp costs**, measured at block 49316999 (base fee 0.005 gwei;
 ETH/USD 1916.07 from the Chainlink feed on Base) rather than estimated:
