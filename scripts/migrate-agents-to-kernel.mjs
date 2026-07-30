@@ -18,8 +18,19 @@
  * Usage:
  *   DATABASE_URL=… AGENT_OWNER_PRIVATE_KEY=… ONCHAIN_RPC_URL=… \
  *   ONCHAIN_CHAIN=base-sepolia USDC_ADDRESS=0x… \
- *   node scripts/migrate-agents-to-kernel.mjs            # report only
- *   node scripts/migrate-agents-to-kernel.mjs --send     # sweep USDC + spare ETH
+ *   node scripts/migrate-agents-to-kernel.mjs                  # report only
+ *   node scripts/migrate-agents-to-kernel.mjs --send           # → kernel addresses
+ *   node scripts/migrate-agents-to-kernel.mjs --send --to 0xW  # → one wallet
+ *
+ * `--to` consolidates every agent's balance into a single address instead of its
+ * own kernel account, and it is the better default when one key does several jobs.
+ * On this deployment ONE key is the oracle, the arbiter, the fee recipient and the
+ * agent owner, so everything derived from it shares one fate: rotate or lose it
+ * and every agent EOA goes with it. Sweeping into a wallet whose key is held
+ * independently — a hardware wallet, a separate MetaMask account — breaks that
+ * coupling for the balance, which is the part that matters most. The cost is one
+ * extra step: the kernel accounts then start empty and have to be funded
+ * deliberately, which is arguably how it should have worked anyway.
  *
  * Run it BEFORE setting ZERODEV_RPC. Afterwards the app is in kernel mode and
  * `getAgentAccountAddress` no longer returns the address the money is at, so the
@@ -48,6 +59,11 @@ const die = (m) => {
   process.exit(1)
 }
 const send = process.argv.includes('--send')
+const toFlagIndex = process.argv.indexOf('--to')
+const sweepTo = toFlagIndex === -1 ? null : process.argv[toFlagIndex + 1]
+if (toFlagIndex !== -1 && !/^0x[0-9a-fA-F]{40}$/.test(sweepTo ?? '')) {
+  die('--to needs a 20-byte address')
+}
 
 const CHAINS = { sepolia, 'base-sepolia': baseSepolia, base }
 const chain = CHAINS[process.env.ONCHAIN_CHAIN ?? 'base-sepolia']
@@ -131,29 +147,63 @@ for (const row of rows) {
 
 console.log(`\ntotal USDC sitting on agent EOAs: ${usd(totalUsdc)}`)
 
+// The likeliest failure mode, stated instead of left to be inferred. A wrong
+// owner key derives a whole set of addresses that have never existed, every
+// balance reads 0, and nothing about that looks like "wrong key" — it looks like
+// the money is gone.
+const neither = plan.filter(
+  (p) => p.row.smartAccountAddress && p.row.smartAccountAddress.toLowerCase() !== p.eoa.address.toLowerCase() && p.row.smartAccountAddress.toLowerCase() !== p.kernel.toLowerCase(),
+)
+if (neither.length === plan.length && plan.length > 0) {
+  console.log(`
+⚠ EVERY agent's stored address matches neither derivation. That means this
+  AGENT_OWNER_PRIVATE_KEY is not the key those agents were provisioned with — the
+  addresses above are empty because they have never existed, not because the money
+  moved. Do not sweep; find the right key first. In a one-key deployment it is the
+  same value as ORACLE_PRIVATE_KEY / DEPLOYER_PRIVATE_KEY.`)
+  process.exit(1)
+}
+
 if (!send) {
   console.log(`
-Nothing was moved. To sweep each agent's USDC to its own future kernel address:
+Nothing was moved. Two ways to sweep:
 
-  node scripts/migrate-agents-to-kernel.mjs --send
+  --send              each agent's USDC → its own future kernel account
+  --send --to 0xWALLET   everything → one address you control
 
-Then set ZERODEV_RPC, redeploy, and press Provision on each agent so the stored
-address becomes the kernel one. ETH is deliberately NOT swept: in kernel mode gas
-is paid by the paymaster, so an agent EOA needs none — and leaving a little there
-costs nothing and keeps the EOA usable if you ever switch back.`)
+Prefer --to when a single key does several jobs, as it does here: one key is the
+oracle, the arbiter, the fee recipient and the agent owner, so every agent EOA
+shares that key's fate. Consolidating into an independently-held wallet breaks the
+coupling for the balance. The kernel accounts then start empty and get funded
+deliberately.
+
+Either way, afterwards: set ZERODEV_RPC, redeploy, and press Provision on each
+agent so the stored address becomes the kernel one.
+
+ETH is deliberately NOT swept. In kernel mode the paymaster pays gas so an agent
+EOA needs none, and leaving a little keeps the EOA able to move anything that
+lands on it later — including a sweep like this one.`)
   process.exit(0)
 }
 
-for (const { row, eoa, kernel, eUsdc } of plan) {
+for (const { row, eoa, kernel, eUsdc, eEth } of plan) {
   if (eUsdc === 0n) {
     console.log(`\n${row.name ?? row.id}: nothing to sweep`)
     continue
   }
+  const dest = sweepTo ?? kernel
+  // The agent pays for its own sweep, so it needs gas. Saying so beats a bare
+  // "insufficient funds for gas" from the RPC, and it is checkable up front.
+  if (eEth === 0n) {
+    console.log(`\n${row.name ?? row.id}: holds ${usd(eUsdc)} USDC but 0 ETH — cannot pay for the sweep.`)
+    console.log(`  Send a little ETH to ${eoa.address} and re-run.`)
+    continue
+  }
   const wallet = createWalletClient({ account: eoa, chain, transport: http(rpcUrl) })
-  console.log(`\n${row.name ?? row.id}: sending ${usd(eUsdc)} USDC → ${kernel}`)
+  console.log(`\n${row.name ?? row.id}: sending ${usd(eUsdc)} USDC → ${dest}${sweepTo ? ' (--to)' : ' (its kernel account)'}`)
   const hash = await wallet.sendTransaction({
     to: usdcAddress,
-    data: encodeFunctionData({ abi: ERC20, functionName: 'transfer', args: [kernel, eUsdc] }),
+    data: encodeFunctionData({ abi: ERC20, functionName: 'transfer', args: [dest, eUsdc] }),
   })
   const receipt = await pub.waitForTransactionReceipt({ hash })
   console.log(`  ${receipt.status === 'success' ? '✅' : '❌'} ${hash}`)
@@ -162,9 +212,15 @@ for (const { row, eoa, kernel, eUsdc } of plan) {
 console.log(`
 Swept. Next:
   1. Set ZERODEV_RPC in Vercel, redeploy.
-  2. Confirm /api/capabilities reports agentAccountMode "kernel" and
+  2. Confirm /api/capabilities reports runtime.agentAccountMode "kernel" and
      bundlerConfigured true.
   3. Press Provision on each agent — provisionSmartAccount overwrites the stored
-     address unconditionally, so this is what points the app at the kernel
-     account the money is now in.
-  4. Re-run this script (no --send) — every agent should read stored → kernel.`)
+     address unconditionally, so this is what points the app at the kernel account.
+  4. Re-run this script (no --send) — every agent should read stored → kernel.${
+    sweepTo
+      ? `
+  5. Fund the kernel accounts. The balances went to ${sweepTo}, so the agents are
+     empty: a requester with no USDC cannot escrow a bounty and a worker with none
+     cannot post a bond. The addresses to send to are the "kernel" lines above.`
+      : ''
+  }`)
