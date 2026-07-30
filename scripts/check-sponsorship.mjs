@@ -139,31 +139,53 @@ try {
   console.log(`kernel account   : ${account.address} (counterfactual, never deployed)`)
 
   const { createZeroDevPaymasterClient } = await import('@zerodev/sdk')
+  const paymasterClient = createZeroDevPaymasterClient({ chain: base, transport: http(RPC) })
+
+  // Build the operation WITHOUT a paymaster, then ask the paymaster about it
+  // explicitly.
+  //
+  // Going through the client's own middleware returned a gas estimate with no
+  // paymaster fields and a maxFeePerGas of zero — an answer that reads like a
+  // refusal and is not one, because the middleware simply had not run. The
+  // paymaster's own method cannot be ambiguous that way: it either returns
+  // sponsorship data or it says why not.
   const kernelClient = createKernelAccountClient({
     account,
     chain: base,
     bundlerTransport: http(RPC),
     client: pub,
-    paymaster: createZeroDevPaymasterClient({ chain: base, transport: http(RPC) }),
   })
-
-  // A no-op call to the account itself. Cheapest thing that is still a real
-  // operation; the paymaster prices it without anything being sent.
-  const estimate = await kernelClient.prepareUserOperation({
+  const op = await kernelClient.prepareUserOperation({
     calls: [{ to: account.address, value: 0n, data: '0x' }],
   })
-  const pm = estimate.paymaster ?? estimate.paymasterAndData
+
+  // Fees come from the chain when the bundler did not supply them. A paymaster
+  // prices gas, so quoting against zero would price nothing.
+  let { maxFeePerGas, maxPriorityFeePerGas } = op
+  if (!maxFeePerGas || maxFeePerGas === 0n) {
+    const fees = await pub.estimateFeesPerGas()
+    maxFeePerGas = fees.maxFeePerGas
+    maxPriorityFeePerGas = fees.maxPriorityFeePerGas
+  }
+
+  const total =
+    BigInt(op.callGasLimit ?? 0n) + BigInt(op.verificationGasLimit ?? 0n) + BigInt(op.preVerificationGas ?? 0n)
+  console.log(`gas estimated    : ${total} (incl. first-time account deployment)`)
+  console.log(`maxFeePerGas     : ${Number(maxFeePerGas) / 1e9} gwei`)
+  console.log(`cost if unpaid   : ${(Number(total * maxFeePerGas) / 1e18).toFixed(9)} ETH`)
+
+  const sponsorship = await paymasterClient.getPaymasterData({
+    ...op,
+    maxFeePerGas,
+    maxPriorityFeePerGas,
+    chainId: base.id,
+    entryPointAddress: ep.address,
+    context: {},
+  })
+  const pm = sponsorship?.paymaster ?? sponsorship?.paymasterAndData
   console.log(`\npaymaster        : ${pm ? String(pm) : '(none returned)'}`)
-  if (estimate.callGasLimit !== undefined) {
-    const total =
-      BigInt(estimate.callGasLimit ?? 0n) +
-      BigInt(estimate.verificationGasLimit ?? 0n) +
-      BigInt(estimate.preVerificationGas ?? 0n) +
-      BigInt(estimate.paymasterVerificationGasLimit ?? 0n) +
-      BigInt(estimate.paymasterPostOpGasLimit ?? 0n)
-    console.log(`gas quoted       : ${total} (incl. first-time account deployment)`)
-    const wei = total * BigInt(estimate.maxFeePerGas ?? 0n)
-    console.log(`at maxFeePerGas  : ${Number(wei) / 1e18} ETH`)
+  if (sponsorship?.paymasterData) {
+    console.log(`paymasterData    : ${String(sponsorship.paymasterData).slice(0, 26)}… (${(String(sponsorship.paymasterData).length - 2) / 2} bytes)`)
   }
   quoted = Boolean(pm)
 } catch (error) {
@@ -185,6 +207,10 @@ if (quoted) {
   console.log('                                          --owner-key <key> to quote a known one.')
   console.log('  "AA20 account not deployed"          → a bug in THIS script, not your config: the')
   console.log('                                          sender carried no factory data.')
+  console.log('  "(none returned)" with no error      → the paymaster answered and declined to')
+  console.log('                                          sponsor. Check the project policy: a')
+  console.log('                                          per-UserOp ceiling below the quoted cost')
+  console.log('                                          above declines exactly like this.')
   console.log('  "insufficient" / "balance" / "funds" → the grant is not spendable on this chain.')
   console.log('  "unsupported method"                 → paymaster not enabled on the project.')
   console.log('  "chain"                              → the project is not configured for this chain.')
