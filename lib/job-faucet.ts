@@ -58,8 +58,31 @@ export function faucetReservedFor(agentScore: number, postedAt: Date | null, now
   return withinGrace && agentScore > NEW_MINER_MAX_SCORE
 }
 
-const TARGET_OPEN = () => Math.max(1, Number(process.env.FAUCET_TARGET_OPEN ?? 3) || 3)
-const MAX_PER_DAY = () => Math.max(0, Number(process.env.FAUCET_MAX_PER_DAY ?? 15) || 15)
+/**
+ * Bounds from the environment, with ZERO meaning zero.
+ *
+ * These read `Number(x) || fallback`, and `Number('0')` is `0`, which is FALSY —
+ * so `FAUCET_MAX_PER_DAY=0`, the documented way to switch the faucet off, gave
+ * 15 jobs a day instead of none. An operator turning it off got the default.
+ *
+ * That is survivable on a testnet and not on a real chain: the faucet posts
+ * practice work with real bounties, and `realMoneyBlockers` has a
+ * `faucet-enabled` blocker whose whole premise is that this switch works.
+ *
+ * `??` handles absent, an explicit NaN check handles garbage, and 0 is left
+ * alone.
+ */
+function faucetBound(name: string, fallback: number, floor: number): number {
+  const raw = process.env[name]
+  if (raw === undefined || raw.trim() === '') return fallback
+  const n = Number(raw)
+  if (!Number.isFinite(n)) return fallback
+  return Math.max(floor, n)
+}
+
+const TARGET_OPEN = () => faucetBound('FAUCET_TARGET_OPEN', 3, 1)
+/** Floor of 0, so setting it to 0 really does stop the faucet. */
+const MAX_PER_DAY = () => faucetBound('FAUCET_MAX_PER_DAY', 15, 0)
 const MAX_PER_TICK = 2
 const MIN_BALANCE_USD = 20
 const REFUEL_USD = 100

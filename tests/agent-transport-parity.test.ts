@@ -186,3 +186,17 @@ describe('self-pay is an EOA-mode concept only', () => {
     expect(account).toMatch(/canSelfPay: false/)
   })
 })
+
+describe('the deploy doc does not promise what the code stopped doing', () => {
+  it('marks self-pay degradation as EOA-only', () => {
+    // docs/mainnet-deploy.md orders three fuses and says the first "degrades to
+    // self-pay. The market keeps working." That was true when written and is now
+    // EOA-only, because canSelfPay is false on the kernel path. A deploy document
+    // promising graceful degradation that the code no longer provides is worse
+    // than no document: it is read once, on the day it matters.
+    const doc = readFileSync('docs/mainnet-deploy.md', 'utf8')
+    expect(doc).toMatch(/Step 1 is EOA-mode only/)
+    // The phrase wraps across a line and a `> ` quote prefix, so match across both.
+    expect(doc).toMatch(/kernel mode has no[\s>]+graceful degradation/i)
+  })
+})

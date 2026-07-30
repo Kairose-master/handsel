@@ -95,6 +95,27 @@ They must blow in this order:
 2. **ZeroDev cap** — all-or-nothing. Sponsorship stops, including the sweeps.
 3. **Paymaster balance** — physics.
 
+> **Step 1 is EOA-mode only, and that is deliberate.** In kernel mode the app fuse
+> REFUSES rather than degrading. "Self-pay" sends from the agent's EOA, but in
+> kernel mode the agent's USDC *and its identity* live at the kernel address.
+> Every user-lane call needs the kernel account as `msg.sender`: `postJob` and
+> `acceptJob` need its allowance, `submitWork` reverts `NotWorker` from any other
+> sender, `approveJob` reverts `NotRequester`. So self-pay there would not change
+> who pays gas, it would change which account acts — and the call fails on
+> identity with nothing in the error naming a gas budget.
+>
+> The consequence, stated rather than left to be discovered: **kernel mode has no
+> graceful degradation.** Exhausting the user lane stops user actions until the
+> 24h window rolls or `AGENT_GAS_BUDGET_USD` is raised. The keeper reserve is a
+> separate budget and unaffected, so the sweeps that free other people's escrow
+> keep running either way.
+>
+> The proper fix is not to re-enable EOA self-pay. It is to send the UserOp
+> *without* the paymaster, funded by the kernel account's own ETH — preserving
+> identity and dropping the paymaster dependence in one move. That is not
+> implemented, so **kernel mode is not production-ready on this point**, which is
+> a reason to run mainnet in EOA mode, where step 1 is true as written.
+
 So the ZeroDev cap sits *above* the app's ceiling
 (`USER_LANE` 5 + `KEEPER_LANE` 2 = **$7/day**), or the graceful layer never
 runs. And the hardest cap needs no dashboard at all: **you cannot spend a
