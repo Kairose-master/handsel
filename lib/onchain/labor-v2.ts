@@ -19,6 +19,7 @@ import { publicClient } from './clients'
 import { onchainEnv, USDC_ABI, USDC_DECIMALS } from './config'
 import { sendAgentCall, sendAgentCalls } from './account'
 import { V2_JOB_STATUS, type DeadlineJob, type ExitFn, type V2JobStatus } from '@/lib/deadlines'
+import { minimumWindowS } from '@/lib/market-clock'
 
 const fromUnits = (v: bigint) => Number(v) / 10 ** USDC_DECIMALS
 const toUnits = (usd: number) => parseUnits(usd.toFixed(USDC_DECIMALS), USDC_DECIMALS)
@@ -204,7 +205,25 @@ async function clampDeliveryWindow(requested?: number): Promise<number> {
     windowBounds = { min: Number(min), max: Number(max) }
   }
   const want = requested ?? DEFAULT_DELIVERY_WINDOW_S
-  return Math.min(Math.max(want, windowBounds.min), windowBounds.max)
+  // The floor is the LARGER of what the contract permits and what the backstop
+  // can actually cover.
+  //
+  // The deployed contract's MIN_DELIVERY_WINDOW is a permission, not a
+  // recommendation, and the live one is 600s — a window that closes eight to ten
+  // times before anything arrives to settle it. Clamping only into the
+  // contract's range would honour an explicit request for 600s and produce
+  // exactly the stranded escrow this whole invariant exists to prevent.
+  //
+  // Enforcing it here rather than only in CI matters because CI checks the
+  // deploy SCRIPT's default and the chain holds whatever was actually deployed.
+  // Those disagreed on the very next deployment: the script defaults to 4h and
+  // the contract went out with 600 because a stale shell variable survived.
+  const floor = Math.max(windowBounds.min, minimumWindowS())
+  // `max` applied LAST and unconditionally, so this can never exceed the
+  // contract's ceiling and cause a BadWindow revert — including on a contract
+  // whose ceiling is below the invariant's floor, where sending the ceiling is
+  // the best available answer.
+  return Math.min(Math.max(want, floor), windowBounds.max)
 }
 
 /**
