@@ -184,6 +184,20 @@ try {
       calls: [{ to: account.address, value: 0n, data: '0x' }],
       maxFeePerGas: fees.maxFeePerGas,
       maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
+      // Supplied, so viem skips estimation and the paymaster is asked about an
+      // operation with real limits.
+      //
+      // This is the last thing in the request that never changed. Funding the
+      // deposit did not move the error; saving a policy did not move the error;
+      // the chain, EntryPoint, gas price and request count were all verified
+      // correct and the bytes came back identical every time. An error that does
+      // not respond to its supposed causes is not measuring them — and the three
+      // zeros below were the only constant left, because viem asks for the
+      // paymaster stub BEFORE it estimates gas, so at that moment there is
+      // nothing else to send.
+      callGasLimit: 200_000n,
+      verificationGasLimit: 500_000n,
+      preVerificationGas: 100_000n,
     })
 
   /**
@@ -231,6 +245,8 @@ try {
       BigInt(sponsored.op.verificationGasLimit ?? 0n) +
       BigInt(sponsored.op.preVerificationGas ?? 0n)
     console.log(`gas accepted     : ${g} (incl. first-time account deployment)`)
+    const pm = sponsored.op.paymaster ?? sponsored.op.paymasterAndData
+    if (pm) console.log(`paymaster        : ${String(pm)}`)
   }
 
   const prefundRefused = !unsponsored.ok && /AA21|prefund/i.test(unsponsored.why)
