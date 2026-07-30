@@ -209,6 +209,23 @@ try {
 // ---------------------------------------------------------------------------
 
 console.log('')
+
+// Every address missing at once is almost never four mistakes. It is the shell:
+// `A=1 B=2` typed on a line with no command sets shell parameters that are not
+// exported, so the next line's `node` sees none of them. The variables ARE set —
+// they just did not cross into the child process.
+if (!oracle && !arbiter && !feeRecipient && !deployer) {
+  console.log('Nothing arrived. If you typed the assignments on their own line, they were set')
+  console.log('but not exported — a child process only sees exported variables. Either:')
+  console.log('')
+  console.log('  export ORACLE_ADDRESS ARBITER_ADDRESS FEE_RECIPIENT DEPLOYER_ADDRESS')
+  console.log('  node scripts/preflight-addresses.mjs')
+  console.log('')
+  console.log('  ...or put the command on the SAME line as the assignments, which is better')
+  console.log('  for anything you do not want lingering in the shell afterwards.')
+  console.log('')
+}
+
 for (const w of warnings) console.log(`WARN  ${w}\n`)
 for (const p of problems) console.log(`STOP  ${p}\n`)
 
