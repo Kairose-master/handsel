@@ -186,11 +186,37 @@ try {
       maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
     })
 
+  /**
+   * Everything the error carries, not just its headline.
+   *
+   * viem's `shortMessage` for a rejected RPC call is "RPC Request failed." — a
+   * true sentence containing none of the answer. The reason the paymaster gave
+   * lives in `details`, or in the cause chain below it, and printing only the
+   * headline turned a specific refusal into another blank.
+   */
+  const explain = (error) => {
+    const parts = []
+    const push = (v) => {
+      const t = v == null ? '' : String(v).trim()
+      if (t && t !== 'undefined' && !parts.includes(t)) parts.push(t)
+    }
+    push(error.shortMessage ?? error.message)
+    push(error.details)
+    if (Array.isArray(error.metaMessages)) error.metaMessages.forEach(push)
+    let cause = error.cause
+    for (let depth = 0; cause && depth < 5; depth++) {
+      push(cause.shortMessage ?? cause.message)
+      push(cause.details)
+      cause = cause.cause
+    }
+    return redact(parts.join('\n                   '))
+  }
+
   const attempt = async (paymaster) => {
     try {
       return { ok: true, op: await prepare(paymaster) }
     } catch (error) {
-      return { ok: false, why: redact(error.shortMessage ?? error.message ?? String(error)) }
+      return { ok: false, why: explain(error) }
     }
   }
 
