@@ -155,7 +155,13 @@ describe('self-pay in kernel mode drops the paymaster, not the identity', () => 
     // people's escrow when the user lane is drained. If keeper ops fell back to
     // agent ETH, a drained reserve would quietly become the agents' problem
     // instead of surfacing as the operator's.
-    expect(account).toMatch(/canSelfPay: lane === 'user',/)
+    //
+    // The one exception is PAYMASTER_DISABLED, where there is no reserve to
+    // drain and refusing keeper work would just stop the exits outright. The
+    // rule this asserts is the lane rule, so it is written as the lane rule
+    // plus that exception rather than as an exact line — see
+    // tests/no-paymaster-mode.test.ts for the exception's own coverage.
+    expect(account).toMatch(/canSelfPay: PAYMASTER_DISABLED \|\| lane === 'user',/)
   })
 
   it('self-pays by removing the paymaster, from the same kernel account', () => {

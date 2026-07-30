@@ -92,6 +92,24 @@ export const SPONSOR_GRANT_USD = envGrant('SPONSOR_GRANT_TOTAL_USD')
  */
 export const USER_GRANT_SHARE = 0.75
 
+/**
+ * Run with no paymaster at all — every account pays its own gas.
+ *
+ * Not the same state as an exhausted budget, and the difference is why this is
+ * an explicit switch rather than something inferred from a failure. An exhausted
+ * budget means the operator's pool ran out and the market should degrade; no
+ * paymaster means there was never a pool, and the sponsored path is not a
+ * fallback but a dead end — an operation naming a paymaster with no EntryPoint
+ * deposit fails with `AA21 didn't pay prefund` no matter how much budget this
+ * file believes is left.
+ *
+ * On Base that is a survivable way to run. An operation costs well under a cent,
+ * so an agent kernel holding a dollar of ether can work for weeks. What it costs
+ * is the property that agents need no ether at all, which is a UX claim, not a
+ * correctness one.
+ */
+export const PAYMASTER_DISABLED = process.env.PAYMASTER_DISABLED === 'true'
+
 /** Grant ceiling: a number (0 allowed) or null for "no lifetime ceiling". */
 function envGrant(name: string): number | null {
   const raw = process.env[name]
@@ -132,6 +150,8 @@ export type SponsorInput = {
    */
   grantSpentUsd?: number
   grantUsd?: number | null
+  /** False when no paymaster exists to sponsor anything. Defaults to the env. */
+  paymasterAvailable?: boolean
 }
 
 export type SponsorVerdict = { decision: SponsorDecision; reason: string }
@@ -144,6 +164,22 @@ export type SponsorVerdict = { decision: SponsorDecision; reason: string }
  * call time — the budgets come in as arguments so a test can sit exactly on one.
  */
 export function decideSponsorship(input: SponsorInput): SponsorVerdict {
+  // First, because it is not a budget question. With no paymaster there is
+  // nothing to meter and nothing to fall back FROM: the sponsored path does not
+  // exist, so reaching any of the budget branches below would be reasoning about
+  // a pool that was never there.
+  const paymasterAvailable = input.paymasterAvailable ?? !PAYMASTER_DISABLED
+  if (!paymasterAvailable) {
+    return input.canSelfPay
+      ? { decision: 'self_pay', reason: 'no paymaster configured — this account pays its own gas' }
+      : {
+          decision: 'refuse',
+          reason:
+            'no paymaster is configured and this caller cannot pay its own gas. Fund the account, or ' +
+            'configure a paymaster.',
+        }
+  }
+
   const laneBudget =
     input.laneBudgetUsd ?? (input.lane === 'keeper' ? KEEPER_LANE_BUDGET_USD : USER_LANE_BUDGET_USD)
 

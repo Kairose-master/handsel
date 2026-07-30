@@ -21,6 +21,7 @@
  * the `fee-charged-twice` blocker, and it was unreachable.
  */
 import { CHAIN, USDC_DECIMALS, onchainEnv, USDC_ABI } from './config'
+import { PAYMASTER_DISABLED } from '@/lib/gas-budget'
 import { publicClient } from './clients'
 import { LABOR_MARKET_V2_ABI } from './labor-v2-artifact'
 import { platformFeeBps } from '@/lib/platform-fee'
@@ -125,7 +126,12 @@ export async function realMoneyStatus(): Promise<RealMoneyStatus> {
     isRealMoney: real,
     escrowTokenAddress: onchainEnv.usdcAddress,
     laborMarketAddress: onchainEnv.laborMarketAddress,
-    paymasterMeteredAck: onchainEnv.paymasterMeteredAck,
+    // PAYMASTER_DISABLED satisfies the acknowledgement, because the thing being
+    // acknowledged does not exist. The blocker asks the operator to confirm a
+    // spending policy on sponsored gas; with no paymaster there is no sponsored
+    // gas, and demanding a promise about a pool that was never created would
+    // block a deployment for a risk it structurally cannot have.
+    paymasterMeteredAck: onchainEnv.paymasterMeteredAck || PAYMASTER_DISABLED,
     // FAUCET_MAX_PER_DAY=0 is the off switch. It only became one today — the
     // parse used `Number(x) || 15`, so an explicit zero fell through to 15.
     faucetEnabled: faucetMaxPerDay() > 0,

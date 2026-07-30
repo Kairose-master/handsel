@@ -417,7 +417,7 @@ export async function sendAgentCalls(
   // traffic cannot touch, because a single pool would let a gas attack disable
   // the permissionless exits that free OTHER people's escrow.
   const lane = opts.lane ?? 'user'
-  const { decideSponsorship, gasSpentInWindow, gasSpentTotal, recordGasSpend } = await import('@/lib/gas-budget')
+  const { decideSponsorship, gasSpentInWindow, gasSpentTotal, recordGasSpend, PAYMASTER_DISABLED } = await import('@/lib/gas-budget')
   const spent = await gasSpentInWindow(lane, agentId)
   const grantSpent = await gasSpentTotal()
   const verdict = decideSponsorship({
@@ -441,7 +441,12 @@ export async function sendAgentCalls(
     // exits keep freeing other people's escrow when the user lane is drained; if
     // keeper ops fell back to agent ETH, a drained reserve would silently become
     // the agents' problem instead of surfacing as the operator's.
-    canSelfPay: lane === 'user',
+    //
+    // That reasoning is about a reserve that RAN OUT. With no paymaster there is
+    // no reserve to drain and nothing being hidden — refusing keeper work would
+    // just stop the permissionless exits outright, which is the failure the two
+    // lanes exist to prevent. So in that mode the keeper self-pays too.
+    canSelfPay: PAYMASTER_DISABLED || lane === 'user',
   })
 
   if (verdict.decision === 'refuse') {
