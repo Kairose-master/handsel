@@ -71,13 +71,32 @@ export const KEEPER_LANE_BUDGET_USD = envNum('KEEPER_LANE_GAS_BUDGET_USD', 2)
  * those budgets would read as "within budget" on the last day exactly as it did
  * on the first, because a rolling window cannot see a total.
  *
- * Unset means no lifetime ceiling, which is today's behaviour and the right
- * default for a funded operator. A number — including an explicit `0` — is the
- * ceiling. `0` is honoured rather than treated as "unset" on purpose: that is
- * the FAUCET_MAX_PER_DAY mistake, where `Number(x) || 15` turned a deliberate
- * off switch into fifteen.
+ * Unset means no ceiling, which is today's behaviour and the right default for a
+ * funded operator. A number — including an explicit `0` — is the ceiling. `0` is
+ * honoured rather than treated as "unset" on purpose: that is the
+ * FAUCET_MAX_PER_DAY mistake, where `Number(x) || 15` turned a deliberate off
+ * switch into fifteen.
  */
 export const SPONSOR_GRANT_USD = envGrant('SPONSOR_GRANT_TOTAL_USD')
+
+/**
+ * Whether the ceiling above is a total or an allowance that comes back.
+ *
+ * Written for a one-time grant, on the belief that this deployment's $10 was
+ * money already deposited. The plan says otherwise: "$10 monthly gas sponsorship
+ * limit". A monthly allowance measured as a lifetime total stops sponsorship
+ * permanently the first month it is reached, while the real allowance renews —
+ * the same class of mistake as the daily windows it was added to fix, in the
+ * opposite direction. One measured too short a period; this measured one with no
+ * end.
+ *
+ * Unset keeps the total, which is right for a grant that is genuinely spent
+ * once. `30` is the shape of a monthly allowance. A rolling window rather than a
+ * calendar month, deliberately: it cannot be gamed by spending on the 31st and
+ * again on the 1st, and where it disagrees with the biller it is the stricter of
+ * the two.
+ */
+export const SPONSOR_GRANT_WINDOW_DAYS = envGrant('SPONSOR_GRANT_WINDOW_DAYS')
 
 /**
  * The share of the grant the user lane may spend, leaving the rest for keepers.
@@ -384,7 +403,17 @@ export async function gasSpentTotal(): Promise<number | null> {
   try {
     await ensureLedger()
     const { pool } = await import('@/lib/db')
-    const { rows } = await pool.query<{ total: string | null }>('SELECT sum(usd) AS total FROM gas_spend')
+    // Over the grant's window when it has one, over all time when it does not.
+    // A monthly allowance counted forever refuses in month two for money that
+    // was spent in month one.
+    const days = SPONSOR_GRANT_WINDOW_DAYS
+    const { rows } =
+      days === null || days <= 0
+        ? await pool.query<{ total: string | null }>('SELECT sum(usd) AS total FROM gas_spend')
+        : await pool.query<{ total: string | null }>(
+            'SELECT sum(usd) AS total FROM gas_spend WHERE created_at >= now() - ($1 || \' days\')::interval',
+            [String(days)],
+          )
     return Number(rows[0]?.total ?? 0) || 0
   } catch (error) {
     console.error('[gas-budget] lifetime spend unreadable — grant ceiling not applied this call:', error)

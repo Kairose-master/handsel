@@ -121,26 +121,32 @@ failure, and the one the split exists to prevent.
 Then `PAYMASTER_METERED=true` — the acknowledgement, not the policy. The guard
 refuses every money path without it.
 
-### Do not fund the provider's paymaster yourself
+### Funding the paymaster deposit does not, by itself, buy sponsorship
 
-`AA21 didn't pay prefund` invites exactly one wrong move: send it some ether.
-That was done here — 0.005 ETH straight to `0xEB49a384…24e4d3` — and it changed
-nothing except the balance.
+`AA21 didn't pay prefund` invites exactly one move: put ether in the paymaster.
+That was tried — 0.005 ETH into `0xEB49a384…24e4d3` — and it changed nothing but
+the balance. The deposit went from 0 to ~890× what one operation needs and every
+request returned the same AA21.
 
-The paymaster's `owner()` is ZeroDev's address, not ours. Its EntryPoint deposit
-went from 0 to 0.005 ETH, ~890× what one operation needs, and every request kept
-returning the same AA21, because the decision is not made on chain. The provider
-checks the balance in ITS OWN ledger, and a transfer it never saw does not
-appear there. On-chain funding and account funding are different acts that look
-identical from the error message.
+Two things this does NOT mean, both of which were asserted here and were wrong:
 
-The ether is also not recoverable. An EntryPoint deposit can be withdrawn only by
-the account that holds it, and that account is a contract ZeroDev controls.
+- **It is not an unsupported path.** ZeroDev exposes self-funded paymasters on
+  this plan, at an 8% premium, with a withdraw beside the deposit. The 0.005 ETH
+  came back in full.
+- **It is not lost.** See above. The earlier text here said an EntryPoint deposit
+  can only be withdrawn by the account holding it and that the account was out of
+  reach; the first half is true and the second was not, because the dashboard
+  calls it for you.
 
-Fund the project through the provider. If the error persists afterwards, the
-question is whether the plan sponsors this chain at all — ask them, and read
-`PAYMASTER_DISABLED` in `.env.example` while waiting, because the market does not
-need a paymaster to run.
+What it does mean is that the sponsorship decision is not made from the deposit.
+The feature is marked experimental and returned the same AA21 through the
+provider's own UI, so the error is theirs to explain. Ask them, and do not
+conclude anything about your configuration from it.
+
+None of this blocks steps 2 through 6: contracts are deployed by an EOA paying
+its own gas, and the paymaster is not involved until agents transact. If the
+answer is slow, `PAYMASTER_DISABLED` in `.env.example` runs the market without
+one.
 
 ### A policy that was never saved refuses everything
 
