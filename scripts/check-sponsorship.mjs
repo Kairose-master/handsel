@@ -9,8 +9,8 @@
  *
  *   1. which chain the bundler thinks it is on   (eth_chainId)
  *   2. which EntryPoint it will accept           (eth_supportedEntryPoints)
- *   3. whether the paymaster will quote a real   (pm_getPaymasterStubData, then
- *      sponsorship for an operation               pm_getPaymasterData)
+ *   3. whether the paymaster will price a real operation, for a real
+ *      counterfactual Kernel account built the way the app builds one
  *
  * Step 3 is the one that matters. Reading the paymaster's EntryPoint deposit on
  * chain is NOT the same test — it read 0 for this deployment's paymaster while
@@ -24,11 +24,14 @@
  *   ZERODEV_RPC=https://rpc.zerodev.app/api/v3/<project>/chain/8453 \
  *   node scripts/check-sponsorship.mjs
  *
- * Optionally `--sender 0x…` to quote for a specific account; the default is a
- * throwaway address, which is enough to tell a configured paymaster from an
- * unconfigured one but will be rejected by a project whose allowlist is already
- * narrowed to the market contracts. That rejection is a PASS for the allowlist
- * and is reported as such.
+ * The sender is a Kernel v3.1 account derived from a key generated at run time
+ * and never stored. It has never existed on chain, which is what makes the
+ * answer meaningful: a project that prices an operation for an account it has
+ * never seen is a project that will price one for a real agent.
+ *
+ * `--owner-key <key>` to derive a known kernel address instead, for a project
+ * whose allowlist is already narrowed. `--rpc <url>` for a Base node other than
+ * the public one.
  */
 
 const RPC = process.env.ZERODEV_RPC
@@ -37,9 +40,11 @@ if (!RPC) {
   process.exit(1)
 }
 
-const argSender = process.argv.indexOf('--sender')
-const SENDER =
-  argSender > -1 ? process.argv[argSender + 1] : '0x1111111111111111111111111111111111111111'
+// Normally an ephemeral key is generated per run. `--owner-key` reuses one so a
+// project whose allowlist is narrowed to known senders can be quoted against a
+// kernel address it recognises. Not required, and not stored.
+const argKey = process.argv.indexOf('--owner-key')
+const SENDER_KEY = argKey > -1 ? process.argv[argKey + 1] : null
 
 const ENTRYPOINT_07 = '0x0000000071727De22E5E9d8BAf0edAc6f37da032'
 const ENTRYPOINT_06 = '0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789'
@@ -91,43 +96,80 @@ try {
 }
 
 /**
- * A syntactically complete but unsigned v0.7 UserOperation.
+ * A REAL counterfactual Kernel account, built the way the app builds one.
  *
- * The paymaster is being asked to price an operation, not to run one. Gas fields
- * are nominal; a provider that quotes at all will quote against these, and one
- * that refuses tells us why in its error, which is the actual output of this
- * script.
+ * The first version of this script sent a nominal UserOperation from a made-up
+ * address and got `AA20 account not deployed` from all three methods — which is
+ * not a policy answer, a funding answer, or a chain answer. It is what happens
+ * when a 4337 sender has no code and no `factory`/`factoryData` to deploy it:
+ * validation fails before the paymaster is ever consulted, so the question the
+ * script exists to ask never reached anybody.
+ *
+ * A counterfactual smart account carries its own deployment data, which is
+ * exactly what makes it quotable while not existing. So build one — Kernel
+ * v3.1 on EntryPoint 0.7, the same constants lib/onchain/account.ts uses — from
+ * an ephemeral key generated here and never written down. It has never been
+ * seen on chain, which is the point: if the project quotes for it, the project
+ * quotes.
  */
-const userOp = {
-  sender: SENDER,
-  nonce: '0x0',
-  callData: '0x',
-  callGasLimit: '0x30d40',
-  verificationGasLimit: '0x30d40',
-  preVerificationGas: '0xc350',
-  maxFeePerGas: '0x5f5e100',
-  maxPriorityFeePerGas: '0x5f5e100',
-  signature: '0x' + 'ff'.repeat(65),
-}
+const { createKernelAccount, createKernelAccountClient } = await import('@zerodev/sdk')
+const { getEntryPoint, KERNEL_V3_1 } = await import('@zerodev/sdk/constants')
+const { signerToEcdsaValidator } = await import('@zerodev/ecdsa-validator')
+const { createPublicClient, http } = await import('viem')
+const { privateKeyToAccount, generatePrivateKey } = await import('viem/accounts')
+const { base } = await import('viem/chains')
 
-console.log('')
+const rpcArg = process.argv.indexOf('--rpc')
+const publicRpc = rpcArg > -1 ? process.argv[rpcArg + 1] : 'https://mainnet.base.org'
+
 let quoted = false
-for (const method of ['pm_getPaymasterStubData', 'pm_getPaymasterData', 'zd_sponsorUserOperation']) {
-  const params =
-    method === 'zd_sponsorUserOperation'
-      ? [{ userOp, entryPointAddress: entryPoint, chainId }]
-      : [userOp, entryPoint, chainId ? `0x${chainId.toString(16)}` : '0x2105', {}]
-  try {
-    const result = await rpc(method, params)
-    const keys = result && typeof result === 'object' ? Object.keys(result) : []
-    const pm = result?.paymaster ?? result?.paymasterAndData
-    console.log(`${method.padEnd(24)}: QUOTED${pm ? ` → paymaster ${String(pm).slice(0, 12)}…` : ''}`)
-    if (keys.length) console.log(`${' '.repeat(26)}fields: ${keys.join(', ')}`)
-    quoted = true
-    break
-  } catch (error) {
-    console.log(`${method.padEnd(24)}: ${redact(error.message)}`)
+try {
+  const pub = createPublicClient({ chain: base, transport: http(publicRpc) })
+  const ep = getEntryPoint('0.7')
+
+  // Ephemeral and in-memory only. Nothing signs with it but this simulation,
+  // and it is gone when the process exits.
+  const signer = privateKeyToAccount(SENDER_KEY ?? generatePrivateKey())
+  const validator = await signerToEcdsaValidator(pub, { signer, entryPoint: ep, kernelVersion: KERNEL_V3_1 })
+  const account = await createKernelAccount(pub, {
+    entryPoint: ep,
+    kernelVersion: KERNEL_V3_1,
+    plugins: { sudo: validator },
+  })
+  console.log(`kernel account   : ${account.address} (counterfactual, never deployed)`)
+
+  const { createZeroDevPaymasterClient } = await import('@zerodev/sdk')
+  const kernelClient = createKernelAccountClient({
+    account,
+    chain: base,
+    bundlerTransport: http(RPC),
+    client: pub,
+    paymaster: createZeroDevPaymasterClient({ chain: base, transport: http(RPC) }),
+  })
+
+  // A no-op call to the account itself. Cheapest thing that is still a real
+  // operation; the paymaster prices it without anything being sent.
+  const estimate = await kernelClient.prepareUserOperation({
+    calls: [{ to: account.address, value: 0n, data: '0x' }],
+  })
+  const pm = estimate.paymaster ?? estimate.paymasterAndData
+  console.log(`\npaymaster        : ${pm ? String(pm) : '(none returned)'}`)
+  if (estimate.callGasLimit !== undefined) {
+    const total =
+      BigInt(estimate.callGasLimit ?? 0n) +
+      BigInt(estimate.verificationGasLimit ?? 0n) +
+      BigInt(estimate.preVerificationGas ?? 0n) +
+      BigInt(estimate.paymasterVerificationGasLimit ?? 0n) +
+      BigInt(estimate.paymasterPostOpGasLimit ?? 0n)
+    console.log(`gas quoted       : ${total} (incl. first-time account deployment)`)
+    const wei = total * BigInt(estimate.maxFeePerGas ?? 0n)
+    console.log(`at maxFeePerGas  : ${Number(wei) / 1e18} ETH`)
   }
+  quoted = Boolean(pm)
+} catch (error) {
+  console.log(`\nquote refused    : ${redact(error.shortMessage ?? error.message ?? String(error))}`)
+  const detail = redact(String(error.details ?? error.cause?.message ?? ''))
+  if (detail && detail !== 'undefined') console.log(`detail           : ${detail}`)
 }
 
 console.log('')
@@ -138,9 +180,11 @@ if (quoted) {
   console.log('The paymaster did not quote. Read the errors above rather than assuming a cause —')
   console.log('they distinguish the cases that look alike:')
   console.log('')
-  console.log('  "not allowed" / "policy" / "sender"  → the allowlist is doing its job. Expected')
-  console.log('                                          with the default throwaway sender; re-run')
-  console.log('                                          with --sender <a provisioned kernel address>.')
+  console.log('  "not allowed" / "policy" / "sender"  → the allowlist is doing its job, against a')
+  console.log('                                          kernel address it has never seen. Re-run with')
+  console.log('                                          --owner-key <key> to quote a known one.')
+  console.log('  "AA20 account not deployed"          → a bug in THIS script, not your config: the')
+  console.log('                                          sender carried no factory data.')
   console.log('  "insufficient" / "balance" / "funds" → the grant is not spendable on this chain.')
   console.log('  "unsupported method"                 → paymaster not enabled on the project.')
   console.log('  "chain"                              → the project is not configured for this chain.')
