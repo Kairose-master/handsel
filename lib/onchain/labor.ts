@@ -51,6 +51,23 @@ export type OnchainJob = {
   /** True when `deadline` has passed: the state is stale and the only thing
    *  left to do is call the exit that settles it. */
   lapsed: boolean
+  /**
+   * Who settlement credited, and how much of it is still unclaimed. Null on a
+   * V1 market, which transfers on settlement and has no such concept.
+   *
+   * V2 settlement CREDITS rather than transfers, because pushing let a single
+   * blocklisted recipient revert an entire settlement. So these two are the only
+   * on-chain statement of an unpaid balance, and dropping them meant the app
+   * could not say, per job, what was waiting to be collected.
+   *
+   * Observed live and this is why they are here: job #1 settled to `Expired`
+   * with `totalEscrowed` at 0 while the contract still held 0.13 USDC — the
+   * bounty owed back to its requester and the fee owed to the fee recipient.
+   * Every number on the board said the job was finished and nothing said the
+   * money had not moved.
+   */
+  payee: Address | null
+  payeeAmount: number | null
 }
 
 /**
@@ -212,6 +229,8 @@ async function fetchJobsUncached(): Promise<OnchainJob[]> {
         resultHash: j.resultHash,
         deadline: governingDeadline(j),
         lapsed: hasLapsed(j, nowSec),
+        payee: j.payee,
+        payeeAmount: j.payeeAmount,
       }))
       .reverse()
   }
@@ -241,6 +260,12 @@ async function fetchJobsUncached(): Promise<OnchainJob[]> {
     // contract with nothing to lapse.
     deadline: null,
     lapsed: false,
+    // Same rule for pull payments. V1 transfers on settlement, so there is never
+    // an unclaimed balance to report — `null`, not a zero that would read as
+    // "settled and nothing owed" and be indistinguishable from the truth on a V2
+    // job that really does owe nothing.
+    payee: null,
+    payeeAmount: null,
   }))
   return jobs.reverse() // newest first
 }

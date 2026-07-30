@@ -175,13 +175,24 @@ export async function callExit(agentId: string, fn: ExitFn, jobId: number): Prom
  * that is correct against one deployment and reverts against the next. Read
  * them, clamp into them.
  *
- * The default is deliberately near the FLOOR rather than the middle. A delivery
- * window is the requester's exposure: escrow is locked for its whole length and
- * `cancelJob` is Open-only, so a generous default spends somebody else's money
- * on patience they did not ask for. Callers that know the work is long pass a
- * number.
+ * The default was deliberately near the FLOOR rather than the middle, on the
+ * reasoning that a delivery window is the requester's exposure: escrow is locked
+ * for its whole length and `cancelJob` is Open-only, so a generous default spends
+ * somebody else's money on patience they did not ask for. Callers that know the
+ * work is long pass a number.
+ *
+ * That reasoning was right about the cost and wrong about the benefit, and
+ * `lib/market-clock.ts` is what showed it. A short window does NOT get the
+ * requester their money back sooner, because the refund arrives when
+ * `reclaimJob` is called, not when the deadline passes — and the backstop that
+ * calls it lands every 80-100 minutes. At 3600s the contract promised a
+ * one-hour exposure and delivered two to three, so the shorter number bought
+ * nothing and made the promise false.
+ *
+ * Now 2x the backstop, which is the shortest value that is honest. Raising this
+ * without raising the backstop is what tests/market-clock.test.ts fails on.
  */
-export const DEFAULT_DELIVERY_WINDOW_S = 60 * 60
+export const DEFAULT_DELIVERY_WINDOW_S = 4 * 60 * 60
 
 let windowBounds: { min: number; max: number } | null = null
 async function clampDeliveryWindow(requested?: number): Promise<number> {
