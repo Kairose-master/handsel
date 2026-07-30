@@ -139,71 +139,73 @@ try {
   console.log(`kernel account   : ${account.address} (counterfactual, never deployed)`)
 
   const { createZeroDevPaymasterClient } = await import('@zerodev/sdk')
-  const paymasterClient = createZeroDevPaymasterClient({ chain: base, transport: http(RPC) })
 
   /**
-   * The operation is assembled by hand, and the bundler is never asked to
-   * simulate it.
+   * The same operation, prepared twice: once with a paymaster and once without.
    *
-   * Two attempts went wrong here in opposite directions. Preparing it THROUGH
-   * the kernel client with a paymaster attached returned no paymaster fields and
-   * a zero fee — a silent nothing that reads like a refusal. Preparing it
-   * WITHOUT one returned `AA21 didn't pay prefund`, which is simply true: the
-   * account holds no ether, so an unsponsored operation cannot be simulated at
-   * all. Neither answer was about sponsorship.
+   * Four attempts to read sponsorship out of a single response failed, each in a
+   * way that looked like an answer and was not — a made-up sender got `AA20`
+   * from the EntryPoint, a paymaster-less client got `AA21 didn't pay prefund`
+   * from the bundler, a paymaster-ful one returned no fields at all because the
+   * middleware had not run, and calling the paymaster's RPC directly kept
+   * failing on the shape of the request. Every time, some layer answered instead
+   * of the one being asked.
    *
-   * Both failures came from routing the question through gas estimation.
-   * `getPaymasterStubData` and `getPaymasterData` are the paymaster's own
-   * methods and do not need a bundler to agree first, so asking them directly
-   * removes the layer that was answering instead of it.
+   * The difference between the runs was the evidence all along. This account
+   * holds no ether, so an UNSPONSORED operation cannot pass validation: nobody
+   * can pay the EntryPoint's prefund, which is exactly what `AA21` says. If the
+   * same operation passes when a paymaster is attached, something covered that
+   * prefund. That is not an inference about a field — it is the bundler
+   * simulating the whole operation and accepting it.
+   *
+   * It is also a stronger test than reading `paymaster` off a response, because
+   * a paymaster can return data and still be rejected downstream. This asks the
+   * question end to end.
    */
-  const [nonce, factoryArgs, callData] = await Promise.all([
-    account.getNonce(),
-    account.getFactoryArgs(),
-    account.encodeCalls([{ to: account.address, value: 0n, data: '0x' }]),
-  ])
+  const prepare = (paymaster) =>
+    createKernelAccountClient({
+      account,
+      chain: base,
+      bundlerTransport: http(RPC),
+      client: pub,
+      ...(paymaster ? { paymaster: createZeroDevPaymasterClient({ chain: base, transport: http(RPC) }) } : {}),
+    }).prepareUserOperation({ calls: [{ to: account.address, value: 0n, data: '0x' }] })
 
-  const fees = await pub.estimateFeesPerGas()
-  // Generous and fixed. The paymaster prices what it is given; a real estimate
-  // would need the bundler, which is the thing being routed around.
-  const draft = {
-    sender: account.address,
-    nonce,
-    factory: factoryArgs.factory,
-    factoryData: factoryArgs.factoryData,
-    callData,
-    callGasLimit: 200_000n,
-    verificationGasLimit: 400_000n,
-    preVerificationGas: 100_000n,
-    maxFeePerGas: fees.maxFeePerGas,
-    maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
-  }
-  const totalGas = draft.callGasLimit + draft.verificationGasLimit + draft.preVerificationGas
-  console.log(`operation        : ${totalGas} gas budgeted, incl. first-time deployment`)
-
-  console.log(`maxFeePerGas     : ${Number(draft.maxFeePerGas) / 1e9} gwei`)
-  console.log(`cost if unpaid   : ${(Number(totalGas * draft.maxFeePerGas) / 1e18).toFixed(9)} ETH`)
-
-  const args = { ...draft, chainId: base.id, entryPointAddress: ep.address, context: {} }
-
-  // The stub comes first in the 4337 flow and is the cheaper question: a
-  // paymaster that will not sponsor at all usually says so here.
-  let stub = null
-  try {
-    stub = await paymasterClient.getPaymasterStubData(args)
-    console.log(`\nstub             : ${stub?.paymaster ? String(stub.paymaster) : '(no paymaster in stub)'}`)
-  } catch (error) {
-    console.log(`\nstub refused     : ${redact(error.shortMessage ?? error.message)}`)
+  const attempt = async (paymaster) => {
+    try {
+      return { ok: true, op: await prepare(paymaster) }
+    } catch (error) {
+      return { ok: false, why: redact(error.shortMessage ?? error.message ?? String(error)) }
+    }
   }
 
-  const sponsorship = await paymasterClient.getPaymasterData(args)
-  const pm = sponsorship?.paymaster ?? sponsorship?.paymasterAndData
-  console.log(`paymaster        : ${pm ? String(pm) : '(none returned)'}`)
-  if (sponsorship?.paymasterData) {
-    const d = String(sponsorship.paymasterData)
-    console.log(`paymasterData    : ${d.slice(0, 26)}… (${(d.length - 2) / 2} bytes, SIGNED)`)
+  const [sponsored, unsponsored] = await Promise.all([attempt(true), attempt(false)])
+
+  console.log(`\nwith paymaster   : ${sponsored.ok ? 'simulation PASSED' : `refused — ${sponsored.why}`}`)
+  console.log(`without paymaster: ${unsponsored.ok ? 'simulation passed' : `refused — ${unsponsored.why}`}`)
+
+  if (sponsored.ok) {
+    const g =
+      BigInt(sponsored.op.callGasLimit ?? 0n) +
+      BigInt(sponsored.op.verificationGasLimit ?? 0n) +
+      BigInt(sponsored.op.preVerificationGas ?? 0n)
+    console.log(`gas accepted     : ${g} (incl. first-time account deployment)`)
   }
-  quoted = Boolean(pm)
+
+  const prefundRefused = !unsponsored.ok && /AA21|prefund/i.test(unsponsored.why)
+  if (sponsored.ok && prefundRefused) {
+    console.log('')
+    console.log('An operation from an account holding no ether passed validation WITH the')
+    console.log('paymaster and was refused for prefund WITHOUT it. Something paid. That is')
+    console.log('sponsorship, demonstrated rather than reported.')
+    quoted = true
+  } else if (sponsored.ok && unsponsored.ok) {
+    console.log('')
+    console.log('Both passed, so this proves nothing: the account can apparently pay its own')
+    console.log('way, and the sponsored run may not have needed the paymaster at all.')
+  }
+  const pm = null
+  void pm
 } catch (error) {
   console.log(`\nquote refused    : ${redact(error.shortMessage ?? error.message ?? String(error))}`)
   const detail = redact(String(error.details ?? error.cause?.message ?? ''))
@@ -215,21 +217,18 @@ if (quoted) {
   console.log('PASS — the project quotes sponsorship on this chain. The remaining unknown is')
   console.log('whether the balance covers real operations, which only spending some answers.')
 } else {
-  console.log('The paymaster did not quote. Read the errors above rather than assuming a cause —')
-  console.log('they distinguish the cases that look alike:')
+  console.log('Sponsorship was NOT demonstrated. What the two runs mean together:')
   console.log('')
-  console.log('  "not allowed" / "policy" / "sender"  → the allowlist is doing its job, against a')
-  console.log('                                          kernel address it has never seen. Re-run with')
-  console.log('                                          --owner-key <key> to quote a known one.')
-  console.log('  "AA20" / "AA21"                      → a bug in THIS script, not your config:')
-  console.log('                                          the question went through the bundler')
-  console.log('                                          instead of the paymaster.')
-  console.log('  "(none returned)" with no error      → the paymaster answered and declined to')
-  console.log('                                          sponsor. Check the project policy: a')
-  console.log('                                          per-UserOp ceiling below the quoted cost')
-  console.log('                                          above declines exactly like this.')
-  console.log('  "insufficient" / "balance" / "funds" → the grant is not spendable on this chain.')
-  console.log('  "unsupported method"                 → paymaster not enabled on the project.')
-  console.log('  "chain"                              → the project is not configured for this chain.')
+  console.log('  both refused, same reason           → the project or the URL, not the paymaster.')
+  console.log('                                        A bad project id fails both identically.')
+  console.log('  with-paymaster refused, "policy" /  → the allowlist is doing its job, against a')
+  console.log('  "sender" / "not allowed"              kernel address it has never seen. Re-run')
+  console.log('                                        with --owner-key <key> for a known one.')
+  console.log('  with-paymaster refused, "balance" / → the grant is not spendable on this chain.')
+  console.log('  "insufficient" / "funds"')
+  console.log('  with-paymaster refused, cost-shaped → the per-UserOp ceiling is below what this')
+  console.log('                                        operation costs. First-time deployment is')
+  console.log('                                        the most expensive op an agent ever sends.')
+  console.log('  both PASSED                         → inconclusive, not a failure. See above.')
   process.exitCode = 1
 }
