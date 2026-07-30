@@ -49,6 +49,28 @@ export async function GET() {
           return null
         }
       })(),
+      /**
+       * Whether this deployment is on a chain where losing funds means losing
+       * funds, and what would refuse if it is.
+       *
+       * Public because it is the difference between checking readiness with one
+       * curl before flipping the chain, and finding out from a refused posting.
+       * Blocker CODES and their details only — no addresses, no keys. Every detail
+       * string in mainnet-guard.ts names env variables, never values.
+       */
+      realMoney: await (async () => {
+        try {
+          const s = await (await import('@/lib/onchain/real-money')).realMoneyStatus()
+          return {
+            isRealMoney: s.isRealMoney,
+            blockers: s.blockers.map((b) => b.code),
+            unevaluated: s.unevaluated,
+            details: s.blockers.map((b) => b.detail),
+          }
+        } catch {
+          return null
+        }
+      })(),
     },
     // Counted rather than asserted: "8 of 9" is a live figure, and a reader who
     // sees it drop after a deploy learns something a boolean would hide.

@@ -205,6 +205,18 @@ export async function postJobAction(input: {
   // from it.
   await (await import('@/lib/db/ensure-columns')).ensureJobSpecColumns()
 
+  // The mainnet guard, on the first path that locks escrow.
+  //
+  // `lib/onchain/mainnet-guard.ts` implements eight blockers, is unit-tested, and
+  // docs/mainnet-deploy.md describes it as something that REFUSES — and it had no
+  // caller. On a real chain it would have blocked none of them. This is the
+  // wiring, and posting is the right place: it is where money first becomes hard
+  // to recover, and it runs before the DB insert so a refusal leaves nothing
+  // behind.
+  //
+  // A no-op on a testnet — realMoneyBlockers returns [] when isRealMoney is false.
+  await (await import('@/lib/onchain/real-money')).assertRealMoneyReady('Posting a job')
+
   const userId = await requireUser()
   const ag = await requireOwnedAgent(input.requesterAgentId, userId)
   if (!ag.smartAccountAddress) throw new Error('Provision the requester agent first')
