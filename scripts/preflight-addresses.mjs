@@ -87,7 +87,12 @@ if (oracle && arbiter && oracle !== arbiter) {
   fail(
     `ARBITER_ADDRESS !== ORACLE_ADDRESS. There is no ARBITER_PRIVATE_KEY in this codebase — ` +
       `resolveDispute is signed by oracleWallet(), so an arbiter that is not the oracle can never rule. ` +
-      `The contract would accept the deploy and every dispute would sit until expireDispute swept it.`,
+      `The contract would accept the deploy and every dispute would sit until expireDispute swept it.\n` +
+      `      This is a real trade, not a free fix. deploy-labor-v2.mjs warns about the same two addresses ` +
+      `being equal, and it is right: one leaked key then forges credit scores, rules on disputes, and can ` +
+      `call setOracle. Both warnings are true. Separating them for real means adding an ARBITER_PRIVATE_KEY ` +
+      `and a second wallet client in resolveDispute — a code change, not a config one. Until that exists, ` +
+      `equal is the only combination where disputes resolve at all.`,
   )
 }
 

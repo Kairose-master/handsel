@@ -158,7 +158,18 @@ anywhere in this codebase; `resolveDispute` is signed by `oracleWallet()`
 (`lib/onchain/labor.ts`). Separating the arbiter from the oracle — which reads
 like good key hygiene — makes every dispute unresolvable, and nothing shows it
 until the first dispute, because posting, accepting and settling all work.
-They must be the same address.
+They must be the same address — and `deploy-labor-v2.mjs` warns when they are,
+which is also correct: one leaked key then forges credit scores, rules on
+disputes, and can call `setOracle`. Both warnings are true. Separating them for
+real is a code change — an `ARBITER_PRIVATE_KEY` and a second wallet client in
+`resolveDispute` — not a config choice. Until that exists, equal is the only
+combination where disputes resolve at all.
+
+Note that no script here reads `.env`. There is no `dotenv` dependency; every
+deploy script reads `process.env` directly, so the values that matter are the
+ones exported in the shell you run it from. Deleting `.env` does not clear a
+stale `MIN_DELIVERY_WINDOW_S`; a new terminal window does, and passing every
+variable on the command line does it per-invocation.
 
 **`FEE_RECIPIENT` that is a contract with no way to call `withdraw()`.** Fees are
 pulled, not pushed. An address that cannot make a call cannot be paid, and the
