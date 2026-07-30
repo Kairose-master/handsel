@@ -105,10 +105,11 @@ size:
 | `SPONSOR_GRANT_TOTAL_USD` | **8** | the axis the app was missing — every other budget is a 24h window, and a window cannot see a total. $5 + $2 a day is ~1,200 ops, so two days empties a grant nobody refills. $2 of headroom against ZeroDev's own accounting |
 | `USER_LANE_GAS_BUDGET_USD` | **0.50** | ~87 ops/day, ~14 user-side job cycles — fourteen days of runway at full burn |
 | `KEEPER_LANE_GAS_BUDGET_USD` | **0.20** | ~35 ops/day against a sweep bounded at 6 calls a pass |
-| ZeroDev daily cap | **$1** | above the app's $0.70, so the app degrades first — the outer wall, not the only one |
-| per-sender rate | 200/day | keeper does ≤6 calls per 5-minute pass |
-| per-UserOp ceiling | **$0.06** | ~10× the measured $0.0058 |
-| contract allowlist | market + registry | add after step 4 |
+| ZeroDev daily cap | **0.001 ETH** | ≈$1.9 at $1,916/ETH, about 200 operations — above the app's ~120, so the app degrades first. **The field is denominated in ETH, not dollars.** Entering `1` there is not a dollar; it is roughly two thousand of them |
+| per-sender rate | 300/day | keeper does ≤6 calls per 5-minute pass |
+| per-UserOp ceiling | **0.00005 ETH** | ≈$0.10, ten times the measured 0.0000049 |
+| gas price ceiling | 0.1 gwei | ~14× the measured 0.007. Above this the paymaster stops and accounts self-pay, which is why kernel accounts need a float |
+| contract allowlist | leave OFF until step 4 | there is nothing to allow yet, and a list that matches nothing refuses everything |
 
 The grant ceiling splits the way the daily lanes already do: the user lane stops
 at `USER_GRANT_SHARE` (75%, so $6 of $8) and degrades to self-pay, and the last
@@ -119,6 +120,23 @@ failure, and the one the split exists to prevent.
 
 Then `PAYMASTER_METERED=true` — the acknowledgement, not the policy. The guard
 refuses every money path without it.
+
+### A policy that was never saved refuses everything
+
+Worth knowing before reading any error from this project: **an unsaved policy is
+not an absent policy, it is a deny-all.** Saving one with no restrictions is what
+means "allow every transaction" — so the permissive-looking state and the
+refuse-everything state are the same screen, distinguished only by whether the
+button was pressed.
+
+That refusal does not arrive as a policy message. It arrives as
+`AA21 didn't pay prefund`, which reads as a funding problem and is not one, and
+which continued to arrive unchanged after the paymaster's deposit was funded.
+
+Do not save an empty policy to make this go away. An unrestricted paymaster on a
+real chain is the operator's money, spendable by anyone who can cause an
+operation, and it is what `PAYMASTER_METERED` exists to make you acknowledge.
+Save the bounded one.
 
 ### Confirm the project before deploying anything
 
