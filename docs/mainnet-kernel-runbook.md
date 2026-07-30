@@ -121,6 +121,27 @@ failure, and the one the split exists to prevent.
 Then `PAYMASTER_METERED=true` — the acknowledgement, not the policy. The guard
 refuses every money path without it.
 
+### Do not fund the provider's paymaster yourself
+
+`AA21 didn't pay prefund` invites exactly one wrong move: send it some ether.
+That was done here — 0.005 ETH straight to `0xEB49a384…24e4d3` — and it changed
+nothing except the balance.
+
+The paymaster's `owner()` is ZeroDev's address, not ours. Its EntryPoint deposit
+went from 0 to 0.005 ETH, ~890× what one operation needs, and every request kept
+returning the same AA21, because the decision is not made on chain. The provider
+checks the balance in ITS OWN ledger, and a transfer it never saw does not
+appear there. On-chain funding and account funding are different acts that look
+identical from the error message.
+
+The ether is also not recoverable. An EntryPoint deposit can be withdrawn only by
+the account that holds it, and that account is a contract ZeroDev controls.
+
+Fund the project through the provider. If the error persists afterwards, the
+question is whether the plan sponsors this chain at all — ask them, and read
+`PAYMASTER_DISABLED` in `.env.example` while waiting, because the market does not
+need a paymaster to run.
+
 ### A policy that was never saved refuses everything
 
 Worth knowing before reading any error from this project: **an unsaved policy is
