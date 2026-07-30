@@ -63,6 +63,23 @@ export type V2Job = DeadlineJob & {
   bounty: number
   payee: Address
   payeeAmount: number
+  /** The score gate the contract enforces on `acceptJob`. */
+  minScore: number
+  /**
+   * The hash of the off-chain brief — and the ONLY link between a job on chain
+   * and its title, description and acceptance criteria in `job_specs`.
+   *
+   * It was left out of this decoder and filled in as `'0x'` one layer up, on the
+   * reasoning that the fields "exist on-chain and can be added when a caller
+   * needs them". That is sound for `minScore`, a value the UI displays. It is not
+   * sound for a JOIN KEY: a zeroed key does not degrade one field, it detaches
+   * the entire record. Every V2 job read back as "Untitled job" with a null
+   * description and null acceptance criteria — a market where no worker can see
+   * what the work is.
+   */
+  specHash: Hex
+  /** Set by `submitWork`; zero until then. */
+  resultHash: Hex
 }
 
 /** Decode one `jobs()` tuple. Field ORDER is the contract's struct order and a
@@ -83,6 +100,11 @@ function decodeJob(id: number, raw: readonly unknown[]): V2Job {
     worker: raw[1] as Address,
     bounty: fromUnits(raw[2] as bigint),
     status: status as V2JobStatus,
+    // Indices 3, 5 and 6 were being skipped. They are in the tuple the contract
+    // already returns — nothing extra is read to get them.
+    minScore: Number(raw[3]),
+    specHash: raw[5] as Hex,
+    resultHash: raw[6] as Hex,
     openDeadline: Number(raw[7]),
     deliveryDeadline: Number(raw[8]),
     reviewDeadline: Number(raw[9]),

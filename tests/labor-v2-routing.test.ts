@@ -131,3 +131,52 @@ describe('the eighth status survives the trip', () => {
     expect(laborV2()).not.toMatch(/\?\? 'Open'/)
   })
 })
+
+/**
+ * The brief has to survive the trip too, and it did not.
+ *
+ * `specHash` is not a display field. It is the ONLY link between a job on chain
+ * and its title, description and acceptance criteria in `job_specs` — every
+ * reader does `specByHash.get(j.specHash)`. The V2 decoder skipped it and the
+ * V1-shaped mapping filled in `specHash: '0x'`, which matches no row.
+ *
+ * So the first job posted to a V2 market escrowed 0.1 USDC correctly, appeared
+ * in the feed correctly, and read back as:
+ *
+ *   title: "Untitled job", description: null, acceptanceCriteria: null
+ *
+ * A market in which no worker can see what the work is. The comment that stood
+ * there justified it as "the fields exist on-chain and can be added when a
+ * caller needs them", which is sound for `minScore` — a value the UI shows — and
+ * unsound for a join key: zeroing a key does not degrade one field, it detaches
+ * the whole record.
+ *
+ * All three values were already in the tuple the contract returns. Indices
+ * verified against the ABI's own named outputs and against job #1 on Base
+ * Sepolia.
+ */
+describe('the brief survives the trip', () => {
+  it('decodes the join key, and does not invent one', () => {
+    const src = laborV2()
+    expect(src).toMatch(/specHash: raw\[5\] as Hex/)
+    expect(src).toMatch(/minScore: Number\(raw\[3\]\)/)
+    expect(src).toMatch(/resultHash: raw\[6\] as Hex/)
+  })
+
+  it('carries it through the V1-shaped mapping instead of blanking it', () => {
+    const src = labor()
+    // The exact line that detached every brief.
+    expect(src).not.toMatch(/specHash: '0x' as Hex/)
+    expect(src).not.toMatch(/minScore: 0,/)
+    expect(src).toMatch(/specHash: j\.specHash/)
+    expect(src).toMatch(/minScore: j\.minScore/)
+  })
+
+  it('puts the key on the type, so a future decoder cannot quietly drop it', () => {
+    // A `V2Job` without specHash compiles fine at the mapping site as long as
+    // the mapping supplies a literal — which is how this survived. On the type,
+    // omitting it is a type error.
+    expect(laborV2()).toMatch(/specHash: Hex/)
+    expect(laborV2()).toMatch(/minScore: number/)
+  })
+})

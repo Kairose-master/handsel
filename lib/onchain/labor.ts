@@ -180,14 +180,16 @@ async function fetchJobsUncached(): Promise<OnchainJob[]> {
         requester: j.requester,
         worker: j.worker,
         bounty: j.bounty,
-        // V2 does not surface minScore or the hashes through this shape; the
-        // fields exist on-chain and `readJobsV2` can be extended when a caller
-        // needs them. Zeroed rather than guessed — a wrong minScore here would
-        // be a gate the UI reports and the contract does not enforce.
-        minScore: 0,
+        // These are decoded now. `specHash: '0x'` was not a missing display
+        // field — it is the key every caller joins `job_specs` on, so zeroing it
+        // detached the brief from the job. Every V2 job read back as "Untitled
+        // job" with a null description and null acceptance criteria: a market in
+        // which no worker can see what the work is. Verified against job #1 on
+        // Base Sepolia, whose spec_hash was on chain the whole time.
+        minScore: j.minScore,
         status: j.status,
-        specHash: '0x' as Hex,
-        resultHash: '0x' as Hex,
+        specHash: j.specHash,
+        resultHash: j.resultHash,
       }))
       .reverse()
   }
