@@ -34,11 +34,24 @@
  * the public one.
  */
 
-const RPC = process.env.ZERODEV_RPC
-if (!RPC) {
-  console.error('ZERODEV_RPC is required — the mainnet project URL, not the testnet one.')
+/**
+ * The same three variables in the same order as lib/onchain/paymaster.ts.
+ *
+ * A preflight that resolves its target differently from the app is a preflight
+ * that green-lights something the app will not do. The bundler and the paymaster
+ * are separate here because they are separate services — they were only ever
+ * coupled by sharing ZeroDev's URL.
+ */
+const BUNDLER = process.env.ZERODEV_RPC
+if (!BUNDLER) {
+  console.error('ZERODEV_RPC is required — the bundler, even when another service is the paymaster.')
   process.exit(1)
 }
+const PAYMASTER = process.env.PAYMASTER_DISABLED === 'true' ? null : (process.env.PAYMASTER_RPC?.trim() || BUNDLER)
+const PAYMASTER_KIND =
+  PAYMASTER === null ? 'none (PAYMASTER_DISABLED)' : process.env.PAYMASTER_RPC?.trim() ? 'erc7677' : 'zerodev'
+// Kept for the redactor and the raw chain/entrypoint probes below.
+const RPC = BUNDLER
 
 // Normally an ephemeral key is generated per run. `--owner-key` reuses one so a
 // project whose allowlist is narrowed to known senders can be quoted against a
@@ -62,7 +75,11 @@ async function rpc(method, params) {
 }
 
 // Never print the URL — it carries the project id, which is the credential.
-const redact = (s) => String(s).replaceAll(RPC, '<ZERODEV_RPC>')
+const redact = (s) => {
+  let out = String(s).replaceAll(BUNDLER, '<ZERODEV_RPC>')
+  if (PAYMASTER && PAYMASTER !== BUNDLER) out = out.replaceAll(PAYMASTER, '<PAYMASTER_RPC>')
+  return out
+}
 
 console.log('Sponsorship preflight — nothing is sent, signed or spent.\n')
 
@@ -139,6 +156,14 @@ try {
   console.log(`kernel account   : ${account.address} (counterfactual, never deployed)`)
 
   const { createZeroDevPaymasterClient } = await import('@zerodev/sdk')
+  const { createPaymasterClient } = await import('viem/account-abstraction')
+  console.log(`paymaster        : ${PAYMASTER_KIND}`)
+  const makePaymaster = () =>
+    PAYMASTER === null
+      ? undefined
+      : PAYMASTER_KIND === 'erc7677'
+        ? createPaymasterClient({ transport: http(PAYMASTER) })
+        : createZeroDevPaymasterClient({ chain: base, transport: http(PAYMASTER) })
 
   /**
    * The same operation, prepared twice: once with a paymaster and once without.
@@ -179,7 +204,7 @@ try {
       chain: base,
       bundlerTransport: http(RPC),
       client: pub,
-      ...(paymaster ? { paymaster: createZeroDevPaymasterClient({ chain: base, transport: http(RPC) }) } : {}),
+      ...(paymaster && makePaymaster() ? { paymaster: makePaymaster() } : {}),
     }).prepareUserOperation({
       calls: [{ to: account.address, value: 0n, data: '0x' }],
       maxFeePerGas: fees.maxFeePerGas,

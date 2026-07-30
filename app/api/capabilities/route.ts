@@ -42,6 +42,21 @@ export async function GET() {
       chainId: CHAIN.id,
       // Presence only, never the URL — it carries an API key.
       bundlerConfigured: Boolean(onchainEnv.zerodevRpc),
+      /**
+       * WHICH paymaster, because "sponsored" stopped being one answer.
+       *
+       * The bundler and the paymaster are separate services that shared a URL,
+       * and the day sponsorship broke, nothing anywhere said which one was
+       * being asked. `zerodev`, `erc7677` (an endpoint like CDP's) or `none`.
+       * The kind only — the URL is a credential.
+       */
+      paymaster: await (async () => {
+        try {
+          return (await import('@/lib/onchain/paymaster')).paymasterLabel()
+        } catch {
+          return null
+        }
+      })(),
       marketIsV2: await (async () => {
         try {
           return await (await import('@/lib/onchain/labor-v2')).isV2Market()

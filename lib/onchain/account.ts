@@ -26,11 +26,11 @@ import { privateKeyToAccount } from 'viem/accounts'
 import {
   createKernelAccount,
   createKernelAccountClient,
-  createZeroDevPaymasterClient,
 } from '@zerodev/sdk'
 import { getEntryPoint, KERNEL_V3_1 } from '@zerodev/sdk/constants'
 import { signerToEcdsaValidator } from '@zerodev/ecdsa-validator'
 import { CHAIN, agentAccountMode, onchainEnv } from './config'
+import { paymasterClient } from './paymaster'
 import { publicClient, oracleWallet } from './clients'
 import { withRetry } from '@/lib/retry'
 
@@ -196,14 +196,10 @@ export async function getAgentKernel(agentId: string, opts: { sponsored?: boolea
     chain: CHAIN,
     bundlerTransport: http(onchainEnv.zerodevRpc),
     client,
-    ...(sponsored
-      ? {
-          paymaster: createZeroDevPaymasterClient({
-            chain: CHAIN,
-            transport: http(onchainEnv.zerodevRpc),
-          }),
-        }
-      : {}),
+    // Whichever paymaster this deployment is configured for — ZeroDev's, an
+    // ERC-7677 endpoint like CDP's, or none. The bundler above is unaffected;
+    // the two were only ever coupled by sharing a URL.
+    ...(sponsored ? (() => { const pm = paymasterClient(); return pm ? { paymaster: pm } : {} })() : {}),
   })
 
   // Serialize UserOp submission per smart account. Two UserOps from the same

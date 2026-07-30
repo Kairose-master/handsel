@@ -172,7 +172,9 @@ describe('self-pay in kernel mode drops the paymaster, not the identity', () => 
     expect(account).toMatch(/getAgentKernel\(agentId, \{ sponsored \}\)/)
     expect(account).toMatch(/export async function getAgentKernel\(agentId: string, opts: \{ sponsored\?: boolean \} = \{\}\)/)
     // The paymaster is attached conditionally — its absence IS the mechanism.
-    expect(account).toMatch(/\.\.\.\(sponsored[\s\S]{0,200}createZeroDevPaymasterClient/)
+    // WHICH paymaster is no longer fixed (see lib/onchain/paymaster.ts), so this
+    // pins the conditional rather than the vendor; the choice has its own tests.
+    expect(account).toMatch(/\.\.\.\(sponsored[\s\S]{0,200}paymasterClient\(\)/)
   })
 
   it('does not meter an op the operator is not paying for', () => {

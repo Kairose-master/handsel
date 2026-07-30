@@ -165,6 +165,35 @@ real chain is the operator's money, spendable by anyone who can cause an
 operation, and it is what `PAYMASTER_METERED` exists to make you acknowledge.
 Save the bounded one.
 
+### The paymaster does not have to be the bundler's
+
+They arrived behind one URL — `ZERODEV_RPC` is both — which made a broken
+paymaster look like a choice between keeping account abstraction and keeping
+sponsored gas. They are separate services. Paymaster communication is ERC-7677
+(`pm_getPaymasterStubData` / `pm_getPaymasterData`), viem ships a generic client,
+and a Kernel account does not care who signs the sponsorship.
+
+```
+PAYMASTER_RPC=https://api.developer.coinbase.com/rpc/v1/base/<key>
+```
+
+Set it and the bundler stays ZeroDev while the paymaster becomes CDP's — on Base,
+the same chain as the market, with monthly free credits. Unset, nothing changes.
+`PAYMASTER_DISABLED` still wins over both.
+
+Two things to establish before relying on it, neither of which the Base docs
+answer:
+
+1. **Whether it sponsors EntryPoint v0.7 with a non-Base-Account sender.** The
+   CDP guides are written around Base Account; this market's agents are Kernel
+   v3.1. `scripts/check-sponsorship.mjs` answers it in one run — it builds a real
+   counterfactual Kernel account and resolves the same three variables the app
+   does.
+2. **The contracts allowlist.** CDP sponsorship is allowlist-based, so the market
+   and registry have to exist first. That makes this a step-7 task, not a step-1
+   one — which is the same ordering mistake as turning on ZeroDev's allowlist
+   before there was anything to put in it.
+
 ### Confirm the project before deploying anything
 
 ```bash
