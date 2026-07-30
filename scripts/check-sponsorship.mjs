@@ -141,51 +141,67 @@ try {
   const { createZeroDevPaymasterClient } = await import('@zerodev/sdk')
   const paymasterClient = createZeroDevPaymasterClient({ chain: base, transport: http(RPC) })
 
-  // Build the operation WITHOUT a paymaster, then ask the paymaster about it
-  // explicitly.
-  //
-  // Going through the client's own middleware returned a gas estimate with no
-  // paymaster fields and a maxFeePerGas of zero — an answer that reads like a
-  // refusal and is not one, because the middleware simply had not run. The
-  // paymaster's own method cannot be ambiguous that way: it either returns
-  // sponsorship data or it says why not.
-  const kernelClient = createKernelAccountClient({
-    account,
-    chain: base,
-    bundlerTransport: http(RPC),
-    client: pub,
-  })
-  const op = await kernelClient.prepareUserOperation({
-    calls: [{ to: account.address, value: 0n, data: '0x' }],
-  })
+  /**
+   * The operation is assembled by hand, and the bundler is never asked to
+   * simulate it.
+   *
+   * Two attempts went wrong here in opposite directions. Preparing it THROUGH
+   * the kernel client with a paymaster attached returned no paymaster fields and
+   * a zero fee — a silent nothing that reads like a refusal. Preparing it
+   * WITHOUT one returned `AA21 didn't pay prefund`, which is simply true: the
+   * account holds no ether, so an unsponsored operation cannot be simulated at
+   * all. Neither answer was about sponsorship.
+   *
+   * Both failures came from routing the question through gas estimation.
+   * `getPaymasterStubData` and `getPaymasterData` are the paymaster's own
+   * methods and do not need a bundler to agree first, so asking them directly
+   * removes the layer that was answering instead of it.
+   */
+  const [nonce, factoryArgs, callData] = await Promise.all([
+    account.getNonce(),
+    account.getFactoryArgs(),
+    account.encodeCalls([{ to: account.address, value: 0n, data: '0x' }]),
+  ])
 
-  // Fees come from the chain when the bundler did not supply them. A paymaster
-  // prices gas, so quoting against zero would price nothing.
-  let { maxFeePerGas, maxPriorityFeePerGas } = op
-  if (!maxFeePerGas || maxFeePerGas === 0n) {
-    const fees = await pub.estimateFeesPerGas()
-    maxFeePerGas = fees.maxFeePerGas
-    maxPriorityFeePerGas = fees.maxPriorityFeePerGas
+  const fees = await pub.estimateFeesPerGas()
+  // Generous and fixed. The paymaster prices what it is given; a real estimate
+  // would need the bundler, which is the thing being routed around.
+  const draft = {
+    sender: account.address,
+    nonce,
+    factory: factoryArgs.factory,
+    factoryData: factoryArgs.factoryData,
+    callData,
+    callGasLimit: 200_000n,
+    verificationGasLimit: 400_000n,
+    preVerificationGas: 100_000n,
+    maxFeePerGas: fees.maxFeePerGas,
+    maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
+  }
+  const totalGas = draft.callGasLimit + draft.verificationGasLimit + draft.preVerificationGas
+  console.log(`operation        : ${totalGas} gas budgeted, incl. first-time deployment`)
+
+  console.log(`maxFeePerGas     : ${Number(draft.maxFeePerGas) / 1e9} gwei`)
+  console.log(`cost if unpaid   : ${(Number(totalGas * draft.maxFeePerGas) / 1e18).toFixed(9)} ETH`)
+
+  const args = { ...draft, chainId: base.id, entryPointAddress: ep.address, context: {} }
+
+  // The stub comes first in the 4337 flow and is the cheaper question: a
+  // paymaster that will not sponsor at all usually says so here.
+  let stub = null
+  try {
+    stub = await paymasterClient.getPaymasterStubData(args)
+    console.log(`\nstub             : ${stub?.paymaster ? String(stub.paymaster) : '(no paymaster in stub)'}`)
+  } catch (error) {
+    console.log(`\nstub refused     : ${redact(error.shortMessage ?? error.message)}`)
   }
 
-  const total =
-    BigInt(op.callGasLimit ?? 0n) + BigInt(op.verificationGasLimit ?? 0n) + BigInt(op.preVerificationGas ?? 0n)
-  console.log(`gas estimated    : ${total} (incl. first-time account deployment)`)
-  console.log(`maxFeePerGas     : ${Number(maxFeePerGas) / 1e9} gwei`)
-  console.log(`cost if unpaid   : ${(Number(total * maxFeePerGas) / 1e18).toFixed(9)} ETH`)
-
-  const sponsorship = await paymasterClient.getPaymasterData({
-    ...op,
-    maxFeePerGas,
-    maxPriorityFeePerGas,
-    chainId: base.id,
-    entryPointAddress: ep.address,
-    context: {},
-  })
+  const sponsorship = await paymasterClient.getPaymasterData(args)
   const pm = sponsorship?.paymaster ?? sponsorship?.paymasterAndData
-  console.log(`\npaymaster        : ${pm ? String(pm) : '(none returned)'}`)
+  console.log(`paymaster        : ${pm ? String(pm) : '(none returned)'}`)
   if (sponsorship?.paymasterData) {
-    console.log(`paymasterData    : ${String(sponsorship.paymasterData).slice(0, 26)}… (${(String(sponsorship.paymasterData).length - 2) / 2} bytes)`)
+    const d = String(sponsorship.paymasterData)
+    console.log(`paymasterData    : ${d.slice(0, 26)}… (${(d.length - 2) / 2} bytes, SIGNED)`)
   }
   quoted = Boolean(pm)
 } catch (error) {
@@ -205,8 +221,9 @@ if (quoted) {
   console.log('  "not allowed" / "policy" / "sender"  → the allowlist is doing its job, against a')
   console.log('                                          kernel address it has never seen. Re-run with')
   console.log('                                          --owner-key <key> to quote a known one.')
-  console.log('  "AA20 account not deployed"          → a bug in THIS script, not your config: the')
-  console.log('                                          sender carried no factory data.')
+  console.log('  "AA20" / "AA21"                      → a bug in THIS script, not your config:')
+  console.log('                                          the question went through the bundler')
+  console.log('                                          instead of the paymaster.')
   console.log('  "(none returned)" with no error      → the paymaster answered and declined to')
   console.log('                                          sponsor. Check the project policy: a')
   console.log('                                          per-UserOp ceiling below the quoted cost')
