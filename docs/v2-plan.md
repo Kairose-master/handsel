@@ -824,6 +824,46 @@ against the status enum and requires each to expose a readable deadline.
 | A surplus sweep | See §6. |
 | A push/pull hybrid | Trying `transfer` and falling back to a credit would put money in wallets in the common case, but makes settlement gas non-deterministic and adds a `try/catch` whose behaviour depends on how the token fails. One path, always, is worth more than a saved transaction. |
 
+### External input: delete the arbiter entirely — v3 candidate
+
+*From the r/ethdev thread on the open challenge (2026-07-31), u/LifeTelevision1146:
+"remove your wallet from your contracts, make them stateless."*
+
+The table above answers a narrower question — whether to add `setArbiter` — and
+concludes the bound is the argument. This proposal is different and better
+aimed: not rotate the privileged wallet, **remove the role**. It cannot apply to
+the deployed contract (`arbiter` is immutable), so it is v3 input, recorded here
+because it is the sharpest external criticism the design has had.
+
+**What it would buy.** `arbiter` is the last address in the contract that can
+*decide* anything. `feeRecipient` only receives, and the registry's oracle only
+writes scores the market never pays on. Delete `resolveDispute` and no wallet
+anywhere can influence where money goes — the property the whole thesis claims
+and currently has to qualify.
+
+**What it would cost, stated honestly.** Every contested job would settle by
+formula instead of judgement:
+
+- `expireReview` → 90/10. A requester who receives garbage and says nothing
+  loses `SILENCE_FORFEIT_BPS` (10%) to the worker.
+- `expireDispute` → the worker. Raising a dispute would become a delay, not a
+  remedy.
+
+So a genuinely defrauded requester could recover at most 90%, with no route to
+the full refund `resolveDispute(id, false)` gives today. That is a real loss of
+recourse, and it is **bounded and predictable**, which is exactly the trade the
+rest of this contract keeps making. Whether 10% is the right price for deleting
+the last trusted wallet is the open question; `SILENCE_FORFEIT_BPS` is already a
+constructor parameter, so a v3 could tune it as the explicit price of
+arbiter-lessness rather than as a nudge against inattention.
+
+**Why it is not obviously wrong.** The timeout path already handles the common
+case — `dispute-gate.ts` only rules when a refund is derivable from evidence the
+requester did not author, and does nothing otherwise, so most disputes on this
+deployment were always going to settle by timeout anyway. Removing the arbiter
+would mostly delete a path that is rarely the one taken, at the cost of the
+worst case.
+
 ---
 
 ## Operational cost, which is not zero
