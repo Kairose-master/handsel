@@ -34,6 +34,45 @@ the `jobs` getter reached 14 fields. A verification attempt with viaIR off
 produces different bytecode and fails, so if Basescan reports a mismatch, check
 this first.
 
+## The constructor arguments, already computed
+
+Read off the live contracts on 2026-07-31 and ABI-encoded — paste these straight
+into Basescan's "Constructor Arguments ABI-encoded" box, **without the `0x`**.
+(Step 1 below regenerates them from scratch if you'd rather not trust this file.)
+
+**LaborMarketV2** — `0x96064ef0a6742d5b7bc8abf2584273bd2f022c8c`:
+
+```
+000000000000000000000000833589fcd6edb6e08f4c7c32d4f71b54bda0291300000000000000000000000091acc4c081d3a364d3b713be8eec39a77f64729000000000000000000000000081c76907812a098427e177b1ef9779157a3d3b6800000000000000000000000000000000000000000000000000000000000001f4000000000000000000000000e818cf591e65c93600311e789f25301138299232000000000000000000000000000000000000000000000000000000000000753000000000000000000000000000000000000000000000000000000000000001f4000000000000000000000000000000000000000000000000000000000000753000000000000000000000000000000000000000000000000000000000000038400000000000000000000000000000000000000000000000000000000000278d00000000000000000000000000000000000000000000000000000000000001518000000000000000000000000000000000000000000000000000000000004f1a00000000000000000000000000000000000000000000000000000000000012750000000000000000000000000000000000000000000000000000000000000003e80000000000000000000000000000000000000000000000000000000000000001
+```
+
+**AgentCreditRegistry** — `0x91acc4c081d3a364d3b713be8eec39a77f647290`:
+
+```
+00000000000000000000000081c76907812a098427e177b1ef9779157a3d3b68
+```
+
+### What those decode to (all read from the chain, all matching the runbook)
+
+| | |
+|---|---|
+| usdc | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` (Circle USDC) |
+| registry | `0x91acc4C081d3a364d3b713be8eEc39A77F647290` |
+| arbiter | `0x81C76907812A098427E177B1Ef9779157a3D3B68` |
+| feeRecipient | `0xe818cf591E65C93600311E789f25301138299232` |
+| feeBps / flatFee | 500 (5%) / 30000 ($0.03) |
+| bondBps / flatBond | 500 (5%) / 30000 ($0.03) |
+| delivery window | 14400s (4h) floor · 2592000s (30d) ceiling |
+| review / open / dispute | 86400s (1d) · 5184000s (60d) · 1209600s (14d) |
+| silenceForfeitBps | 1000 (10%) |
+| minBounty | 1 unit |
+
+Two invariants confirmed while reading these, both worth re-checking after any
+redeploy: **`market.arbiter == registry.oracle`** (otherwise `resolveDispute`
+reverts `NotArbiter` and every dispute settles by timeout instead), and
+**`feeRecipient != oracle`** (otherwise the fee stream is welded to the hot key
+the server signs with).
+
 ## Step 1 — regenerate the constructor arguments
 
 The constructor args are ABI-encoded from the values the chain actually holds,
