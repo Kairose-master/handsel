@@ -41,6 +41,19 @@ about not handing an attacker something the challenge never offered.
 - [ ] **Confirm the deployment holds only operator funds** (§Prerequisite 3).
       If a real third-party user has funded an agent by then, this line is why
       the challenge pauses until their funds are out.
+- [ ] **Lock the prize as a self-to-self escrow** — the whole setup, start to
+      finish, is in `docs/challenge-setup.md`. In one line: post a $100 job and
+      accept it with your *own* worker **before** announcing, and never submit,
+      so the escrow sits `Accepted` and locked for 30 days. This is what removes
+      the grader and the review window from the attack surface entirely: there is
+      no open job to snipe, no submission to grade, no timeout leak — the only
+      way out is a real contract bug, which is exactly what the challenge tests.
+- [ ] **Stand up (or confirm) the testnet practice target** — a **Base Sepolia**
+      deployment running the *same* `LaborMarketV2`, so challengers rehearse the
+      identical escrow/accept/dispute moves with free MockUSDC before spending an
+      afternoon on mainnet. NOT the old Ethereum-Sepolia v1 sandbox — that runs a
+      different contract, so practice there would not transfer. Put its URL in the
+      launch post.
 - [ ] **Publish the end date** on the live page before announcing anywhere.
 
 ---

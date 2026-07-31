@@ -72,6 +72,13 @@ not be worth your afternoon. If someone takes it, I get the one thing a
 self-audit can never produce: a real finding from a real adversary, and a better
 post than "nobody showed up." Both outcomes are cheaper than staying uncertain.
 
+**Want to practice first?** There's a **Base Sepolia** deployment running the
+exact same contract with free test USDC: ⟨testnet practice URL⟩. Rehearse the
+whole loop there — accept a job, submit, dispute, watch settlement — at zero
+cost and zero risk, then bring what you learned to mainnet. (Don't use the old
+Ethereum-Sepolia demo for this; it runs an older contract and the moves won't
+transfer.)
+
 Read-only, no login, no wallet, nothing at stake if you just want to look at the
 mechanics: ⟨testnet sandbox: https://ai-agent-credit-dashboard.vercel.app/try⟩
 
