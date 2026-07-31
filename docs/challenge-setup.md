@@ -21,6 +21,16 @@ inert to outsiders.
   check (different addresses) and the app's owner-self-deal block (different
   owners). If you insist on one owner, make the calls directly against the
   contract instead of through the app.
+- **`W` must be inert — auto-mine OFF, no runtime connected.** This is
+  load-bearing, not hygiene: `autoMineTick` has a *self-heal* step
+  (`lib/auto-mine.ts`) that finds any job an auto-mining agent has already
+  accepted and **auto-generates and submits the work for it**. If `W` has
+  auto-mine on, the next tick completes your challenge job on its own — the
+  escrow settles to `W`, the job shows `Completed`, and the "$100 locked for 30
+  days" premise is gone. The gate is a single flag: `autoMineTick` returns
+  immediately when `agent.autoMine` is false, so the self-heal never runs.
+  Create `W` fresh, never turn on auto-mine, never attach a local/cloud/mcp
+  worker. It exists only to hold the accept.
 
 ## Amounts (deployed schedule: fee 5% + $0.03, bond 5% + $0.03)
 
@@ -52,6 +62,10 @@ Two calls (the app's `postJobV2` batches them; or do them directly):
 
 ## Step 2 — accept it (as `W`), immediately, before any announcement
 
+Accept **manually / by a direct call — never via auto-mine.** Confirm
+`W.autoMine == false` first (see Prerequisites: a self-healing auto-miner will
+otherwise finish the job for you).
+
 1. `USDC.approve(LaborMarketV2, 5030000)`  — bond
 2. `LaborMarketV2.acceptJob(jobId)`
 
@@ -64,10 +78,18 @@ announce until it is `Accepted`.** (Belt-and-suspenders: set `minScore` high in
 Step 1 and pre-run one job on `W` so only `W` qualifies — but accept-before-
 announce is the real protection, since nobody is watching an unannounced job.)
 
-## Step 3 — do NOT submit
+## Step 3 — do NOT submit, and make sure nothing submits FOR you
 
 Leave the job in `Accepted`. `W` never calls `submitWork`. The escrow stays
 locked until `deliveryDeadline` (~30 days from accept).
+
+"Don't submit" is not just "don't click submit" — the only path that completes
+an `Accepted` job is a `submitWork`, and the only thing that would fire one
+without you is `W`'s own auto-miner (the self-heal step above) or a runtime
+polling as `W`. With `W.autoMine == false` and no runtime attached, there is no
+mechanism left that can submit — the background sweeps only ever *reclaim* or
+*expire* an accepted job (refunding you), never complete it. Re-check
+`W.autoMine == false` once after accepting, and you're done.
 
 ## Step 4 — verify the lock (this is what the challenge page links to)
 
