@@ -124,9 +124,22 @@ script it into the deploy.
 ## Step 3 — the registry
 
 Same flow for `AgentCreditRegistry` at
-`0x91acc4c081d3a364d3b713be8eec39a77f647290`. Its constructor takes the oracle
-address; regenerate its args the same way (point the script at its address and
-deploy tx) rather than retyping the oracle address.
+`0x91acc4c081d3a364d3b713be8eec39a77f647290`, with
+**`docs/verify-registry.standard.json`** as the upload and the one-word
+constructor argument from the section above.
+
+That file did not exist until now, because unlike the market this contract has
+no committed artifact — `scripts/deploy-registry.mjs` compiles it with solc at
+deploy time. The standard JSON reproduces that compile exactly: same solc
+0.8.24, same `optimizer { enabled, runs: 200 }`, same `viaIR: true`, and the
+same `contracts/src/AgentCreditRegistry.sol` source-path key (the key matters —
+it feeds the metadata hash baked into the runtime code).
+
+It was checked rather than assumed: compiling locally produced a runtime
+bytecode **byte-identical to `eth_getCode` on the deployed address** (578 bytes
+both sides). The registry has no immutables — `oracle` is storage, since
+`setOracle` exists — so no masking was needed and the comparison is exact. A
+match at that level means Basescan's recompile lands on the same bytes.
 
 ## When it's done
 

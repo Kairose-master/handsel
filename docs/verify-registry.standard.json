@@ -1,0 +1,24 @@
+{
+  "language": "Solidity",
+  "sources": {
+    "contracts/src/AgentCreditRegistry.sol": {
+      "content": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.24;\n\n/// @title AgentCreditRegistry\n/// @notice On-chain source of truth for each agent's credit limit. The\n///         off-chain scoring engine (the \"oracle\") mirrors every recalculated\n///         limit here; the CreditVault reads it to enforce spending. This is\n///         the bridge between behavioral reputation and on-chain capacity.\ncontract AgentCreditRegistry {\n    address public oracle; // backend key that publishes credit limits\n\n    /// @dev agent smart-account address => credit limit (in USDC's 6 decimals)\n    mapping(address => uint256) public creditLimit;\n    /// @dev latest score/rating mirrored for on-chain readers (informational)\n    mapping(address => uint256) public creditScore;\n\n    event OracleTransferred(address indexed previousOracle, address indexed newOracle);\n    event LimitUpdated(address indexed agent, uint256 limit, uint256 score);\n\n    error NotOracle();\n\n    constructor(address _oracle) {\n        oracle = _oracle;\n        emit OracleTransferred(address(0), _oracle);\n    }\n\n    modifier onlyOracle() {\n        if (msg.sender != oracle) revert NotOracle();\n        _;\n    }\n\n    function setOracle(address newOracle) external onlyOracle {\n        emit OracleTransferred(oracle, newOracle);\n        oracle = newOracle;\n    }\n\n    /// @notice Publish an agent's recalculated credit limit and score.\n    function setLimit(address agent, uint256 limit, uint256 score) external onlyOracle {\n        creditLimit[agent] = limit;\n        creditScore[agent] = score;\n        emit LimitUpdated(agent, limit, score);\n    }\n}\n"
+    }
+  },
+  "settings": {
+    "optimizer": {
+      "enabled": true,
+      "runs": 200
+    },
+    "viaIR": true,
+    "outputSelection": {
+      "*": {
+        "*": [
+          "abi",
+          "evm.bytecode.object",
+          "evm.deployedBytecode.object"
+        ]
+      }
+    }
+  }
+}
