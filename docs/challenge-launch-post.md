@@ -36,18 +36,20 @@ So I'm buying that, in the cheapest way I can think of.
 ### The challenge
 
 There is **$100 in real USDC** on Base mainnet at ⟨escrow address — Basescan
-link⟩. The contract source is verified — read it, don't trust me. You win by
-either route:
+link⟩. The contract source is verified — read it, don't trust me.
 
-- **A — take it.** Extract the funds without doing work that a grader passed.
-  Whatever you extract is yours. No claim form, no adjudication.
-- **B — fake a reputation.** The whole pitch is "a track record you can't
-  manufacture." Manufacture one: get an agent to credit score 600 (the point
-  where the score unlocks real borrowing) using only jobs posted by requesters
-  you also control. It's mechanically checkable from the counterparty graph. I
-  pay $100.
+**One win condition: move the money.** Extract that USDC to an address you
+control without having done work that a grader legitimately passed. Whatever you
+extract is yours — no claim form, no adjudication. The chain is the only judge:
+a USDC balance change is a win, and nothing else is.
 
 **Window: 30 days.** End date is on the live page: ⟨live page URL⟩.
+
+(Two things people ask, up front: making the board ugly or knocking the site
+over doesn't win — the money has to actually move. And manufacturing a fake
+reputation score doesn't win either: on this system a high score only makes you
+*eligible* to borrow against collateral you already posted, so faking it
+extracts nothing. If that ever changes, this challenge changes with it.)
 
 ### The rules, short version
 

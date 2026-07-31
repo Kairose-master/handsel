@@ -11,17 +11,16 @@ just hygiene.*
 
 | term | value |
 |---|---|
-| **Prize** | **$100** — one pot |
+| **Prize** | **$100** in real USDC on Base mainnet |
 | **Window** | **30 days**, end date published before the start |
-| **A — take the escrow** | Whatever you extract is yours; a first valid extraction ends the challenge |
-| **B — manufacture a track record** | Reach credit score **600** (the borrowing gate — where a manufactured record actually *buys* something) with an agent whose completed jobs were all posted by requesters you also control. Mechanically checkable from `lib/credit-engine/counterparty-graph.ts`. Pays the $100 |
-| **Both from one pot** | First valid win by either route ends it. $100 is small enough that splitting it weakens both halves |
+| **Win** | Extract the escrowed USDC to an address you control without grader-passed work entitling you to it. First on-chain extraction takes it and ends the challenge |
+| **Sole judge** | The chain. Only a USDC balance change out of the deployment's control counts — nothing off-chain, no reputation number, no downtime |
 
-`N = 600` is chosen because it is the exact threshold `reputation-lending.ts`
-gates borrowing on (`minScore: 600`) — below it a manufactured score is a
-number, at it the score unlocks real credit, which is the claim worth attacking.
-If nobody approaches it inside the window, lowering it is a fair mid-challenge
-change *only if announced*; raising it is not.
+There is **one** win condition, and it is A. An earlier draft added a second —
+manufacture a credit score — and it has been dropped: reaching the score
+extracts no money on the deployed system, so it rewarded a non-exploit. The
+reasoning is under "Why *not* 'manufacture a track record'" and the surface is
+listed Out of scope.
 
 ## Pre-flight — do these before publishing, in order
 
@@ -70,29 +69,35 @@ falsifiable in the strongest available form — by paying someone to falsify the
 
 ---
 
-## Two win conditions, and the second is the point
+## One win condition: move the money
 
-**A — Take the escrow.** Extract the deposited funds without performing work a
-grader passed. Classic, legible, and not what makes this interesting: every
-market can run this challenge.
+**Take the escrow.** Extract the deposited USDC to an address you control
+without having done grader-passed work that entitled you to it. **Only an
+on-chain balance change counts** — the deployment's USDC leaves its control and
+arrives in yours. Nothing else is a win, and that single line is what keeps the
+challenge honest: it rules out DoS, it rules out "I made the board ugly", and it
+rules out the manufactured-reputation route below, all at once.
 
-**B — Manufacture a track record.** Reach a credit score of **N** with an agent
-whose completed jobs were *all* posted by requesters the challenger also
-controls.
+### Why *not* "manufacture a track record"
 
-B is the product's own claim turned into a target. The README sells "a track
-record you cannot manufacture"; this pays someone to manufacture one.
+An earlier draft made a second win condition — reach a credit score of N using
+only jobs from requesters you also control — and called it "the point". That was
+wrong, and the reason is worth stating because it clarifies what the product
+actually claims.
 
-B looks subjective and is not. The win condition is **mechanically checkable
-from the counterparty graph** — the same graph `lib/credit-engine/counterparty-graph.ts`
-already computes. No judgement call, no argument about whether the work was
-"real".
+Manufacturing a **score** is not manufacturing an **extraction**. Reaching 600
+only makes an agent *eligible to borrow*, and today's lending is
+**collateralised** — you draw against USDC you already posted, and you still owe
+it back. No money leaves the system. The version that would be a real theft —
+manufacture a score, draw an *under*-collateralised advance larger than your
+collateral, and walk — **does not exist on the deployed system**
+(`product-thesis.md`: "nothing consumes `advanceLimit` yet"). So paying someone
+to hit score 600 pays for a non-exploit: the counterparty graph would light up,
+and nothing would have been broken.
 
-And the challenger gets the answer key: `docs/self-sybil-attack.md` states
-plainly that pooling closes the *star* topology and leaves the **ring** open at
-a cost of roughly 2N funded bounties in fees. A challenger reading it knows
-exactly where to push. That is the correct way to run this — a challenge whose
-defences are secret is testing obscurity, not design.
+The day an under-collateralised advance ships, this becomes a real win condition
+and comes back. Until then, a manufactured score is a known, un-monetisable
+limitation, not a breach — see Out of scope.
 
 ---
 
@@ -135,6 +140,15 @@ remaining condition: confirm the deployment holds only operator funds.
   party.
 - Denial of service and volumetric attacks. They prove a known truth (a solo
   deployment can be knocked over) and cost the challenge its remaining time.
+- **Sybil / multi-account registration.** Registering many accounts is an
+  undefended surface today, and knowingly so — but it is excluded, for the same
+  reason the manufactured score above is not a win: **it extracts no money.** The
+  real-world answer is identity verification (`본인인증` / KYC at signup), which
+  is a separate, orthogonal control, not a hole in the market mechanism. Opening
+  many accounts is not a breach of anything the escrow depends on; it only
+  matters *if* it could be turned into an extraction, and on the deployed system
+  it cannot. If an under-collateralised advance ever ships, this line is the
+  first one to revisit.
 - Social engineering of the operator or of any user.
 - Anything touching another person's account or data. The deployment is meant to
   contain only operator funds; if that ever stops being true, this line becomes
@@ -145,12 +159,15 @@ remaining condition: confirm the deployment holds only operator funds.
 ## Rules
 
 - **Fixed window**, with the end date published before the start.
-- **Take it and it is yours.** For A, the extracted funds are the prize; no
-  claim process, no adjudication. This removes every incentive to quibble, which
-  is the failure mode that would destroy the reputational point of running it.
-- **For B, a stated reward and a published threshold N**, both fixed in advance.
+- **A win is an on-chain balance change, and nothing else.** The deployment's
+  USDC has to leave its control and land in yours. No off-chain claim, no "I
+  could have", no reputation number — the chain is the only judge. This is what
+  makes DoS, board-spam, and score-manufacturing all non-wins by construction.
+- **Take it and it is yours.** The extracted funds are the prize; no claim
+  process, no adjudication. This removes every incentive to quibble, which is the
+  failure mode that would destroy the reputational point of running it.
 - **Report or don't** — a working extraction is self-evidencing. A method
-  description is requested but not required for A.
+  description is requested but not required.
 - **Everything gets published**, win or lose, with the finder credited by
   whatever name they choose, in `docs/failure-modes.md` in the same format as
   every other entry. Withholding a finding after running a challenge like this
@@ -166,8 +183,6 @@ The marketing object is not a blog post. It is a page showing, from live data:
 
 - the current escrow balance and the address holding it, linked to the explorer
 - days elapsed
-- the highest credit score currently held by any agent not controlled by the
-  operator
 
 Two possible states, both worth having:
 
@@ -196,16 +211,18 @@ the on-chain reads exist.
   converts a credibility asset into a credibility liability, at 100% efficiency.
 - **Treating silence as proof.** "Nobody took it" is weak evidence and must be
   described as such. It bounds nothing: it may mean the defences held, or that
-  $60 was not worth anybody's afternoon. The write-up should say which
+  $100 was not worth anybody's afternoon. The write-up should say which
   interpretations remain open, the way the audit does.
 
 ---
 
 ## Still the operator's to settle
 
-- ~~The prize size, and whether A and B share one pot.~~ **Decided: $100, one
-  pot** (see Decided terms).
-- ~~The threshold **N** for B.~~ **Decided: 600, the borrowing gate.**
+- ~~The prize size, and whether A and B share one pot.~~ **Decided: $100, single
+  win condition** (take the escrow — see Decided terms).
+- ~~The threshold **N** for B.~~ **B was dropped** — a manufactured score
+  extracts no money, so it is not a win. Out of scope until an
+  under-collateralised advance exists.
 - Tax and reporting treatment of paying a stranger a bounty — unchanged, and
   genuinely not mine to set.
 - ~~Whether to run it before the demo video, or after.~~ **Decided: the
