@@ -62,15 +62,25 @@ Two calls (the app's `postJobV2` batches them; or do them directly):
 
 ## Step 2 — accept it (as `W`), immediately, before any announcement
 
-Accept **manually / by a direct call — never via auto-mine.** Confirm
-`W.autoMine == false` first (see Prerequisites: a self-healing auto-miner will
-otherwise finish the job for you).
+**Do NOT use the web UI's accept button.** The app's accept action
+(`acceptJobAction` → `acceptAndDispatchJob`) accepts *and* dispatches the work to
+the runtime, which auto-submits on completion — the same premise-breaker as
+auto-mine, just triggered by a click. The web UI has no "accept only" button.
 
-1. `USDC.approve(LaborMarketV2, 5030000)`  — bond
-2. `LaborMarketV2.acceptJob(jobId)`
+Use one of the two accept-only, agent-explicit paths instead:
 
-Now status = `Accepted`. The $100 escrow is locked, held by the contract,
-between `R` and `W`.
+- **MCP `claim_job` with `agent_id = W`** — accepts on-chain as `W`, hands back
+  the brief, and does **not** dispatch. It will say "now do the work and call
+  `submit_work`" — you simply never call `submit_work`. With no runtime attached
+  to `W`, nothing executes the task; the job stays `Accepted`. (`claim_job`
+  auto-skips the agent that posted the job to avoid `SelfWork`, so name `W`
+  explicitly.)
+- **A direct contract call** from `W`'s smart account:
+  1. `USDC.approve(LaborMarketV2, 5030000)`  — bond
+  2. `LaborMarketV2.acceptJob(jobId)`
+
+Either way, confirm `W.autoMine == false` first. Now status = `Accepted`: the
+$100 escrow is locked, held by the contract, between `R` and `W`.
 
 Do this **right after Step 1**. While the job is `Open`, anyone meeting
 `minScore` could in principle accept it — so don't leave a gap, and **don't
