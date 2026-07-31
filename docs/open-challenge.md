@@ -1,11 +1,48 @@
-# Open challenge — draft, not published
+# Open challenge — ready to publish, pending pre-flight
 
-*Design for a public "here is real money, take it" challenge against the v2
-mainnet deployment. Written 2026-07-27. **The challenge itself is not live** —
-though the target deployment now exists (LaborMarketV2 on Base mainnet,
-2026-07-30); the challenge remains unpublished. Publishing it
-is an operator decision, and two of its terms (tax treatment, and what an
-individual is willing to authorise) are not mine to set.*
+*A public "here is real money, take it" challenge against the v2 mainnet
+deployment. Written 2026-07-27; terms fixed 2026-07-31. The target deployment
+is live (LaborMarketV2 on Base mainnet, 2026-07-30) and all three prerequisites
+below are met. **Decided terms: a $100 pot, a 30-day window.** What remains
+before publishing is the pre-flight checklist in the next section — not design,
+just hygiene.*
+
+## Decided terms
+
+| term | value |
+|---|---|
+| **Prize** | **$100** — one pot |
+| **Window** | **30 days**, end date published before the start |
+| **A — take the escrow** | Whatever you extract is yours; a first valid extraction ends the challenge |
+| **B — manufacture a track record** | Reach credit score **600** (the borrowing gate — where a manufactured record actually *buys* something) with an agent whose completed jobs were all posted by requesters you also control. Mechanically checkable from `lib/credit-engine/counterparty-graph.ts`. Pays the $100 |
+| **Both from one pot** | First valid win by either route ends it. $100 is small enough that splitting it weakens both halves |
+
+`N = 600` is chosen because it is the exact threshold `reputation-lending.ts`
+gates borrowing on (`minScore: 600`) — below it a manufactured score is a
+number, at it the score unlocks real credit, which is the claim worth attacking.
+If nobody approaches it inside the window, lowering it is a fair mid-challenge
+change *only if announced*; raising it is not.
+
+## Pre-flight — do these before publishing, in order
+
+The prerequisites (§Prerequisites) are about the *game* being fair. These are
+about not handing an attacker something the challenge never offered.
+
+- [ ] **Verify both contracts on Basescan** (`docs/basescan-verification.md`).
+      A challenge against unreadable bytecode is a black-box quiz, not an audit.
+- [ ] **Rotate the keys that touched a chat or a log** — the CDP API key pasted
+      during setup, and the two worker secrets. The challenge invites probing of
+      exactly these surfaces.
+- [ ] **Cap the blast radius to the prize.** `AGENT_OWNER_PRIVATE_KEY` derives
+      every agent's smart account, so "what a server compromise loses" is the sum
+      those wallets hold, not the escrow alone. Before publishing, drain the
+      agent wallets and the treasury to roughly the prize — hold ~$100 across the
+      escrow + wallets, no more. A challenge that accidentally exposes $2,000 to
+      win $100 is mispriced against the operator.
+- [ ] **Confirm the deployment holds only operator funds** (§Prerequisite 3).
+      If a real third-party user has funded an agent by then, this line is why
+      the challenge pauses until their funds are out.
+- [ ] **Publish the end date** on the live page before announcing anywhere.
 
 ---
 
@@ -134,9 +171,9 @@ The marketing object is not a blog post. It is a page showing, from live data:
 
 Two possible states, both worth having:
 
-> **$60. Day 12. Still here.**
+> **$100. Day 12. Still here.**
 
-> **$60. Taken on day 3 by ⟨name⟩. Here is how.**
+> **$100. Taken on day 3 by ⟨name⟩. Here is how.**
 
 The second is better content than the first. That asymmetry is the whole reason
 this is a good idea: **there is no outcome that is bad for the project**, only
@@ -164,13 +201,13 @@ the on-chain reads exist.
 
 ---
 
-## Open, for the operator to decide
+## Still the operator's to settle
 
-- The prize size, and whether A and B share one pot.
-- The threshold **N** for B. It should be high enough to be a real claim and low
-  enough to be reachable inside the window — the settled-volume ceiling in
-  `collateralizedCreditLimit` is a reasonable place to calibrate from.
-- Tax and reporting treatment of paying a stranger a bounty.
+- ~~The prize size, and whether A and B share one pot.~~ **Decided: $100, one
+  pot** (see Decided terms).
+- ~~The threshold **N** for B.~~ **Decided: 600, the borrowing gate.**
+- Tax and reporting treatment of paying a stranger a bounty — unchanged, and
+  genuinely not mine to set.
 - ~~Whether to run it before the demo video, or after.~~ **Decided: the
   challenge comes first and the video is last** (`v2-plan.md` §Sequence). The
   earlier reasoning — that a live challenge during a recording adds a variable
