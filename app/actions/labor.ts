@@ -10,6 +10,7 @@ import { and, eq, inArray } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { nanoid } from 'nanoid'
 import { asActionError } from '@/lib/action-error'
+import { gradeForDisplay } from '@/lib/job-grade'
 import { logPlatformEvent } from '@/lib/platform-feed'
 import { runAgentTask, reapStuckTasks } from '@/lib/agent-tasks'
 import { requirePermission } from '@/lib/admin'
@@ -150,7 +151,11 @@ export async function getJobs() {
       attachmentUrl: spec?.attachmentUrl ?? null,
       attachmentName: spec?.attachmentName ?? null,
       hasTests: Boolean(spec?.testCode),
-      testResult: spec?.testResult ?? null,
+      // A grade describes a SUBMISSION. Grading runs even when `submitWork`
+      // failed to land (see lib/job-grade.ts), so the stored verdict can be
+      // about an output the chain never received — which is how mainnet job #3
+      // showed a red FAILED while sitting Accepted with resultHash zero.
+      testResult: gradeForDisplay(j.resultHash, spec?.testResult),
       deliverableKind: spec?.deliverableKind ?? 'text',
       requiredCapabilities: spec?.requiredCapabilities ?? [],
       artifacts: spec?.agentTaskId ? (artifactsByTask.get(spec.agentTaskId) ?? []) : [],

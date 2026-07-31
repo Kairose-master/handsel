@@ -12,6 +12,7 @@ import { db } from '@/lib/db'
 import { SAFE_JOB_SPEC_COLUMNS } from '@/lib/db/safe-select'
 import { agent, agentEvent, agentTemplate, platformEvent, jobSpec, agentTask } from '@/lib/db/schema'
 import { eq, desc, inArray } from 'drizzle-orm'
+import { gradeForDisplay } from '@/lib/job-grade'
 import { computeLaborIndex } from '@/lib/platform-index'
 
 function truncate(addr: string | null | undefined): string | null {
@@ -153,7 +154,10 @@ async function readPublicJobs(limit: number) {
         disputeNote: spec?.disputeNote ?? null,
         attachmentUrl: spec?.attachmentUrl ?? null,
         attachmentName: spec?.attachmentName ?? null,
-        testResult: spec?.testResult ?? null,
+        // Only a verdict the chain has a submission for — see lib/job-grade.ts.
+        // This is the public board, so it is the surface where a grade about a
+        // submission that never landed is most misleading.
+        testResult: gradeForDisplay(j.resultHash, spec?.testResult),
         hasTests: Boolean(spec?.testCode),
         // GitHub repo jobs: where to clone and what to diff against. Exposed
         // as structured fields so a headless worker doesn't have to regex the
