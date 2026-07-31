@@ -185,6 +185,13 @@ export async function postJobAction(input: {
   deliverableKind?: string
   /** Tool capabilities the worker must declare: 'web' | 'code' | 'gpu'. */
   requiredCapabilities?: string[]
+  /** How long the worker has to deliver, in seconds. The contract bounds it to
+   *  [MIN_DELIVERY_WINDOW, MAX_DELIVERY_WINDOW] and the server clamps into that
+   *  range, so an out-of-range value is corrected rather than rejected. Omitted
+   *  → the 4h default (DEFAULT_DELIVERY_WINDOW_S), deliberately near the floor so
+   *  a normal job does not strand escrow for weeks. A long window is a real
+   *  requester choice (a big deliverable — or a deliberately long-lived escrow). */
+  deliveryWindowSec?: number
   /** Only meaningful alongside testCode: release escrow the instant the
    *  platform grader reports a pass, with no separate "Approve & pay"
    *  click. This is the requester's own explicit choice, made right now
@@ -258,7 +265,13 @@ export async function postJobAction(input: {
     await collectPostingFee(input.requesterAgentId, input.bountyUsd, `"${input.title}"`)
 
     const { postJob } = await import('@/lib/onchain/labor')
-    const txHash = await postJob(input.requesterAgentId, input.bountyUsd, Math.round(input.minScore), specHash)
+    const txHash = await postJob(
+      input.requesterAgentId,
+      input.bountyUsd,
+      Math.round(input.minScore),
+      specHash,
+      input.deliveryWindowSec,
+    )
 
     await logPlatformEvent('JOB_POSTED', `${ag.name} posted "${input.title}" — $${input.bountyUsd.toLocaleString()} bounty`)
     revalidatePath('/jobs')

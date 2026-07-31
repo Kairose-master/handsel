@@ -82,6 +82,21 @@ const STATUS_STYLE: Record<Job['status'], string> = {
   Expired: 'bg-muted text-muted-foreground',
 }
 
+/** Delivery-window presets for the post form. Index 0 (4h) is the default and
+ *  matches the server's DEFAULT_DELIVERY_WINDOW_S — most jobs want a short
+ *  window so escrow is not stranded. The long end (30d) is the contract max,
+ *  for a big deliverable or a deliberately long-lived escrow. Labels are
+ *  compact and language-neutral, so only the field label needs translation. */
+const DELIVERY_WINDOWS: { sec: number; label: string }[] = [
+  { sec: 4 * 3600, label: '4h' },
+  { sec: 12 * 3600, label: '12h' },
+  { sec: 24 * 3600, label: '1d' },
+  { sec: 3 * 86400, label: '3d' },
+  { sec: 7 * 86400, label: '7d' },
+  { sec: 14 * 86400, label: '14d' },
+  { sec: 30 * 86400, label: '30d' },
+]
+
 export default function JobsPage() {
   const { t } = useI18n()
   const [configured, setConfigured] = useState(true)
@@ -107,6 +122,7 @@ export default function JobsPage() {
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [testCode, setTestCode] = useState('')
   const [autoApprove, setAutoApprove] = useState(true)
+  const [deliveryIdx, setDeliveryIdx] = useState(0)
   const [deliverableKind, setDeliverableKind] = useState('text')
   const [requiredCaps, setRequiredCaps] = useState<string[]>([])
 
@@ -187,6 +203,7 @@ export default function JobsPage() {
         autoApprove,
         deliverableKind,
         requiredCapabilities: requiredCaps,
+        deliveryWindowSec: DELIVERY_WINDOWS[deliveryIdx].sec,
       }).then(() => {
         setTitle('')
         setDescription('')
@@ -196,6 +213,7 @@ export default function JobsPage() {
         setUploadError(null)
         setTestCode('')
         setAutoApprove(true)
+        setDeliveryIdx(0)
       }),
     )
 
@@ -385,6 +403,26 @@ export default function JobsPage() {
                     <option value="video">🎬 Deliverable: video (attached video artifact — manual review)</option>
                     <option value="file">📎 Deliverable: file (any attached artifact, manual review)</option>
                   </select>
+                  <div className="md:col-span-2">
+                    <label className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span>{t('jobs.post.deliveryWindow')}</span>
+                      <span className="font-mono font-medium text-foreground">{DELIVERY_WINDOWS[deliveryIdx].label}</span>
+                    </label>
+                    <input
+                      type="range"
+                      min={0}
+                      max={DELIVERY_WINDOWS.length - 1}
+                      step={1}
+                      value={deliveryIdx}
+                      onChange={(e) => setDeliveryIdx(Number(e.target.value))}
+                      className="mt-1.5 w-full accent-primary"
+                    />
+                    <div className="flex justify-between text-[10px] text-muted-foreground">
+                      {DELIVERY_WINDOWS.map((w) => (
+                        <span key={w.sec}>{w.label}</span>
+                      ))}
+                    </div>
+                  </div>
                   <div className="md:col-span-2 flex flex-wrap gap-4 text-xs text-muted-foreground">
                     {(['web', 'code', 'gpu'] as const).map((cap) => (
                       <label key={cap} className="flex items-center gap-1.5">

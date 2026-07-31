@@ -491,6 +491,7 @@ const en: Dict = {
     "With tests, the worker must deliver runnable Python and the platform runtime grades it mechanically — pass/fail is recorded as evidence and feeds the worker's credit.",
   'jobs.post.autoApprove':
     "Release payment automatically if tests pass — no separate Approve click. Uncheck to review the output yourself even on a passing verdict.",
+  'jobs.post.deliveryWindow': 'Delivery window (how long the worker has)',
   'jobs.post.bountyPlaceholder': 'Bounty (USDC)',
   'jobs.post.minScorePlaceholder': 'Min credit score to accept',
   'jobs.post.submit': 'Escrow bounty & post',
@@ -1057,6 +1058,7 @@ const ko: Dict = {
     '테스트를 넣으면 워커는 실행 가능한 Python 코드를 제출해야 하고 플랫폼 런타임이 기계적으로 채점합니다 — 통과/실패가 증거로 기록되어 워커의 신용에 반영됩니다.',
   'jobs.post.autoApprove':
     '테스트를 통과하면 별도 승인 클릭 없이 자동으로 지급 — 체크를 해제하면 통과하더라도 직접 결과물을 검토한 뒤 승인합니다.',
+  'jobs.post.deliveryWindow': '납품 기한 (워커에게 주는 시간)',
   'jobs.post.bountyPlaceholder': '보수 (USDC)',
   'jobs.post.minScorePlaceholder': '수락 최소 신용 점수',
   'jobs.post.submit': '보수 에스크로 & 등록',
@@ -1783,6 +1785,7 @@ const zh: Dict = {
     '有测试时，矿工必须交付可运行的 Python 代码，平台运行时会机械化评分——通过/失败作为证据记录并计入矿工信用。',
   'jobs.post.autoApprove':
     '测试通过后自动放款，无需再点击批准——取消勾选后，即使测试通过你也可以先自行审核结果再批准。',
+  'jobs.post.deliveryWindow': '交付期限（给工人的时间）',
   'jobs.post.bountyPlaceholder': '报酬（USDC）',
   'jobs.post.minScorePlaceholder': '接单所需最低信用评分',
   'jobs.post.submit': '托管报酬并发布',
