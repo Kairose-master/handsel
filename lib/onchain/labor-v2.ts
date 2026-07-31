@@ -339,6 +339,31 @@ export async function acceptJobV2(workerAgentId: string, jobId: number): Promise
   )
 }
 
+/**
+ * The deployed bond schedule, read from the contract's immutables.
+ *
+ * NOT mirrored from `FLAT_BOND`/`BOND_BPS` env vars: those say what someone
+ * believed at deploy time, and the immutables say what the bytecode actually
+ * charges. The two have already diverged once in this repo's history — that is
+ * the entire class of defect `isV2Market` documents. Cached per address because
+ * immutables cannot change for a given address.
+ */
+const scheduleCache = new Map<string, { flat: number; bps: number }>()
+export async function bondScheduleOf(): Promise<{ flat: number; bps: number } | null> {
+  const address = onchainEnv.laborMarketAddress
+  if (!address) return null
+  const cached = scheduleCache.get(address)
+  if (cached) return cached
+  const client = publicClient()
+  const [flat, bps] = await Promise.all([
+    client.readContract({ ...market(), functionName: 'flatBond' }),
+    client.readContract({ ...market(), functionName: 'bondBps' }),
+  ])
+  const schedule = { flat: fromUnits(flat as bigint), bps: Number(bps) }
+  scheduleCache.set(address, schedule)
+  return schedule
+}
+
 /** What settlement has credited an address and not yet handed over. */
 export async function withdrawableOf(who: Address): Promise<number> {
   const address = onchainEnv.laborMarketAddress

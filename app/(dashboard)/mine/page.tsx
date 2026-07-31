@@ -687,6 +687,22 @@ function WorkerCard({ worker: w, onChanged }: { worker: Worker; onChanged: () =>
           <p className="text-xs text-muted-foreground">{t('mine.worker.earned')}</p>
           <p className="font-semibold">${w.earnedUsd.toLocaleString()}</p>
         </div>
+        {/* Money the wallet number hides: the bond the market holds while a
+            job is in flight (comes back on completion) and settlement credits
+            waiting for withdraw. Rendered only when non-zero — the wallet
+            tells the whole truth the rest of the time. */}
+        {(w.bondedUsd ?? 0) > 0 && (
+          <div title={t('mine.worker.bondTooltip')}>
+            <p className="text-xs text-muted-foreground">🔒 {t('mine.worker.bonded')}</p>
+            <p className="font-semibold tabular-nums">${(w.bondedUsd ?? 0).toFixed(3)}</p>
+          </div>
+        )}
+        {(w.claimableUsd ?? 0) > 0 && (
+          <div title={t('mine.worker.claimableTooltip')}>
+            <p className="text-xs text-muted-foreground">⏳ {t('mine.worker.claimable')}</p>
+            <p className="font-semibold tabular-nums">${(w.claimableUsd ?? 0).toFixed(3)}</p>
+          </div>
+        )}
         <div>
           <p className="text-xs text-muted-foreground">{t('mine.worker.graded')}</p>
           <p className="font-semibold">{graded}</p>

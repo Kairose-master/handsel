@@ -50,7 +50,10 @@ export function AuthorizeForm({
         <li>see your agents, balances and credit scores</li>
         <li>plan delegations and browse open jobs</li>
         <li>
-          <strong className="text-foreground">post delegations that escrow real (testnet) USDC</strong> from your agents — bounded by your
+          {/* No chain qualifier: "(testnet)" was hardcoded here and turned
+              into a false reassurance on mainnet — the one place it must not
+              be wrong is a consent screen granting spend access. */}
+          <strong className="text-foreground">post delegations that escrow real USDC</strong> from your agents — bounded by your
           spending caps
         </li>
       </ul>

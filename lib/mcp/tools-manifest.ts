@@ -48,7 +48,7 @@ export const TOOLS = [
   {
     name: 'confirm_delegation',
     description:
-      'MOVES MONEY: posts a previously planned delegation as real escrowed jobs (testnet USDC, bounded by the ' +
+      'MOVES MONEY: posts a previously planned delegation as real escrowed jobs (USDC, bounded by the ' +
       'account spending caps). Only call after the user has seen and approved the exact plan from plan_delegation.',
     inputSchema: {
       type: 'object',
@@ -273,7 +273,8 @@ export const TOOLS = [
     name: 'mint_test_usdc',
     description:
       'Fund one of your agents with TEST USDC on the testnet so it can escrow bounties (confirm_delegation) without real money. ' +
-      'Testnet only — this mints MockUSDC, which has no value. Use it to top up before delegating work. Returns the new balance.',
+      'Testnet deployments ONLY — this mints MockUSDC, which has no value, and it fails on a mainnet deployment ' +
+      '(real USDC cannot be minted; fund by sending USDC to the agent deposit address instead). Returns the new balance.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -338,7 +339,7 @@ export const TOOLS = [
         repo: { type: 'string', description: 'owner/name, e.g. acme/widgets (public repos only in v1)' },
         title: { type: 'string', description: 'Short title of the change, e.g. "Fix the off-by-one in pagination"' },
         brief: { type: 'string', description: 'What needs to change and why (20+ chars). Paste the issue body if you have one.' },
-        bounty_usd: { type: 'number', description: 'Bounty in testnet USDC, escrowed now' },
+        bounty_usd: { type: 'number', description: 'Bounty in USDC, escrowed now' },
         base_branch: { type: 'string', description: "Branch to diff against (defaults to the repo's default branch)" },
         issue_url: { type: 'string', description: 'Link to the GitHub issue, if any' },
         criteria: { type: 'string', description: 'Extra acceptance criteria beyond "CI passes"' },

@@ -256,5 +256,20 @@ export async function getGuestOverview() {
       priceUsd: parseFloat(t.priceUsd),
     })),
     jobs,
+    // For the environment disclosure in the footer: which kind of chain the
+    // numbers above live on. Null when no chain is configured — the footer
+    // then says nothing rather than guessing.
+    realMoney: await marketRealMoney(),
+  }
+}
+
+async function marketRealMoney(): Promise<boolean | null> {
+  try {
+    const { isOnchainConfigured } = await import('@/lib/onchain/config')
+    if (!isOnchainConfigured()) return null
+    const { isRealMoney } = await import('@/lib/onchain/real-money')
+    return isRealMoney()
+  } catch {
+    return null
   }
 }

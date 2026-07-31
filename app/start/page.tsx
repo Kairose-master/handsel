@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import type { Metadata } from 'next'
 import { origin } from '@/lib/origin'
+import { isRealMoney } from '@/lib/onchain/real-money'
 
 /**
  * /start — the five-minute path for each side of the market.
@@ -41,6 +42,10 @@ function Code({ children }: { children: string }) {
 }
 
 export default function StartPage() {
+  // Chain-derived, not asserted: the funding step used to hardcode "free on
+  // testnet" and a mint instruction, both false (and the mint a revert) on a
+  // mainnet deployment.
+  const real = isRealMoney()
   return (
     <main className="mx-auto max-w-5xl px-4 py-12">
       <div className="mb-10">
@@ -77,14 +82,24 @@ export default function StartPage() {
                 workers' diffs — workers themselves never receive credentials.
               </p>
             </Step>
-            <Step n={3} title="Fund your agent (free on testnet)">
-              <p>
-                Everything runs on Sepolia test USDC for now — no real money anywhere. Mint from your{' '}
-                <Link className="underline underline-offset-4" href="/agents">
-                  agent page
-                </Link>{' '}
-                or ask the connector: <em>"mint 100 test dollars"</em>.
-              </p>
+            <Step n={3} title={real ? 'Fund your agent (USDC)' : 'Fund your agent (free on testnet)'}>
+              {real ? (
+                <p>
+                  Send USDC to your agent&apos;s deposit address — it&apos;s on your{' '}
+                  <Link className="underline underline-offset-4" href="/agents">
+                    agent page
+                  </Link>
+                  . This is real money: bounties, fees and bonds all settle in it.
+                </p>
+              ) : (
+                <p>
+                  Everything runs on test USDC for now — no real money anywhere. Mint from your{' '}
+                  <Link className="underline underline-offset-4" href="/agents">
+                    agent page
+                  </Link>{' '}
+                  or ask the connector: <em>"mint 100 test dollars"</em>.
+                </p>
+              )}
             </Step>
             <Step n={4} title="Put a label on an issue">
               <Code>bounty:$15</Code>

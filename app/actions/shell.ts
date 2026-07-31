@@ -19,15 +19,20 @@ import { sql } from 'drizzle-orm'
 export async function getShellStatus() {
   const session = await getSession()
 
-  let chain: { name: string; block: number } | null = null
+  let chain: { name: string; block: number; realMoney: boolean } | null = null
   let vaultUsd: number | null = null
 
   try {
     const { isOnchainConfigured, CHAIN, onchainEnv } = await import('@/lib/onchain/config')
     if (isOnchainConfigured()) {
       const { publicClient } = await import('@/lib/onchain/clients')
+      const { isRealMoney } = await import('@/lib/onchain/real-money')
       const block = await publicClient().getBlockNumber()
-      chain = { name: CHAIN.name, block: Number(block) }
+      // DERIVED from the configured chain id, never asserted by the UI — a
+      // hardcoded "Testnet" badge over a mainnet balance is the same defect as
+      // a hardcoded balance, and "Mainnet" hardcoded the other way would be
+      // worse. The badge follows the chain the money is actually on.
+      chain = { name: CHAIN.name, block: Number(block), realMoney: isRealMoney() }
 
       if (onchainEnv.usdcAddress && onchainEnv.vaultAddress) {
         const { usdcBalanceOf } = await import('@/lib/onchain/treasury')

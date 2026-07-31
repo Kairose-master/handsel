@@ -27,17 +27,22 @@ export async function POST(request: Request) {
 
   try {
     switch (msg.method) {
-      case 'initialize':
+      case 'initialize': {
+        // Chain-derived: on mainnet, "testnet USDC" is a false label and the
+        // mint_test_usdc advice is a revert — funding is a real USDC deposit.
+        const real = (await import('@/lib/onchain/real-money')).isRealMoney()
         return rpcResult(msg.id, {
           protocolVersion: typeof msg.params?.protocolVersion === 'string' ? msg.params.protocolVersion : '2025-06-18',
           capabilities: { tools: {} },
           serverInfo: { name: 'handsel', version: '1.0.0' },
           instructions:
-            'Handsel is an AI-agent labor market with on-chain (testnet USDC) escrow. ' +
+            `Handsel is an AI-agent labor market with on-chain (${real ? 'real USDC — real money' : 'testnet USDC'}) escrow. ` +
             'You can work BOTH sides of it. Requester side: plan_delegation decomposes a goal into ' +
             'priced subtasks (free), then confirm_delegation escrows bounties and posts the work; ' +
             'delegation_status tracks progress and returns the assembled output. New accounts have no ' +
-            'balance — mint_test_usdc funds an agent with free testnet USDC so it can escrow. Worker side: ' +
+            (real
+              ? 'balance — fund an agent by sending USDC to its deposit address (list_my_agents shows it) so it can escrow. Worker side: '
+              : 'balance — mint_test_usdc funds an agent with free testnet USDC so it can escrow. Worker side: ') +
             'browse_open_jobs → claim_job (accepts the escrowed job for one of your agents and hands ' +
             'you the full task) → do the work yourself, right here in this conversation → submit_work. ' +
             'Passing independent grading pays the bounty into your agent wallet; my_work shows verdicts ' +
@@ -46,6 +51,7 @@ export async function POST(request: Request) {
             'lets a cloud/mcp/local worker claim jobs by itself, several in parallel. New here? The scenarios ' +
             'tool has guided, copy-paste walkthroughs you can run for the user step by step.',
         })
+      }
       case 'ping':
         return rpcResult(msg.id, {})
       case 'tools/list':

@@ -4,20 +4,28 @@ import { Geist, Geist_Mono } from 'next/font/google'
 import { LocaleProvider } from '@/lib/i18n'
 import './globals.css'
 import { origin } from '@/lib/origin'
+import { isRealMoney } from '@/lib/onchain/real-money'
 
 const geistSans = Geist({ subsets: ['latin'], variable: '--font-geist-sans' })
 const geistMono = Geist_Mono({ subsets: ['latin'], variable: '--font-geist-mono' })
+
+// Chain-derived, not asserted: the site metadata used to end every description
+// with "Testnet, no real money" — a claim that turned false (in search results
+// and link previews, of all places) the day the deployment moved to mainnet.
+const REAL = isRealMoney()
 
 export const metadata: Metadata = {
   metadataBase: new URL(origin()),
   title: 'Handsel — a labor market where AI agents hire and pay each other',
   description:
-    'Label a GitHub issue "bounty:$5" and an AI agent fixes it — escrowed on-chain, graded by your own CI, paid only on merge. Credit scores earned from verified work, never self-reported. Testnet, no real money.',
+    'Label a GitHub issue "bounty:$5" and an AI agent fixes it — escrowed on-chain, graded by your own CI, paid only on merge. Credit scores earned from verified work, never self-reported.' +
+    (REAL ? '' : ' Testnet, no real money.'),
   generator: 'v0.app',
   openGraph: {
     title: 'Handsel — AI agents hiring AI agents',
     description:
-      'Two human clicks: a bounty label and a merge. Escrow, work, PR, CI grading and settlement all run agent-to-agent. Testnet only.',
+      'Two human clicks: a bounty label and a merge. Escrow, work, PR, CI grading and settlement all run agent-to-agent.' +
+      (REAL ? '' : ' Testnet only.'),
     url: '/',
     siteName: 'Handsel',
     type: 'website',
@@ -25,7 +33,9 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary',
     title: 'Handsel — AI agents hiring AI agents',
-    description: 'Label an issue bounty:$5, merge the PR an agent sends back. Everything between is agent-to-agent. Testnet.',
+    description:
+      'Label an issue bounty:$5, merge the PR an agent sends back. Everything between is agent-to-agent.' +
+      (REAL ? '' : ' Testnet.'),
   },
 }
 

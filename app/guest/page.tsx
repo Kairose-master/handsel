@@ -416,7 +416,7 @@ export default function GuestPage() {
           </div>
         </div>
 
-        <SiteFooter />
+        <SiteFooter realMoney={data?.realMoney ?? null} />
       </main>
     </div>
   )

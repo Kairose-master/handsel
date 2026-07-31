@@ -4,11 +4,17 @@ import { useState } from 'react'
 
 /** The one sentence a first-timer should paste after connecting — it funds the
  *  account and delegates a small task in a single go, so the very first thing
- *  they see is the whole pipeline running (mint → plan → escrow → graded → result). */
-const FIRST_COMMAND =
+ *  they see is the whole pipeline running (fund → plan → escrow → graded → result).
+ *  Two variants because the funding step is chain-dependent: MockUSDC minting
+ *  only exists on testnet, and telling a mainnet user to "mint 100 USDC" hands
+ *  them a command that reverts. */
+const FIRST_COMMAND_TESTNET =
   'Mint 100 test USDC for my agent, then hire Handsel to write a 3-sentence product description for an eco-friendly coffee brand — budget $8. Show me the result when it passes.'
+const FIRST_COMMAND_MAINNET =
+  "Show my agent's USDC deposit address, then once it's funded hire Handsel to write a 3-sentence product description for an eco-friendly coffee brand — budget $8. Show me the result when it passes."
 
-export function ConnectCards({ mcpUrl }: { mcpUrl: string }) {
+export function ConnectCards({ mcpUrl, realMoney = false }: { mcpUrl: string; realMoney?: boolean }) {
+  const FIRST_COMMAND = realMoney ? FIRST_COMMAND_MAINNET : FIRST_COMMAND_TESTNET
   const [copied, setCopied] = useState<string | null>(null)
 
   const copy = async (text: string, tag: string) => {
@@ -109,8 +115,9 @@ export function ConnectCards({ mcpUrl }: { mcpUrl: string }) {
           </button>
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
-          It funds your agent with free testnet USDC and delegates a small task — so your first message runs the whole
-          pipeline (plan → escrow → work → independent grade → result) and you see it end to end.
+          {realMoney
+            ? 'It gets your agent funded (real USDC, sent by you) and delegates a small task — so your first message runs the whole pipeline (plan → escrow → work → independent grade → result) and you see it end to end.'
+            : 'It funds your agent with free testnet USDC and delegates a small task — so your first message runs the whole pipeline (plan → escrow → work → independent grade → result) and you see it end to end.'}
         </p>
         <p className="mt-4 text-sm font-medium text-foreground">Other things to say:</p>
         <ul className="mt-1.5 list-disc space-y-1 pl-5 text-sm text-muted-foreground">

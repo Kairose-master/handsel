@@ -20,20 +20,31 @@ export async function handleGuide(
   switch (name) {
     case 'help': {
       const topic = args.topic ? String(args.topic) : ''
+      // Chain-derived, not asserted. This guide used to hardcode "no real
+      // money anywhere" — on a mainnet deployment that sentence is the most
+      // dangerous kind of false: it tells a user the money they are about to
+      // move is not real.
+      const { isRealMoney } = await import('@/lib/onchain/real-money')
+      const { CHAIN } = await import('@/lib/onchain/config')
+      const real = isRealMoney()
       const G: Record<string, string> = {
         start: [
           '🚀 QUICK START (2 minutes)',
           '1. list_my_agents — see your agents (one is provisioned on first connect; otherwise create_worker_agent).',
-          '2. mint_test_usdc — fund it with free testnet USDC (new accounts start at $0).',
+          real
+            ? '2. Fund it by sending USDC to its deposit address (list_my_agents shows it — new accounts start at $0).'
+            : '2. mint_test_usdc — fund it with free testnet USDC (new accounts start at $0).',
           '3a. HIRE: plan_delegation "make a logo + slogan for my coffee brand, $15" → review the plan → confirm_delegation.',
           '3b. EARN: browse_open_jobs → claim_job → do the work in this chat → submit_work.',
           '4. delegation_status / my_work — watch grading, payouts, and assembled output arrive.',
-          'Everything is Sepolia testnet — no real money anywhere.',
+          real
+            ? `Running on ${CHAIN.name} MAINNET — escrow, fees and bonds are real USDC.`
+            : 'Everything is testnet — no real money anywhere.',
         ].join('\n'),
         hire: [
           '💼 HIRING OTHER AGENTS (requester side)',
           '• plan_delegation(goal, budget) — the platform planner splits your goal into priced subtasks (text/image/audio/code). Free, nothing moves.',
-          '• confirm_delegation — escrows testnet USDC on-chain per subtask and posts them to the open market.',
+          `• confirm_delegation — escrows ${real ? '' : 'testnet '}USDC on-chain per subtask and posts them to the open market.`,
           '• Worker agents (desktop miners, other connector users) claim and deliver; independent graders (Claude vision / Whisper transcription / LLM review / pytest) judge each deliverable.',
           '• Pass → escrow auto-released to the worker. Fail → auto-refund + repost to a different worker (max 2 reposts).',
           '• delegation_status — live progress; get_delegation_output — the full assembled result (images/audio included).',
@@ -61,7 +72,9 @@ export async function handleGuide(
         ].join('\n'),
         tools: [
           '🧰 TOOL CHEATSHEET',
-          'Setup: list_my_agents · create_worker_agent · mint_test_usdc',
+          real
+            ? 'Setup: list_my_agents · create_worker_agent · fund by USDC deposit (list_my_agents shows the address)'
+            : 'Setup: list_my_agents · create_worker_agent · mint_test_usdc',
           'Hire: plan_delegation → confirm_delegation → delegation_status → get_delegation_output',
           'Earn: browse_open_jobs → claim_job → submit_work → my_work',
           'Hands-off earning: connect_mcp_worker (bring any MCP agent) · set_auto_mine (N-slot auto-claim) · browse_capabilities (ClawHub directory)',
@@ -87,7 +100,7 @@ export async function handleGuide(
           '• Mines text jobs with your model, plus optional image and audio (TTS) lanes — real bounties, graded independently, USDC paid to your agent wallet.',
           '• Miner Buddy idle game on top: XP, quests, prestige — all driven by REAL completed work, no fake numbers.',
           '• Runs in the system tray; you can also delegate work and vote on governance from inside the app.',
-          '• Withdraw earnings to any wallet address (testnet USDC).',
+          '• Withdraw earnings to any wallet address (USDC).',
         ].join('\n'),
         vault: [
           '🏦 MINIVAULT (GIWA-style DeFi sandbox, live on Sepolia)',
@@ -102,14 +115,14 @@ export async function handleGuide(
         id,
         [
           '🌿 HANDSEL — a labor market where AI agents hire (and work for) other AI agents.',
-          'On-chain escrow (Sepolia testnet USDC) · independent grading (vision/transcription/LLM/pytest) · pay only on pass · signed proof for every paid deliverable.',
+          `On-chain escrow (${real ? `real USDC on ${CHAIN.name}` : 'testnet USDC'}) · independent grading (vision/transcription/LLM/pytest) · pay only on pass · signed proof for every paid deliverable.`,
           '',
           G.start,
           '',
           '📚 More: help topic:"hire" · "earn" · "tools" · "site" · "desktop" · "vault"',
           `🔗 Website: ${origin}/connect · Live arcade: ${origin}/world · Free demo: ${origin}/try`,
           '🖥️ Desktop miner: https://github.com/Kairose-master/ai-agent-credit-dashboard/releases',
-          'Solo-built project on testnet — feedback is gold. 🙏',
+          `Solo-built project${real ? '' : ' on testnet'} — feedback is gold. 🙏`,
         ].join('\n'),
       )
     }

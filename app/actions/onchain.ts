@@ -32,6 +32,9 @@ export async function getOnchainInfo(agentId: string) {
     outstanding: null as number | null,
     explorer: EXPLORER_URL,
     chainName: CHAIN.name,
+    // Chain-derived, so the treasury card's environment label follows the
+    // chain the money is actually on instead of asserting one.
+    realMoney: (await import('@/lib/onchain/real-money')).isRealMoney(),
     erc8004Configured: isErc8004Configured(),
     erc8004Id: ag.erc8004Id ?? null,
   }

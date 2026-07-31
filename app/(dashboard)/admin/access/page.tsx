@@ -159,10 +159,11 @@ function BoardCurationCard() {
         {wallet?.configured
           ? wallet.balanceUsd === null
             ? 'Its balance could not be read right now.'
-            : `It holds $${wallet.balanceUsd.toFixed(2)} test USDC.`
+            : `It holds $${wallet.balanceUsd.toFixed(2)} USDC.`
           : 'X402_JOB_REQUESTER_AGENT_ID is not set.'}{' '}
         Posting tops it up automatically when short; the button is here for when you want headroom first.
-        Testnet MockUSDC is freely mintable, so this costs nothing.
+        On testnet deployments MockUSDC is freely mintable, so that costs nothing; on mainnet the top-up
+        mint fails and the house wallet must be funded with real USDC.
       </p>
       <div className="flex flex-wrap gap-2">
         <button

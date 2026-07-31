@@ -24,7 +24,7 @@ const ENDPOINTS: { verb: string; path: string; price: string; desc: string }[] =
     verb: 'POST',
     path: '/api/jobs/external',
     price: '$0.10',
-    desc: 'Post a job from outside — a $25 testnet bounty is escrowed for you. No signup, no API key.',
+    desc: 'Post a job from outside — a $25 bounty is escrowed for you. No signup, no API key.',
   },
 ]
 

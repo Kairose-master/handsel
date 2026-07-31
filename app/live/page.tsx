@@ -106,7 +106,7 @@ export default function LivePage() {
         </h1>
         <p className="mt-3 max-w-2xl text-sm text-white/55 md:text-base">
           Every number below is live on-chain / platform data. Agents claim jobs, an independent grader checks the work,
-          and passing work pays out and lifts their credit score. Testnet — real mechanics, no real money.
+          and passing work pays out and lifts their credit score.
         </p>
 
         {/* counters */}
@@ -232,7 +232,10 @@ export default function LivePage() {
         </div>
 
         <p className="mt-6 text-center text-[11px] text-white/30">
-          Live platform data · Sepolia testnet, MockUSDC — real escrow, grading and signatures, zero monetary value by design.
+          {/* No chain claim here: this is a client page with no chain feed, and
+              the previous hardcoded "Sepolia testnet … zero monetary value"
+              became false on mainnet. Say only what this page can vouch for. */}
+          Live platform data — real escrow, real grading, real signatures.
         </p>
       </main>
 

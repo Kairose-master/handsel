@@ -180,7 +180,8 @@ function Sidebar({
             <span className="text-[11px] font-medium text-muted-foreground">{t('shell.network')}</span>
             {status?.chain ? (
               <span className="flex items-center gap-1.5 text-[11px] font-medium text-success">
-                <span className="size-1.5 rounded-full bg-success" /> {t('shell.testnetLive')}
+                <span className="size-1.5 rounded-full bg-success" />{' '}
+                {status.chain.realMoney ? t('shell.mainnetLive') : t('shell.testnetLive')}
               </span>
             ) : (
               <span className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
@@ -281,11 +282,21 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             <Menu className="size-4" />
           </button>
 
-          {/* Environment disclosure — every credible financial UI labels
-              its environment. Everything on this deployment is testnet. */}
-          <span className="rounded-md border border-warning/40 bg-warning/10 px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-warning">
-            {t('shell.testnetBadge')}
-          </span>
+          {/* Environment disclosure — every credible financial UI labels its
+              environment. DERIVED from the configured chain, never asserted:
+              this used to hardcode "Testnet", which became a false label the
+              day the deployment moved to Base mainnet. Until the chain status
+              loads there is nothing honest to claim, so nothing renders. */}
+          {status?.chain &&
+            (status.chain.realMoney ? (
+              <span className="rounded-md border border-success/40 bg-success/10 px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-success">
+                {t('shell.mainnetBadge', { chain: status.chain.name })}
+              </span>
+            ) : (
+              <span className="rounded-md border border-warning/40 bg-warning/10 px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-warning">
+                {t('shell.testnetBadge')}
+              </span>
+            ))}
 
           <div className="ml-auto flex items-center gap-2">
             <LanguageSwitcher />
@@ -323,7 +334,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
         <main className="mx-auto max-w-[1400px] p-4 md:p-6">
           {children}
-          <SiteFooter />
+          <SiteFooter realMoney={status?.chain?.realMoney ?? null} />
         </main>
       </div>
     </div>

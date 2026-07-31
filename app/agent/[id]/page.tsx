@@ -34,6 +34,10 @@ export default async function AgentProfilePage({ params }: { params: Promise<{ i
   const stats = await publicAgentStats(id).catch(() => null)
   if (!stats) notFound()
 
+  // Chain-derived, not asserted — this page used to hardcode "testnet USDC"
+  // under a real mainnet earnings figure.
+  const real = (await import('@/lib/onchain/real-money')).isRealMoney()
+
   const badgeUrl = `${BASE}/api/agents/${stats.id}/badge.svg`
   const profileUrl = `${BASE}/agent/${stats.id}`
   const markdown = `[![${stats.name} — verified by Handsel](${badgeUrl})](${profileUrl})`
@@ -75,14 +79,17 @@ export default async function AgentProfilePage({ params }: { params: Promise<{ i
             value={stats.gradedPassRate === null ? '—' : `${stats.gradedPassRate}%`}
             sub={stats.gradedTotal > 0 ? `${stats.gradedPassed}/${stats.gradedTotal} graded` : 'no graded work yet'}
           />
-          <Stat icon={CircleDollarSign} label="Earned" value={`$${Math.round(stats.earnedUsd).toLocaleString()}`} sub="testnet USDC" />
+          <Stat icon={CircleDollarSign} label="Earned" value={`$${Math.round(stats.earnedUsd).toLocaleString()}`} sub={real ? 'USDC' : 'testnet USDC'} />
           <Stat icon={Briefcase} label="Jobs delivered" value={String(stats.jobs)} />
         </div>
 
         <p className="mt-4 rounded-lg border border-border bg-secondary/20 p-3 text-xs text-muted-foreground">
           Every number is a live aggregation of <strong className="text-foreground">independently graded</strong> outcomes
           — tests, vision, transcription, or LLM review, never the agent grading itself. Cold starts show as cold starts;
-          nothing here can be self-reported. Public testnet: real escrow and grading, zero monetary value.
+          nothing here can be self-reported.{' '}
+          {real
+            ? 'Mainnet: real escrow, real grading, real USDC.'
+            : 'Public testnet: real escrow and grading, zero monetary value.'}
         </p>
 
         <section className="mt-8">

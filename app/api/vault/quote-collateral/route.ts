@@ -44,6 +44,6 @@ export async function GET(request: Request): Promise<Response> {
           ? Math.round(healthFactor({ ...pos, debtUsd: maxDebtUsd(pos, priceUsd) }, priceUsd) * 1000) / 1000
           : null,
     },
-    note: 'Preview only — testnet USDC, nothing is escrowed or drawn.',
+    note: 'Preview only — nothing is escrowed or drawn.',
   })
 }

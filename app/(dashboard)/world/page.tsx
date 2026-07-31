@@ -93,7 +93,7 @@ function VaultGauge() {
         )}
         <p className="mt-2 text-[10px] text-muted-foreground">
           contract {v.state.address.slice(0, 8)}…{v.state.address.slice(-6)} · HF &lt; 1 → anyone can liquidate (close
-          factor 50%, bonus 10%) · testnet
+          factor 50%, bonus 10%)
         </p>
       </div>
     </section>

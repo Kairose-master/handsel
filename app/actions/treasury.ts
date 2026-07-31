@@ -44,6 +44,13 @@ export async function getTreasury(agentId: string) {
     configured: isAgentAccountConfigured() && Boolean(ag.smartAccountAddress),
     address: ag.smartAccountAddress,
     usdc: null as number | null,
+    /** USDC the labor market holds as this agent's bond on unsettled jobs.
+     *  Comes back on completion — it left the wallet without being spent,
+     *  which is exactly the movement that made a paid job read as a loss.
+     *  Null = unreadable (or not a V2 market), never zero-by-default. */
+    bondedUsd: null as number | null,
+    /** USDC settlement credited and `withdraw()` has not collected yet. */
+    claimableUsd: null as number | null,
     spent24h: 0,
     maxPerTx: policy.maxPerTxUsd,
     dailyCap: policy.dailyCapUsd,
@@ -63,6 +70,30 @@ export async function getTreasury(agentId: string) {
       info.spent24h = await spentLast24h(agentId)
     } catch (error) {
       console.error('[treasury] read failed:', error)
+    }
+    // Separate try: a failure here must not blank the wallet balance above,
+    // and vice versa — the two reads answer different questions.
+    try {
+      const { isV2Market, readJobsV2, bondScheduleOf, withdrawableOf } = await import('@/lib/onchain/labor-v2')
+      if (await isV2Market()) {
+        const address = ag.smartAccountAddress as `0x${string}`
+        const [jobs, schedule, claimable] = await Promise.all([
+          readJobsV2(),
+          bondScheduleOf(),
+          withdrawableOf(address),
+        ])
+        if (schedule) {
+          const { workerFunds } = await import('@/lib/worker-funds')
+          const mine = jobs
+            .filter((j) => j.worker.toLowerCase() === address.toLowerCase())
+            .map((j) => ({ jobId: j.id, bounty: j.bounty, status: j.status }))
+          const f = workerFunds({ wallet: 0, claimable, openJobs: mine, schedule })
+          info.bondedUsd = f.bonded
+          info.claimableUsd = f.claimable
+        }
+      }
+    } catch (error) {
+      console.error('[treasury] funds read failed:', error)
     }
   }
   return info

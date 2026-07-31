@@ -1,5 +1,6 @@
 import { ConnectCards } from './connect-cards'
 import { mcpUrl } from '@/lib/origin'
+import { isRealMoney } from '@/lib/onchain/real-money'
 
 /**
  * /connect — one-click(ish) connector onboarding for Claude and ChatGPT.
@@ -13,20 +14,31 @@ export const metadata = {
 }
 
 export default function ConnectPage() {
+  // Chain-derived, not asserted: this copy used to hardcode "testnet USDC" and
+  // a mint-based funding step — both false the day the deployment moved to
+  // mainnet, where MockUSDC minting does not exist.
+  const real = isRealMoney()
   return (
     <div className="mx-auto max-w-2xl px-6 py-14">
       <h1 className="text-3xl font-bold">Use Handsel inside Claude or ChatGPT</h1>
       <p className="mt-3 text-muted-foreground">
         Handsel is an MCP connector: once added, your assistant can <strong>delegate work</strong> (a planner splits your
-        goal into priced subtasks, escrowed in testnet USDC and done by worker agents) and <strong>earn</strong> (claim open
+        goal into priced subtasks, escrowed in {real ? 'USDC' : 'testnet USDC'} and done by worker agents) and <strong>earn</strong> (claim open
         jobs, do them right in the chat, get paid on passing independent grading). Sign-in happens on our consent screen the
         first time — nothing to configure beyond the URL.
       </p>
-      <p className="mt-3 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm text-muted-foreground">
-        💧 New accounts start at $0 — the copy-paste command below funds your agent with free testnet USDC (via the{' '}
-        <code>mint_test_usdc</code> tool) and runs your first job in one go.
-      </p>
-      <ConnectCards mcpUrl={mcpUrl()} />
+      {real ? (
+        <p className="mt-3 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm text-muted-foreground">
+          💧 New accounts start at $0 — fund your agent by sending USDC to its deposit address (ask the connector to show
+          it), then the copy-paste command below runs your first job in one go.
+        </p>
+      ) : (
+        <p className="mt-3 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm text-muted-foreground">
+          💧 New accounts start at $0 — the copy-paste command below funds your agent with free testnet USDC (via the{' '}
+          <code>mint_test_usdc</code> tool) and runs your first job in one go.
+        </p>
+      )}
+      <ConnectCards mcpUrl={mcpUrl()} realMoney={real} />
 
       <div className="mt-12 rounded-lg border border-border p-5">
         <h2 className="text-lg font-semibold">Or bring an agent in as a worker</h2>
@@ -68,7 +80,7 @@ export default function ConnectPage() {
       </div>
 
       <p className="mt-10 text-xs text-muted-foreground">
-        First time here? <a className="underline" href="/sign-up">Create an account</a> (free, testnet) — or just approve the
+        First time here? <a className="underline" href="/sign-up">Create an account</a> (free{real ? '' : ', testnet'}) — or just approve the
         consent screen with a new email and the connector can bootstrap an agent for you with <code>create_worker_agent</code>.
         Details in the <a className="underline" href="https://github.com/Kairose-master/ai-agent-credit-dashboard/blob/main/docs/agent-integration.md">integration docs</a>.
       </p>

@@ -34,6 +34,40 @@ export async function getWorkerConsole() {
 
   const agents = await db.select().from(agent).where(eq(agent.userId, session.user.id))
 
+  // Where each worker's USDC actually is, beyond its wallet: bonds the V2
+  // market is holding on jobs it accepted, and settlement credits waiting for
+  // withdraw(). Read once for all workers (one multicall + one immutable pair),
+  // then filtered per worker below. Null — not zero — when unreadable: a zero
+  // is a claim ("nothing is held"), and an RPC hiccup has no basis for it. The
+  // mainnet incident this exists for: a worker earned 0.1, its wallet read
+  // 0.465 vs 0.5 before the job, and the missing 0.035 was a bond in escrow
+  // plus 0.135 claimable — invisible, so the job read as a loss.
+  let fundsByAddress: Map<string, { bonded: number; claimable: number }> | null = null
+  try {
+    const { isV2Market, readJobsV2, bondScheduleOf, withdrawableOf } = await import('@/lib/onchain/labor-v2')
+    if (await isV2Market()) {
+      const [jobs, schedule] = await Promise.all([readJobsV2(), bondScheduleOf()])
+      if (schedule) {
+        const { workerFunds } = await import('@/lib/worker-funds')
+        const provisioned = agents.filter((a) => a.smartAccountAddress)
+        const entries = await Promise.all(
+          provisioned.map(async (a) => {
+            const address = a.smartAccountAddress as `0x${string}`
+            const claimable = await withdrawableOf(address)
+            const mine = jobs
+              .filter((j) => j.worker.toLowerCase() === address.toLowerCase())
+              .map((j) => ({ jobId: j.id, bounty: j.bounty, status: j.status }))
+            const f = workerFunds({ wallet: 0, claimable, openJobs: mine, schedule })
+            return [address.toLowerCase(), { bonded: f.bonded, claimable: f.claimable }] as const
+          }),
+        )
+        fundsByAddress = new Map(entries)
+      }
+    }
+  } catch (error) {
+    console.error('[worker-console] funds read failed:', error)
+  }
+
   const workers = await Promise.all(
     agents.map(async (a) => {
       const events = await db.select().from(agentEvent).where(eq(agentEvent.agentId, a.id))
@@ -58,6 +92,10 @@ export async function getWorkerConsole() {
           return sum + (typeof bounty === 'number' ? bounty : 0)
         }, 0)
 
+      const funds = a.smartAccountAddress
+        ? (fundsByAddress?.get(a.smartAccountAddress.toLowerCase()) ?? null)
+        : null
+
       return {
         id: a.id,
         name: a.name,
@@ -77,6 +115,11 @@ export async function getWorkerConsole() {
         testsFailed: count('JOB_TESTS_FAILED'),
         verifiedPassed: count('VERIFIED_TASK_COMPLETED'),
         verifiedFailed: count('VERIFIED_TASK_FAILED'),
+        /** USDC the market holds as this worker's bond on unsettled jobs.
+         *  Returns to the worker on completion; null = unreadable, not zero. */
+        bondedUsd: funds ? funds.bonded : null,
+        /** USDC settlement has credited and `withdraw()` has not collected. */
+        claimableUsd: funds ? funds.claimable : null,
       }
     }),
   )

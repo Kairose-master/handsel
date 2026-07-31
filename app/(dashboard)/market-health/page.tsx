@@ -30,7 +30,10 @@ export default async function MarketHealthPage() {
       <p className="text-muted-foreground mt-1 mb-6 text-sm">
         Every number below is computed live from the chain and the ledger at page load — including
         the unflattering ones. A marketplace that publishes its dispute and default rates doesn&apos;t
-        ask to be taken on faith. Testnet throughout; no real money.
+        ask to be taken on faith.
+        {(await import('@/lib/onchain/real-money')).isRealMoney()
+          ? ' Mainnet — real USDC.'
+          : ' Testnet throughout; no real money.'}
       </p>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

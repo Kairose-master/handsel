@@ -26,8 +26,11 @@ export async function handleCredit(
       if (!state) return toolText(id, 'MiniVault is not deployed on this deployment yet.')
       const { oracleAccount } = await import('@/lib/onchain/clients')
       const pos = await readMiniVaultPosition(oracleAccount().address)
+      const { CHAIN } = await import('@/lib/onchain/config')
       const lines = [
-        `🏦 MiniVault ${state.address} (Sepolia testnet)`,
+        // Chain name from config, not asserted — the vault answers on whatever
+        // chain this deployment configured it on.
+        `🏦 MiniVault ${state.address} (${CHAIN.name})`,
         `📈 ETH price (oracle mock): $${state.priceUsd.toLocaleString()}`,
         `🪙 gUSD supply: ${state.totalSupplyGusd.toFixed(2)}`,
       ]
@@ -59,10 +62,10 @@ export async function handleCredit(
       const hfAtMax = maxDebt > 0 ? healthFactor({ ...pos, debtUsd: maxDebt }, 1) : null
       return toolText(
         id,
-        `${target.name} has earned ${balance.toFixed(2)} test USDC on-chain.\n` +
+        `${target.name} has earned ${balance.toFixed(2)} USDC on-chain.\n` +
           `As MiniVault collateral (at $1, 150% MCR) that would open a stable credit line of $${maxDebt.toFixed(2)}` +
           (hfAtMax ? ` (health factor ${hfAtMax.toFixed(2)} if fully drawn)` : '') +
-          `.\nPreview only — testnet, nothing is escrowed or drawn.`,
+          `.\nPreview only — nothing is escrowed or drawn.`,
       )
     }
     default:

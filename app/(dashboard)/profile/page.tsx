@@ -61,6 +61,7 @@ type OnchainInfo = {
   outstanding: number | null
   explorer: string
   chainName?: string
+  realMoney?: boolean
   erc8004Configured?: boolean
   erc8004Id?: number | null
 }
@@ -149,6 +150,10 @@ type Treasury = {
   configured: boolean
   address: string | null
   usdc: number | null
+  /** Held by the labor market as bond on unsettled jobs; returns on completion. */
+  bondedUsd: number | null
+  /** Credited by settlement, not yet collected by withdraw(). */
+  claimableUsd: number | null
   spent24h: number
   maxPerTx: number
   dailyCap: number
@@ -821,7 +826,11 @@ export default function ProfilePage() {
                 </p>
               </div>
               <span className="rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-medium backdrop-blur-sm">
-                {onchain?.chainName ?? 'Sepolia'} · testnet
+                {/* Chain-derived label. This used to hardcode "· testnet",
+                    which became a false disclaimer over a real balance the
+                    day the deployment moved to Base mainnet. */}
+                {onchain?.chainName ?? '—'}
+                {onchain?.realMoney === false ? ' · testnet' : ''}
               </span>
             </div>
 
@@ -850,6 +859,25 @@ export default function ProfilePage() {
                 </span>
                 <span className="text-sm font-semibold text-white/65">USDC</span>
               </p>
+              {/* The other two places this worker's USDC lives. Without these
+                  lines a worker mid-job shows its LOWEST number at exactly the
+                  moment it is owed the most — on mainnet job #1 the wallet
+                  read 0.465 after earning 0.1, and the "missing" 0.035 was a
+                  bond in escrow, not a fee. Shown only when non-zero. */}
+              {((treasury.bondedUsd ?? 0) > 0 || (treasury.claimableUsd ?? 0) > 0) && (
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-0.5 font-mono text-[11px] text-white/75">
+                  {(treasury.bondedUsd ?? 0) > 0 && (
+                    <span title={t('profile.treasury.bondTooltip')}>
+                      🔒 {t('profile.treasury.bonded', { amount: (treasury.bondedUsd ?? 0).toFixed(3) })}
+                    </span>
+                  )}
+                  {(treasury.claimableUsd ?? 0) > 0 && (
+                    <span title={t('profile.treasury.claimableTooltip')}>
+                      ⏳ {t('profile.treasury.claimable', { amount: (treasury.claimableUsd ?? 0).toFixed(3) })}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Address + brand */}
