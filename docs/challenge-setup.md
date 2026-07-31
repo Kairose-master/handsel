@@ -47,6 +47,29 @@ the pre-flight asks for: `AGENT_OWNER_PRIVATE_KEY` derives every agent wallet, s
 USDC has 6 decimals: **$100 = `100000000`, $0.03 = `30000`.** Circle USDC on
 Base = `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`.
 
+## The turnkey way: `scripts/challenge-lock-escrow.ts`
+
+Steps 1–4 are automated in one script that reuses the app's own
+`postJobV2`/`acceptJobV2` — so the kernel accounts derive **identically to
+production** (no hand-rolled address math on a real-money path), the accept is
+the raw on-chain one (not the accept-and-dispatch UI action), and it refuses to
+run if `W` has auto-mine on. Dry-run first (checks + required amounts, no
+transactions), then `--confirm`:
+
+```bash
+R_AGENT_ID=<requester> W_AGENT_ID=<worker, auto-mine OFF> \
+DATABASE_URL=… AGENT_OWNER_PRIVATE_KEY=… ORACLE_PRIVATE_KEY=… \
+ONCHAIN_CHAIN=base ONCHAIN_RPC_URL=… BUNDLER_RPC=… \
+LABOR_MARKET_ADDRESS=… USDC_ADDRESS=… PAYMASTER_DISABLED=true \
+npx tsx scripts/challenge-lock-escrow.ts            # dry run
+npx tsx scripts/challenge-lock-escrow.ts --confirm  # post + accept
+```
+
+It prints the escrow address, job id, and end date to paste into the launch
+post. **Rehearse it on Base Sepolia first** (same script, testnet env, a small
+`CHALLENGE_BOUNTY_USD`) — that is what the practice deployment is for. The manual
+call sequence below is the same thing spelled out, if you'd rather do it by hand.
+
 ## Step 1 — post the job (as `R`)
 
 Two calls (the app's `postJobV2` batches them; or do them directly):
