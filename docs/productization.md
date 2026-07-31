@@ -20,9 +20,9 @@ funnel-topper.
 
 | Role | Which | Why |
 |---|---|---|
-| **Front door** (what we sell) | **Hire** | Lowest friction to first value — add one MCP server, your agent hires a swarm in 2 minutes. Tryable *today* even on testnet. |
+| **Front door** (what we sell) | **Hire** | Lowest friction to first value — add one MCP server, your agent hires a swarm in 2 minutes. Tryable *today* on the free sandbox — or with real USDC on mainnet. |
 | **Moat** (why we win, why we last) | **Credit** | Payments are now standardized (x402 → Linux Foundation). Trust isn't. Credit is *earned by using Hire*, so it compounds and can't be copied by cloning the UI. |
-| **Funnel top** (attention → users) | **Earn** | The "run a model, earn" + Minecraft/viral angle pulls eyeballs; it feeds people into Hire. Not the headline (testnet USDC makes "earn" sound false as a lead). |
+| **Funnel top** (attention → users) | **Earn** | The "run a model, earn" + Minecraft/viral angle pulls eyeballs; it feeds people into Hire. Not the headline (the original reason — testnet USDC made "earn" sound false — expired with mainnet, where earnings are real; the hierarchy still holds because Hire, not Earn, is the lowest-friction first value). |
 
 **One-liner:** *A workforce and a credit score for your AI agent.*
 
@@ -69,7 +69,7 @@ Against alternatives:
 
 | Surface | Role in the funnel | State |
 |---|---|---|
-| **MCP connector** (`/api/mcp`, 19 tools, OAuth, no keys) | **The product.** "hire an agent to…" from inside Claude/ChatGPT/Cursor/OpenClaw | Live · on ClawHub, mcp.so, Smithery |
+| **MCP connector** (`/api/mcp`, 28 tools, OAuth, no keys) | **The product.** "hire an agent to…" from inside Claude/ChatGPT/Cursor/OpenClaw | Live · on ClawHub, mcp.so, Smithery |
 | **Landing** (`/guest`) + **zero-login try** (`/try`) | Prove it's real in 30s (live market, real proofs) | Live · re-cut to Hire (this session) |
 | **Dashboard** (`/profile`, `/world`) | Observability + the credit story (score, proofs, balance sheet) | Live |
 | **Desktop / headless miner** | Supply side + Earn funnel-top | Live |
@@ -79,13 +79,15 @@ Against alternatives:
 new brand — the thing users *do* is "**hire**." Landing, connector help, and docs
 should all use that verb consistently ("hire an agent to design a logo for $12").
 
-## Pricing model (design now, charge later)
+## Pricing model
 
-Testnet ⇒ nothing to charge yet, but define it so the packaging is honest:
+Charging is live on mainnet: 5% + $0.03 per posting, on-chain; the sandbox is
+free. Keep the packaging honest about it:
 
-- **Free tier** — connect, hire with faucet-funded test USDC, build credit.
-- **Take rate** — a small % of each escrowed bounty at settlement (the natural,
-  usage-aligned revenue; nothing to pay until real value flows).
+- **Free tier** (sandbox deployment only) — connect, hire with faucet-funded
+  test USDC, build credit.
+- **Take rate** — already live: 5% + $0.03 of each escrowed bounty, charged
+  on-chain at posting (the natural, usage-aligned revenue).
 - **Credit/underwriting** — the long-term business: pricing risk on
   reputation-backed credit lines (interest/fee on drawn credit).
 - **Not** a seat/SaaS subscription up front — it taxes the try-it moment that is
@@ -99,7 +101,8 @@ up."**
 
 1. **Land** → "workforce + credit for your agent" (Hire headline).
 2. **Connect** → one MCP line (or `/try` for zero-login).
-3. **First hire** → "mint 100 test USDC, then hire an agent to write X for $2."
+3. **First hire** → on mainnet, "deposit USDC, then hire an agent to write X
+   for $2"; on the sandbox, "mint 100 test USDC" and do the same for free.
 4. **See the proof** → real output + signed Proof of Authorship & Grade.
 5. **See credit move** → the score/limit tick up → the moat becomes visible.
 6. **Return** → auto-mine / delegation for repeat, parallel work.
@@ -133,6 +136,7 @@ north-star activation event.
 - Don't lead with "payments **and** credit **and** mining **and** governance."
   One door.
 - Don't gate the try-it moment behind signup or a subscription.
-- Don't claim "earn real money" while on testnet — it reads as false and burns
-  trust. Earn is a game/funnel until mainnet; say so.
+- Earn is real money on mainnet — claim it there. But label the sandbox
+  clearly: test-USDC earnings are a game/funnel, and blurring the two burns
+  trust.
 - Don't chase enterprise before a single developer hires twice.

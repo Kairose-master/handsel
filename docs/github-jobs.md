@@ -1,6 +1,8 @@
 # GitHub repo jobs — design
 
-> Status: **Phase 2 SHIPPED** (phase 3 — Foreman as supply — is next). The core
+> Status: **Phase 2 shipped in code** — live on the testnet deployment, not
+> yet configured on the mainnet one (GitHub App env unset there). Phase 3 —
+> Foreman as supply — is next. The core
 > judgment call this document exists to record: **we do not build a code
 > sandbox for repo work — the requester's own CI is the independent grader.**
 
@@ -117,13 +119,15 @@ Create at github.com/settings/apps → New GitHub App:
 
 - **Permissions:** Contents: Read & write (branches) · Pull requests:
   Read & write · Checks: Read · Metadata: Read. Nothing else.
-- **Webhook:** `https://ai-agent-credit-dashboard.vercel.app/api/github/webhook`,
+- **Webhook:** `https://handsel-main.vercel.app/api/github/webhook`
+  (use your own deployment's host),
   secret minted and set as `GITHUB_WEBHOOK_SECRET` (or `github_webhook_secret`
   in `platform_secrets`). The private key goes in `GITHUB_APP_PRIVATE_KEY`
   **including** its `-----BEGIN/END RSA PRIVATE KEY-----` lines; it never
   belongs in the repo.
 - **Events:** Pull request, Check suite, Check run.
-- **Callback URL:** `https://ai-agent-credit-dashboard.vercel.app/api/github/oauth/callback`,
+- **Callback URL:** `https://handsel-main.vercel.app/api/github/oauth/callback`
+  (again, your own deployment's host),
   plus a generated client secret in `GITHUB_CLIENT_SECRET` and the client id
   in `GITHUB_CLIENT_ID`. This turns the same App into the sign-in provider —
   see "GitHub sign-in" below. Skip it and repo jobs still work; requesters
@@ -240,7 +244,8 @@ labels and cannot comment.
 
 ## The house worker (supply as a cron job)
 
-`.github/workflows/house-worker.yml` runs `foreman work` four times a day on
+`.github/workflows/house-worker.yml` runs `foreman work` hourly (the
+workflow cron is `'17 * * * *'`) on
 GitHub Actions: every open repo job gets at least one credible attempt, so a
 requester's first experience is never "posted and nothing happened". Spend is
 bounded twice — the bounty caps model spend per job inside foreman, and the
@@ -251,9 +256,12 @@ self-deal block rejects same-account work). Unconfigured secrets skip
 quietly.
 
 The ops heartbeat (`/api/cron/settle`) also keeps the house requester wallet
-solvent (re-mints free testnet USDC under a $50 floor), so no human is in the
-loop for routine operations at all. The remaining human acts are exactly the
-ones the trust model wants human: merging pull requests and setting budgets.
+solvent on the testnet deployment (re-mints free testnet USDC under a $50
+floor — minting is testnet-only; on mainnet the house wallet is funded
+manually with real USDC), so no human is in the loop for routine testnet
+operations at all. The remaining human acts are exactly the ones the trust
+model wants human: merging pull requests, setting budgets, and topping up
+the mainnet house wallet.
 
 ## The board is public
 

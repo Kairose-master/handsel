@@ -1,8 +1,23 @@
 # Going to Base mainnet
 
+> **Status: executed.** The deployment this document plans happened on
+> 2026-07-30 — addresses, the measured gas table and the exact commands are in
+> [`mainnet-kernel-runbook.md`](./mainnet-kernel-runbook.md), and the
+> mainnet-vs-testnet feature matrix is in [`deployments.md`](./deployments.md).
+> This document remains the *reasoning*; where the deployment diverged from
+> the plan, the divergence is noted inline in a block like this one.
+
 The order matters, and it is not the obvious one. **The paymaster policy comes
 before the contract**, because the contract cannot lose money that was never put
 into it, and the paymaster can.
+
+> **Divergence: mainnet currently runs with the paymaster OFF.** The provider
+> integration (first ZeroDev, then CDP) never sponsored a mainnet UserOp —
+> the full afternoon of well-typed false errors is written up in
+> `failure-modes.md` — so the deployment shipped with `PAYMASTER_DISABLED=true`:
+> every Kernel account pays its own gas from a small operator-funded ETH float
+> (~$0.006 per 500k-gas UserOp at measured Base fees). Everything below about
+> policy sizing applies the day sponsorship is turned on, and not before.
 
 ---
 
@@ -12,14 +27,15 @@ Three separate pools, with very different exposure:
 
 | Pool | Who funds it | What bounds the loss |
 |---|---|---|
-| **ZeroDev paymaster** | You, continuously | **Nothing, until you set a policy.** Every sponsored UserOp is your ETH. |
+| **Paymaster** (when sponsorship is on) | You, continuously | **Nothing, until you set a policy.** Every sponsored UserOp is your ETH. |
 | **Escrow in the contract** | Whoever posts a job | Bounded by what people escrow. You lose nothing you did not post. |
 | **Deploy gas** | You, once | A few dollars. |
 
 Only the first is open-ended, and it is open-ended in the way that matters: an
 attacker does not need to beat the contract, they only need to make your app
 send transactions. Every permissionless exit, every dispute ruling, every job
-post is a sponsored UserOp.
+post is a UserOp — sponsored on the testnet deployment; on mainnet today each
+kernel account pays for its own out of its ETH float.
 
 So the policy is the real gate, and it goes first.
 
@@ -30,13 +46,18 @@ So the policy is the real gate, and it goes first.
 In the ZeroDev dashboard, on the **mainnet** project (a separate project from
 your testnet one — do not reuse):
 
+> **The gas-spend fields are denominated in ETH, not USD.** Entering `1`
+> against a "$1/day" intention authorises ~one full ETH a day. This was
+> caught here only because the settings were pasted back for review — every
+> number below is a dollar intention; convert before typing.
+
 - **A hard monthly cap you are willing to lose outright.** Treat this number as
   spent. If the answer is "I would be upset", it is too high.
 - **A per-UserOp gas ceiling.** Base is cheap; a UserOp costing dramatically
   more than a normal `postJob` is a signal, not a transaction to sponsor.
-- **A rate limit per sender.** The sweeps are capped at 3 calls per pass by
-  `MAX_EXITS_PER_PASS` and `MAX_RULINGS_PER_PASS`, so a legitimate sender never
-  approaches a sane limit.
+- **A rate limit per sender.** The sweeps are capped at 3 calls each per pass
+  by `MAX_EXITS_PER_PASS` and `MAX_RULINGS_PER_PASS` (6 total), so a legitimate
+  sender never approaches a sane limit.
 - **Allowlist the contract address**, once you have it from step 3. A paymaster
   that will sponsor a call to any address is sponsoring calls to contracts you
   did not write.
@@ -123,8 +144,9 @@ They must blow in this order:
 > above holds in kernel mode too.
 
 So the ZeroDev cap sits *above* the app's ceiling
-(`USER_LANE` 5 + `KEEPER_LANE` 2 = **$7/day**), or the graceful layer never
-runs. And the hardest cap needs no dashboard at all: **you cannot spend a
+(`USER_LANE` 5 + `KEEPER_LANE` 2 = **$7/day** at the CODE DEFAULTS — the
+deployed config runs far smaller lanes; the runbook's §1 table is the source
+of truth for the live numbers), or the graceful layer never runs. And the hardest cap needs no dashboard at all: **you cannot spend a
 deposit you did not make.** Fund the paymaster with what you would accept
 losing outright, and every policy above it is convenience.
 
@@ -161,43 +183,14 @@ observed before any of it is worth money.
 
 ---
 
-## 1b. Base Sepolia first — and NOT at the defaults
+## 1b. Base Sepolia first
 
-The defaults in `scripts/deploy-labor-v2.mjs` are tuned for a real deployment.
-Used on testnet they hide the two things a testnet exists to find.
-
-**Every window at its floor.** The defaults are a 1-day review window, a 14-day
-dispute window and a 60-day open window, so the four permissionless exits — the
-entire reason v2 exists — are unreachable for a fortnight. `MIN_WINDOW` in the
-contract is 10 minutes, so set all of them to `600` and every timeout becomes
-testable the same afternoon:
-
-    reclaimJob      accept, wait 10 min, never submit
-    expireReview    submit, wait 10 min, never approve  → 10% forfeit
-    expireDispute   dispute, wait 10 min, never rule    → pays the worker
-    expireOpen      post, wait 10 min, nobody accepts
-
-**Fee and bond NON-ZERO.** They default to zero, which is right for a first
-mainnet deployment and wrong here: zero is exactly the branch that has already
-been exercised. Non-zero is what runs the code that has not —
-
-- `postJobV2` reading `postCost()` and approving `bounty + fee` rather than the
-  bounty. At `feeBps = 0` an allowance of the bounty happens to be correct, so
-  the bug this fixes stays invisible.
-- `acceptJobV2` reading `bondFor()` and approving it. At zero the approval is a
-  no-op call and proves nothing.
-- `_burnBond` on `reclaimJob` — the round-3 change. At zero there is no bond to
-  burn.
-
-Suggested testnet values, all one address since deployment #1 is single-key:
-
-| var | value | |
-|---|---|---|
-| `USDC_ADDRESS` | Circle's Base Sepolia USDC | Same proxy-and-blocklist shape as mainnet. MockUSDC would not exercise what the pull-payment design defends against. |
-| `FEE_BPS` / `FLAT_FEE` | `200` / `30000` | 2% + 3¢. Runs the `postCost` path. |
-| `BOND_BPS` / `FLAT_BOND` | `500` / `30000` | 5% + 3¢. Runs the bond approval and the burn. |
-| `MIN_DELIVERY_WINDOW_S` … `DISPUTE_WINDOW_S` | `600` each | The contract floor. Makes every exit reachable. |
-| `MIN_BOUNTY` | `1` | Default. One token unit. |
+Rehearse on Base Sepolia before any of this is worth money — and NOT at the
+script defaults, which are tuned for production and hide exactly what a
+testnet exists to find. The full testnet configuration (windows at the 10-min
+floor so every exit is reachable, fee and bond non-zero so the `postCost` /
+`bondFor` / `_burnBond` paths actually run, the deliberately-tight paymaster
+policy) now lives in its own guide: [`deploy-testnet.md`](./deploy-testnet.md).
 
 Cost: nothing. Faucet ETH, faucet USDC.
 
@@ -207,7 +200,7 @@ Cost: nothing. Faucet ETH, faucet USDC.
 
 ```bash
 ONCHAIN_CHAIN=base ONCHAIN_RPC_URL=... DEPLOYER_PRIVATE_KEY=... \
-ORACLE_ADDRESS=<hardware-backed key, NOT the deployer, NOT the arbiter> \
+ORACLE_ADDRESS=<hardware-backed key, NOT the deployer — and it WILL also be the arbiter> \
 node scripts/deploy-registry.mjs --confirm-mainnet
 ```
 
@@ -264,9 +257,18 @@ ONCHAIN_RPC_URL=... \
 DEPLOYER_PRIVATE_KEY=... \
 USDC_ADDRESS=<Base USDC> \
 CREDIT_REGISTRY_ADDRESS=<from step 2> \
-ARBITER_ADDRESS=<a dedicated key, NOT the oracle> \
+ARBITER_ADDRESS=<the ORACLE address — see below> \
 node scripts/deploy-labor-v2.mjs --confirm-mainnet
 ```
+
+> **Divergence: the arbiter must currently BE the oracle.** The dispute path
+> (`lib/dispute-gate.ts`) signs `resolveDispute` with `oracleWallet()` — there
+> is no `ARBITER_PRIVATE_KEY` anywhere in the code — so a market deployed with
+> a different arbiter address has an arbiter that can never act, and every
+> dispute settles by `expireDispute`. `scripts/preflight-addresses.mjs`
+> refuses the mismatch for exactly this reason. Separating the two keys (the
+> better design this section argues for) is a **code change first**, then a
+> redeploy; it is not an env-var choice today.
 
 The script deploys the **committed** artifact rather than recompiling. Round 2
 of the audit verified that artifact byte-identical to the audited source; a
@@ -306,21 +308,36 @@ means one leak reaches both.
 `CRON_SECRET` has already reached Vercel's logs once in this project's history,
 so "the env leaks" is a thing that has happened here, not a hypothetical.
 
-**Acceptable for deployment #1** — no real users, no real money, and its whole
-purpose is measuring the gas envelope. `scripts/deploy-labor-v2.mjs` prints
-which roles share an address at deploy time, so the choice is visible at the
-moment it becomes permanent.
+**This was accepted for deployment #1 as a rehearsal cost — and deployment #1
+is now the live market.** It holds real Circle USDC and settled job #1 on
+2026-07-30, so single-key exposure is a live risk, not a rehearsal artefact.
+`scripts/deploy-labor-v2.mjs` prints which roles share an address at deploy
+time, so the choice was visible at the moment it became permanent. The rule
+set the code actually enforces (`scripts/preflight-addresses.mjs`):
+**arbiter == oracle** (or disputes are unresolvable) and **feeRecipient !=
+oracle** (or fee revenue sits on the hottest key).
 
-**Revisit for deployment #2.** The cheapest split, if you want one: give the
-arbiter its own address and leave it at **zero balance**. It never needs funding
-until you actually want to refund a dispute by hand, and `DISPUTE_WINDOW` gives
-you fourteen days to get ETH into it. The cost is that `lib/dispute-gate.ts`
-cannot run automatically — every dispute then settles by `expireDispute`, which
-pays the worker. That is the designed default, not a failure.
+**Revisit for deployment #2 — and know it is a code change.** Splitting the
+arbiter off needs an `ARBITER_PRIVATE_KEY` path in `lib/dispute-gate.ts`
+first; for the deployed contract it is impossible outright (`arbiter` is
+immutable). If split, the arbiter can sit at zero balance — `DISPUTE_WINDOW`
+gives fourteen days to fund it — at the cost that automatic rulings stop and
+every dispute settles by `expireDispute`, which pays the worker. That is the
+designed default, not a failure.
 
 ### The recommended first config, and why
 
 Every one of these is **immutable**. There is no setter for any of them.
+
+> **What actually deployed (2026-07-30):** `FEE_BPS=500`, `FLAT_FEE=30000`
+> (5% + $0.03), `BOND_BPS=500`, `FLAT_BOND=30000`, delivery window 4h–30d.
+> The fee took `MAX_FEE_BPS` rather than the 200 suggested below — chosen
+> deliberately, since the operator eats the gas either way — and the bond
+> mirrors the fee, which has one measured consequence: at every bounty the
+> bond and the fee are the **same number** (0.035 at a 0.1 bounty), and on
+> mainnet job #1 that coincidence made the bond read as the fee having been
+> taken from the worker. `lib/worker-funds.ts` and the UI's bond/claimable
+> lines exist because of it.
 
 | | Suggested | Why |
 |---|---|---|
@@ -367,6 +384,11 @@ Every one of these is **immutable**. There is no setter for any of them.
 
 ### Why a percentage alone cannot work
 
+*(This is the pre-deploy argument for `FLAT_FEE`, computed at the 200bps then
+under consideration. The market deployed at 500bps + $0.03 flat — the shape
+the argument asked for — and on mainnet today the gas is the agent's own, not
+the operator's, until sponsorship is turned on.)*
+
 **Revenue is per-POST; cost is per-ACTION.** A job's fee is charged once, at
 `postJob`. Its gas is spent five or six times — post, accept, submit, approve,
 and the withdrawals — and each of those is a sponsored UserOp the operator pays
@@ -404,27 +426,30 @@ survive rather than prevent.
 gets every unit back; only `reclaimJob` — a deadline passed with an empty
 `resultHash`, no judgement involved — takes it.
 
-### How the money actually gets back to the paymaster
+### How the money actually gets back to the operator
 
-The fee accrues as **USDC**, credited to `feeRecipient` inside the contract. The
-loop is manual and it does close: `withdraw()` the accrued USDC → convert to ETH
-→ top up the ZeroDev paymaster. Watch it on `/admin/health`; if fee revenue is
-not keeping pace with paymaster burn, `FLAT_FEE` was set below the real envelope
-and the only fix is a redeploy.
+The fee accrues as **USDC**, credited to `feeRecipient` inside the contract.
+The loop is manual and it does close: `withdraw()` the accrued USDC → convert
+to ETH → top up whichever pool is paying for gas. Today that pool is **each
+agent's own ETH float** (operator-dripped, sponsorship off); the day a
+paymaster is live it becomes the paymaster deposit. Watch it on
+`/admin/health`; if fee revenue is not keeping pace with the gas being
+dripped, `FLAT_FEE` was set below the real envelope and the only fix is a
+redeploy.
 
 ### Sizing FLAT_FEE
 
-Deployment #1 is how you measure it. Drive one full lap, read the actual gas from
-Basescan, multiply by the number of sponsored UserOps in a job's lifecycle, add
-margin, and set `FLAT_FEE` on deployment #2. This is a concrete reason the
-two-deployment plan is the right one rather than a concession: **the first
-deployment produces the number the second one needs.**
+Deployment #1 was how it was measured: one full lap, actual gas from Basescan
+(~$0.006 per 500k-gas UserOp, five to six ops per cycle), margin on top —
+and `FLAT_FEE=30000` ($0.03) shipped on deployment #1 itself, immutable. If
+the envelope ever outgrows it, that is a redeploy, not a knob.
 
 Token units, not dollars. USDC has 6 decimals, so $0.03 is `30000`.
 
-`ARBITER_ADDRESS` should be a **dedicated key**, not the oracle. The oracle
-publishes scores; the arbiter moves money. One key doing both means one
-compromise does both.
+`ARBITER_ADDRESS` *should* be a dedicated key — the oracle publishes scores,
+the arbiter moves money, and one key doing both means one compromise does both
+— but see the divergence note under step 3: today the code signs rulings with
+the oracle wallet, so the two must be the same address until that changes.
 
 ---
 
@@ -444,8 +469,15 @@ reproduce it is a different contract, whatever the source says.
 ```
 LABOR_MARKET_ADDRESS=<from step 3>
 USDC_ADDRESS=<Base USDC>
-PAYMASTER_METERED=true
+PAYMASTER_METERED=true      # or PAYMASTER_DISABLED=true — see below
+PAYMASTER_DISABLED=true     # the live mainnet config: no sponsorship
+BUNDLER_RPC=<bundler URL>   # ZERODEV_RPC still works as the legacy name
 ```
+
+`realMoneyBlockers()` accepts either acknowledgement: `PAYMASTER_METERED=true`
+says "a spending policy exists on the paymaster", `PAYMASTER_DISABLED=true`
+says "there is no paymaster to police". The current mainnet deployment runs
+the second.
 
 `isV2Market()` detects V2 from the **deployed code**, not from an env flag — an
 env var says what someone believed when they set it. Once it answers true, the

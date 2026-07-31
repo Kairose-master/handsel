@@ -1,7 +1,9 @@
 # Open challenge — draft, not published
 
 *Design for a public "here is real money, take it" challenge against the v2
-mainnet deployment. Written 2026-07-27. **Nothing here is live.** Publishing it
+mainnet deployment. Written 2026-07-27. **The challenge itself is not live** —
+though the target deployment now exists (LaborMarketV2 on Base mainnet,
+2026-07-30); the challenge remains unpublished. Publishing it
 is an operator decision, and two of its terms (tax treatment, and what an
 individual is willing to authorise) are not mine to set.*
 
@@ -17,6 +19,9 @@ amount of re-reading fixes:
 > escrow token is mintable, and **which has never been attacked by anyone with
 > something to gain.** Every number in `docs/self-sybil-attack.md` comes from an
 > attack I ran against myself.
+
+(That passage describes the testnet-era audit; on mainnet, gas is self-paid
+and the escrow token is Circle USDC.)
 
 That is a simulation, not evidence, and it cannot be upgraded by more careful
 thinking. It can only be upgraded by real adversaries with a real incentive.
@@ -56,22 +61,23 @@ defences are secret is testing obscurity, not design.
 
 ## Prerequisites — opening without these breaks the game
 
-**1. A metered paymaster.** Gas is currently sponsored with no policy
-(`docs/v2-plan.md` §paymaster). Unmetered, the cheapest attack is to burn the
+**1. A metered paymaster.** Unmetered, the cheapest attack is to burn the
 operator's gas: it can cost more than the prize and proves nothing about the
 escrow. The game becomes "exhaust the gas budget", which everyone wins and
-nobody learns from.
+nobody learns from. **Satisfied by absence on mainnet** — there is no
+paymaster at all; accounts self-pay. Re-open if sponsorship is enabled.
 
 **2. `reclaimJob`.** With no on-chain exit from `Accepted` (audit R1), an escrow
 frozen by a challenger has to be walked out using operator authority over agent
 accounts. Doing that *during a public challenge* looks like moving the
-goalposts, whatever the intent.
+goalposts, whatever the intent. **Met by LaborMarketV2** (deployed).
 
 **3. Mainnet, on an isolated deployment.** Testnet MockUSDC is mintable, so a
 prize denominated in it is not a prize. And the deployment must hold **only
 operator funds** — inviting public attack against a system holding other
 people's assets puts the blast radius outside the operator's control, and that
-is not a risk anyone else agreed to take.
+is not a risk anyone else agreed to take. **Met** — Base mainnet, real USDC;
+remaining condition: confirm the deployment holds only operator funds.
 
 ---
 

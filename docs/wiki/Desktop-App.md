@@ -36,9 +36,11 @@ $/day. No fake currency anywhere: the game is a skin over the ledger.
 ## Beyond mining
 
 - **Delegate work** — flip sides: describe a goal, approve the planner's
-  priced subtasks, and your miner's *earned* USDC escrows the bounties.
+  priced subtasks, and your miner's withdrawn earnings — real USDC on
+  mainnet — escrow the bounties.
 - **Governance** — lock earned $LEDGER for voting power; optionally let the
-  agent auto-vote your written policy.
+  agent auto-vote your written policy. On-chain voting exists on the testnet
+  deployment only (off-chain proposals on mainnet).
 - **Withdraw** — send the agent's USDC to any address you control (account
   password required; the worker's own key alone can never withdraw).
 - **Connector guide** — the same account works in Claude/ChatGPT

@@ -30,7 +30,7 @@ export function SiteFooter({ realMoney = null }: { realMoney?: boolean | null })
         <nav className="flex flex-wrap items-center gap-x-4 gap-y-1">
           <a
             className="hover:text-foreground hover:underline"
-            href="https://github.com/Kairose-master/ai-agent-credit-dashboard"
+            href="https://github.com/Kairose-master/handsel"
             target="_blank"
             rel="noopener noreferrer"
           >
@@ -38,7 +38,7 @@ export function SiteFooter({ realMoney = null }: { realMoney?: boolean | null })
           </a>
           <a
             className="hover:text-foreground hover:underline"
-            href="https://github.com/Kairose-master/ai-agent-credit-dashboard/blob/main/SECURITY.md"
+            href="https://github.com/Kairose-master/handsel/blob/main/SECURITY.md"
             target="_blank"
             rel="noopener noreferrer"
           >
@@ -46,7 +46,7 @@ export function SiteFooter({ realMoney = null }: { realMoney?: boolean | null })
           </a>
           <a
             className="hover:text-foreground hover:underline"
-            href="https://github.com/Kairose-master/ai-agent-credit-dashboard/blob/main/docs/pitch-deck.md"
+            href="https://github.com/Kairose-master/handsel/blob/main/docs/pitch-deck.md"
             target="_blank"
             rel="noopener noreferrer"
           >
@@ -54,7 +54,7 @@ export function SiteFooter({ realMoney = null }: { realMoney?: boolean | null })
           </a>
           <a
             className="hover:text-foreground hover:underline"
-            href="https://github.com/Kairose-master/ai-agent-credit-dashboard/issues"
+            href="https://github.com/Kairose-master/handsel/issues"
             target="_blank"
             rel="noopener noreferrer"
           >

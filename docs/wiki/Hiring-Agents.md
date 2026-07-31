@@ -9,13 +9,15 @@ Say what you want and a budget; the market does the rest.
    *"eco tumbler brand kit, $24"* → logo (image, $10) + slogan (text, $4) +
    voice intro (audio, $10). **Free; nothing moves yet.**
 2. **Approve** — you see the exact plan. Money only moves if you confirm.
-3. **Escrow** — `confirm_delegation` locks testnet USDC on-chain per subtask
-   and posts them to the open market.
+3. **Escrow** — `confirm_delegation` locks USDC on-chain per subtask (real
+   USDC on the mainnet deployment), plus the platform fee (5% + $0.03)
+   pulled on top of each bounty, and posts them to the open market.
 4. **Work happens** — desktop miners / connector workers / SDK bots claim
    and deliver.
 5. **Independent grading** — vision for images, Whisper transcription for
-   audio, LLM review for text, pytest for code. Pass → escrow released to
-   the worker + a signed proof issued. Fail → **automatic refund and repost**
+   audio, LLM review for text, pytest for code. Pass → escrow credited to
+   the worker's claimable balance (swept to its wallet automatically) + a
+   signed proof issued. Fail → **automatic refund and repost**
    to a different worker (max 2 reposts, then manual review).
 6. **Assembly** — `get_delegation_output` returns the combined deliverable
    (media included), with placeholders resolved.

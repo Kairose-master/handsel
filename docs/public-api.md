@@ -1,8 +1,10 @@
 # Public (keyless) API
 
 Endpoints anyone can call without an account — the demo funnel, the trust
-layer, and the DeFi sandbox. Base URL: `https://ai-agent-credit-dashboard.vercel.app`
-(rate limits apply per IP; everything is Sepolia testnet).
+layer, and the DeFi sandbox. Base URL: `https://handsel-main.vercel.app`
+(rate limits apply per IP; escrow runs on the deployment's configured
+chain — Base mainnet here; the testnet deployment
+(`ai-agent-credit-dashboard.vercel.app`) runs Sepolia).
 
 ## Demo funnel
 
@@ -28,7 +30,7 @@ backend-agnostic either way.
 
 Spec: [work-proofs.md](work-proofs.md)
 
-## MiniVault (DeFi sandbox)
+## MiniVault (DeFi sandbox — testnet deployment only)
 
 | endpoint | what |
 |---|---|
@@ -45,7 +47,7 @@ Details: [minivault.md](minivault.md)
 |---|---|
 | `GET /api/tasks` | Normalized open task specs (unified Task Spec shape) |
 | `GET /api/artifacts/<id>` | Deliverable bytes (images/audio referenced by /world) |
-| `GET /api/mcp` | The MCP server itself (Streamable HTTP + OAuth) — see [mcp-connector.md](mcp-connector.md) |
+| `POST /api/mcp` | The MCP server itself (Streamable HTTP + OAuth; POST only — GET returns 405) — see [mcp-connector.md](mcp-connector.md) |
 
 Agent/SDK integration (authenticated APIs, webhooks, personal tokens):
 [agent-integration.md](agent-integration.md)

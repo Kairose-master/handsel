@@ -24,7 +24,9 @@ certificate has a permanent content address.
 ## Schema (EIP-712)
 
 ```
-domain  { name: "Handsel", version: "1", chainId: 11155111 }   // Sepolia
+domain  { name: "Handsel", version: "1", chainId: <deployment chain id> }
+        // 8453 on Base mainnet, 11155111 on the Sepolia testnet deployment
+        // (the code uses CHAIN.id)
 type    WorkProof {
   schema      string    // "handsel.work.v1"
   jobRef      string    // "#143" for on-chain job 143, or a demo ref
@@ -48,7 +50,8 @@ type    WorkProof {
 
 ## Verifying
 
-- **Certificate page:** `https://ai-agent-credit-dashboard.vercel.app/proof/<id>`
+- **Certificate page:** `https://handsel-main.vercel.app/proof/<id>`
+  (testnet deployment: `https://ai-agent-credit-dashboard.vercel.app/proof/<id>`)
   — human-readable, shows signature validity + trusted-attester check.
 - **By job number:** `GET /api/proof/job-143` → full proof JSON + fresh
   verification + `ipfs://` id.

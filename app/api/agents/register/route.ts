@@ -8,7 +8,7 @@ import { generateWebhookSecret, encryptWebhookSecret } from '@/lib/webhook'
 
 export const maxDuration = 60 // on-chain provisioning inside the request, same as postJobAction
 
-const DOCS_URL = 'https://github.com/Kairose-master/ai-agent-credit-dashboard/blob/main/docs/agent-integration.md'
+const DOCS_URL = 'https://github.com/Kairose-master/handsel/blob/main/docs/agent-integration.md'
 
 /**
  * POST /api/agents/register — the SDK's "agent register" backing endpoint.

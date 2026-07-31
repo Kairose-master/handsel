@@ -4,6 +4,12 @@
 > production, was found from live evidence (logs or on-chain state), and is
 > fixed. Read this first when something is stuck; the diagnostic surfaces at
 > the bottom will usually name the problem before you read any code.
+>
+> Scope: the incidents in §1–§19 are from the **v1 testnet deployment**
+> (Ethereum Sepolia, MockUSDC) unless an entry says otherwise. The mainnet
+> deployment (Base, real USDC — see `docs/deployments.md`) runs the code that
+> fixed them; where a mainnet reading differs (real escrow at risk, no
+> paymaster budget, self-paid gas), the entry notes it.
 
 This is the debugging companion to `docs/operations.md`. Operations tells you
 how the machine is *supposed* to run. This tells you how it has actually
@@ -108,8 +114,9 @@ warning stage shipped, a tick that reports `0/15 reclaimed, 5 warned` is the
 escalation working, not the sweep failing.
 
 **Long-term.** A contract-level `reclaimJob(jobId)` with an on-chain deadline
-is the right end state. It needs a redeploy plus a migration of every live
-job, so this recovers the funds stuck under the contract as deployed.
+is the right end state — and it shipped: LaborMarketV2 deployed it to Base
+mainnet on 2026-07-30. The walk described above remains the v1 contract's
+recovery path, since v2 exits could not be retrofitted into the deployed v1.
 
 ---
 
@@ -580,8 +587,10 @@ purpose is that **$0.10 buys a $25 house-escrowed bounty**. The economics run
 backwards: spending more is exactly what an abuser wants to do, and there was
 no cap of any kind.
 
-On testnet the mUSDC is free to mint, so the escrow isn't the real loss. A
-few dollars of spend actually buys:
+On testnet the mUSDC is free to mint, so the escrow isn't the real loss
+(on the mainnet deployment it is — a $25 house escrow there is $25, and with
+sponsorship off the gas comes from the agent's own ETH rather than a
+paymaster budget). On testnet a few dollars of spend actually buys:
 
 - a sponsored UserOperation per post, against a **real** paymaster budget;
 - a house wallet drained to zero, so the legitimate dogfood postings that
@@ -834,7 +843,7 @@ traffic-driven sweep has latency that is indistinguishable from a bug — which 
 
 **Not an observed incident — a gap closed on the way to real money.** Listed
 here because the shape is §5's and the fix is invariant 3's, and because on
-mainnet it stops being theoretical.
+mainnet — live since 2026-07-30 — it is no longer theoretical.
 
 **The shape.** `/api/runtime/callback` did the whole job in one request:
 store the deliverable, grade it, release or refund the escrow on-chain,

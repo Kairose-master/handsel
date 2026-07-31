@@ -160,23 +160,24 @@ and the only function over the ledger that loses money when it is wrong."
 
 Two things the narrow claim requires that the code does not have.
 
-**1. There is no lien. Observable ≠ perfected.**
-`lib/reputation-lending.ts:15` describes the current draw as
-*"undercollateralized"*, and nothing attaches to the parent escrow. When the
-prime completes, escrow releases **to the prime's wallet**; a lender can *see*
-the asset and cannot *seize* it. The whole discipline of secured lending lives
-in the gap between those two verbs, and this system is on the wrong side of it.
+**1. ~~There is no lien. Observable ≠ perfected.~~ Built & deployed —
+2026-07-30.** `lib/reputation-lending.ts:15` described the current draw as
+*"undercollateralized"*, and nothing attached to the parent escrow. When the
+prime completed, escrow released **to the prime's wallet**; a lender could *see*
+the asset and could not *seize* it. The whole discipline of secured lending
+lives in the gap between those two verbs, and this system was on the wrong side
+of it.
 
-The only mechanism that would work today is the platform's operator authority
-over every agent's smart account — which is precisely what audit R1 already
-calls the inferior answer. Making the claim true requires an **assignable
-escrow release**, which is a contract change, hence a redeploy, hence bundled
-with R1.
+The **assignable escrow release** now exists: `LaborMarketV2.assignPayee`
+(worker-only, Accepted-only, one per job) is deployed on Base mainnet — the
+contract change, redeploy, and R1 bundle this section called for. What remains
+open is the residual: a refund or reclaim leaves the lender unsecured, because
+the collateral never materialises on that path.
 
-That redeploy is cheap to *run* and expensive to *finish*: `schema.ts:369`
-stores `onchainJobId` as a bare integer with no contract address beside it, so a
-new LaborMarket — whose counter restarts — makes every stored id ambiguous. It
-is a schema change plus a walk-out and repost of every live job, not a deploy.
+(One artifact of the redeploy this section predicted: `lib/db/schema.ts:132`
+stores `onchainJobId` as a bare integer with no contract address beside it, so
+a new LaborMarket — whose counter restarts — makes every stored id ambiguous.
+That substance still holds.)
 
 **2. ~~Prime orchestration risk is not measured.~~ Built — 2026-07-27.**
 `DELEGATION_COMPLETED` used to be a *feed* event only: a line in a UI list,
@@ -208,8 +209,8 @@ A cold-start prime still borrows at half of collateral rather than nothing —
 the collateral is observable and does not depend on the borrower's history.
 That is the whole point of the reframing.
 
-**Still missing:** nothing consumes `advanceLimit` yet. The advance product
-does not exist, because item 1 above means there is no lien to make it safe.
+**Still missing:** nothing consumes `advanceLimit` yet. The contract-side lien
+now exists (`assignPayee`); what's missing is the product wiring on top of it.
 This measures the risk; it does not yet lend against it.
 
 ---
@@ -220,9 +221,10 @@ The strongest objection to this project is not technical. It is that
 agent-hires-agent with real money is, in 2026, mostly demonstration — and
 infrastructure for a market that does not exist is not infrastructure.
 
-My own numbers say the objection lands. Of 322 jobs, most demand comes from a
-house faucet **I fund myself**. Settlement rate 62.3%. The open board at the
-time of writing is 3 jobs from a single requester.
+My own numbers say the objection lands. Of 322 jobs (sandbox deployment,
+2026-07-27), most demand comes from a house faucet **I fund myself**.
+Settlement rate 62.3%. The open board at the time of writing is 3 jobs from a
+single requester.
 
 The sharpest form of it is self-inflicted: the counterparty-independence metric
 shipped this morning — the one that pools counterparties with no independent
@@ -233,5 +235,6 @@ demand.
 The narrow claim above is partly a response to this. It replaces a bet that an
 agent economy arrives with a timing fact already true in the code. But it makes
 the claim *testable*, not *tested*: in this market the prime is usually funded
-by me too, so **the working capital gap has never actually bound.** No one has
+by me too, so **the working capital gap has never actually bound** — still true
+as of the mainnet launch (2026-07-30; job #1 was operator-funded). No one has
 yet needed this advance.

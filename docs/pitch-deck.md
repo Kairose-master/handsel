@@ -14,7 +14,8 @@ linkable copy.*
 ## 1. An on-chain credit history for AI agents
 
 Earned from actually-verified work — not self-reported success. Built solo,
-tested in public, ready to build on GIWA.
+tested in public, ready to build on GIWA. (The deployment actually taken since
+this application: Base mainnet, live with real USDC as of 2026-07-30.)
 
 ---
 
@@ -95,8 +96,9 @@ Four contracts, one behavioral ledger:
 | Contract | Role |
 | --- | --- |
 | `AgentCreditRegistry` | Oracle-published credit limit per agent, attested via EAS |
-| `AgentCreditVault` | Lends mUSDC up to the registry limit; tracks outstanding balance and repayment |
-| `LaborMarket` | USDC escrow for agent-to-agent work; immutable on-chain arbiter for disputes |
+| `AgentCreditVault` | Lends mUSDC up to the registry limit; tracks outstanding balance and repayment (testnet sandbox only) |
+| `LaborMarket` | USDC escrow for agent-to-agent work; immutable on-chain arbiter for disputes (v1, testnet) |
+| `LaborMarketV2` | The contract holding mainnet money: escrow with worker bond, pull payments, and permissionless exits |
 | `VerifiedTaskEscrow` | Commit-reveal settlement against a hidden ground-truth answer |
 
 Stack: ERC-4337 (Kernel / ZeroDev) · Solidity (Foundry) · Next.js · Neon
@@ -138,15 +140,17 @@ volume on most general-purpose L2s.
 - **MVP Build** — all five contracts are **already deployed and verified
   on GIWA testnet** (e.g.
   [LaborMarket](https://sepolia-explorer.giwa.io/address/0xaa5b0dc472c0c373a3d0602937533fa9fda94601));
-  next: point the live app at GIWA and validate the documented test
-  scenarios there, running Sepolia in parallel until parity is confirmed.
+  since then, the live app went to **Base mainnet on 2026-07-30**
+  (LaborMarketV2 + registry, real USDC), with Sepolia running in parallel
+  as the sandbox.
 - **Productize** — replace the single-EOA dispute arbiter with a
   domain-scoped, staked reviewer model (tracked design work, issue #7); add
   a calibration signal so credit scoring penalizes confident-but-wrong
   output, not just completion (issue #6).
-- **Mainnet readiness** — security review of all four contracts (no formal
-  audit yet, flagged honestly in the repo today); gas/paymaster policy
-  review at real agent-economy transaction volume.
+- **Mainnet hardening** — mainnet is live; security review of the contracts
+  is now hardening of a live deployment (no formal audit yet, flagged
+  honestly in the repo today); gas/paymaster policy review at real
+  agent-economy transaction volume.
 - **KPIs** — real agent-to-agent job volume and vault TVL, instrumented
   from the behavioral event ledger that already drives credit scoring —
   not new infrastructure, existing plumbing.
@@ -167,9 +171,9 @@ outside engineers rather than assumed.
 
 ## 11. What GASOK enables
 
-Move from a testnet demo to a real product on GIWA. Resources and mentorship
-to take this from a working prototype validated by strangers on the
-internet, to production infrastructure agents can actually depend on.
+Harden a market that is already live on mainnet with real money. Resources
+and mentorship to take this from a working product validated by strangers on
+the internet, to production infrastructure agents can actually depend on.
 
 - Repo: https://github.com/Kairose-master/ai-agent-credit-dashboard
 - Live demo, no signup: https://ai-agent-credit-dashboard.vercel.app/guest

@@ -51,7 +51,7 @@ export default function ConnectPage() {
         <div className="mt-3 flex flex-wrap gap-3 text-sm">
           <a
             className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 font-medium text-primary-foreground hover:opacity-90"
-            href="https://github.com/Kairose-master/ai-agent-credit-dashboard/tree/main/examples/mcp-worker"
+            href="https://github.com/Kairose-master/handsel/tree/main/examples/mcp-worker"
             target="_blank"
             rel="noopener noreferrer"
           >
@@ -69,7 +69,7 @@ export default function ConnectPage() {
           server above. See{' '}
           <a
             className="underline"
-            href="https://github.com/Kairose-master/ai-agent-credit-dashboard/blob/main/docs/external-agents.md"
+            href="https://github.com/Kairose-master/handsel/blob/main/docs/external-agents.md"
             target="_blank"
             rel="noopener noreferrer"
           >
@@ -82,7 +82,7 @@ export default function ConnectPage() {
       <p className="mt-10 text-xs text-muted-foreground">
         First time here? <a className="underline" href="/sign-up">Create an account</a> (free{real ? '' : ', testnet'}) — or just approve the
         consent screen with a new email and the connector can bootstrap an agent for you with <code>create_worker_agent</code>.
-        Details in the <a className="underline" href="https://github.com/Kairose-master/ai-agent-credit-dashboard/blob/main/docs/agent-integration.md">integration docs</a>.
+        Details in the <a className="underline" href="https://github.com/Kairose-master/handsel/blob/main/docs/agent-integration.md">integration docs</a>.
       </p>
     </div>
   )

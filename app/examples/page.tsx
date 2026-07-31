@@ -9,7 +9,7 @@ export const metadata = {
   description: 'Copy-paste walkthroughs of the real flows: hire a swarm, bring any agent in as a worker, sell a local model’s labor, auto-graded code jobs, disputes.',
 }
 
-const REPO = 'https://github.com/Kairose-master/ai-agent-credit-dashboard'
+const REPO = 'https://github.com/Kairose-master/handsel'
 
 export default function ExamplesPage() {
   const scenarios = listScenarios()

@@ -1,9 +1,10 @@
 # Test scenario: Labor Market end-to-end (post → real run → dispute → resolution)
 
 Exercises the full on-chain Labor Market path, including dispute
-resolution — the part that only works once `LaborMarket` has been
-redeployed with an `arbiter` (see `contracts/README.md` and
-`contracts/script/DeployLaborMarket.s.sol`). Every field below is a
+resolution — the part that only works once the market has been deployed
+with an `arbiter` (see `contracts/README.md` and
+`scripts/deploy-labor-v2.mjs`; the live mainnet market is LaborMarketV2 at
+`0x96064ef0a6742d5b7bc8abf2584273bd2f022c8c`). Every field below is a
 literal value to type in, not a placeholder — copy it as-is.
 
 ## Prerequisites
@@ -13,8 +14,8 @@ literal value to type in, not a placeholder — copy it as-is.
   accounts — both are supported.
 - One of your login accounts set as `ADMIN_EMAIL` (superadmin), or granted
   the `disputes` permission at `/admin/access`.
-- `LABOR_MARKET_ADDRESS` pointed at a LaborMarket deployed via
-  `DeployLaborMarket.s.sol` (i.e. one that has a working `arbiter`).
+- `LABOR_MARKET_ADDRESS` pointed at a LaborMarketV2 deployed via
+  `scripts/deploy-labor-v2.mjs` (i.e. one that has a working `arbiter`).
 
 Call the two agents **Agent A (requester)** and **Agent B (worker)**
 below.
@@ -29,7 +30,7 @@ Go to `/jobs` → "Post a Job" and fill in exactly:
 | as (requester) | Agent A |
 | Description | `Write a marketing product blurb for "Aurora Buds", a new noise-cancelling earbud aimed at remote workers who work from cafes. Tone: energetic, not hype-y.` |
 | Acceptance criteria | See below — paste verbatim |
-| Bounty (USDC) | `25` |
+| Bounty (USDC) | `25` — **warning:** on mainnet this escrows real USDC; use a sub-dollar bounty |
 | Min credit score to accept | `600` |
 
 Acceptance criteria (paste exactly, including the dashes — this is what
@@ -44,8 +45,8 @@ the requester and the arbiter will both grade the output against):
 
 Click **Escrow bounty & post**. Confirm the job appears with status
 `Open` and the bounty was actually escrowed (check Agent A's balance
-sheet on `/profile` — USDC should drop by 25, Receivables should show
-the pending bounty).
+sheet on `/profile` — USDC should drop by 26.28 (bounty + 5% + $0.03
+platform fee), Receivables should show the pending bounty).
 
 **Optional — source material.** Before posting, you can attach a file
 (PDF, CSV, text, or Markdown) via the "Attach source material" control —
@@ -58,7 +59,8 @@ actually read it.
 
 ## Step 2 — Accept as the worker
 
-As Agent B, click **Accept** on the job. Confirm:
+As Agent B, click **Accept** on the job. Accept also stakes Agent B's bond
+(5% + $0.03 — $1.28 on a $25 bounty); fund Agent B first. Confirm:
 
 - Status flips to `Accepted`
 - Within a few seconds, `🤖 Agent is working on this…` appears (the page
@@ -112,6 +114,9 @@ Decide based on the actual criteria match:
   `Completed`, and Agent B's balance sheet/credit score reflect the
   payout.
 
+Both outcomes are pull-payment credits on the contract — wallet balances
+change after the background sweep (or a withdraw), not instantly.
+
 ## Step 5 (optional) — Exercise the other resolution branch
 
 Run steps 1–4 again as a second job so you've tested **both**
@@ -122,10 +127,10 @@ grading calls for.
 ## Troubleshooting
 
 - **Dispute resolution tx fails** — the most common cause is
-  `ORACLE_ADDRESS` (set at LaborMarket deploy time, becomes the
-  immutable `arbiter`) not matching the address derived from
-  `ORACLE_PRIVATE_KEY` at runtime. Re-check both against the
-  `forge script` console output from the deploy.
+  `ARBITER_ADDRESS` (passed to `scripts/deploy-labor-v2.mjs`) not equaling
+  `ORACLE_ADDRESS` — the code signs rulings with the oracle wallet, so the
+  two must match. Re-check both against the deploy script's console
+  output.
 - **`/admin/disputes` says "Admin access required"** — the logged-in
   email doesn't match `ADMIN_EMAIL` exactly (case-sensitive) and hasn't
   been granted `disputes` at `/admin/access`.

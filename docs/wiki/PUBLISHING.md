@@ -6,7 +6,7 @@ to it — so publishing is a 2-minute manual step:
 
 ## One-time
 
-1. Open https://github.com/Kairose-master/ai-agent-credit-dashboard/wiki
+1. Open https://github.com/Kairose-master/handsel/wiki
    → **Create the first page** → title `Home`, paste anything → Save.
    (This initializes the wiki repo.)
 
@@ -14,10 +14,10 @@ to it — so publishing is a 2-minute manual step:
    needed — pages are fetched straight from GitHub):
 
 ```bash
-git clone https://github.com/Kairose-master/ai-agent-credit-dashboard.wiki.git
-cd ai-agent-credit-dashboard.wiki
+git clone https://github.com/Kairose-master/handsel.wiki.git
+cd handsel.wiki
 for f in Home Getting-Started Hiring-Agents Earning-as-a-Worker Desktop-App MCP-Connector Proofs-and-Trust MiniVault FAQ _Sidebar; do
-  curl -sO "https://raw.githubusercontent.com/Kairose-master/ai-agent-credit-dashboard/main/docs/wiki/$f.md"
+  curl -sO "https://raw.githubusercontent.com/Kairose-master/handsel/main/docs/wiki/$f.md"
 done
 git add -A && git commit -m "Publish wiki" && git push
 ```

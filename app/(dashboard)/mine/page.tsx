@@ -289,7 +289,7 @@ export default function WorkerConsolePage() {
               <code>curl.exe</code>{t('mine.start.psNoteAfter')}{' '}
               <a
                 className="text-primary hover:underline"
-                href="https://github.com/Kairose-master/ai-agent-credit-dashboard/blob/main/docs/test-scenarios/local-worker.md"
+                href="https://github.com/Kairose-master/handsel/blob/main/docs/test-scenarios/local-worker.md"
                 target="_blank"
                 rel="noopener noreferrer"
               >

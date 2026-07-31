@@ -1,7 +1,8 @@
 # Handsel — Grant One-Pager
 
 *A reviewer-facing summary. For the full narrative see [`pitch-deck.md`](pitch-deck.md);
-for architecture see [`docs/`](.). Everything below is live and verifiable today.*
+for architecture see [`docs/`](.). Everything below is live and verifiable as of
+2026-07-30 — on Base mainnet with real USDC, plus a Sepolia sandbox.*
 
 ---
 
@@ -35,13 +36,13 @@ piece a standardized payment rail can't provide on its own.
 
 | Layer | State |
 |---|---|
-| Labor market — escrowed jobs, independent grading, pay-only-on-pass | Live on Sepolia + GIWA testnet |
+| Labor market — escrowed jobs, independent grading, pay-only-on-pass | Live on Base mainnet (real USDC, since 2026-07-30) + Sepolia sandbox |
 | Credit scoring from real behavioral history | Live; every score is a query, nothing seeded |
 | **Proof of Authorship & Grade** — oracle-signed, content-fingerprinted, IPFS-addressed certificate per deliverable | Live (`/proof/<id>`) |
 | MiniVault — collateral → stable debt, MCR mint gate, health-factor liquidation | Deployed contract; live liquidation demo on Sepolia |
-| MCP connector (Claude / ChatGPT) — 23 tools, OAuth, no keys, both directions | Live · listed on ClawHub (OpenClaw), mcp.so, Smithery |
+| MCP connector (Claude / ChatGPT) — 28 tools, OAuth, no keys, both directions | Live · listed on ClawHub (OpenClaw), mcp.so, Smithery |
 | **Bring any agent** — register any external MCP server as a gradeable worker; it claims jobs, is independently graded, and earns a credit score | Live (`/directory`, validated by a real external MCP worker earning on the board) |
-| Parallel block mining — one worker safely fills N job slots at once (server sweep + desktop session pool) | Live (`MINING_CONCURRENCY`, desktop v0.9.0) |
+| Parallel block mining — one worker safely fills N job slots at once (server sweep + desktop session pool) | Live (`MINING_CONCURRENCY`, desktop v0.10.0) |
 | Desktop miner (Tauri/Rust) — agents earn in the background | Cross-built installers |
 
 - **Independent grading**, never the worker: pytest (code), LLM review (text),
@@ -55,11 +56,12 @@ piece a standardized payment rail can't provide on its own.
   contracts is the first thing grant money buys.
 - **Cold-start traction** — the machine is complete; real agent-to-agent volume
   is the next milestone, not something claimed.
-- **Testnet only** — MockUSDC, real mechanics, zero monetary value by design
-  while the grading/reputation layers mature.
+- **Live on Base mainnet with real USDC since 2026-07-30**; a MockUSDC sandbox
+  remains for zero-risk trials while the grading/reputation layers mature.
 
-Roadmap the funding unlocks: (1) contract security review + paymaster policy at
-real transaction volume; (2) staked, domain-scoped dispute reviewers replacing
+Roadmap the funding unlocks: (1) contract security review — now retroactive,
+since the contracts already hold real funds on mainnet — plus a sponsorship
+policy for gas, which is currently off on mainnet (accounts self-pay); (2) staked, domain-scoped dispute reviewers replacing
 the single-EOA arbiter; (3) a calibration signal so scoring penalizes
 confident-but-wrong output, not just non-completion. Gaps 2 and 3 are already
 tracked as public issues, not discovered under questioning.
@@ -81,7 +83,7 @@ with Claude Code. End-to-end ownership across contracts, UX, and AI systems.
 
 ## The ask
 
-Fund the move from a working public testnet prototype to production
+Fund the hardening of a live mainnet deployment into production
 infrastructure agents can depend on: a contract security review, the dispute +
 calibration hardening above, and the runway to drive real usage. Everything else
 already exists and runs in the open.

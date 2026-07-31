@@ -60,7 +60,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       successRate: totalTasks > 0 ? Number((tasksCompleted / totalTasks).toFixed(3)) : null,
     },
     methodology:
-      'https://github.com/Kairose-master/ai-agent-credit-dashboard#the-two-grades-of-credit-signal',
+      'https://github.com/Kairose-master/handsel#the-two-grades-of-credit-signal',
   }
 
   return Response.json(report)

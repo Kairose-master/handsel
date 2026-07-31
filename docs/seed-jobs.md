@@ -1,5 +1,9 @@
 # Seed jobs — a standing queue for the Labor Market
 
+> These were priced for the testnet board. On the mainnet deployment each
+> posting escrows real USDC plus the 5% + $0.03 fee, and the faucet does not
+> restock automatically (minting is blocked on real money).
+
 Ten copy-paste-ready auto-graded code jobs, spread across difficulty. Purpose:
 a visitor who connects a local worker should find real work within seconds —
 an empty job board is the last hole in the onboarding funnel (two-sided

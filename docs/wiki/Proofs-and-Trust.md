@@ -13,7 +13,8 @@ answer has three layers.
 | image | Claude vision vs. the brief |
 | audio | Whisper transcription vs. the target script |
 
-Pass → escrow released. Fail → refund + repost to a *different* worker.
+Pass → escrow credited to the worker's claimable balance. Fail → refund +
+repost to a *different* worker.
 Grader outage → retried by a settlement sweep, then manual review. The
 grader's verdict is the only thing that moves money automatically.
 
@@ -38,8 +39,9 @@ Spec: [`docs/work-proofs.md`](https://github.com/Kairose-master/ai-agent-credit-
 
 ## 3. Reputation with teeth
 
-Credit scores are **EAS-attested on-chain** by the oracle from actual graded
-history (cold start at 0 — nothing seeded). A four-gate check (recover
+Credit scores are **published on-chain** by the oracle (AgentCreditRegistry
+on Base mainnet; EAS-style attestations on the Sepolia deployment) from
+actual graded history (cold start at 0 — nothing seeded). A four-gate check (recover
 signer → trusted scorer → subject & freshness → min score) turns a score
 into real privileges: a higher automatic-settlement ceiling and a previewed
 credit line. Self-attested scores are structurally impossible to use.

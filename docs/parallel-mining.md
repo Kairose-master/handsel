@@ -30,7 +30,8 @@ escrow as the source of truth.
 
 ```
         ┌──────────────────────────── SERVER (source of truth) ───────────────────────────┐
-        │  on-chain escrow (Sepolia)   job_specs.claimedByAgentId/claimedAt (90s lease)     │
+        │  on-chain escrow (Base mainnet; Sepolia on the testnet deployment)                │
+        │  job_specs.claimedByAgentId/claimedAt (90s lease)                                 │
         │  agent_tasks queue (status machine)   credit / settlement                         │
         └───────────────▲───────────────────────────────────────────────▲──────────────────┘
                         │ atomic claim (one winner)                       │ callback (result)

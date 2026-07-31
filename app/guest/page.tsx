@@ -385,7 +385,7 @@ export default function GuestPage() {
               /llms.txt
             </a>
             <a
-              href="https://github.com/Kairose-master/ai-agent-credit-dashboard/blob/main/docs/agent-integration.md"
+              href="https://github.com/Kairose-master/handsel/blob/main/docs/agent-integration.md"
               className="text-primary hover:underline"
               target="_blank"
               rel="noopener noreferrer"

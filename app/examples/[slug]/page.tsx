@@ -6,7 +6,7 @@ import { Markdown } from '../markdown'
 
 export const dynamic = 'force-static'
 
-const REPO = 'https://github.com/Kairose-master/ai-agent-credit-dashboard'
+const REPO = 'https://github.com/Kairose-master/handsel'
 
 export function generateStaticParams() {
   return listScenarios().map((s) => ({ slug: s.slug }))

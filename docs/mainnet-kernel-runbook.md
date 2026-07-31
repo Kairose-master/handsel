@@ -1,7 +1,10 @@
 # Base mainnet, kernel mode — the ordered runbook
 
 `docs/mainnet-deploy.md` is the reasoning: what can cost you money, why the fee is
-shaped the way it is, how the two gas layers must be ordered. Read it once.
+shaped the way it is, how the two gas layers must be ordered. Read it once —
+noting that its arbiter/oracle guidance is superseded by §2.5 below (they must
+be the SAME address in the current code). The mainnet-vs-testnet split lives
+in `docs/deployments.md`.
 
 This is the sequence, in order, with the reason each step comes where it does.
 Every value here was verified rather than recalled; where something was read off a
@@ -29,8 +32,9 @@ self-Sybil problem in `docs/self-sybil-attack.md` arriving on day one. Mainnet
 starts at a genuine cold start, the way the testnet requester still reads
 `score 0, limit 0`.
 
-**Not `handsel-nu` itself.** Kernel mode has executed zero times. Repointing the
-only testnet leaves nowhere to find that out.
+**Not `handsel-nu` itself.** Kernel mode had executed zero times when this was
+written; mainnet job #1 (2026-07-30) was its first full run. Repointing the
+only testnet would have left nowhere to find that out.
 
 ## New secrets, and why the owner key especially
 
@@ -95,10 +99,12 @@ ETH/USD 1916.07 from the Chainlink feed on Base) rather than estimated:
 
 L2 execution only — Base's L1 data fee is extra, small enough post-blobs that the
 honest figure comes off the first real receipt. At 500k gas the grant is about
-**1,700 operations**, or ~280 full job cycles at six ops each.
+**1,700 operations**, or ~300 full job cycles at five to six ops each.
 
 So $10 is not tight. What is wrong is the shape of the app's budget, not its
-size:
+size. **Everything in this table describes the day sponsorship is turned ON;
+the live mainnet config is `PAYMASTER_DISABLED=true` and none of it is in
+force today:**
 
 | setting | value | why |
 |---|---|---|
@@ -157,9 +163,12 @@ a billing check means the chain, the EntryPoint version, the sender type and the
 contract allowlist were all accepted first. A provider that rejected Kernel
 accounts would have said so earlier.
 
-So the only blocker is billing. "$10 monthly gas sponsorship limit" is a ceiling
-on what may be charged, not a balance that was granted; with no payment method
-behind it, nothing is sponsored.
+So the only blocker reached in that probe was billing. "$10 monthly gas
+sponsorship limit" is a ceiling on what may be charged, not a balance that was
+granted; with no payment method behind it, nothing is sponsored. **Status as
+of 2026-07-31: after the card was registered, both CDP endpoints rejected our
+request shape (`Missing or invalid parameters`) and the integration remains
+unresolved — mainnet runs with no paymaster at all.**
 
 Worth contrasting with the same condition at the other provider, which surfaced
 as `AA21 didn't pay prefund` — a funding error, for a billing cause, that
@@ -297,9 +306,11 @@ money accrues correctly and permanently out of reach.
 
 ## 3. Registry
 
-The current `CREDIT_REGISTRY_ADDRESS` is Base Sepolia. A mainnet market pointing
-at it would publish scores to a contract on another chain — which fails rather
-than lying, but fails late.
+Before this step ran, `CREDIT_REGISTRY_ADDRESS` was still Base Sepolia's — a
+mainnet market pointing at it would publish scores to a contract on another
+chain, which fails rather than lying, but fails late. The mainnet registry
+this step produced is `0x91acc4c081d3a364d3b713be8eec39a77f647290` (see the
+Deployed table below).
 
 ```bash
 ONCHAIN_CHAIN=base ONCHAIN_RPC_URL=... DEPLOYER_PRIVATE_KEY=... \
@@ -360,14 +371,15 @@ Live on Base Sepolia at `0xd9bcf174…04a09`: `jobCount 2`,
 
 ### What it earns against what it spends
 
-One completed cycle is roughly five sponsored UserOperations (requester
-approve+post batched, worker approve+accept batched, submit, approve, withdraw).
-At the measured $0.0058 that is about **$0.029 of gas per job**, against a flat
-fee of **$0.03**.
+One completed cycle is roughly five UserOperations (requester approve+post
+batched, worker approve+accept batched, submit, approve, withdraw) — self-paid
+from each kernel's ETH float while `PAYMASTER_DISABLED=true`, sponsored only
+once a paymaster is live. At the measured $0.0058 that is about **$0.029 of
+gas per job**, against a flat fee of **$0.03**.
 
 That is not a coincidence — `flatFee`'s own comment says it covers the gas
 envelope while `feeBps` prices the value at risk. But it means the margin at
-micro-bounties is the 2% and nothing else:
+micro-bounties is the 5% and nothing else:
 
 At `FEE_BPS=500`:
 
@@ -437,8 +449,9 @@ USDC_ADDRESS=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
 LABOR_MARKET_ADDRESS=<step 4>
 CREDIT_REGISTRY_ADDRESS=<step 3>
 ARBITER_ADDRESS=<new oracle address>
-ZERODEV_RPC=<step 1>
-PAYMASTER_METERED=true
+ZERODEV_RPC=<step 1>            # serving the BUNDLER role only today (BUNDLER_RPC is the current name)
+PAYMASTER_DISABLED=true         # the live config — no sponsorship; satisfies the metered ack
+PAYMASTER_METERED=true          # applies instead of PAYMASTER_DISABLED the day sponsorship turns on
 SPONSOR_GRANT_TOTAL_USD=8
 USER_LANE_GAS_BUDGET_USD=0.50
 KEEPER_LANE_GAS_BUDGET_USD=0.20
@@ -448,8 +461,8 @@ ANTHROPIC_API_KEY=...
 ```
 
 `PLATFORM_FEE_BPS=0` is not optional. `platformFeeBps()` **defaults to 200**, so
-leaving it unset charges 2% off-chain on top of the contract's 2% and every
-requester pays twice. That is the `fee-charged-twice` blocker.
+leaving it unset charges 2% off-chain on top of the contract's 5% + 0.03 and
+every requester pays twice. That is the `fee-charged-twice` blocker.
 
 `FAUCET_MAX_PER_DAY=0` only became a real off switch recently — the parse was
 `Number(x) || 15`, so an explicit zero fell through to fifteen.
@@ -484,14 +497,16 @@ Then fund:
 
 - **each agent's kernel account with USDC** — a requester with none cannot escrow,
   a worker with none cannot post a bond
-- **each agent's kernel account with a few cents of ETH** — the self-pay float. If
-  the sponsored budget is exhausted, an unsponsored UserOp pays from the kernel
-  account itself; nothing tops this up, because `ensureAgentGas` spends the
-  oracle's ether and is gated by the same budget it would be escaping
+- **each agent's kernel account with a few cents of ETH** — the self-pay float.
+  With `PAYMASTER_DISABLED=true` this is not a fallback: **every mainnet UserOp
+  pays from this float today**, so size it for the traffic you expect. Nothing
+  tops it up automatically, because `ensureAgentGas` spends the oracle's ether
+  and is gated by the same budget it would be escaping
 
-The oracle wallet does **not** need ETH for agent gas in kernel mode — the
-paymaster covers it. It needs ETH only for `resolveDispute`, at a cent or two a
-call.
+The oracle wallet is what the floats are dripped FROM, so it needs ETH for
+that as well as for `resolveDispute` (a cent or two a call). The day a
+paymaster is live, agent gas moves off the oracle and it needs ETH for
+rulings only.
 
 ## 8. One cycle, small
 
@@ -502,7 +517,11 @@ Bounty 0.1 USDC. Post → accept → submit → grade → approve → withdraw, 
 - `gas_spend` recording a `user` lane row — the kernel path's first metered op
 - `LimitUpdated` on the new registry
 
-Kernel mode has never run. If something fails here it will most likely be in that
-transport, and `explainOnchainError` now decodes the contract's custom errors with
-their arguments, so the reason arrives as a sentence rather than
-"execution reverted for an unknown reason".
+This cycle ran on 2026-07-30 and completed: job #1, bounty 0.1 USDC, status
+Completed at block 49332461 — `withdrawable[worker] 0.135` (bounty + bond
+back), `withdrawable[feeRecipient] 0.035`, worker total 0.5 → 0.6. It was
+kernel mode's first execution anywhere; keep this section as the repeatable
+smoke test for deployment #2 and beyond. If something fails here it will most
+likely be in the transport, and `explainOnchainError` decodes the contract's
+custom errors with their arguments, so the reason arrives as a sentence rather
+than "execution reverted for an unknown reason".

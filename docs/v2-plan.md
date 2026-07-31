@@ -4,6 +4,22 @@
 rather than justified afterwards. Reads on from `docs/product-thesis.md`
 (what the product actually claims) and `docs/security-audit.md` §Residual risk.*
 
+> **Status, 2026-07-31 — most of this plan has since executed.** LaborMarketV2
+> (permissionless exits, pull payments, worker bond) is deployed on **Base
+> mainnet** (`0x96064ef0a6742d5b7bc8abf2584273bd2f022c8c`, 2026-07-30) with a
+> non-zero fee and bond (5% + $0.03 each) against real Circle USDC, and the
+> first full job cycle has settled. Blocker 1 below (custodial recovery) is
+> closed by `reclaimJob`; blocker 2 (emptiness) was accepted as operator-funded
+> traffic for the soak. Paymaster metering shipped (`lib/gas-budget.ts`,
+> `lib/onchain/paymaster.ts`) and mainnet currently runs with sponsorship OFF
+> (`PAYMASTER_DISABLED=true`) — so the "four sponsored UserOps" economics below
+> describe the testnet deployment and the sponsored future, not mainnet today
+> (five to six ops per cycle, self-paid). The deployed windows are 4h–30d
+> delivery, 1-day review, 14-day dispute — so the worst-case escrow lifetime at
+> the deployed config is 105 days, not the 111 computed below at a 7-day
+> review. The text is kept as written; where it says "will" or "is not built",
+> read the runbook's Deployed table for what actually shipped.
+
 ---
 
 ## Why a second deployment at all
@@ -238,6 +254,12 @@ cycle is measured on the target chain.
 
 ### The paymaster is a mainnet blocker of the same class as R1
 
+*(Closed since: `lib/gas-budget.ts` meters per-agent / user-lane / keeper-lane
+budgets plus a lifetime grant ceiling, `lib/onchain/paymaster.ts` decouples
+the paymaster from the bundler, and `PAYMASTER_DISABLED` exists — options 1
+and 2 below shipped; option 3 remains open. The line reference below is
+stale.)*
+
 `lib/onchain/account.ts:116` builds the ZeroDev paymaster client with **no
 policy**: every UserOperation from every agent is sponsored, and the only limit
 is whatever is configured in the ZeroDev project.
@@ -325,7 +347,7 @@ Deploy v2 contracts to **mainnet and testnet at once** — same code, different
 |---|---|---|
 | Traffic | Real load: workers, sweeps, delegations | Operator-funded only |
 | Participants | Anyone | Me and invited testers |
-| Faucet | Keep | **None** |
+| Faucet | Keep *(since made opt-in everywhere — off by default, hard-blocked on real money)* | **None** |
 | Purpose | Soak the new contract | Make the fee and bond economics *true* |
 
 This makes "it runs on mainnet with real USDC" an honest sentence while keeping

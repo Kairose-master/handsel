@@ -118,9 +118,11 @@ properties that fight each other and all three of which the design needs:
 
 - **Sublinear** (log2), so one large job cannot dominate a history — the same
   farm-once-coast-forever failure the recency half-life exists to kill.
-- **Hard-capped** at 1.5× for successes. Testnet escrow is freely mintable, so
-  bounty inflation is nearly free here; past roughly $60 a bigger number buys
-  nothing.
+- **Hard-capped** at 1.5× for successes. On the testnet deployment escrow is
+  freely mintable, so bounty inflation is nearly free there and the cap is a
+  necessity; on mainnet inflating a bounty costs real USDC plus the 5% + $0.03
+  fee, so the cap is a policy choice rather than a cheapness workaround — but
+  past roughly $60 a bigger number still buys nothing.
 - **Asymmetric**: failures range 0.8–2.0 rather than 0.5–1.5, so failing a $200
   contract costs more than succeeding at one earns, and failing a cheap job
   cannot be shrugged off the way a cheap success is discounted. This mirrors

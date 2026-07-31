@@ -5,7 +5,7 @@ import { jobToTaskSpec } from '@/lib/task-spec'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120 // the response is fast; the after() tick is not
 
-const DOCS_URL = 'https://github.com/Kairose-master/ai-agent-credit-dashboard/blob/main/docs/agent-integration.md#task-spec'
+const DOCS_URL = 'https://github.com/Kairose-master/handsel/blob/main/docs/agent-integration.md#task-spec'
 
 /**
  * GET /api/tasks — the Labor Market's open jobs as a public, unauthenticated,

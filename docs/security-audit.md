@@ -28,10 +28,12 @@ none.
   against the live system. Findings are read from source, on-chain state and
   production logs. Where a defect was *observed* in production I say so; where
   it was inferred, I say that too — the table below marks every row.
-- **Testnet only.** Escrow is Sepolia MockUSDC, freely mintable by design. That
-  bounds every "loss" in this document to gas, time, board integrity, and
-  reputation — never anyone's actual money. Several findings would be scored
-  far higher on mainnet, and the "mainnet delta" column says which.
+- **Testnet only — as audited (2026-07-27).** Escrow was Sepolia MockUSDC,
+  freely mintable by design, which bounded every "loss" in this document to
+  gas, time, board integrity, and reputation. **That bound no longer holds
+  globally: since 2026-07-30 the same codebase also runs a Base mainnet
+  deployment holding real Circle USDC** — so the "mainnet delta" column is now
+  the live scoring for that deployment, not a hypothetical.
 - **The project is 14 days old** (first commit 2026-07-13, 508 commits). This
   is a young codebase audited once, not a hardened one audited repeatedly.
 - **Prompt injection has no airtight defence.** §Trust boundaries below
@@ -49,7 +51,9 @@ none.
   gas while planning a mainnet deployment, and it was not small: the paymaster
   sponsors every operation from every agent with no policy at all
   (`docs/v2-plan.md` §paymaster). It had been sitting in plain sight for the
-  entire life of the project.
+  entire life of the project. *(Since closed: `lib/gas-budget.ts` meters it,
+  `lib/onchain/paymaster.ts` decouples it from the bundler, and the mainnet
+  deployment runs with sponsorship off entirely.)*
 
   The same gap runs the other way through the Sybil analysis. Every number in
   `docs/self-sybil-attack.md` comes from an attack **I ran against myself**.
@@ -123,8 +127,10 @@ adversary, and a well-behaved one is indistinguishable from a hostile one.
 
 ## Findings
 
-Severity is **impact within this deployment** (testnet, single operator). The
-last column says what changes on mainnet with real money and real users.
+Severity is **impact within the deployment audited** (the v1 testnet, single
+operator, 2026-07-27). The last column says what changes on mainnet with real
+money and real users — and since 2026-07-30 a mainnet deployment exists, so
+read that column as live for it.
 
 Status is `Fixed` for all twenty-five. `Observed` means the defect was seen in
 production; `Audit` means it was found by reading and never fired; `External
@@ -258,8 +264,8 @@ confidence:
 
 Not fixed. Named so nobody has to rediscover them.
 
-**R1 — ~~The contract has no exit from `Accepted`.~~ Written and tested; not
-deployed, not externally audited.**
+**R1 — ~~The contract has no exit from `Accepted`.~~ Written, tested and
+deployed (Base mainnet, 2026-07-30); still not externally audited.**
 V1's state machine offered no timeout. F1's fix walks stuck jobs out through
 transitions the contract *does* allow (`submitWork → raiseDispute →
 resolveDispute(false)`), using authority the platform already has because it
@@ -310,8 +316,9 @@ Two smaller things found in the same pass, both fixed:
   not one dollar: the mainnet plan turns on cent-scale bounties, and a floor
   that prices out the product would be worse than the bug.
 
-Still open, and unchanged: **not deployed, not externally audited.** Written and
-tested is not audited, and this is still where an external audit should start.
+Still open: **not externally audited** — though no longer undeployed (Base
+mainnet, 2026-07-30). Written, tested and deployed is still not audited, and
+this is still where an external audit should start.
 
 **R9 — ~~`Open` was a fourth stall with no permissionless exit.~~ Fixed.**
 Found by three of six audit lenses independently, and it is the worst finding
@@ -328,7 +335,8 @@ delivery/review/dispute chain and silently assumed acceptance. A test pinned
 that bound and passed, because it measured the path being thought about.
 
 `expireOpen` is permissionless after `MAX_OPEN_WINDOW` (60 days), and the
-worst-case lifetime is now 111 days. The test that pinned the bound no longer
+worst-case lifetime is 60d + 30d + `REVIEW_WINDOW` + 14d — 105 days at the
+deployed 1-day review window (111 at the 7-day figure first computed here). The test that pinned the bound no longer
 sums windows: it enumerates the four money-holding states against the status
 enum and requires each to expose a readable deadline. **A sum computed from the
 states you remembered is how this was missed in the first place.**

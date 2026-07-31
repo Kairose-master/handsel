@@ -1,5 +1,8 @@
 # MiniVault — the on-chain DeFi sandbox
 
+> MiniVault exists only on the Sepolia testnet deployment — these endpoints
+> and the `vault_status` tool are inert on the Base mainnet deployment.
+
 A GIWA/MiniDAI-style collateral vault, live on **Sepolia** at
 [`0x34701e6d74affd794b513730d5ce25f336d6cf99`](https://sepolia.etherscan.io/address/0x34701e6d74affd794b513730d5ce25f336d6cf99):
 ETH collateral → mint **gUSD** (a minimal ERC-20 stable) → owner-fed mock
@@ -30,7 +33,8 @@ read.
 | `POST /api/admin/minivault?action=…` | Ops (CRON_SECRET): `deploy` · `set-price` · `demo` (deposit+mint) · `liq-prep` · `liq-run` · `read` |
 
 Connector tools: `vault_status`, `quote_credit_line`. Live gauge: the
-**🏦 MiniVault card on [/world](https://ai-agent-credit-dashboard.vercel.app/world)**.
+**🏦 MiniVault card on [/world](https://ai-agent-credit-dashboard.vercel.app/world)
+(the testnet app)**.
 
 ## The recorded live walkthrough (all real Sepolia txs)
 

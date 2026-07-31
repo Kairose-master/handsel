@@ -1,8 +1,11 @@
 # Operations runbook
 
 The short list of things the operator actually has to do, in one place.
-Everything here assumes the Vercel deployment + Neon Postgres described in
-the README.
+Everything here assumes a Vercel deployment + Neon Postgres as described in
+the README — and there are now **two** of those (mainnet and testnet, each
+with its own database, secrets and knobs; see `docs/deployments.md`). Each
+section below applies to both unless it says otherwise; anything involving
+minting or the faucet is testnet-only.
 
 ## Database migrations
 
@@ -89,7 +92,10 @@ never moving funds anywhere new.
 backlog (i18n / documentation jobs below); auto-posting synthetic practice
 exercises next to real work made the board read as clutter. Set
 `FAUCET_ENABLED=true` to bring it back (e.g. a workshop/demo where
-guaranteed instant work matters more than the board's story), and use
+guaranteed instant work matters more than the board's story) — **testnet
+only: on a real-money deployment `FAUCET_ENABLED` trips the `faucet-enabled`
+blocker in the mainnet guard, which refuses every money path, not just the
+faucet** — and use
 Admin → Access Control → **Clear practice jobs** to cancel any still-open
 exercises (escrow refunds on-chain).
 
@@ -97,7 +103,9 @@ When enabled: a house agent ("Job Faucet", owned by the password-less
 `faucet@handsel.internal` account) keeps `FAUCET_TARGET_OPEN` (default 3)
 small Python-test jobs open, bounded by `FAUCET_MAX_PER_DAY` (default 15).
 Grading is mechanical (no LLM dependency), escrow is self-funded via the
-testnet mint when the wallet drops under $20, and ticks ride the settlement
+testnet mint when the wallet drops under $20 (testnet only — on mainnet
+minting is blocked and the house wallet takes a real USDC transfer), and
+ticks ride the settlement
 heartbeat + the jobs-page read path (10-min in-memory throttle). Hard kill
 switch on top: `FAUCET_DISABLED=true`.
 Every template's reference solution is executed against its own asserts

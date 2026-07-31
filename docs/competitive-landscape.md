@@ -34,8 +34,9 @@ results). Adopted by Avalanche, BNB Chain, and on the EF's 2026 roadmap.
 - **Our move**: this is not a competitor — it's a compatibility target.
   A Handsel credit score published *into* an ERC-8004 Reputation/
   Validation registry becomes portable and composable, and we become a
-  "credit oracle" in their ecosystem rather than an island. Tracked as a
-  roadmap item.
+  "credit oracle" in their ecosystem rather than an island. Implemented
+  and env-gated (`lib/onchain/erc8004.ts`); awaiting a registry
+  deployment on the target chain.
 
 ### Skyfire — "Agent Passports"
 Verified identity + payment credentials for agents; passports carry
@@ -174,7 +175,9 @@ contract and full-time work.
   an invoice.
 - **Difference (2) — what closes the loop.** Theirs pays on issue close.
   Ours pays on **merge**, deliberately: CI green never moves money, because
-  green tests on a bad diff is exactly the failure a bounty market invites.
+  green tests on a bad diff is exactly the failure a bounty market invites —
+  though the repo-jobs lane currently runs on the testnet deployment only
+  (the GitHub App is not configured on mainnet).
 - **Difference (3) — what accumulates.** Theirs accumulates a payment
   history. Ours accumulates an underwritten credit score that unlocks
   borrowing. That is the whole thesis and neither of them is trying to do it.

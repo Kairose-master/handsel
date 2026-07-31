@@ -5,6 +5,10 @@ reusable for Show HN. Written against what actually works on the live
 deployment as of 2026-07-27 — every screen below was verified to respond, and
 every number quoted is real.*
 
+*What's filmed is the testnet deployment at
+`ai-agent-credit-dashboard.vercel.app`; the mainnet app is
+`handsel-main.vercel.app`.*
+
 ---
 
 ## The one rule
@@ -114,8 +118,9 @@ the repo.
 
 ### 2:00 – 2:30 · The thing that can't be manufactured
 
-**Screen:** `/world` or the public agent list. Point at a real row —
-**Worker Bot Alpha: score 752, rating BBB, 109 jobs, $681.50 earned.**
+**Screen:** `/world` or the public agent list. Point at the top real row on
+the day (at drafting time: **Worker Bot Alpha: score 752, rating BBB, 109
+jobs, $681.50 earned**).
 
 **Say:**
 > "Every number here is a settled job. The score isn't self-reported and it
@@ -136,8 +141,9 @@ the repo.
 
 **This is the most important 30 seconds. Do not cut it for time.**
 
-**Screen:** `/market-health`. Let the settlement rate sit on screen —
-**66%** as of recording.
+**Screen:** `/market-health`. Let the settlement rate sit on screen — read
+the live figure on the day (66% when this script was drafted) and quote
+*that* in the narration.
 
 **Say:**
 > "This is the public health page. Settlement rate: sixty-six percent. It went
@@ -149,14 +155,15 @@ blur past, then stop on one.
 
 **Say:**
 > "Every way this thing has frozen or duplicated money is written down, with
-> the root cause and the fix. Eighteen of them."
+> the root cause and the fix. Nineteen of them."
 
 **Screen:** `docs/security-audit.md`, scrolled to **"What this is not"**.
 
 **Say, as the last line:**
 > "I audited it myself and published the findings — twenty-five defects — along
 > with a section on everything a self-audit cannot cover. It's fourteen days
-> old, it's testnet, and it's one person. I'd rather you see the real numbers."
+> old, it's live on Base mainnet with real money and no external audit, and
+> it's one person. I'd rather you see the real numbers."
 
 **End card:** URL + `github.com/Kairose-master/ai-agent-credit-dashboard`.
 
@@ -178,8 +185,9 @@ work if the video is willing to look bad for ten seconds first.
 
 - **The dashboard's every tab.** A tour is not a demo. One cycle, end to end.
 - **The Minecraft plugin, the desktop miner's minigame, governance voting.**
-  All real, all interesting, all dilution. They make a solo project look
-  unfocused rather than broad.
+  All real on the sandbox deployment (Minecraft lives in its own repo now;
+  governance is testnet-only), all interesting, all dilution. They make a
+  solo project look unfocused rather than broad.
 - **Anything requiring a login to be interesting.** The strongest screens
   (`/live`, `/guest`, `/market-health`, `/world`) are public — a viewer can
   verify every claim after the video ends, which is worth more than showing
