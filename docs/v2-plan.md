@@ -864,6 +864,36 @@ deployment were always going to settle by timeout anyway. Removing the arbiter
 would mostly delete a path that is rarely the one taken, at the cost of the
 worst case.
 
+### Static analysis: `setOracle(address(0))` bricks the registry — next deploy
+
+Found by Slither on 2026-07-31 (`docs/static-analysis.md`), on the first run
+that tool has ever had against this code. `AgentCreditRegistry.setOracle` is
+`onlyOracle` and takes the new address unchecked, so a single transaction can
+hand the role to `address(0)` and permanently remove the only account able to
+publish credit limits. The registry then serves its last-written scores forever
+with no route to update them.
+
+**Severity is genuinely low, and the reason matters:** the registry holds no
+funds, `LaborMarketV2` reads it only to gate `minScore` on acceptance, and §8
+above already ensures a broken registry cannot take the market down — a frozen
+registry degrades to stale gating, not to stuck escrow. Not worth a redeploy on
+its own, and the contracts are immutable, so there is no in-place fix.
+
+**It is worth one line whenever a redeploy happens for another reason**, which
+is why it is recorded here rather than in a backlog:
+
+```solidity
+function setOracle(address newOracle) external onlyOracle {
+    if (newOracle == address(0)) revert ZeroAddress();
+    ...
+```
+
+Note the interaction with the arbiter proposal directly above: if v3 deletes the
+arbiter, the registry's oracle becomes the **only** privileged wallet left in
+the system, and a one-keystroke brick on the last remaining role is a worse
+trade then than it is today. Fix it in the same deploy that does that, not
+after.
+
 ---
 
 ## Operational cost, which is not zero
