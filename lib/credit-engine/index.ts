@@ -138,7 +138,25 @@ export type CreditState = CreditAssessment & {
   calculationReason: string
 }
 
-export async function recalculateCredit(agentId: string): Promise<CreditState> {
+/**
+ * Recompute one agent's score from its whole event history.
+ *
+ * `persist: false` computes and returns exactly the same assessment while
+ * writing nothing — no `credit_score_entries` row, no `agents` update, and in
+ * particular **no on-chain mirror**, which is a real transaction against the
+ * registry and costs gas.
+ *
+ * It exists because a change to `lib/credit-engine/scoring.ts` moves every
+ * score on the site at once, and an operator should be able to see that
+ * before it happens rather than after. `/api/admin/rescore` is the caller;
+ * the same reason the dedupe route is dry by default applies here, only
+ * wider — that one touched the agents a bug had reached, this one touches
+ * everyone.
+ */
+export async function recalculateCredit(
+  agentId: string,
+  opts?: { persist?: boolean },
+): Promise<CreditState> {
   const rawEvents = await db
     .select()
     .from(agentEvent)
@@ -227,6 +245,13 @@ export async function recalculateCredit(agentId: string): Promise<CreditState> {
   const calculationReason = buildCalculationReason(assessment, previousScore)
 
   const [agentRow] = await db.select().from(agent).where(eq(agent.id, agentId))
+
+  // Preview: everything above is reads and arithmetic, so this is the exact
+  // assessment an apply would store. Returning here rather than guarding each
+  // write individually keeps the two paths from drifting.
+  if (opts?.persist === false) {
+    return { ...assessment, previousScore, calculationReason }
+  }
 
   const scoreEntryId = nanoid()
   await db.insert(creditScoreEntry).values({

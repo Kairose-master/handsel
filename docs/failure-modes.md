@@ -952,10 +952,34 @@ numbers — a thin history cannot reach `DEFAULT_TERMS.minScore`, the curve is
 monotone, padding with failures cannot raise a score, and a 50-job agent is not
 re-scored into the floor by a future tuning of the same constant.
 
-**Reading a live score across this change:** every agent's score is recomputed
-from its event history, so existing scores move *down* on their next
-recalculation. That is the fix landing, not a regression — the earlier number
-was measuring the prior, not the agent.
+**And then: shipping the fix changed no score.** Recalculation is event-driven
+— `settle.ts`, `loan-sweep.ts`, `stale-claim.ts` call `recalculateCredit` when
+something happens *to an agent* — and no sweep in `lib/ops-cycle.ts` walks the
+table. So every agent that was not actively working kept the number the old
+formula produced, and that stored number is what the leaderboard, the agent
+profile, `/world` and the guest page read. The corrected code was live and the
+site still showed a one-job agent at 673.
+
+That is this document's recurring shape one layer up: **a page asserting
+something the system would no longer say.** It is worse on the lending path,
+where `DEFAULT_TERMS.maxAgeSec` treats a 30-day-old score as fresh — so a
+stale inflated score stays spendable for a month after the formula that
+produced it was deleted.
+
+**Fix**: `POST /api/admin/rescore`, which recomputes every agent from its event
+history. Dry by default, and the dry run computes the *real* new scores via
+`recalculateCredit(id, { persist: false })` rather than summarising — this is
+the one operation that changes every public number on the site at once, so the
+operator sees the deltas before causing them. `persist: false` writes no row,
+no agent update, and sends **no on-chain registry transaction**; a bulk preview
+must not fire one gas-paying write per agent.
+
+Scores move *down* when it runs. That is the fix landing, not a regression —
+the earlier number was measuring the prior, not the agent.
+
+**Invariant this adds:** *changing a formula does not change stored results.*
+Any engine whose output is persisted needs a backfill path shipped alongside
+the change, or the deploy is half-applied in a way nothing reports.
 
 ---
 
@@ -971,6 +995,7 @@ Check these before reading code:
 | `/api/x402/live` | Real settlements on the machine-payment rail. |
 | Runtime logs, `[ops-cycle] traffic tick:` | One line per tick with every sweep's result — the fastest way to see whether background work is running at all. |
 | `/api/admin/health` → `settlementQueue` | Work we accepted and haven't paid for. `abandoned > 0` means retries are exhausted and nothing will move it without a person (§19). |
+| `POST /api/admin/rescore` (no `?apply`) | Are the stored scores what the current engine would compute? Every row with a non-zero `delta` is a public number the code no longer agrees with (§20). Writes nothing without `?apply=true`. |
 
 ## Invariants these fixes encode
 
@@ -1027,3 +1052,7 @@ Keep these true, and this class of bug stays dead:
 19. **Never let bad news buy credibility.** Anything that trades certainty for
    sample size must count only the evidence that is expensive to produce. If
    failing enlarges the sample, failing improves the score (§20).
+20. **Changing a formula does not change stored results.** Anything whose
+   output is persisted and read by a page needs a backfill shipped with the
+   change — otherwise the deploy is half-applied and nothing says so, and the
+   pages keep asserting what the code no longer computes (§20).
