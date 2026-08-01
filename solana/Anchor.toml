@@ -5,7 +5,7 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-handsel_market = "2p6KBeJX8TbdcQC8pcWmLxhyCASMwg7HtLbtptUo7yZg"
+handsel_market = "8C3gbrTv5vriPiEjuS7BukrnxyAFoDYt8BdBCf7W2G6H"
 
 [registry]
 url = "https://api.apr.dev"

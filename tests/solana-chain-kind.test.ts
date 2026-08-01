@@ -15,6 +15,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
  * test that makes the decision enforceable rather than aspirational.
  */
 
+/** An arbitrary VALID address, deliberately not the deployed program id —
+ *  these tests are about parsing the environment, and a fixture that doubles
+ *  as production config invites someone to "fix" it during a redeploy. */
 const PROGRAM = '2p6KBeJX8TbdcQC8pcWmLxhyCASMwg7HtLbtptUo7yZg'
 const KEYS = ['SOLANA_CLUSTER', 'SOLANA_PROGRAM_ID', 'SOLANA_RPC_URL'] as const
 

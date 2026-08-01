@@ -96,7 +96,7 @@ jobs:
           echo "declared: $DECLARED"
           if [ "$BUILT" != "$DECLARED" ]; then
             echo "::error::declare_id! ($DECLARED) is not the built program's address ($BUILT)."
-            echo "The committed ID is a placeholder nobody holds the key for — see docs/solana-port.md."
+            echo "Generate one with: node scripts/keygen.mjs /tmp/program.json — see docs/solana-port.md."
             echo "Fix: set declare_id! to $BUILT, commit target/deploy/handsel_market-keypair.json"
             echo "to the SOLANA_PROGRAM_KEYPAIR secret (never to the repo), and re-run."
             exit 1

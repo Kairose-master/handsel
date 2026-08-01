@@ -30,7 +30,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Burn, Mint, Token, TokenAccount, Transfer};
 
-declare_id!("2p6KBeJX8TbdcQC8pcWmLxhyCASMwg7HtLbtptUo7yZg");
+declare_id!("8C3gbrTv5vriPiEjuS7BukrnxyAFoDYt8BdBCf7W2G6H");
 
 const BPS_DENOM: u64 = 10_000;
 /// Fee/bond bps are capped at construction like the EVM contract's

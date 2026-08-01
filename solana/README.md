@@ -25,10 +25,10 @@ feature. `.github/workflows/solana-devnet.yml` is where the real compile happens
 
 ## Before the first deploy
 
-`declare_id!` currently holds a **placeholder nobody has the private key for**
-(derived from a hash so it is a valid address and obviously not a real one).
-Deploying needs a keypair whose pubkey matches it, so the first deploy is a
-three-step ritual:
+The program id is `8C3gbrTv5vriPiEjuS7BukrnxyAFoDYt8BdBCf7W2G6H` and its
+keypair exists — the private half belongs in the `SOLANA_PROGRAM_KEYPAIR` repo
+secret and nowhere else. If you ever need to mint a NEW one (a fresh program,
+or a lost key), that is this ritual:
 
 ```bash
 node scripts/keygen.mjs /tmp/handsel-program.json   # keep this OUT of the repo
