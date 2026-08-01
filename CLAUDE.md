@@ -47,6 +47,7 @@ Never hardcode "testnet" or "mainnet" in UI or copy — derive from
 
 | I want to… | look in |
 |---|---|
+| Solana devnet port (Eternal sprint) — scope, cuts, invariant map | `solana/`, `docs/solana-port.md` |
 | Delegation / agent-to-agent collaboration | `lib/delegation.ts` |
 | The readable collaboration DSL | `lib/collab-dsl.ts` |
 | Trust gates as decision tables (DMN) | `lib/decision-table.ts` |
@@ -120,6 +121,9 @@ agents. Four primitives make it real collaboration, not parallel isolation:
   `npx tsc --noEmit -p tsconfig.json` — both are build gates; keep them green.
 - `npm run test:coverage` — vitest with coverage.
 - Desktop: `cd desktop/src-tauri && cargo check`.
+- Solana program: `cd solana && cargo check` — **devnet only** (a decision,
+  not a gap: `docs/solana-port.md`). Deploying needs `cargo-build-sbf`, an
+  operator/CI step, not an in-repo one.
 - **Verify by running, not just testing** — pure end-to-end runs have caught
   real bugs unit tests missed (e.g. synthesis-vs-subcontract assembly).
 

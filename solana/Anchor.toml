@@ -1,0 +1,18 @@
+[toolchain]
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.devnet]
+handsel_market = "2p6KBeJX8TbdcQC8pcWmLxhyCASMwg7HtLbtptUo7yZg"
+
+[registry]
+url = "https://api.apr.dev"
+
+[provider]
+cluster = "devnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "echo 'devnet scripts land in week 2 — see docs/solana-port.md'"
