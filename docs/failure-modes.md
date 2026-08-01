@@ -896,6 +896,69 @@ is money accepted and not moved.
 
 ---
 
+## 20. One job was worth a $5,250 credit line
+
+**Not an observed incident — a defect found by reading the curve, the day
+before this project was going to be posted somewhere people read code.** No
+money moved through it: the vault is not deployed on mainnet, and
+`collateralizedCreditLimit` caps real borrowing at 2× settled volume regardless
+of score. What it damaged was the only claim the product makes.
+
+**The shape.** `dampen()` shrinks each factor toward a prior while the sample is
+small, and the prior was **50** — the midpoint of the 0–100 factor range. But
+factors do not map onto a 0–100 score; they map onto `300 + composite × 6.9`.
+So the value the engine assigned to *complete ignorance* was **645**: BB, above
+the 600 lending gate, worth five figures of `creditLimitForScore`. Measured on
+the shipped defaults, for an agent whose every job passed with independent
+counterparties and a grader neither side authors:
+
+| jobs | before | after |
+|---|---|---|
+| 0 | 300 · D · $0 | 300 · D · $0 |
+| 1 | **673 · BB · $5,250** | 394 · D · $0 |
+| 3 | 754 · BBB · $11,500 | 550 · B · $500 |
+| 5 | 801 · A · $16,000 | 640 · BB · $3,500 |
+| 10 | 851 · AA · $22,000 | 745 · BBB · $10,750 |
+| 50 | 929 · AAA · $32,750 | 900 · AAA · $28,500 |
+
+Ten jobs was AA. Fifty was AAA. And the `if (n === 0) return { score: 300 }`
+branch at the top of `assessCredit` was not a cold start — it was a **cliff
+bolted onto a function that would otherwise have said 645**, hiding the
+discontinuity rather than removing it.
+
+**Fix** (`lib/credit-engine/scoring.ts`). Anchor the dampening at
+`NO_EVIDENCE_FACTOR = 0`. That is not merely stricter, it is the value that
+makes the branch redundant: no evidence → every factor 0 → composite 0 → score
+300, the documented floor, as the *limit* of the formula rather than an
+exception to it.
+
+**The second defect, which the first one's test found.** Anchoring at zero
+turned an existing perverse incentive into a systematic one. Dampening trades
+certainty for sample size, and the sample size was every terminal task — so
+**failures bought confidence**, which scaled the surviving factors back up.
+Five successes plus five failures scored 649 against 640 for the five successes
+alone: a strictly worse agent with a strictly better number. Under the old
+anchor this appeared whenever the raw factor sat above 50; under the new one it
+applied everywhere, because every factor is now approached from below.
+
+Fixed by counting **deliveries, not attempts** (`evidence = completed.length`).
+Failures still count where they belong — dragging `successRate`,
+`failureFrequency` and `risk` down through the raw inputs — but they no longer
+also certify that we know the agent well. Certainty is bought with the thing
+that is expensive to fake; failing is free.
+
+**Watch:** `tests/credit-cold-start.test.ts` pins the properties rather than the
+numbers — a thin history cannot reach `DEFAULT_TERMS.minScore`, the curve is
+monotone, padding with failures cannot raise a score, and a 50-job agent is not
+re-scored into the floor by a future tuning of the same constant.
+
+**Reading a live score across this change:** every agent's score is recomputed
+from its event history, so existing scores move *down* on their next
+recalculation. That is the fix landing, not a regression — the earlier number
+was measuring the prior, not the agent.
+
+---
+
 ## Diagnostic surfaces
 
 Check these before reading code:
@@ -957,3 +1020,10 @@ Keep these true, and this class of bug stays dead:
    column list is a bug that has not surfaced yet — it silently grows, and it
    breaks the whole table's readers the day a column ships ahead of its
    migration (§11).
+18. **"Unknown" is not "average".** A prior is a claim. A default that sits
+   above the gate it feeds means the system approves on ignorance — so check
+   what your neutral value maps to *downstream*, not what it looks like in the
+   units it happens to be written in (§20).
+19. **Never let bad news buy credibility.** Anything that trades certainty for
+   sample size must count only the evidence that is expensive to produce. If
+   failing enlarges the sample, failing improves the score (§20).

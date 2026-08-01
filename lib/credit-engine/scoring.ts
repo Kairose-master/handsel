@@ -12,9 +12,12 @@
  *   Reputation   20%  — verified achievements, accumulated successful interactions
  *   Risk         10%  — failures, abnormal behavior, small-sample uncertainty
  *
- * Each factor is scored 0–100, dampened toward the neutral value (50)
- * while the sample is small (an agent must EARN certainty), then combined
- * into a composite that maps onto a 300–990 credit score.
+ * Each factor is scored 0–100, dampened toward NO_EVIDENCE_FACTOR (0) while
+ * the sample is small, then combined into a composite that maps onto a
+ * 300–990 credit score. Two properties that anchor is load-bearing for, both
+ * documented at the constant: an agent the engine knows nothing about scores
+ * at the floor rather than at a passing grade, and the sample size that buys
+ * certainty counts DELIVERIES, not attempts — see `evidence` in assessCredit.
  */
 
 export type AgentEventInput = {
@@ -82,12 +85,45 @@ const RECENT_WINDOW = 20
 /** Sample size at which factor scores carry ~2/3 of their raw weight. */
 const CONFIDENCE_K = 5
 
+/**
+ * What a factor is worth when nothing is known about it.
+ *
+ * **This used to be 50, and 50 was a passing grade.** `dampen` shrinks each
+ * factor toward this value while the sample is small, so it is the score the
+ * engine assigns to pure ignorance — and a composite of 50 maps to
+ * `300 + 50 × 6.9 = 645`, which is BB, above the 600 lending gate in
+ * `lib/reputation-lending.ts`, and worth a five-figure `creditLimitForScore`.
+ * Measured on the shipped defaults before this changed: **one completed job
+ * scored 673 with a $5,250 limit**, ten jobs was AA, fifty was AAA.
+ *
+ * That is not a small-sample artifact, it is the prior being wrong. "I have no
+ * evidence about this agent" and "this agent is average" are different claims,
+ * and only the second one is worth lending against. The whole product claim is
+ * a score *earned from real behaviour*; a number that starts most of the way up
+ * and is nudged by evidence is not that.
+ *
+ * Zero is not merely stricter, it is the value that makes the curve
+ * **continuous**. `assessCredit` already hard-returns 300 for an agent with no
+ * terminal tasks; with a neutral anchor that branch was a cliff bolted onto a
+ * function that would otherwise have said 645. Anchored at zero, the branch is
+ * the limit of the formula rather than an exception to it: no evidence → every
+ * factor → 0 → composite 0 → score 300, which is the documented floor.
+ *
+ * Note this dampens the *factors*, not the raw signals. Genuinely neutral
+ * inputs stay neutral where that is the honest reading — `paymentHistory` is
+ * still 50 for an agent that has never borrowed, because "never borrowed" is
+ * not "defaulted".
+ */
+const NO_EVIDENCE_FACTOR = 0
+
 const clamp = (v: number, lo = 0, hi = 100) => Math.min(hi, Math.max(lo, v))
 
-/** Shrink a raw 0–100 factor toward neutral 50 while the sample is small. */
+/** Shrink a raw 0–100 factor toward NO_EVIDENCE_FACTOR while the sample is
+ *  small. An agent must EARN certainty, and until it has, the engine says so
+ *  in the direction that costs the lender nothing. */
 function dampen(raw: number, sampleSize: number): number {
   const confidence = sampleSize / (sampleSize + CONFIDENCE_K)
-  return 50 + (raw - 50) * confidence
+  return NO_EVIDENCE_FACTOR + (raw - NO_EVIDENCE_FACTOR) * confidence
 }
 
 export function assessCredit(
@@ -111,6 +147,32 @@ export function assessCredit(
   const completed = tasks.filter(isSuccess)
   const failed = tasks.filter((t) => !isSuccess(t))
   const n = tasks.length
+
+  /**
+   * Sample size for `dampen` — **deliveries, not attempts.**
+   *
+   * This was `n` (every terminal task, success or failure) and that is a
+   * perverse incentive under any anchor below the midpoint. Dampening trades
+   * certainty for sample size, so counting failures lets an agent BUY
+   * confidence with them: measured on this file's own test fixture, five
+   * successes plus five failures scored 649 while the same five successes
+   * alone scored 640. Padding a record with cheap failures raised the score.
+   *
+   * The effect existed before `NO_EVIDENCE_FACTOR` — with a neutral anchor it
+   * appeared whenever the raw factor sat above 50 — and anchoring at zero made
+   * it systematic, because every factor is then approached from below and any
+   * extra evidence pushes it up unless raw falls far enough to compensate.
+   *
+   * Failures still count, in the place they belong: they drag `successRate`,
+   * `failureFrequency` and `risk` DOWN through the raw inputs. What they must
+   * not do is also certify that we know the agent well. Certainty is bought
+   * with delivery — the thing that is expensive to fake — and failing is free.
+   *
+   * Note the direction of the residual error: an agent with many failures and
+   * few successes now keeps LOW confidence, so its factors stay near zero and
+   * it scores near the floor. When this is wrong it is wrong conservatively.
+   */
+  const evidence = completed.length
 
   // Cold start: no behavioral history means no credit. Dampening pulls
   // factors toward neutral, but an agent with zero recorded tasks must
@@ -146,7 +208,7 @@ export function assessCredit(
   const volumeScore = clamp(Math.log10(completed.length + 1) * 50)
   const performance = dampen(
     clamp(0.5 * successRate * 100 + 0.35 * avgQuality * 100 + 0.15 * volumeScore),
-    n,
+    evidence,
   )
 
   // ── Reliability (30%) ────────────────────────────────────────────
@@ -176,9 +238,11 @@ export function assessCredit(
   const paymentHistory =
     repaymentEvents > 0 ? clamp((repaymentsCount / repaymentEvents) * 100) : 50
 
+  // Repayments COMPLETED, not repayment events: a default is negative
+  // evidence and must not certify that we know the borrower well.
   const reliability = dampen(
     clamp(0.3 * consistency + 0.3 * failureFrequency + 0.2 * slaCompliance + 0.2 * paymentHistory),
-    n + repaymentEvents,
+    evidence + repaymentsCount,
   )
 
   // Credit-repayment behavior — the other half of "scale": an agent that
@@ -215,7 +279,7 @@ export function assessCredit(
         verifiedCompleted * 10 + // ground-truth-verified capability
         testsPassed * 10, // independently test-verified deliverables
     ),
-    n + achievements + repayments + Math.round(jobsCompleted) + Math.round(testsPassed),
+    evidence + achievements + repayments + Math.round(jobsCompleted) + Math.round(testsPassed),
   )
 
   // ── Risk (10%) — higher is safer ─────────────────────────────────
@@ -226,9 +290,11 @@ export function assessCredit(
   const decayedDefaults = events
     .filter((e) => e.eventType === 'REPAYMENT_DEFAULTED')
     .reduce((sum, e) => sum + recencyWeight(e.createdAt, now, NEGATIVE_HALF_LIFE_DAYS), 0)
+  // Failures, defaults and failed gradings drive the raw value down; they do
+  // not also buy the confidence that would scale it back up.
   const risk = dampen(
     clamp(100 - failed.length * 8 - anomalies * 15 - decayedDefaults * 25 - testsFailed * 10),
-    n + Math.round(decayedDefaults) + Math.round(testsFailed),
+    evidence,
   )
 
   // ── Composite → score ────────────────────────────────────────────
