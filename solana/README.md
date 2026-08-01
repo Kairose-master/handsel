@@ -31,10 +31,25 @@ Deploying needs a keypair whose pubkey matches it, so the first deploy is a
 three-step ritual:
 
 ```bash
-solana-keygen new -o /tmp/handsel-program.json     # keep this OUT of the repo
-solana address -k /tmp/handsel-program.json        # → the real program id
+node scripts/keygen.mjs /tmp/handsel-program.json   # keep this OUT of the repo
+# it prints the address — that is the real program id
 # put that id in declare_id! and commit
-# put the file's CONTENTS in the SOLANA_PROGRAM_KEYPAIR repo secret
+# put the file's CONTENTS in the SOLANA_PROGRAM_KEYPAIR repo secret, then delete it
+```
+
+**Do not run `npx solana-keygen`.** The official Solana CLI is not published to
+npm; that command fetches an unrelated third-party package of the same name,
+and a key generator is the worst possible thing to run from an unvetted source.
+`scripts/keygen.mjs` uses only `node:crypto`, needs no toolchain, and is
+verified by `tests/solana-keygen.test.ts` — which checks the stored seed
+actually derives the stored public key and that a signature made with it
+verifies, rather than trusting that 64 bytes look like a keypair.
+
+If you would rather use the real CLI, install it from Anza (never from npm)
+and `solana-keygen new -o …` works the same way:
+
+```bash
+sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
 ```
 
 The workflow verifies the match and fails with this instruction rather than
