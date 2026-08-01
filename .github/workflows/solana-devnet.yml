@@ -71,13 +71,27 @@ jobs:
           avm install "$ANCHOR_VERSION"
           avm use "$ANCHOR_VERSION"
 
-      - run: solana --version && anchor --version
+      - run: |
+          solana --version
+          anchor --version
+          # The number that actually matters, and the one that was a guess
+          # until the first failure: the SBF toolchain bundles its OWN rustc,
+          # older than the host's, and that is what has to parse every
+          # dependency's manifest.
+          cargo-build-sbf --version || true
 
       # The host-target gate, run here too so a CI-only regression can't hide
       # behind the SBF build's different feature resolution.
       - name: cargo check (host target)
         working-directory: solana
         run: cargo check --locked
+
+      # Fails BEFORE the SBF build with the full list of offenders. The first
+      # time this bit, `anchor build` reported exactly one crate name per CI
+      # round-trip; there were sixteen. See scripts/check-msrv.mjs.
+      - name: Locked deps fit the SBF toolchain
+        working-directory: solana
+        run: node scripts/check-msrv.mjs
 
       - name: anchor build (SBF + IDL)
         working-directory: solana
