@@ -72,7 +72,7 @@ demo doesn't take an afternoon; everything else mirrors the mainnet schedule
 |---|---|---|
 | 1 ✅ | Program compiles, design doc, this scope contract | `cd solana && cargo check` — in the standard gate list |
 | 2 ▸ | CI build + deploy workflow, happy-path script | Workflow written; **the deploy itself is blocked on an operator step**, below |
-| 3 | Off-chain integration: `lib/onchain/` grows a Solana driver behind the same facade the V1/V2 split already uses; testnet-style deployment reads/writes devnet | The board renders devnet jobs; grading settles one |
+| 3 ▸ | Off-chain integration: read path + chain discriminator done; the write path (signing) is what remains | Codec and discriminator unit-tested; board wiring waits on a deployed program id |
 | 4 | Eternal submission: 1-min updates backlog, product description, technical walkthrough, demo video | Submitted |
 
 ### Week 2, concretely
@@ -105,6 +105,59 @@ the `SOLANA_PROGRAM_KEYPAIR` secret (plus a funded devnet wallet in
 instructions rather than deploying to one address while every client derives
 PDAs against another — a mismatch fails at runtime, far from its cause.
 `solana/README.md` carries the exact commands.
+
+### Week 3, concretely
+
+**The read path needs no Solana SDK.** `getProgramAccounts` with a memcmp
+filter on Anchor's 8-byte discriminator returns every `Job` the program owns
+and nothing else, so enumerating the board derives no PDAs. What is left is
+base58, base64 and fixed-width little-endian fields — `lib/onchain/solana/codec.ts`,
+pure, no dependencies, and consequently unit-testable without a cluster. The
+write path is a different question: signing needs ed25519 and transaction
+serialisation, which is what an SDK is for, and it lands with the deployed
+program id.
+
+The account layout is duplicated from the Rust rather than generated from the
+IDL, because the IDL only exists after `anchor build` and a build artifact that
+can be missing is a runtime failure waiting for a deploy. Duplication nobody
+checks is just a second place to be wrong, so `tests/solana-codec.test.ts`
+**reads `solana/programs/handsel-market/src/lib.rs`** and asserts the decoder
+against it: same fields, same order, widths summing to the account size, and
+the same status variants in the same order (Borsh encodes a fieldless enum as
+its index, so reordering the Rust variants silently re-labels every job on the
+board). A field added on the Rust side and not mirrored here fails at
+`npm run test`, not on devnet.
+
+### The bug this week found: `isRealMoney()` was EVM-shaped
+
+`isRealMoney()` classified a deployment by `CHAIN.id`, which is built from
+`ONCHAIN_CHAIN` — an EVM chain name. Its allowlist is TESTNETS, so anything
+unrecognised counts as real money. That asymmetry is right for EVM and the
+wrong answer entirely for a deployment whose money lives on Solana: **devnet
+would have worn the mainnet badge**, printed the mainnet disclosure, and armed
+`assertRealMoneyReady` over tokens worth nothing.
+
+`lib/onchain/chain-kind.ts` is the discriminator — `'evm' | 'solana'`, derived
+from the environment, EVM unless a valid Solana cluster AND program address are
+both present, so every existing deployment is untouched and a Solana one is
+opt-in. `isRealMoney()` routes through it; `chainDisplayName()` closes the
+matching label hole, since CLAUDE.md's "never hardcode testnet/mainnet" rule
+was being satisfied by `CHAIN.name`, which a Solana deployment does not have.
+
+Half-set environments are deliberately NOT Solana. A cluster with a typo'd
+program id reads as unconfigured rather than as a market that fails every
+call — the second degrades into an empty board, which is indistinguishable
+from an empty market. Same rule, and the same reasoning,
+as `MarketReadState` in `app/actions/guest.ts`.
+
+### What remains for week 3
+
+- The write path (approve/settle), which needs a signing SDK and a deployed
+  program id — blocked on the operator step in week 2.
+- Wiring `readSolanaJobs` into the board behind `chainKind()`. The read
+  function and its state machine exist; nothing calls them yet, because
+  pointing a page at a program that is not deployed would render an
+  `unreachable` board and teach nothing.
 
 ## What would stop the sprint
 

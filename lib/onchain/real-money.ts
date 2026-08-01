@@ -26,6 +26,7 @@ import { publicClient } from './clients'
 import { LABOR_MARKET_V2_ABI } from './labor-v2-artifact'
 import { platformFeeBps } from '@/lib/platform-fee'
 import { decimalsBlocker, formatBlockers, realMoneyBlockers, type Blocker } from './mainnet-guard'
+import { realMoneyForKind } from './chain-kind'
 import type { Address } from 'viem'
 
 /**
@@ -41,8 +42,21 @@ const TESTNET_CHAIN_IDS = new Set([
   91342, // giwa-sepolia
 ])
 
+/**
+ * Every environment label and money guard in the app hangs off this.
+ *
+ * It had an EVM-shaped hole: `CHAIN.id` is built from `ONCHAIN_CHAIN`, so a
+ * deployment whose money actually lives on Solana would have been classified
+ * by the chain id of an EVM chain it never touches — and since the allowlist
+ * is testnets, an unrecognised id reads as REAL MONEY. A Solana devnet
+ * deployment would have worn the mainnet badge and armed the mainnet guards.
+ *
+ * `realMoneyForKind` routes to whichever runtime this deployment is on. The
+ * EVM answer is computed here and passed down, so `chain-kind.ts` stays free
+ * of viem.
+ */
 export function isRealMoney(): boolean {
-  return !TESTNET_CHAIN_IDS.has(CHAIN.id)
+  return realMoneyForKind(!TESTNET_CHAIN_IDS.has(CHAIN.id))
 }
 
 /**

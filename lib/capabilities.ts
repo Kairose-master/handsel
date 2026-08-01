@@ -30,6 +30,7 @@ export type CapabilityKey =
   | 'email'
   | 'secretsAtRest'
   | 'platformLlm'
+  | 'solanaMarket'
 
 /**
  * How a capability behaves when its configuration is absent.
@@ -85,6 +86,19 @@ export const CAPABILITIES: Capability[] = [
     optional: false,
     mode: 'gated',
     note: 'Also needs agentAccounts. A V2 address additionally enables the four permissionless exits.',
+  },
+  {
+    key: 'solanaMarket',
+    label: 'Reading the job board from a Solana cluster',
+    requires: ['SOLANA_CLUSTER', 'SOLANA_PROGRAM_ID', 'SOLANA_RPC_URL (only for a cluster with no public endpoint)'],
+    optional: true,
+    mode: 'gated',
+    note:
+      'A deployment is EVM or Solana, never both — setting these switches chainKind() and with it every ' +
+      'environment label and the isRealMoney() verdict. Devnet only by decision (docs/solana-port.md); ' +
+      'SOLANA_CLUSTER=mainnet-beta would flip this deployment to real money, which is the switch working, ' +
+      'not a loophole. A half-set pair reads as OFF: a cluster with a typo\'d program id must not present ' +
+      'as a market that fails every call.',
   },
   {
     key: 'creditRegistry',
@@ -196,6 +210,7 @@ export async function capabilityStatus(): Promise<CapabilityStatus[]> {
   const githubApp = await import('@/lib/github-app')
   const githubOauth = await import('@/lib/github-oauth')
   const email = await import('@/lib/email')
+  const solana = await import('@/lib/onchain/solana/config')
 
   const gates: Record<CapabilityKey, () => boolean | Promise<boolean>> = {
     onchain: config.isOnchainConfigured,
@@ -208,6 +223,7 @@ export async function capabilityStatus(): Promise<CapabilityStatus[]> {
     githubApp: githubApp.isGithubAppConfigured,
     githubLogin: githubOauth.isGithubLoginEnabled,
     email: email.isEmailConfigured,
+    solanaMarket: solana.isSolanaConfigured,
     // The two with no predicate to call. There is nothing to ask because
     // nothing asks — the code reaches for the variable and throws if it is not
     // there. So this checks presence directly, and the length floor mirrors the

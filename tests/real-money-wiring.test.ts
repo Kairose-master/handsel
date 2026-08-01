@@ -85,10 +85,24 @@ describe('what counts as real money', () => {
     // minutes of confusion; being wrong the other way costs somebody's funds.
     const src = code('lib/onchain/real-money.ts')
     expect(src).toContain('TESTNET_CHAIN_IDS')
-    expect(src).toMatch(/return !TESTNET_CHAIN_IDS\.has\(CHAIN\.id\)/)
+    // The EVM verdict is still the negation of an allowlist membership test.
+    // Loosened from an exact-line match when the Solana port introduced
+    // `realMoneyForKind`, which ROUTES this verdict — the polarity is what
+    // this test is about, and the polarity did not change.
+    expect(src).toMatch(/!TESTNET_CHAIN_IDS\.has\(CHAIN\.id\)/)
     for (const id of ['11155111', '84532', '91342']) expect(src).toContain(id)
     // Base mainnet must NOT be in the set.
     expect(src).not.toMatch(/8453,/)
+  })
+
+  it('asks the runtime the money is actually on', () => {
+    // The hole this closes: `CHAIN.id` comes from ONCHAIN_CHAIN, an EVM chain
+    // name. A deployment whose escrow lives on Solana was being classified by
+    // a chain it never touches — and since the list above is testnets, an
+    // unrecognised id reads as REAL. Devnet would have worn the mainnet badge.
+    const src = code('lib/onchain/real-money.ts')
+    expect(src).toMatch(/realMoneyForKind\(/)
+    expect(src).toContain("from './chain-kind'")
   })
 })
 
