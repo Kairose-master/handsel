@@ -1,0 +1,240 @@
+# Solana devnet — build always, deploy only when asked.
+#
+# `cargo check` (the in-repo gate) type-checks the program against the host
+# target. It does NOT prove the program links as an SBF object, and it does not
+# produce an IDL — so it cannot catch a stack-frame overflow, a missing
+# `idl-build` feature, or an account struct too large for the loader. That is
+# what this workflow is for: the build job is the real compile.
+#
+# Deploy is `workflow_dispatch` only. Devnet SOL is free but not infinite, a
+# program deploy is a real transaction, and an accidental redeploy on every
+# push to main would burn the deployer's balance and churn the program's data
+# account. Someone has to mean it.
+#
+# Nothing here touches mainnet, and there is no mainnet job to add later by
+# mistake: `docs/solana-port.md` records devnet as a decision, and this file
+# hardcodes the cluster rather than reading it from an input.
+name: Solana devnet
+
+on:
+  push:
+    branches: [main]
+    paths: ['solana/**', '.github/workflows/solana-devnet.yml']
+  pull_request:
+    paths: ['solana/**', '.github/workflows/solana-devnet.yml']
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: 'Deploy to devnet after building (needs SOLANA_DEPLOYER_KEYPAIR + SOLANA_PROGRAM_KEYPAIR)'
+        type: boolean
+        default: false
+      run_happy_path:
+        description: 'Run the end-to-end script against the deployed program'
+        type: boolean
+        default: false
+
+env:
+  ANCHOR_VERSION: 0.31.1
+  SOLANA_CLUSTER: https://api.devnet.solana.com
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache cargo + toolchains
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            ~/.avm
+            ~/.local/share/solana
+            solana/target
+          key: solana-${{ runner.os }}-anchor${{ env.ANCHOR_VERSION }}-${{ hashFiles('solana/**/Cargo.toml') }}
+          restore-keys: solana-${{ runner.os }}-anchor${{ env.ANCHOR_VERSION }}-
+
+      - name: Install Solana CLI (Anza)
+        run: |
+          if ! command -v solana >/dev/null 2>&1; then
+            sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
+          fi
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+
+      - name: Install Anchor ${{ env.ANCHOR_VERSION }}
+        run: |
+          command -v avm >/dev/null 2>&1 || cargo install --git https://github.com/coral-xyz/anchor avm --locked --force
+          avm install "$ANCHOR_VERSION"
+          avm use "$ANCHOR_VERSION"
+
+      - run: solana --version && anchor --version
+
+      # The host-target gate, run here too so a CI-only regression can't hide
+      # behind the SBF build's different feature resolution.
+      - name: cargo check (host target)
+        working-directory: solana
+        run: cargo check --locked
+
+      - name: anchor build (SBF + IDL)
+        working-directory: solana
+        run: anchor build
+
+      # The footgun this step exists to stop: `anchor build` mints a program
+      # keypair at target/deploy/ on first run, and if its pubkey does not match
+      # `declare_id!` the program deploys to one address while every client
+      # derives PDAs against another. It fails at runtime, far from the cause.
+      - name: Program ID matches declare_id!
+        working-directory: solana
+        run: |
+          BUILT=$(solana address -k target/deploy/handsel_market-keypair.json)
+          DECLARED=$(grep -oP 'declare_id!\("\K[^"]+' programs/handsel-market/src/lib.rs)
+          echo "built:    $BUILT"
+          echo "declared: $DECLARED"
+          if [ "$BUILT" != "$DECLARED" ]; then
+            echo "::error::declare_id! ($DECLARED) is not the built program's address ($BUILT)."
+            echo "The committed ID is a placeholder nobody holds the key for — see docs/solana-port.md."
+            echo "Fix: set declare_id! to $BUILT, commit target/deploy/handsel_market-keypair.json"
+            echo "to the SOLANA_PROGRAM_KEYPAIR secret (never to the repo), and re-run."
+            exit 1
+          fi
+
+      - name: Type-check the devnet scripts against the generated IDL
+        working-directory: solana
+        run: |
+          npm ci --no-audit --no-fund
+          npx tsc --noEmit -p tsconfig.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: handsel-market-sbf
+          path: |
+            solana/target/deploy/handsel_market.so
+            solana/target/idl/handsel_market.json
+            solana/target/types/handsel_market.ts
+          if-no-files-found: error
+
+  deploy:
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && inputs.deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: solana-devnet
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache cargo + toolchains
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            ~/.avm
+            ~/.local/share/solana
+            solana/target
+          key: solana-${{ runner.os }}-anchor${{ env.ANCHOR_VERSION }}-${{ hashFiles('solana/**/Cargo.toml') }}
+          restore-keys: solana-${{ runner.os }}-anchor${{ env.ANCHOR_VERSION }}-
+
+      - name: Install Solana CLI (Anza)
+        run: |
+          if ! command -v solana >/dev/null 2>&1; then
+            sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
+          fi
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+
+      - name: Install Anchor ${{ env.ANCHOR_VERSION }}
+        run: |
+          command -v avm >/dev/null 2>&1 || cargo install --git https://github.com/coral-xyz/anchor avm --locked --force
+          avm install "$ANCHOR_VERSION"
+          avm use "$ANCHOR_VERSION"
+
+      # Keypairs arrive as secrets and land outside the workspace, so a later
+      # step that archives or uploads the checkout cannot sweep them up.
+      - name: Materialise keypairs
+        env:
+          DEPLOYER: ${{ secrets.SOLANA_DEPLOYER_KEYPAIR }}
+          PROGRAM: ${{ secrets.SOLANA_PROGRAM_KEYPAIR }}
+        run: |
+          if [ -z "$DEPLOYER" ] || [ -z "$PROGRAM" ]; then
+            echo "::error::SOLANA_DEPLOYER_KEYPAIR and SOLANA_PROGRAM_KEYPAIR must both be set."
+            exit 1
+          fi
+          mkdir -p "$HOME/.solana-keys" && chmod 700 "$HOME/.solana-keys"
+          printf '%s' "$DEPLOYER" > "$HOME/.solana-keys/deployer.json"
+          printf '%s' "$PROGRAM" > "$HOME/.solana-keys/program.json"
+          chmod 600 "$HOME/.solana-keys"/*.json
+          solana config set --url "$SOLANA_CLUSTER" --keypair "$HOME/.solana-keys/deployer.json"
+          echo "deployer: $(solana address)"
+
+      - name: Fund the deployer if it is short
+        run: |
+          BAL=$(solana balance --lamports | awk '{print $1}')
+          echo "balance: $BAL lamports"
+          # A program deploy is rent-exempt storage for the whole binary; a few
+          # SOL covers it with room for the happy-path script's rent.
+          if [ "$BAL" -lt 3000000000 ]; then
+            # Devnet's faucet rate-limits hard. Failing here is fine — it means
+            # a human tops the wallet up, which is better than a deploy that
+            # dies halfway and leaves a half-written buffer account.
+            solana airdrop 2 || echo "::warning::airdrop failed; deploying with what is on hand"
+          fi
+
+      - name: anchor build
+        working-directory: solana
+        run: |
+          mkdir -p target/deploy
+          cp "$HOME/.solana-keys/program.json" target/deploy/handsel_market-keypair.json
+          anchor build
+
+      - name: Program ID matches declare_id!
+        working-directory: solana
+        run: |
+          BUILT=$(solana address -k target/deploy/handsel_market-keypair.json)
+          DECLARED=$(grep -oP 'declare_id!\("\K[^"]+' programs/handsel-market/src/lib.rs)
+          [ "$BUILT" = "$DECLARED" ] || {
+            echo "::error::SOLANA_PROGRAM_KEYPAIR ($BUILT) does not match declare_id! ($DECLARED)."
+            exit 1
+          }
+
+      - name: Deploy to devnet
+        working-directory: solana
+        run: |
+          solana program deploy \
+            --url "$SOLANA_CLUSTER" \
+            --keypair "$HOME/.solana-keys/deployer.json" \
+            --program-id target/deploy/handsel_market-keypair.json \
+            target/deploy/handsel_market.so
+          PID=$(solana address -k target/deploy/handsel_market-keypair.json)
+          {
+            echo "### Deployed to devnet"
+            echo ""
+            echo "- Program: \`$PID\`"
+            echo "- Explorer: https://explorer.solana.com/address/$PID?cluster=devnet"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Happy path against the live program
+        if: inputs.run_happy_path
+        working-directory: solana
+        env:
+          ANCHOR_PROVIDER_URL: https://api.devnet.solana.com
+        run: |
+          export ANCHOR_WALLET="$HOME/.solana-keys/deployer.json"
+          npm ci --no-audit --no-fund
+          npx tsx scripts/happy-path.ts | tee happy-path.log
+          {
+            echo ""
+            echo "### Happy path"
+            echo ""
+            echo '```'
+            cat happy-path.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Shred the keypairs
+        if: always()
+        run: rm -rf "$HOME/.solana-keys"

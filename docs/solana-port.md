@@ -70,14 +70,41 @@ demo doesn't take an afternoon; everything else mirrors the mainnet schedule
 
 | Week | Deliverable | Gate |
 |---|---|---|
-| 1 (now) | Program compiles, design doc, this scope contract | `cd solana && cargo check` — in the standard gate list |
-| 2 | Deploy to devnet + mock USDC mint + `scripts/` happy-path script (post→accept→submit→approve→withdraw against devnet) | The loop runs on a public cluster, tx signatures in the doc |
+| 1 ✅ | Program compiles, design doc, this scope contract | `cd solana && cargo check` — in the standard gate list |
+| 2 ▸ | CI build + deploy workflow, happy-path script | Workflow written; **the deploy itself is blocked on an operator step**, below |
 | 3 | Off-chain integration: `lib/onchain/` grows a Solana driver behind the same facade the V1/V2 split already uses; testnet-style deployment reads/writes devnet | The board renders devnet jobs; grading settles one |
 | 4 | Eternal submission: 1-min updates backlog, product description, technical walkthrough, demo video | Submitted |
 
-Week 2 needs the Solana toolchain (`cargo-build-sbf`) — an operator-side or CI
-step, since this environment ships only host Rust. `cargo check` stays the
-in-repo gate for the program logic itself.
+### Week 2, concretely
+
+`.github/workflows/solana-devnet.yml` does the part this environment cannot:
+it installs the Anza toolchain and Anchor, runs `anchor build` (the real SBF
+compile — `cargo check` uses the host target and cannot see a stack-frame
+overflow or a missing `idl-build` feature), type-checks the client scripts
+against the *generated* IDL, and uploads the `.so` + IDL as artifacts. Build
+runs on every push touching `solana/**`; **deploy is `workflow_dispatch` only**
+and gated on two secrets, because a program deploy is a real transaction and an
+accidental redeploy on every push would churn the program account.
+
+`solana/scripts/happy-path.ts` runs the whole loop against the cluster and
+asserts the arithmetic at each step rather than eyeballing it — the fee and
+bond it expects are computed from constants duplicated from the program on
+purpose, so a change on one side and not the other fails loudly. It also pins
+the two properties the rest of the system leans on: `result_hash` is still zero
+on an `Accepted` job, and `approve_job` moves **no tokens** (settlement credits
+a ledger; only `withdraw` transfers). It is idempotent — the market is a
+singleton PDA, so on re-run it adopts the existing one instead of failing in a
+way that looks like a program bug.
+
+**The blocking operator step.** `declare_id!` holds a placeholder derived from
+a hash: a valid address nobody has the private key for. A real deploy needs a
+keypair whose pubkey matches it, so someone has to run `solana-keygen new`,
+put the resulting address in `declare_id!`, and store the file's contents in
+the `SOLANA_PROGRAM_KEYPAIR` secret (plus a funded devnet wallet in
+`SOLANA_DEPLOYER_KEYPAIR`). The workflow checks the match and fails with those
+instructions rather than deploying to one address while every client derives
+PDAs against another — a mismatch fails at runtime, far from its cause.
+`solana/README.md` carries the exact commands.
 
 ## What would stop the sprint
 

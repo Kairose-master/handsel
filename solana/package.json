@@ -1,0 +1,18 @@
+{
+  "name": "handsel-solana",
+  "private": true,
+  "description": "Devnet client scripts for the handsel-market Anchor program",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "happy-path": "tsx scripts/happy-path.ts"
+  },
+  "dependencies": {
+    "@coral-xyz/anchor": "^0.31.1",
+    "@solana/spl-token": "^0.4.9",
+    "@solana/web3.js": "^1.98.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
