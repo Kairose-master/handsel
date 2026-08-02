@@ -287,11 +287,13 @@ pub mod handsel_market {
             .ok_or(MarketError::MathOverflow)?;
         job.status = JobStatus::Cancelled;
 
+        let bump = ctx.bumps.requester_withdrawable;
         credit(
             &mut ctx.accounts.market,
             &mut ctx.accounts.requester_withdrawable,
             ctx.accounts.requester.key(),
             refund,
+            bump,
         )?;
 
         emit!(JobCancelled {
@@ -327,11 +329,13 @@ pub mod handsel_market {
         let bond = job.bond;
         job.status = JobStatus::Reclaimed;
 
+        let ledger_bump = ctx.bumps.requester_withdrawable;
         credit(
             &mut ctx.accounts.market,
             &mut ctx.accounts.requester_withdrawable,
             ctx.accounts.requester.key(),
             refund,
+            ledger_bump,
         )?;
 
         if bond > 0 {
@@ -445,17 +449,21 @@ fn settle_to_worker(ctx: Context<SettleJob>) -> Result<()> {
 
     ctx.accounts.job.status = JobStatus::Completed;
 
+    let worker_bump = ctx.bumps.worker_withdrawable;
+    let fee_bump = ctx.bumps.fee_withdrawable;
     credit(
         &mut ctx.accounts.market,
         &mut ctx.accounts.worker_withdrawable,
         worker_key,
         to_worker,
+        worker_bump,
     )?;
     credit(
         &mut ctx.accounts.market,
         &mut ctx.accounts.fee_withdrawable,
         fee_recipient,
         fee,
+        fee_bump,
     )?;
 
     emit!(JobCompleted {
@@ -469,17 +477,25 @@ fn settle_to_worker(ctx: Context<SettleJob>) -> Result<()> {
 
 /// Move `amount` from escrow to a pull-payment ledger. The two totals move
 /// together so the solvency comparison stays one line.
+///
+/// `bump` is a parameter and not an oversight-shaped hole: this is a plain
+/// function, so it cannot reach `ctx.bumps`, and the first version simply never
+/// wrote `ledger.bump`. It stayed 0 while `withdraw` derived the ledger's
+/// address from it — so settlement credited an account nobody could withdraw
+/// from. Money in, money stuck. Observed on devnet, job #0.
 fn credit(
     market: &mut Account<Market>,
     ledger: &mut Account<Withdrawable>,
     owner: Pubkey,
     amount: u64,
+    bump: u8,
 ) -> Result<()> {
     if amount == 0 {
         return Ok(());
     }
     if ledger.owner == Pubkey::default() {
         ledger.owner = owner;
+        ledger.bump = bump;
     }
     require!(ledger.owner == owner, MarketError::WrongLedger);
     market.total_escrowed = market
@@ -764,10 +780,16 @@ pub struct ReclaimJob<'info> {
 pub struct Withdraw<'info> {
     #[account(mut, seeds = [b"market"], bump = market.bump)]
     pub market: Account<'info, Market>,
+    /// `bump` with no `= expr`: Anchor re-derives the canonical bump instead of
+    /// trusting the stored field. Storing it saves a little compute and costs
+    /// the guarantee — a ledger whose `bump` was never written is credited by
+    /// settlement and unwithdrawable forever, which is what happened here. The
+    /// field is written correctly now AND is no longer load-bearing, because
+    /// the failure it caused is not one worth being clever about twice.
     #[account(
         mut,
         seeds = [b"withdrawable", owner.key().as_ref()],
-        bump = withdrawable.bump,
+        bump,
         constraint = withdrawable.owner == owner.key() @ MarketError::WrongLedger
     )]
     pub withdrawable: Account<'info, Withdrawable>,

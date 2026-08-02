@@ -293,6 +293,12 @@ jobs:
         if: inputs.run_happy_path
         working-directory: solana
         run: |
+          # pipefail, and it is not decoration. `cmd | tee` reports TEE's exit
+          # status, so the first run of this step piped a script that threw at
+          # the withdraw step into tee, tee exited 0, and CI called it green.
+          # The chain said otherwise: settlement had credited a ledger nobody
+          # could withdraw from. A check that cannot fail is not a check.
+          set -o pipefail
           export ANCHOR_PROVIDER_URL="$SOLANA_RPC"
           export ANCHOR_WALLET="$HOME/.solana-keys/deployer.json"
           npm ci --no-audit --no-fund

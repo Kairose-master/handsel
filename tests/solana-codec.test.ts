@@ -257,3 +257,46 @@ describe('submission and deadlines', () => {
     }
   })
 })
+
+/**
+ * A seeds constraint must not read a bump the program might never write.
+ *
+ * `withdraw` derived its ledger address with `bump = withdrawable.bump`, and
+ * nothing ever assigned that field — `credit()` is a plain helper with no
+ * access to `ctx.bumps`, so it set `owner` and `amount` and left `bump` at 0.
+ * Settlement credited the ledger and `withdraw` then failed its seeds check:
+ * money in, money permanently stuck. Found by reading devnet state after CI
+ * called the run green, which is two failures for the price of one.
+ *
+ * Limit worth stating: this checks that the identifier named in the constraint
+ * is assigned SOMEWHERE in the file. It cannot prove the assignment is on every
+ * path that creates the account. It does catch the shape that actually
+ * happened — a constraint naming an account nobody writes by that name.
+ */
+describe('stored bumps are written before they are trusted', () => {
+  const src = readFileSync(RUST_SOURCE, 'utf8')
+
+  it('every `bump = x.bump` constraint has a matching `x.bump =` assignment', () => {
+    const readers = [...src.matchAll(/bump\s*=\s*(\w+)\.bump\b/g)].map((m) => m[1])
+    const unwritten = [...new Set(readers)].filter(
+      (name) => !new RegExp(`\\b${name}\\.bump\\s*=[^=]`).test(src),
+    )
+    expect(
+      unwritten,
+      `constraints read these bumps but nothing assigns them: ${unwritten.join(', ')}`,
+    ).toEqual([])
+  })
+
+  it('the withdraw path does not depend on a stored bump at all', () => {
+    // Belt and braces on the one instruction whose failure strands funds.
+    // `bump` with no `= expr` re-derives canonically and cannot be wrong.
+    // Just the withdrawable field's own attribute block. Slicing the whole
+    // struct would sweep in `market`, which reads `bump = market.bump`
+    // legitimately — that one IS written, in init_market.
+    const ctx = src.slice(src.indexOf('pub struct Withdraw<'))
+    const fieldAt = ctx.indexOf('pub withdrawable:')
+    const attr = ctx.slice(ctx.lastIndexOf('#[account(', fieldAt), fieldAt)
+    expect(attr).not.toMatch(/bump\s*=\s*\w+\.bump/)
+    expect(attr).toMatch(/^\s*bump,\s*$/m)
+  })
+})

@@ -216,6 +216,46 @@ The buffer's *authority* is the deployer, not that keypair, so it is not
 directly spendable by a reader; reclaiming it automatically means there is
 nothing to reason about either way.
 
+### The first devnet deploy, and two bugs it took to find one
+
+The program went live at `8C3gbrTv5vriPiEjuS7BukrnxyAFoDYt8BdBCf7W2G6H` and
+the happy-path job reported **green**. The chain disagreed:
+
+```
+job #0: Completed  bounty=1,000,000  fee=80,000  bond=80,000  submission=yes
+Market: escrowed=0  withdrawable=1,160,000
+  ledger GLPR6KSp…  1,080,000   ← worker (bounty + returned bond)
+  ledger DmpJvW8W…     80,000   ← fee recipient
+```
+
+post → accept → submit → approve is exactly right, to the unit. But `withdraw`
+had not run: had it, the worker's ledger would be zero and `totalWithdrawable`
+80,000. **Money credited, money stuck.**
+
+**Bug 1 — the program.** `withdraw` derived its ledger address with
+`bump = withdrawable.bump`, and nothing ever wrote that field. `credit()` is a
+plain helper with no access to `ctx.bumps`, so it set `owner` and `amount` and
+left `bump` at 0 — confirmed on chain, `Withdrawable.bump = 0` against
+`Job.bump = 255`. Settlement credited the ledger and the seeds check then
+refused every withdrawal from it, forever. `credit()` now takes the bump, and
+`withdraw` re-derives canonically (`bump` with no `= expr`) so the constraint
+cannot depend on a field a helper might forget again. Both, deliberately: the
+field should be truthful, and the instruction that strands funds should not
+need it to be.
+
+**Bug 2 — the CI, and the reason bug 1 survived.** The step ran
+`npx tsx scripts/happy-path.ts | tee happy-path.log`. **A pipeline's exit status
+is the LAST command's**, so the script threw, `tee` exited 0, and the job went
+green. Every assertion in that script worked; the harness discarded the verdict.
+`set -o pipefail` now, and `settle-heartbeat.yml` got the same line — its `grep`
+already caught the case, but "grep found nothing" is a worse first clue than
+"the request failed".
+
+This is the repo's oldest shape (`docs/failure-modes.md`): **a check that cannot
+fail is not a check.** `tests/solana-codec.test.ts` grew a static guard —
+every `bump = x.bump` constraint must have a matching `x.bump =` assignment —
+verified by reintroducing the bug and watching it fail.
+
 ## What would stop the sprint
 
 The standing rule from the challenge planning: if someone makes a serious run

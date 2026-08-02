@@ -38,6 +38,11 @@ jobs:
             echo "at somebody else's deployment."
             exit 0
           fi
+          # pipefail so a curl failure is reported as a curl failure. The grep
+          # below would catch it either way — an empty result.json has no
+          # "ok":true — but "grep found nothing" is a worse first clue than
+          # "the request failed".
+          set -o pipefail
           curl -sS --max-time 300 \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             "${{ vars.PLATFORM_URL }}/api/cron/settle" | tee result.json
