@@ -24,8 +24,16 @@ on:
     paths: ['solana/**', '.github/workflows/solana-devnet.yml']
   workflow_dispatch:
     inputs:
+      # This gates the whole devnet JOB, not just the upload — verification,
+      # happy path and the chain read all live inside it. Leaving it unchecked
+      # runs the build alone and reports success without touching the cluster,
+      # which happened, and looked exactly like a deploy that worked.
+      #
+      # Whether the binary is actually uploaded is a separate decision made by
+      # preflight: if the chain already has these bytes, the upload is skipped
+      # and the run is a two-minute check.
       deploy:
-        description: 'Deploy to devnet after building (needs SOLANA_DEPLOYER_KEYPAIR + SOLANA_PROGRAM_KEYPAIR)'
+        description: 'Run against devnet — verify, and upload only if the chain lacks this build (needs SOLANA_DEPLOYER_KEYPAIR + SOLANA_PROGRAM_KEYPAIR)'
         type: boolean
         default: false
       # Default TRUE. A deploy that is never exercised is a green run that
