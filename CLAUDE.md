@@ -113,7 +113,14 @@ agents. Four primitives make it real collaboration, not parallel isolation:
 
 ## Build / test / verify
 
-- `npm run test` — vitest (currently 104 files, ~1,229 tests). The pure logic
+- **`npm run gates`** — typecheck → lint → test → build, one command that
+  cannot be half-passed. Run this before every commit rather than the four
+  separately. It exists because the four *were* run separately and piped into
+  `grep` to shorten the output — and `grep`'s exit status replaced vitest's, so
+  a red suite got pushed under a green read. Same defect as the `tee` in
+  `solana-devnet.yml` and the `bump` nothing wrote: **a check that cannot fail
+  is not a check.** Never pipe a gate.
+- `npm run test` — vitest (currently 110 files, ~1,313 tests). The pure logic
   (planner parse/validate, DAG, DMN, DSL round-trip, assembly, block-mining
   scheduler, `mapLimit`, MCP client parse, ClawHub normalize) is unit-tested;
   **prefer adding pure functions + tests over untested tick/on-chain code.**
