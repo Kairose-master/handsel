@@ -292,6 +292,35 @@ The shape across all three: `tee` swallowing an exit code, a bump nobody wrote,
 and a job that never ran. Each produced a green checkmark over an unchanged
 chain. **The chain read is the check; CI is a convenience.**
 
+### 88 bytes, and a loader that only counts in 10240s
+
+With the deploy job actually running, it failed — and this one is worth writing
+down because retrying is exactly the wrong instinct. The only transaction the
+program saw was a failure:
+
+```
+Program BPFLoaderUpgradeab1e… invoke [1]
+ExtendProgram requires a minimum of 10240 additional bytes
+  or to extend to maximum size, but only 88 were requested
+Program BPFLoaderUpgradeab1e… failed: invalid program argument
+```
+
+A program's data account is sized at first deploy and does not grow on its own.
+Adding the `bump` argument to `credit()` made the binary **88 bytes** bigger
+than the 428,584 the account holds. `solana program deploy` handles that by
+asking the loader to extend by exactly the shortfall; the loader refuses any
+extension under 10240 bytes. The two are simply not speaking the same
+language, and no retry budget helps: **88 is 88 every time.** It is the
+opposite failure mode from the RPC throttling earlier in this file, and it
+looks nearly identical from the run page — a deploy step going red — which is
+why the transaction log, not the CI log, is the thing to read.
+
+The deploy job now extends deliberately before deploying, by the shortfall
+*plus* the 10240 minimum. The slack is the point: an ordinary code change no
+longer needs an extend at all, so the step is a no-op on most runs and prints
+how many bytes are left. On a first deploy it skips — there is nothing to
+extend and `solana program deploy` sizes the account itself.
+
 ## What would stop the sprint
 
 The standing rule from the challenge planning: if someone makes a serious run

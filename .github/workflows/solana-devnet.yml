@@ -264,6 +264,49 @@ jobs:
             exit 1
           }
 
+      # An upgrade cannot grow the program account by itself, and the two sides
+      # disagree about how: `solana program deploy` asks the loader to extend by
+      # exactly the shortfall, and the loader refuses anything under 10240
+      # bytes. The build that added a `bump` argument came out 88 bytes larger
+      # than the deployed one, so the deploy died on
+      #
+      #   ExtendProgram requires a minimum of 10240 additional bytes or to
+      #   extend to maximum size, but only 88 were requested
+      #
+      # which no amount of retrying moves: 88 is 88 every time. Extending
+      # deliberately, in a legal step size and with slack, is the fix — and it
+      # has to happen BEFORE the deploy, because the deploy is what fails.
+      #
+      # Skipped on a first deploy: with no program on chain there is nothing to
+      # extend, and `solana program deploy` sizes the account itself.
+      - name: Grow the program account if this build outgrew it
+        working-directory: solana
+        run: |
+          PID=$(solana address -k target/deploy/handsel_market-keypair.json)
+          # `Data Length` is the binary's capacity, already net of the 45-byte
+          # ProgramData header, so it compares directly with the .so on disk.
+          HAVE=$(solana program show --url "$SOLANA_RPC" "$PID" 2>/dev/null |
+                 sed -n 's/^Data Length: *\([0-9]*\).*/\1/p')
+          LOCAL=$(wc -c < target/deploy/handsel_market.so)
+          if [ -z "$HAVE" ]; then
+            echo "not deployed yet ($LOCAL bytes) — the first deploy sizes the account"
+            exit 0
+          fi
+          echo "on chain: $HAVE bytes    this build: $LOCAL bytes"
+          DEFICIT=$((LOCAL - HAVE))
+          if [ "$DEFICIT" -le 0 ]; then
+            echo "fits with $(( -DEFICIT )) bytes to spare"
+            exit 0
+          fi
+          # The loader's minimum is 10240. Asking for the shortfall PLUS that
+          # minimum is both legal and useful: the slack absorbs the next few
+          # builds, so an ordinary code change does not need an extend at all.
+          EXTRA=$((DEFICIT + 10240))
+          echo "short by $DEFICIT — extending by $EXTRA bytes"
+          solana program extend --url "$SOLANA_RPC" \
+            --keypair "$HOME/.solana-keys/deployer.json" "$PID" "$EXTRA"
+          solana program show --url "$SOLANA_RPC" "$PID" | sed -n 's/^Data Length/now/p'
+
       - name: Deploy to devnet
         working-directory: solana
         run: |
