@@ -135,7 +135,12 @@ jobs:
     needs: build
     if: github.event_name == 'workflow_dispatch' && inputs.deploy
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # A program upload over an endpoint that can take it is a couple of
+    # minutes. Twenty is generous, and cutting it there means a throttled run
+    # is reported while someone is still watching, instead of forty-five
+    # minutes later. The buffer reclaim below is `if: always()`, so a timeout
+    # gets its SOL back the same as a failure does.
+    timeout-minutes: 20
     environment: solana-devnet
     steps:
       - uses: actions/checkout@v4
@@ -190,9 +195,27 @@ jobs:
           [ -n "$RPC" ] || RPC="$SOLANA_CLUSTER"
           echo "SOLANA_RPC=$RPC" >> "$GITHUB_ENV"
           case "$RPC" in
-            "$SOLANA_CLUSTER") echo "rpc: public devnet (uploads may be rate-limited)" ;;
+            "$SOLANA_CLUSTER")
+              echo "rpc: public devnet — uploads are rate-limited here and a"
+              echo "     program deploy may not finish. Set SOLANA_RPC_URL."
+              ;;
             *) echo "rpc: dedicated endpoint from SOLANA_RPC_URL" ;;
           esac
+          # Cheap sanity check on the endpoint before spending twenty minutes
+          # discovering it points somewhere else. A mainnet URL answers this
+          # perfectly well and then reports the deployer as unfunded, which
+          # looks like a faucet problem rather than a wrong-cluster one.
+          GENESIS=$(curl -sS -X POST "$RPC" -H 'content-type: application/json' \
+            -d '{"jsonrpc":"2.0","id":1,"method":"getGenesisHash"}' | sed -n 's/.*"result":"\([^"]*\)".*/\1/p')
+          DEVNET_GENESIS=EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG
+          echo "genesis: ${GENESIS:-<no answer>}"
+          if [ "$GENESIS" != "$DEVNET_GENESIS" ]; then
+            echo "::error::That endpoint is not devnet (genesis $GENESIS)."
+            echo "Devnet's genesis hash is $DEVNET_GENESIS."
+            echo "A mainnet Helius URL is the usual cause — the host is"
+            echo "devnet.helius-rpc.com, not mainnet.helius-rpc.com."
+            exit 1
+          fi
           solana config set --url "$RPC" --keypair "$HOME/.solana-keys/deployer.json"
           echo "deployer: $(solana address)"
 
@@ -244,13 +267,18 @@ jobs:
           # forwarding them to validator TPUs. On a shared endpoint the TPU
           # path is where they vanish, and it is the documented workaround.
           # --max-sign-attempts defaults to 5, which is not many when a few
-          # hundred writes each get one chance.
+          # hundred writes each get one chance. 30 is the compromise: it was
+          # briefly 100, and on a throttled endpoint that did not fix anything,
+          # it just converted "fails in two minutes" into "grinds for forty-five
+          # and then fails". Retrying is not a substitute for an endpoint that
+          # can take the load, so the number is only large enough to absorb
+          # ordinary packet loss.
           solana program deploy \
             --url "$SOLANA_RPC" \
             --keypair "$HOME/.solana-keys/deployer.json" \
             --program-id target/deploy/handsel_market-keypair.json \
             --use-rpc \
-            --max-sign-attempts 100 \
+            --max-sign-attempts 30 \
             --with-compute-unit-price 1000 \
             target/deploy/handsel_market.so
           PID=$(solana address -k target/deploy/handsel_market-keypair.json)

@@ -185,11 +185,23 @@ order of how much they matter:
 
 1. **`SOLANA_RPC_URL` secret** — a dedicated endpoint if one is configured,
    falling back to the public cluster. This is the actual fix; the rest is
-   mitigation.
+   mitigation. The job **checks the endpoint's genesis hash** before using it:
+   a mainnet URL answers RPC calls perfectly well and then reports the deployer
+   as unfunded, which reads as a faucet problem rather than a wrong-cluster
+   one. Devnet is `EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG`; anything else
+   fails immediately with that comparison printed.
 2. **`--use-rpc`** sends the writes through the RPC instead of forwarding them
    to validator TPUs, which is where they were disappearing, plus
-   `--max-sign-attempts 100` (the default is 5, which is not many when a few
+   `--max-sign-attempts 30` (the default is 5, which is not many when a few
    hundred writes each get one chance) and a small priority fee.
+
+   It was briefly 100, and that was a mistake worth recording: on a throttled
+   endpoint it did not fix anything, it converted *"fails in two minutes"* into
+   *"grinds for forty-five and then fails"*. **Retrying is not a substitute for
+   an endpoint that can take the load**, and a knob that hides a failure for
+   forty-five minutes is worse than the failure. The deploy job's timeout is
+   now 20 minutes for the same reason — an upload over a working endpoint
+   takes a couple, so anything past twenty is a diagnosis, not a delay.
 3. **Buffer reclamation, before and after.** A failed deploy STRANDS its buffer,
    and a buffer holds rent for the whole binary — 1.5–2 SOL here. Retrying
    without reclaiming means every attempt eats another wallet's worth, which is
