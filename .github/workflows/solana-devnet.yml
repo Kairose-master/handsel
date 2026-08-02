@@ -374,6 +374,7 @@ jobs:
             say "deploy" "will upload $LOCAL bytes (about 20 minutes)"
           fi
           echo "NEED_DEPLOY=$NEED_DEPLOY" >> "$GITHUB_ENV"
+          echo "PROGRAM_ID=$PID" >> "$GITHUB_ENV"
 
           # Rent-exempt minimum is exactly (128 + data_len) * 6960 lamports —
           # 128 bytes of account overhead, 3480 lamports per byte-year, two
@@ -503,6 +504,15 @@ jobs:
             echo "- sha256(.so): \`$LOCAL_SHA\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # Its own step, and unconditional, because two later steps need it: the
+      # happy path (optional) and the chain read (`always()`). Leaving the
+      # install inside the optional one made the mandatory one depend on a
+      # checkbox.
+      - name: Install the devnet client deps
+        if: always()
+        working-directory: solana
+        run: npm ci --no-audit --no-fund
+
       - name: Happy path against the live program
         if: inputs.run_happy_path
         working-directory: solana
@@ -515,7 +525,6 @@ jobs:
           set -o pipefail
           export ANCHOR_PROVIDER_URL="$SOLANA_RPC"
           export ANCHOR_WALLET="$HOME/.solana-keys/deployer.json"
-          npm ci --no-audit --no-fund
           npx tsx scripts/happy-path.ts | tee happy-path.log
           {
             echo ""
@@ -525,6 +534,21 @@ jobs:
             cat happy-path.log
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # The last word, and `always()` because the state you are left in after a
+      # failure is exactly the state worth reading. Three times this sprint the
+      # thing that settled a green checkmark was a hand-typed
+      # `getProgramAccounts` — so the read is a command now, it runs here, and
+      # it runs the same way on a laptop:
+      #
+      #   node scripts/verify-solana-chain.mjs
+      #
+      # It needs no keys, no toolchain and no IDL. Under `tsx` (which solana/
+      # depends on) it imports the decoder directly.
+      - name: The chain agrees with itself
+        if: always() && env.PROGRAM_ID != ''
+        working-directory: solana
+        run: npx tsx ../scripts/verify-solana-chain.mjs --program "$PROGRAM_ID" --url "$SOLANA_RPC"
 
       # Runs even when the deploy failed, which is exactly when it matters:
       # the lamports go back to the deployer instead of sitting in an orphan

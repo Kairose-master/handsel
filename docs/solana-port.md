@@ -448,6 +448,63 @@ worth noting because it looks like a symptom: an earlier attempt had already
 extended the account to 438,912, preflight saw the capacity, and the step did
 nothing. The extend is idempotent by construction.
 
+### The chain read is a command now
+
+Every time this sprint that a green checkmark turned out to be wrong, the thing
+that settled it was the same: `getProgramAccounts`, decode the bytes, compare
+the numbers. Typed out fresh each time, from memory, on a phone screenshot's
+say-so. That is a check the project depends on and does not own.
+
+```
+npm run verify:solana
+```
+
+`scripts/verify-solana-chain.mjs` reads the market, every job and every ledger
+and reports six invariants:
+
+| Invariant | Catches |
+|---|---|
+| every posted job has an account | `job_count` counting a job nothing wrote |
+| `total_escrowed` matches the open jobs | escrow the jobs cannot account for |
+| `total_withdrawable` matches the ledgers | credited money with no ledger behind it |
+| solvent — the vault covers what is owed | the one comparison the program's header names |
+| no job completed without a submission | settlement running with no deliverable |
+| no funded ledger without an owner | exactly the bug that cost this sprint a day |
+
+It needs no keys, no Solana toolchain, no `anchor build` and no IDL — an Anchor
+account is an 8-byte discriminator and fixed-width little-endian fields, and
+`lib/onchain/solana/codec.ts` already knew the layout. So it runs on a laptop
+that has never touched this program, in about a second, and it is the deploy
+job's last step with `always()`, because the state you are left in after a
+failure is the state most worth reading.
+
+The decoders and the invariant function are pure and unit-tested (41 tests in
+`tests/solana-codec.test.ts`), including the cases devnet has not produced:
+insolvency, a ledger total that disagrees with the market, a job completed with
+a zero result hash, a funded ledger at the default pubkey. Two are worth
+naming. **A vault balance that could not be read fails the solvency check
+rather than passing it** — `null` must never read as zero, or an insolvent
+market looks merely empty and empty looks fine. And **a donation to the vault
+is not a defect**, which is why solvency is `>=` and not `==`: holding more
+than you owe is fine, owing more than you hold is not.
+
+Current devnet state, read by the tool:
+
+```
+market   jobs 1 · escrowed 0 · withdrawable 1160000
+vault    FF4ahh…EhHQ holds 1160000 of mint G7fnPw…fcf7
+  job #0  Completed bounty 1000000 fee 80000 bond 80000
+  ledger GLPR6K…zKqN  owed 1080000
+  ledger DmpJvW…Y5NA  owed 80000
+→ chain agrees with itself.
+```
+
+Those two ledgers are the ones stranded by the bump bug. The fixed program is
+live now, so they are withdrawable again — by whoever holds those keys, which
+in this case was an ephemeral test keypair. The money is test-mint tokens and
+the solvency invariant still holds, which is the point: the market can say what
+it owes and prove it holds it.
+
 ## What would stop the sprint
 
 The standing rule from the challenge planning: if someone makes a serious run

@@ -147,6 +147,11 @@ class Cursor {
   u8(): number {
     return this.view.getUint8(this.offset++)
   }
+  u16(): number {
+    const v = this.view.getUint16(this.offset, true)
+    this.offset += 2
+    return v
+  }
   u32(): number {
     const v = this.view.getUint32(this.offset, true)
     this.offset += 4
@@ -258,4 +263,161 @@ export function jobDeadline(job: SolanaJob): number | null {
  *  rule covers both runtimes. */
 export function hasSubmission(job: SolanaJob): boolean {
   return /[1-9a-f]/.test(job.resultHash.slice(2))
+}
+
+export type SolanaMarket = {
+  authority: string
+  oracle: string
+  feeRecipient: string
+  usdcMint: string
+  vault: string
+  feeBps: number
+  flatFee: bigint
+  bondBps: number
+  flatBond: bigint
+  reviewWindow: number
+  minBounty: bigint
+  jobCount: number
+  totalEscrowed: bigint
+  totalWithdrawable: bigint
+}
+
+export type SolanaLedger = { owner: string; amount: bigint; bump: number }
+
+export const MARKET_ACCOUNT_SIZE = 225
+export const WITHDRAWABLE_ACCOUNT_SIZE = 49
+
+function discriminatorMatches(data: Uint8Array, structName: string): boolean {
+  const expected = accountDiscriminator(structName)
+  for (let i = 0; i < 8; i++) if (data[i] !== expected[i]) return false
+  return true
+}
+
+/** Decode the singleton `Market`. Null on a wrong discriminator or length, for
+ *  the same reason `decodeJobAccount` does: this runs over everything
+ *  `getProgramAccounts` returned. */
+export function decodeMarketAccount(data: Uint8Array): SolanaMarket | null {
+  if (data.length !== MARKET_ACCOUNT_SIZE) return null
+  if (!discriminatorMatches(data, 'Market')) return null
+
+  const cursor = new Cursor(new DataView(data.buffer, data.byteOffset, data.byteLength), data)
+  cursor.skip(8)
+  return {
+    authority: base58Encode(cursor.bytes32()),
+    oracle: base58Encode(cursor.bytes32()),
+    feeRecipient: base58Encode(cursor.bytes32()),
+    usdcMint: base58Encode(cursor.bytes32()),
+    vault: base58Encode(cursor.bytes32()),
+    feeBps: cursor.u16(),
+    flatFee: cursor.u64(),
+    bondBps: cursor.u16(),
+    flatBond: cursor.u64(),
+    reviewWindow: cursor.u32(),
+    minBounty: cursor.u64(),
+    jobCount: Number(cursor.u64()),
+    totalEscrowed: cursor.u64(),
+    totalWithdrawable: cursor.u64(),
+  }
+}
+
+/** Decode one pull-payment ledger. */
+export function decodeWithdrawableAccount(data: Uint8Array): SolanaLedger | null {
+  if (data.length !== WITHDRAWABLE_ACCOUNT_SIZE) return null
+  if (!discriminatorMatches(data, 'Withdrawable')) return null
+
+  const cursor = new Cursor(new DataView(data.buffer, data.byteOffset, data.byteLength), data)
+  cursor.skip(8)
+  return { owner: base58Encode(cursor.bytes32()), amount: cursor.u64(), bump: cursor.u8() }
+}
+
+/**
+ * What the program's own accounting says each job should still be holding.
+ *
+ * `post_job` escrows bounty + fee; `accept_job` adds the bond; every exit
+ * (`credit`, the reclaim burn) takes it back out. So a job's contribution to
+ * `total_escrowed` is decided entirely by its status.
+ */
+export function escrowHeldBy(job: SolanaJob): bigint {
+  switch (job.status) {
+    case 'Open':
+      return job.bounty + job.fee
+    case 'Accepted':
+    case 'Submitted':
+      return job.bounty + job.fee + job.bond
+    default:
+      return 0n
+  }
+}
+
+export type Invariant = { name: string; ok: boolean; detail: string }
+
+/**
+ * The checks that decide whether the market is telling the truth.
+ *
+ * Pure on purpose: the network fetch belongs to the caller, so every one of
+ * these is exercised by unit tests against hand-built states rather than by
+ * hoping devnet produces the interesting case. `vaultAmount` is the vault
+ * token account's balance, or null when it could not be read — an unread
+ * balance reports as an unrun check, never as a passing one.
+ *
+ * The one that matters most is solvency, and it is one comparison, as the
+ * program's own header says: the vault must hold at least what the market
+ * claims to owe. It is stated as `>=` rather than `==` because a donation to
+ * the vault is not a defect; owing more than you hold is.
+ */
+export function checkMarketInvariants(state: {
+  market: SolanaMarket
+  jobs: SolanaJob[]
+  ledgers: SolanaLedger[]
+  vaultAmount: bigint | null
+}): { ok: boolean; checks: Invariant[] } {
+  const { market, jobs, ledgers, vaultAmount } = state
+  const checks: Invariant[] = []
+  const add = (name: string, ok: boolean, detail: string) => checks.push({ name, ok, detail })
+
+  const ids = new Set(jobs.map((j) => j.id))
+  const missing = [...Array(market.jobCount).keys()].filter((i) => !ids.has(i))
+  add(
+    'every posted job has an account',
+    missing.length === 0 && jobs.length === market.jobCount,
+    missing.length ? `job_count=${market.jobCount}, missing #${missing.join(', #')}` : `${jobs.length} of ${market.jobCount}`,
+  )
+
+  const escrowExpected = jobs.reduce((sum, j) => sum + escrowHeldBy(j), 0n)
+  add(
+    'total_escrowed matches the open jobs',
+    market.totalEscrowed === escrowExpected,
+    `market says ${market.totalEscrowed}, jobs imply ${escrowExpected}`,
+  )
+
+  const owedExpected = ledgers.reduce((sum, l) => sum + l.amount, 0n)
+  add(
+    'total_withdrawable matches the ledgers',
+    market.totalWithdrawable === owedExpected,
+    `market says ${market.totalWithdrawable}, ledgers hold ${owedExpected}`,
+  )
+
+  const owed = market.totalEscrowed + market.totalWithdrawable
+  add(
+    'solvent — the vault covers what is owed',
+    vaultAmount !== null && vaultAmount >= owed,
+    vaultAmount === null ? 'vault balance unread' : `owes ${owed}, holds ${vaultAmount}`,
+  )
+
+  // A Completed job with a zero result hash means settlement ran without a
+  // deliverable — the exact shape `hasSubmission` exists to catch on the EVM
+  // side, checked here against the chain rather than against a request.
+  const settledBlind = jobs.filter((j) => j.status === 'Completed' && !hasSubmission(j))
+  add(
+    'no job completed without a submission',
+    settledBlind.length === 0,
+    settledBlind.length ? `#${settledBlind.map((j) => j.id).join(', #')}` : `${jobs.filter((j) => j.status === 'Completed').length} completed`,
+  )
+
+  // `credit()` stamps the owner on first use. A funded ledger owned by nobody
+  // is the bug this sprint already paid for once.
+  const orphaned = ledgers.filter((l) => l.amount > 0n && /^1{32}$/.test(l.owner))
+  add('no funded ledger without an owner', orphaned.length === 0, `${ledgers.length} ledgers`)
+
+  return { ok: checks.every((c) => c.ok), checks }
 }
