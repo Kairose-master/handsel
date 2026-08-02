@@ -28,10 +28,14 @@ on:
         description: 'Deploy to devnet after building (needs SOLANA_DEPLOYER_KEYPAIR + SOLANA_PROGRAM_KEYPAIR)'
         type: boolean
         default: false
+      # Default TRUE. A deploy that is never exercised is a green run that
+      # proves the binary uploaded and nothing about whether it works — which
+      # is how a program that credits a ledger nobody can withdraw from sat on
+      # devnet under a checkmark. Opting OUT is the deliberate act now.
       run_happy_path:
         description: 'Run the end-to-end script against the deployed program'
         type: boolean
-        default: false
+        default: true
 
 env:
   ANCHOR_VERSION: 0.31.1
@@ -287,6 +291,46 @@ jobs:
             echo ""
             echo "- Program: \`$PID\`"
             echo "- Explorer: https://explorer.solana.com/address/$PID?cluster=devnet"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # The question CI could not answer after the fact: is the program on
+      # devnet the build from THIS commit? `solana program deploy` exiting 0
+      # only says an upload finished while the job was watching. Afterwards a
+      # green run whose deploy job never ran looks identical from the outside —
+      # which is how a fix sat in main for hours while the chain still served
+      # the broken binary, under a checkmark.
+      #
+      # `solana program dump` reads the bytes back off the chain. They are the
+      # same ELF, zero-padded to the account's allocated length, so this build
+      # must be a byte-for-byte prefix and the remainder must be zeros. The
+      # deployed slot goes in the summary so the run is checkable later from
+      # the chain alone, without trusting the log.
+      - name: On-chain bytes are this build
+        working-directory: solana
+        run: |
+          PID=$(solana address -k target/deploy/handsel_market-keypair.json)
+          solana program dump --url "$SOLANA_RPC" "$PID" onchain.so
+          LOCAL=$(wc -c < target/deploy/handsel_market.so)
+          LOCAL_SHA=$(sha256sum target/deploy/handsel_market.so | cut -d' ' -f1)
+          CHAIN_SHA=$(head -c "$LOCAL" onchain.so | sha256sum | cut -d' ' -f1)
+          echo "local: $LOCAL_SHA ($LOCAL bytes)"
+          echo "chain: $CHAIN_SHA"
+          [ "$LOCAL_SHA" = "$CHAIN_SHA" ] || {
+            echo "::error::The program at $PID is not this build."
+            exit 1
+          }
+          # The padding has to actually be padding. A non-zero tail means a
+          # longer, different binary that merely starts the same way.
+          TAIL=$(tail -c "+$((LOCAL + 1))" onchain.so | tr -d '\0' | wc -c)
+          [ "$TAIL" -eq 0 ] || {
+            echo "::error::On-chain binary is longer than this build and its tail is not zero padding."
+            exit 1
+          }
+          SLOT=$(solana program show --url "$SOLANA_RPC" "$PID" | sed -n 's/^Last Deployed In Slot: *//p')
+          rm -f onchain.so
+          {
+            echo "- Deployed in slot: \`${SLOT:-unknown}\` (commit \`${GITHUB_SHA:0:7}\`)"
+            echo "- sha256(.so): \`$LOCAL_SHA\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Happy path against the live program

@@ -256,6 +256,42 @@ fail is not a check.** `tests/solana-codec.test.ts` grew a static guard —
 every `bump = x.bump` constraint must have a matching `x.bump =` assignment —
 verified by reintroducing the bug and watching it fail.
 
+### The third false green: a run that never deployed
+
+The fix above was pushed, the workflow was dispatched, and the run came back
+green. The chain disagreed again, and this time it took no decoding to see it:
+
+```
+programdata slot   480587171   ← the ORIGINAL deploy, hours earlier
+market.job_count   1           ← no second happy path
+total_withdrawable 1,160,000   ← both ledgers still funded
+```
+
+`ProgramData.slot` is the slot the program was last written in. It had not
+moved, so the binary on devnet was still the broken one — the fix existed only
+in `main`. The run was green because the deploy job never ran: `deploy` is a
+`workflow_dispatch` boolean defaulting to `false`, and a dispatch that leaves
+it unchecked builds, passes, and reports success without ever touching the
+cluster. Nothing lied; the run answered a different question than the one being
+asked of it.
+
+Two changes, both aimed at the gap between "the run is green" and "the fix is
+live":
+
+- **`run_happy_path` now defaults to `true`.** A deploy that is never exercised
+  proves an upload finished and nothing else. Skipping the money loop is the
+  deliberate act now, rather than the default.
+- **The deploy job verifies the bytes it left behind.** `solana program dump`
+  reads the program back off the chain; the step asserts this build is a
+  byte-for-byte prefix of it and that the remainder is zero padding, then
+  writes the deployed slot and the `.so` hash into the run summary. That turns
+  "was this commit deployed?" into a question answerable from the chain alone
+  — which is precisely what could not be answered here.
+
+The shape across all three: `tee` swallowing an exit code, a bump nobody wrote,
+and a job that never ran. Each produced a green checkmark over an unchanged
+chain. **The chain read is the check; CI is a convenience.**
+
 ## What would stop the sprint
 
 The standing rule from the challenge planning: if someone makes a serious run
