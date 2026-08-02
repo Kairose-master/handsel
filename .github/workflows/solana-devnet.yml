@@ -149,20 +149,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cache cargo + toolchains
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-            ~/.avm
-            ~/.local/share/solana
-            solana/target
-          key: solana-${{ runner.os }}-anchor${{ env.ANCHOR_VERSION }}-${{ hashFiles('solana/**/Cargo.toml') }}
-          restore-keys: solana-${{ runner.os }}-anchor${{ env.ANCHOR_VERSION }}-
-
+      # No cargo, no avm, no anchor here. This job used to rebuild the program
+      # from source before deploying, which cost fifteen minutes and bought
+      # nothing: the `.so` does not contain the keypair, only `declare_id!`,
+      # which comes from source either way. The keypair is needed to SIGN the
+      # deploy, not to produce the binary.
+      #
+      # Downloading the build job's artifact is faster and also stricter — the
+      # bytes that reach devnet are now literally the artifact attached to this
+      # run, which anyone can download and hash against the on-chain program.
+      # Deliberately uncached. A cache key with no version in it pins whatever
+      # CLI was current the day it was written, and this sprint already lost a
+      # round trip to a CLI that asks the loader for something the loader has
+      # since stopped accepting. Thirty seconds of download is the cheaper side
+      # of that trade.
       - name: Install Solana CLI (Anza)
         run: |
           if ! command -v solana >/dev/null 2>&1; then
@@ -170,11 +170,12 @@ jobs:
           fi
           echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
 
-      - name: Install Anchor ${{ env.ANCHOR_VERSION }}
-        run: |
-          command -v avm >/dev/null 2>&1 || cargo install --git https://github.com/coral-xyz/anchor avm --locked --force
-          avm install "$ANCHOR_VERSION"
-          avm use "$ANCHOR_VERSION"
+      # The artifact's root is `solana/target`, so this restores
+      # target/deploy/handsel_market.so exactly where the deploy expects it.
+      - uses: actions/download-artifact@v4
+        with:
+          name: handsel-market-sbf
+          path: solana/target
 
       # Keypairs arrive as secrets and land outside the workspace, so a later
       # step that archives or uploads the checkout cannot sweep them up.
@@ -247,22 +248,85 @@ jobs:
             solana airdrop 2 || echo "::warning::airdrop failed; deploying with what is on hand"
           fi
 
-      - name: anchor build
+      # ONE step that reports every precondition at once, before a lamport is
+      # spent. It exists because eight deploy attempts taught eight separate
+      # single facts -- an MSRV, a check in the wrong job, RPC throttling, a
+      # retry budget, funding, an unchecked dispatch input, a loader that only
+      # extends in 10240s -- at fifteen to forty-five minutes per fact. The
+      # problems were all real; the loop was the defect. This is the same
+      # answer as scripts/check-msrv.mjs: when a round trip is expensive, make
+      # one run say everything it knows.
+      #
+      # It runs AFTER the reclaim and the airdrop so the balance it reports is
+      # the one the deploy will actually have.
+      - name: Preflight — every precondition, in one pass
         working-directory: solana
         run: |
-          mkdir -p target/deploy
           cp "$HOME/.solana-keys/program.json" target/deploy/handsel_market-keypair.json
-          anchor build
+          chmod 600 target/deploy/handsel_market-keypair.json
+          fail=0
+          say() { printf '  %-22s %s\n' "$1" "$2"; }
 
-      - name: Program ID matches declare_id!
-        working-directory: solana
-        run: |
-          BUILT=$(solana address -k target/deploy/handsel_market-keypair.json)
+          PID=$(solana address -k target/deploy/handsel_market-keypair.json)
           DECLARED=$(grep -oP 'declare_id!\("\K[^"]+' programs/handsel-market/src/lib.rs)
-          [ "$BUILT" = "$DECLARED" ] || {
-            echo "::error::SOLANA_PROGRAM_KEYPAIR ($BUILT) does not match declare_id! ($DECLARED)."
+          say "program keypair" "$PID"
+          if [ "$PID" = "$DECLARED" ]; then
+            say "declare_id!" "matches"
+          else
+            say "declare_id!" "$DECLARED   <-- MISMATCH"
+            fail=$((fail + 1))
+          fi
+
+          LOCAL=$(wc -c < target/deploy/handsel_market.so)
+          say "artifact" "$LOCAL bytes (from the build job)"
+
+          # `Data Length` is already net of the 45-byte ProgramData header, so
+          # it compares directly with the .so on disk.
+          HAVE=$(solana program show --url "$SOLANA_RPC" "$PID" 2>/dev/null |
+                 sed -n 's/^Data Length: *\([0-9]*\).*/\1/p')
+          EXTRA=0
+          if [ -z "$HAVE" ]; then
+            say "on chain" "not deployed — the first deploy sizes the account"
+          elif [ "$LOCAL" -gt "$HAVE" ]; then
+            EXTRA=$((LOCAL - HAVE + 10240))
+            say "on chain" "$HAVE bytes"
+            say "capacity" "short by $((LOCAL - HAVE)) — will extend by $EXTRA"
+          else
+            say "on chain" "$HAVE bytes"
+            say "capacity" "$((HAVE - LOCAL)) bytes to spare"
+          fi
+          echo "EXTEND_BY=$EXTRA" >> "$GITHUB_ENV"
+
+          # Rent-exempt minimum is exactly (128 + data_len) * 6960 lamports —
+          # 128 bytes of account overhead, 3480 lamports per byte-year, two
+          # years. Computing it beats parsing `solana rent`, and it is the same
+          # arithmetic the loader used to price the 2.98414872 SOL that a
+          # previous run discovered by running out of money.
+          BUF=$(( (128 + 45 + LOCAL) * 6960 ))
+          EXT=$(( EXTRA * 6960 ))
+          NEED=$(( BUF + EXT + 20000000 ))
+          BAL=$(solana balance --lamports | awk '{print $1}')
+          sol() { awk -v l="$1" 'BEGIN { printf "%.4f SOL", l / 1e9 }'; }
+          say "buffer rent" "$(sol "$BUF")   (transient, refunded)"
+          # An `if`, not `[ ... ] && say ...`: the step runs under `bash -e`,
+          # where a trailing false test IS the line's exit status and kills the
+          # job. It would have fired on every run that did NOT need an extend —
+          # that is, on all the ordinary ones.
+          if [ "$EXT" -gt 0 ]; then
+            say "extend rent" "$(sol "$EXT")   (permanent)"
+          fi
+          say "needed + fees" "$(sol "$NEED")"
+          say "deployer balance" "$(sol "$BAL")"
+          if [ "$BAL" -lt "$NEED" ]; then
+            say "" "SHORT BY $(sol "$((NEED - BAL))")"
+            fail=$((fail + 1))
+          fi
+
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::Preflight found $fail blocking problem(s). Nothing was spent."
             exit 1
-          }
+          fi
+          echo "  ready."
 
       # An upgrade cannot grow the program account by itself, and the two sides
       # disagree about how: `solana program deploy` asks the loader to extend by
@@ -279,32 +343,16 @@ jobs:
       #
       # Skipped on a first deploy: with no program on chain there is nothing to
       # extend, and `solana program deploy` sizes the account itself.
-      - name: Grow the program account if this build outgrew it
+      # The size to add was decided in preflight (shortfall + the 10240
+      # minimum) and passed through EXTEND_BY, so this step only spends.
+      - name: Grow the program account
+        if: env.EXTEND_BY != '0'
         working-directory: solana
         run: |
           PID=$(solana address -k target/deploy/handsel_market-keypair.json)
-          # `Data Length` is the binary's capacity, already net of the 45-byte
-          # ProgramData header, so it compares directly with the .so on disk.
-          HAVE=$(solana program show --url "$SOLANA_RPC" "$PID" 2>/dev/null |
-                 sed -n 's/^Data Length: *\([0-9]*\).*/\1/p')
-          LOCAL=$(wc -c < target/deploy/handsel_market.so)
-          if [ -z "$HAVE" ]; then
-            echo "not deployed yet ($LOCAL bytes) — the first deploy sizes the account"
-            exit 0
-          fi
-          echo "on chain: $HAVE bytes    this build: $LOCAL bytes"
-          DEFICIT=$((LOCAL - HAVE))
-          if [ "$DEFICIT" -le 0 ]; then
-            echo "fits with $(( -DEFICIT )) bytes to spare"
-            exit 0
-          fi
-          # The loader's minimum is 10240. Asking for the shortfall PLUS that
-          # minimum is both legal and useful: the slack absorbs the next few
-          # builds, so an ordinary code change does not need an extend at all.
-          EXTRA=$((DEFICIT + 10240))
-          echo "short by $DEFICIT — extending by $EXTRA bytes"
+          echo "extending $PID by $EXTEND_BY bytes"
           solana program extend --url "$SOLANA_RPC" \
-            --keypair "$HOME/.solana-keys/deployer.json" "$PID" "$EXTRA"
+            --keypair "$HOME/.solana-keys/deployer.json" "$PID" "$EXTEND_BY"
           solana program show --url "$SOLANA_RPC" "$PID" | sed -n 's/^Data Length/now/p'
 
       - name: Deploy to devnet

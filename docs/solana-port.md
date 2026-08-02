@@ -321,6 +321,65 @@ longer needs an extend at all, so the step is a no-op on most runs and prints
 how many bytes are left. On a first deploy it skips — there is nothing to
 extend and `solana program deploy` sizes the account itself.
 
+### The real defect was the loop
+
+Eight deploy attempts, eight separate facts learned:
+
+| # | What failed | Kind |
+|---|---|---|
+| 1 | `zeroize 1.9.0` wants edition2024, SBF rustc is 1.79 | toolchain |
+| 2 | program-id check ran in the job with no keypair | my design error |
+| 3 | public RPC drops the upload's writes | infrastructure |
+| 4 | `--max-sign-attempts 100` ground for 45 minutes | my tuning error |
+| 5 | deployer short 1.09 SOL for the upgrade buffer | funding |
+| 6 | `tee` swallowed the exit code; `bump` nobody wrote | product bug |
+| 7 | dispatched without the `deploy` box checked | input |
+| 8 | 88-byte growth, 10240-byte loader minimum | loader rule |
+
+Every one of them was real. None was a repeat. The problem was never the count
+— it is that a round trip cost fifteen to forty-five minutes and returned
+**one** of these, and the next one was only visible after fixing the last. That
+is not debugging, it is a queue.
+
+Two changes make a run say everything it knows:
+
+- **The deploy job no longer rebuilds.** It used to run `anchor build` again —
+  fifteen minutes, plus installing `avm` and Anchor — to produce a binary the
+  build job had already produced. The `.so` does not contain the keypair, only
+  `declare_id!`, which comes from source either way; the keypair signs the
+  deploy, it does not shape the bytes. The deploy now downloads the build job's
+  artifact. Faster, and *stricter*: what reaches devnet is literally the
+  artifact attached to the run, which anyone can download and hash against the
+  on-chain program.
+- **One preflight step, after the reclaim and the airdrop, before a lamport is
+  spent.** Program id vs `declare_id!`, artifact size vs on-chain capacity, the
+  extension it implies, and the balance against what the buffer and the extend
+  will actually cost — reported together, failing at the end with a count
+  rather than at the first problem. Rent-exempt minimum is computed, not
+  parsed: `(128 + data_len) × 6960` lamports, which reproduces the
+  2.98414872 SOL that attempt #5 discovered by running out of money.
+
+```
+  program keypair        8C3gbrTv5vriPiEjuS7BukrnxyAFoDYt8BdBCf7W2G6H
+  declare_id!            matches
+  artifact               428672 bytes (from the build job)
+  on chain               428584 bytes
+  capacity               short by 88 — will extend by 10328
+  buffer rent            2.9848 SOL   (transient, refunded)
+  extend rent            0.0719 SOL   (permanent)
+  needed + fees          3.0766 SOL
+  deployer balance       6.8969 SOL
+  ready.
+```
+
+Dry-running that step against stubbed `solana` output — deployed and not,
+fitting and short, funded and broke, id matching and not — caught a ninth bug
+before it cost anything. `[ "$EXT" -gt 0 ] && say ...` is the line's exit
+status, and steps run under `bash -e`, so it would have killed the job on every
+run that did **not** need an extend, which is to say all the ordinary ones. An
+`if` now. The same shape as `scripts/check-msrv.mjs`: when a round trip is
+expensive, spend the effort locally.
+
 ## What would stop the sprint
 
 The standing rule from the challenge planning: if someone makes a serious run
