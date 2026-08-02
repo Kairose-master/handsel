@@ -44,23 +44,51 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # 90, not 45, and the reason is a loop rather than a slow build. A cold
+    # run compiles avm from git and then compiles anchor-cli through it --
+    # twenty-five to forty minutes before `cargo check` has started. At 45 the
+    # job was killed partway, GitHub reported it as CANCELLED (a timeout is a
+    # cancellation, which is why nobody had cancelled it), and **a killed job
+    # does not save its cache**. So the next run was cold too, and timed out
+    # too. Every run cold, every run cancelled, forever. A ceiling only helps
+    # if the ordinary case fits under it; this one has to fit the cold case
+    # ONCE, and after that the cache makes it minutes.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cache cargo + toolchains
-        uses: actions/cache@v4
+      # Two caches, deliberately. They used to be one entry keyed on the
+      # Cargo.toml hash, which put a ~700 MB toolchain that changes when
+      # ANCHOR_VERSION changes in the same bucket as multi-GB build output that
+      # changes constantly. A repo gets 10 GB; the oldest entries are evicted
+      # to stay under it, and evicting build output took the Anchor
+      # installation with it -- reintroducing the forty-minute cold compile at
+      # random.
+      # restore + an explicit save, rather than `actions/cache`, and the split
+      # is the point. `actions/cache` saves in a post-job step, and a job that
+      # is CANCELLED -- which is what a timeout is -- never reaches it. That is
+      # the loop: cold run, killed at the ceiling, nothing saved, next run cold
+      # again. Saving the instant the toolchain exists means the forty-minute
+      # compile is paid at most once, whatever happens to the rest of the job.
+      - name: Restore the Anchor toolchain
+        id: anchor-cache
+        uses: actions/cache/restore@v4
         with:
           path: |
             ~/.cargo/bin
+            ~/.avm
+          key: anchor-toolchain-${{ runner.os }}-${{ env.ANCHOR_VERSION }}
+
+      - name: Cache cargo registry + build output
+        uses: actions/cache@v4
+        with:
+          path: |
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-            ~/.avm
-            ~/.local/share/solana
             solana/target
-          key: solana-${{ runner.os }}-anchor${{ env.ANCHOR_VERSION }}-${{ hashFiles('solana/**/Cargo.toml') }}
-          restore-keys: solana-${{ runner.os }}-anchor${{ env.ANCHOR_VERSION }}-
+          key: solana-build-${{ runner.os }}-${{ hashFiles('solana/Cargo.lock') }}
+          restore-keys: solana-build-${{ runner.os }}-
 
       - name: Install Solana CLI (Anza)
         run: |
@@ -71,9 +99,29 @@ jobs:
 
       - name: Install Anchor ${{ env.ANCHOR_VERSION }}
         run: |
-          command -v avm >/dev/null 2>&1 || cargo install --git https://github.com/coral-xyz/anchor avm --locked --force
-          avm install "$ANCHOR_VERSION"
+          # Check for the versioned binary avm actually installs, not for avm
+          # itself. `avm install` on an already-installed version is not free,
+          # and this is the step the whole cache split exists to skip.
+          if [ -x "$HOME/.avm/bin/anchor-$ANCHOR_VERSION" ]; then
+            echo "anchor $ANCHOR_VERSION restored from cache"
+          else
+            echo "cold: compiling avm and anchor-cli — this is the slow one"
+            command -v avm >/dev/null 2>&1 ||
+              cargo install --git https://github.com/coral-xyz/anchor avm --locked --force
+            avm install "$ANCHOR_VERSION"
+          fi
           avm use "$ANCHOR_VERSION"
+          echo "$HOME/.avm/bin" >> "$GITHUB_PATH"
+
+      # Immediately, while it exists — not in a post step that a timeout skips.
+      - name: Save the Anchor toolchain
+        if: steps.anchor-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.cargo/bin
+            ~/.avm
+          key: anchor-toolchain-${{ runner.os }}-${{ env.ANCHOR_VERSION }}
 
       - run: |
           solana --version

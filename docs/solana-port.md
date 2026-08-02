@@ -380,6 +380,42 @@ run that did **not** need an extend, which is to say all the ordinary ones. An
 `if` now. The same shape as `scripts/check-msrv.mjs`: when a round trip is
 expensive, spend the effort locally.
 
+### "I never cancelled it"
+
+Runs started coming back **cancelled** with nobody cancelling them. There is no
+`concurrency:` block in the workflow, so nothing was racing — which leaves the
+one other thing that cancels a job: **a timeout is a cancellation.** GitHub
+kills a job past `timeout-minutes` and reports it as cancelled, not failed.
+
+The build job's ceiling was 45 minutes. A cold run compiles `avm` from git and
+then compiles `anchor-cli` through it — twenty-five to forty minutes before
+`cargo check` has even started. Past 45 it was killed, and this is the part
+that makes it a loop rather than a slow build: **a cancelled job never reaches
+`actions/cache`'s post step, so it saves nothing.** The next run was cold too.
+Cold, killed, nothing cached, cold again — indefinitely, with a cancellation
+notice each time and no cause visible in the log, because the log just stops.
+
+Three changes, each aimed at a different part of the loop:
+
+- **The ceiling fits the cold case: 90 minutes.** A limit only helps if the
+  ordinary run fits under it. This one has to fit the *cold* run once; after
+  that the cache makes it minutes.
+- **The toolchain is saved the instant it exists**, via `cache/restore` plus an
+  explicit `cache/save` right after the install, instead of `actions/cache`'s
+  post step. Whatever happens to the rest of the job, the forty-minute compile
+  is paid at most once.
+- **Two caches instead of one.** A single entry keyed on the Cargo.toml hash
+  put a ~700 MB toolchain that changes only with `ANCHOR_VERSION` in the same
+  bucket as multi-GB build output that changes constantly. A repo gets 10 GB
+  and evicts oldest-first, so evicting build output took the Anchor
+  installation with it, reintroducing the cold compile at random intervals.
+  Toolchain is keyed on the Anchor version; build output on `Cargo.lock`.
+
+Worth stating plainly, because it cost real time to see: **the deploy failures
+and the cancellations were unrelated problems that looked like one flaky
+pipeline.** Read the transaction log for the first and the job annotation for
+the second — the run page conflates them.
+
 ## What would stop the sprint
 
 The standing rule from the challenge planning: if someone makes a serious run
