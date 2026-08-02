@@ -182,8 +182,30 @@ jobs:
           printf '%s' "$DEPLOYER" > "$HOME/.solana-keys/deployer.json"
           printf '%s' "$PROGRAM" > "$HOME/.solana-keys/program.json"
           chmod 600 "$HOME/.solana-keys"/*.json
-          solana config set --url "$SOLANA_CLUSTER" --keypair "$HOME/.solana-keys/deployer.json"
+          # A dedicated endpoint if one is configured. The public devnet RPC
+          # drops the hundreds of small writes a program upload is made of --
+          # that is what "Max retries exceeded" means, and no amount of
+          # retrying fixes a rate limit.
+          RPC="${{ secrets.SOLANA_RPC_URL }}"
+          [ -n "$RPC" ] || RPC="$SOLANA_CLUSTER"
+          echo "SOLANA_RPC=$RPC" >> "$GITHUB_ENV"
+          case "$RPC" in
+            "$SOLANA_CLUSTER") echo "rpc: public devnet (uploads may be rate-limited)" ;;
+            *) echo "rpc: dedicated endpoint from SOLANA_RPC_URL" ;;
+          esac
+          solana config set --url "$RPC" --keypair "$HOME/.solana-keys/deployer.json"
           echo "deployer: $(solana address)"
+
+      # A failed deploy STRANDS its buffer account, and a program buffer holds
+      # rent for the whole binary -- 1.5-2 SOL for this one. Retrying without
+      # reclaiming it means every attempt eats another wallet's worth, which is
+      # how a flaky RPC turns into "the faucet won't give me any more".
+      # Closing first is idempotent: with nothing stranded it reports nothing.
+      - name: Reclaim SOL from buffers a previous attempt stranded
+        run: |
+          echo "before: $(solana balance)"
+          solana program close --buffers --url "$SOLANA_RPC" || true
+          echo "after:  $(solana balance)"
 
       - name: Fund the deployer if it is short
         run: |
@@ -218,10 +240,18 @@ jobs:
       - name: Deploy to devnet
         working-directory: solana
         run: |
+          # --use-rpc sends the write transactions through the RPC instead of
+          # forwarding them to validator TPUs. On a shared endpoint the TPU
+          # path is where they vanish, and it is the documented workaround.
+          # --max-sign-attempts defaults to 5, which is not many when a few
+          # hundred writes each get one chance.
           solana program deploy \
-            --url "$SOLANA_CLUSTER" \
+            --url "$SOLANA_RPC" \
             --keypair "$HOME/.solana-keys/deployer.json" \
             --program-id target/deploy/handsel_market-keypair.json \
+            --use-rpc \
+            --max-sign-attempts 100 \
+            --with-compute-unit-price 1000 \
             target/deploy/handsel_market.so
           PID=$(solana address -k target/deploy/handsel_market-keypair.json)
           {
@@ -234,9 +264,8 @@ jobs:
       - name: Happy path against the live program
         if: inputs.run_happy_path
         working-directory: solana
-        env:
-          ANCHOR_PROVIDER_URL: https://api.devnet.solana.com
         run: |
+          export ANCHOR_PROVIDER_URL="$SOLANA_RPC"
           export ANCHOR_WALLET="$HOME/.solana-keys/deployer.json"
           npm ci --no-audit --no-fund
           npx tsx scripts/happy-path.ts | tee happy-path.log
@@ -248,6 +277,15 @@ jobs:
             cat happy-path.log
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # Runs even when the deploy failed, which is exactly when it matters:
+      # the lamports go back to the deployer instead of sitting in an orphan
+      # account whose seed phrase is now in a public CI log.
+      - name: Reclaim any buffer this run stranded
+        if: always()
+        run: |
+          solana program close --buffers --url "${SOLANA_RPC:-$SOLANA_CLUSTER}" || true
+          solana balance || true
 
       - name: Shred the keypairs
         if: always()

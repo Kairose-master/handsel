@@ -170,6 +170,40 @@ as `MarketReadState` in `app/actions/guest.ts`.
   pointing a page at a program that is not deployed would render an
   `unreachable` board and teach nothing.
 
+### Deploying a program over a public RPC does not work
+
+First real deploy attempt died with:
+
+```
+Error: Data writes to account failed: Custom error: Max retries exceeded
+```
+
+`solana program deploy` uploads the `.so` as **hundreds of small write
+transactions** into a buffer account. The public devnet endpoint drops them
+under that load; retrying harder does not fix a rate limit. Three changes, in
+order of how much they matter:
+
+1. **`SOLANA_RPC_URL` secret** — a dedicated endpoint if one is configured,
+   falling back to the public cluster. This is the actual fix; the rest is
+   mitigation.
+2. **`--use-rpc`** sends the writes through the RPC instead of forwarding them
+   to validator TPUs, which is where they were disappearing, plus
+   `--max-sign-attempts 100` (the default is 5, which is not many when a few
+   hundred writes each get one chance) and a small priority fee.
+3. **Buffer reclamation, before and after.** A failed deploy STRANDS its buffer,
+   and a buffer holds rent for the whole binary — 1.5–2 SOL here. Retrying
+   without reclaiming means every attempt eats another wallet's worth, which is
+   how a flaky RPC becomes "the faucet will not give me any more". Both steps
+   are `solana program close --buffers`, which is idempotent, and the trailing
+   one is `if: always()` because a stranded buffer is precisely what a *failed*
+   run leaves behind.
+
+That last one has a second reason. A failed deploy prints the buffer's ephemeral
+**seed phrase** into the log to let you resume — so a public CI run publishes it.
+The buffer's *authority* is the deployer, not that keypair, so it is not
+directly spendable by a reader; reclaiming it automatically means there is
+nothing to reason about either way.
+
 ## What would stop the sprint
 
 The standing rule from the challenge planning: if someone makes a serious run
