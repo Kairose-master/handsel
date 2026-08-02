@@ -97,24 +97,24 @@ jobs:
         working-directory: solana
         run: anchor build
 
-      # The footgun this step exists to stop: `anchor build` mints a program
-      # keypair at target/deploy/ on first run, and if its pubkey does not match
-      # `declare_id!` the program deploys to one address while every client
-      # derives PDAs against another. It fails at runtime, far from the cause.
-      - name: Program ID matches declare_id!
+      # `anchor build` MINTS a program keypair at target/deploy/ when none is
+      # there, and this job has no authoritative one — the real key lives in a
+      # secret only the deploy job receives. So the keypair sitting here is a
+      # throwaway the build invented, and comparing it against `declare_id!`
+      # answers a question nobody asked. (It was compared, and it failed, and
+      # the check was right to fail — it was just in the wrong job.)
+      #
+      # It is deleted rather than ignored, because `solana/target` is CACHED:
+      # a throwaway left behind gets restored into later runs, including the
+      # deploy job, where a stale keypair is exactly the thing that deploys a
+      # program to an address every client then fails to find.
+      - name: Drop the throwaway keypair anchor build minted
         working-directory: solana
         run: |
-          BUILT=$(solana address -k target/deploy/handsel_market-keypair.json)
-          DECLARED=$(grep -oP 'declare_id!\("\K[^"]+' programs/handsel-market/src/lib.rs)
-          echo "built:    $BUILT"
-          echo "declared: $DECLARED"
-          if [ "$BUILT" != "$DECLARED" ]; then
-            echo "::error::declare_id! ($DECLARED) is not the built program's address ($BUILT)."
-            echo "Generate one with: node scripts/keygen.mjs /tmp/program.json — see docs/solana-port.md."
-            echo "Fix: set declare_id! to $BUILT, commit target/deploy/handsel_market-keypair.json"
-            echo "to the SOLANA_PROGRAM_KEYPAIR secret (never to the repo), and re-run."
-            exit 1
-          fi
+          echo "declared: $(grep -oP 'declare_id!\("\K[^"]+' programs/handsel-market/src/lib.rs)"
+          echo "The build/deploy address match is verified in the deploy job,"
+          echo "which is where the real keypair exists."
+          rm -f target/deploy/handsel_market-keypair.json
 
       - name: Type-check the devnet scripts against the generated IDL
         working-directory: solana
