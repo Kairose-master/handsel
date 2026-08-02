@@ -416,6 +416,38 @@ and the cancellations were unrelated problems that looked like one flaky
 pipeline.** Read the transaction log for the first and the job annotation for
 the second — the run page conflates them.
 
+### A ceiling set to the ordinary case
+
+The next run showed `Deploy to devnet` at **19 minutes 50 seconds**, the job
+cancelled at 20:17, and every step after the deploy skipped — byte
+verification, happy path, all of it. Meanwhile the chain said the deploy had
+**succeeded**: `programdata slot` moved to 480621789 and the upgrade landed.
+The upload finished, the upgrade committed, and the job was killed roughly ten
+seconds later by its own `timeout-minutes: 20`.
+
+That ceiling was chosen here, with a stated rationale: *"a program upload over
+an endpoint that can take it is a couple of minutes. Twenty is generous, and
+cutting it there means a throttled run is reported while someone is still
+watching."* The measurement disagrees — the upload of this 428 KB binary is
+19:50 on this endpoint. **The limit had been set to the ordinary case**, so the
+ordinary case failed. A ceiling only tells you something when crossing it means
+something is wrong; 45 minutes does that, 20 was the normal duration wearing a
+limit's clothing.
+
+The second change matters more than the number. **The deploy is now
+idempotent**: preflight dumps the on-chain program and compares it to the
+artifact, and if the chain already has exactly these bytes the upload is
+skipped. It is the difference between a re-run costing twenty minutes and
+costing one — and the case it was written for is precisely this one, where the
+deploy succeeded and only the steps *after* it need to happen. The
+`On-chain bytes are this build` assertion still runs either way; skipping the
+upload is an optimisation, not a shortcut around the check.
+
+`Grow the program account` showing as skipped in that same run was correct, and
+worth noting because it looks like a symptom: an earlier attempt had already
+extended the account to 438,912, preflight saw the capacity, and the step did
+nothing. The extend is idempotent by construction.
+
 ## What would stop the sprint
 
 The standing rule from the challenge planning: if someone makes a serious run

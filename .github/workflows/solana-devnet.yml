@@ -187,12 +187,20 @@ jobs:
     needs: build
     if: github.event_name == 'workflow_dispatch' && inputs.deploy
     runs-on: ubuntu-latest
-    # A program upload over an endpoint that can take it is a couple of
-    # minutes. Twenty is generous, and cutting it there means a throttled run
-    # is reported while someone is still watching, instead of forty-five
-    # minutes later. The buffer reclaim below is `if: always()`, so a timeout
-    # gets its SOL back the same as a failure does.
-    timeout-minutes: 20
+    # This was 20, on the theory that "a program upload over an endpoint that
+    # can take it is a couple of minutes" and a throttled run should be
+    # reported while someone is still watching. The measurement says otherwise:
+    # the upload of this 428 KB binary takes **19 minutes 50 seconds**. The
+    # ceiling was set to the ordinary case, so the run was killed ten seconds
+    # after the upgrade landed on chain -- the deploy had actually SUCCEEDED,
+    # and every step after it was skipped, including the two that would have
+    # said so.
+    #
+    # A ceiling has to sit above the ordinary case by enough that crossing it
+    # means something is wrong. 45 does; 20 was the ordinary case wearing a
+    # limit's clothing. The buffer reclaim below is `if: always()`, so a
+    # timeout still returns its SOL.
+    timeout-minutes: 45
     environment: solana-devnet
     steps:
       - uses: actions/checkout@v4
@@ -345,6 +353,28 @@ jobs:
           fi
           echo "EXTEND_BY=$EXTRA" >> "$GITHUB_ENV"
 
+          # Is the chain already serving exactly these bytes? Then the upload
+          # is twenty minutes of re-sending what is already there. Skipping it
+          # makes a re-run a one-minute check instead of a repeat of the thing
+          # that just timed out — which matters most in the case that produced
+          # this step: a deploy that SUCCEEDED and was killed before it could
+          # report, leaving the verification and the happy path unrun.
+          NEED_DEPLOY=1
+          if [ -n "$HAVE" ] && [ "$EXTRA" -eq 0 ] &&
+             solana program dump --url "$SOLANA_RPC" "$PID" /tmp/onchain.so >/dev/null 2>&1; then
+            if [ "$(head -c "$LOCAL" /tmp/onchain.so | sha256sum | cut -d' ' -f1)" \
+               = "$(sha256sum target/deploy/handsel_market.so | cut -d' ' -f1)" ]; then
+              NEED_DEPLOY=0
+            fi
+          fi
+          rm -f /tmp/onchain.so
+          if [ "$NEED_DEPLOY" -eq 0 ]; then
+            say "deploy" "chain already has these bytes — skipping the upload"
+          else
+            say "deploy" "will upload $LOCAL bytes (about 20 minutes)"
+          fi
+          echo "NEED_DEPLOY=$NEED_DEPLOY" >> "$GITHUB_ENV"
+
           # Rent-exempt minimum is exactly (128 + data_len) * 6960 lamports —
           # 128 bytes of account overhead, 3480 lamports per byte-year, two
           # years. Computing it beats parsing `solana rent`, and it is the same
@@ -404,6 +434,7 @@ jobs:
           solana program show --url "$SOLANA_RPC" "$PID" | sed -n 's/^Data Length/now/p'
 
       - name: Deploy to devnet
+        if: env.NEED_DEPLOY != '0'
         working-directory: solana
         run: |
           # --use-rpc sends the write transactions through the RPC instead of
