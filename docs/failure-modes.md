@@ -1030,6 +1030,78 @@ documented, unauthenticated endpoint is a path.
 
 ---
 
+## 22. A score with no engine on it
+
+**Symptom.** None observed, and that is the entry. §20 changed the scoring
+formula — `dampen()` gained a zero anchor and started counting deliveries
+instead of attempts — and a one-job agent went from **673 to 394**. Both
+numbers are correct. Both are decimals in `agent.creditScore`. Nothing in the
+row, the table, or the page distinguishes them.
+
+**Root cause.** A credit score is an **aggregate**: many graded outcomes folded
+into one number by a formula. §20 recorded the narrow consequence — a persisted
+output needs a backfill when its formula changes — and treated the backfill as
+the fix. It is necessary and not sufficient, for a reason the narrow framing
+hides:
+
+> A backfill makes old rows *current*. It cannot make a historical score
+> *comparable*, and it destroys the record of what was believed at decision
+> time.
+
+A loan priced at 673 was priced at 673. Rewriting that row to 394 does not
+correct history, it deletes it — and the deletion is invisible, because the
+column looks the same before and after.
+
+The general rule is not this project's. It came out of the ERC-8183 thread
+(`docs/competitive-landscape.md`), where it was derived for reputation folds:
+
+> Any aggregate that can be consumed by a higher-order fold must itself remain
+> a first-class, **class-carrying**, independently recomputable object. Entries
+> decided under different pinned policy versions belong to different
+> comparability classes and must not be folded into one score silently.
+
+Every score this engine ever wrote was class-free. Ranking two of them, showing
+a trend line, or averaging them across agents was an operation on values from
+possibly-different engines, and nothing could have said which.
+
+**Fix.** `lib/credit-engine/version.ts` stamps `engine_version` on every row
+the engine writes, as `epoch@hash8`.
+
+**Derived, not declared**, and that is the load-bearing choice. A hand-kept
+`const VERSION = 3` fails the first time someone tunes a weight and forgets to
+bump it — which is this document's oldest shape wearing a new hat (**a check
+that cannot fail is not a check**). So the identifier hashes the tunables
+themselves: `GRADER_WEIGHTS`, the rating and risk bands, the exposure
+multipliers, the half-lives, the collateral multiple. Change a number that
+moves an output and the class changes, whether or not anyone remembered.
+
+It errs toward *false* class changes — reordering a table produces a new
+version without changing any score. Deliberate: a spurious class costs one
+comparison you could have made, a missed one silently compares two engines.
+
+`sameComparabilityClass(null, null)` is **false**. A row with no stamp is not
+comparable to another row with no stamp, because a missing version is a fact
+about *when the row was written*, never evidence that the engine was the same
+one. Reading it as "probably fine" is §12's mistake in a new place.
+
+The guard that makes the derivation trustworthy is a test that reads every
+`export const` out of `scoring.ts` and fails unless each is either in the
+hashed set or in a `NOT_TUNABLES` map **with a written reason** — so "add it to
+the ignore list" is never the path of least resistance.
+
+**What it unlocks.** Not just correctness — a choice that did not exist before.
+With the class recorded, `POST /api/admin/rescore` becomes optional rather than
+obligatory: old rows can be brought into the current class, or deliberately
+left in their own, because the number now says which question it answered.
+
+**Invariant this adds:** *an aggregate must carry the identity of the rule that
+produced it.* If two of its values can be compared, ranked, averaged or plotted
+together, something must be able to say whether that comparison is meaningful —
+and the thing that says it must not be a number a human has to remember to
+change.
+
+---
+
 ## Diagnostic surfaces
 
 Check these before reading code:
@@ -1103,3 +1175,8 @@ Keep these true, and this class of bug stays dead:
    output is persisted and read by a page needs a backfill shipped with the
    change — otherwise the deploy is half-applied and nothing says so, and the
    pages keep asserting what the code no longer computes (§20).
+21. **An aggregate must carry the identity of the rule that produced it.** If
+   two stored values can be compared, ranked, averaged or plotted together,
+   something must say whether that comparison is meaningful — derived from the
+   rule's own inputs, never from a version number somebody has to remember to
+   bump. An unstamped value is not comparable to another unstamped value (§22).
