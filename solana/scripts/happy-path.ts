@@ -228,6 +228,24 @@ async function main() {
   // ── 6. approve ─────────────────────────────────────────────────────────
   step(6, 'approve_job — pull-payment credit, no tokens move')
   const vaultBeforeApprove = await balance(vaultPda)
+  // Ledgers ACCUMULATE — `credit()` adds to whatever is already there, and a
+  // ledger that does not exist yet reads as zero rather than as an error.
+  //
+  // This is the difference between what the program guarantees and what the
+  // first version of this script asserted. The market's fee recipient is fixed
+  // at `init_market`, so on every run after the first its ledger already holds
+  // the previous run's fee: the second run credited another 80,000 onto 80,000
+  // and the absolute assertion called 160,000 wrong. It was not wrong. An
+  // absolute here is really an assertion that this is the first run — which
+  // this script's own header says it is not, because it adopts the existing
+  // market by design.
+  //
+  // The worker ledger passed only by luck: a fresh keypair each run means a
+  // fresh PDA. Both are deltas now, so both hold for the same reason.
+  const ledgerAmount = async (pda: PublicKey) =>
+    (await program.account.withdrawable.fetchNullable(pda))?.amount.toNumber() ?? 0
+  const workerOwedBefore = await ledgerAmount(workerLedger)
+  const feeOwedBefore = await ledgerAmount(feeLedger)
   await program.methods
     .approveJob()
     .accountsPartial({
@@ -243,19 +261,25 @@ async function main() {
 
   job = await program.account.job.fetch(jobPda)
   assert(Object.keys(job.status)[0] === 'completed', 'status != Completed')
-  const ledger = await program.account.withdrawable.fetch(workerLedger)
-  const feeOwed = await program.account.withdrawable.fetch(feeLedger)
+  const workerOwed = await ledgerAmount(workerLedger)
+  const feeOwed = await ledgerAmount(feeLedger)
   assert(
-    ledger.amount.toNumber() === BOUNTY + expectedBond,
-    `worker owed ${ledger.amount}, expected ${BOUNTY + expectedBond} (bounty + returned bond)`,
+    workerOwed - workerOwedBefore === BOUNTY + expectedBond,
+    `worker credited ${workerOwed - workerOwedBefore}, expected ${BOUNTY + expectedBond} (bounty + returned bond)`,
   )
-  assert(feeOwed.amount.toNumber() === expectedFee, `fee owed ${feeOwed.amount}, expected ${expectedFee}`)
+  assert(
+    feeOwed - feeOwedBefore === expectedFee,
+    `fee credited ${feeOwed - feeOwedBefore}, expected ${expectedFee}`,
+  )
   // Pull payments: settlement is bookkeeping. Nothing left the vault.
   assert(
     (await balance(vaultPda)) === vaultBeforeApprove,
     'vault balance changed on approve — settlement must credit, not transfer',
   )
-  console.log(`  ok — worker owed ${ledger.amount}, fee owed ${feeOwed.amount}, vault untouched`)
+  console.log(
+    `  ok — worker +${workerOwed - workerOwedBefore} (owed ${workerOwed}), ` +
+      `fee +${feeOwed - feeOwedBefore} (owed ${feeOwed}), vault untouched`,
+  )
 
   // ── 7. withdraw ────────────────────────────────────────────────────────
   step(7, 'withdraw — the only instruction that moves tokens out')
@@ -273,13 +297,17 @@ async function main() {
     .rpc()
 
   const workerFinal = await balance(workerAta.address)
+  // Withdraw drains the WHOLE ledger, so the net is anything it was already
+  // owed plus this job's bounty. The bond nets out: staked at accept, credited
+  // back at approve. With a fresh worker each run `workerOwedBefore` is zero,
+  // and writing it out anyway is what keeps that a fact rather than a premise.
+  const expectedNet = workerOwedBefore + BOUNTY
   assert(
-    workerFinal - workerBefore === BOUNTY,
-    `worker net ${workerFinal - workerBefore}, expected +${BOUNTY} (bond staked then returned)`,
+    workerFinal - workerBefore === expectedNet,
+    `worker net ${workerFinal - workerBefore}, expected +${expectedNet} (bond staked then returned)`,
   )
-  const drained = await program.account.withdrawable.fetch(workerLedger)
-  assert(drained.amount.toNumber() === 0, 'ledger must be zeroed by withdraw')
-  console.log(`  ok — worker net +${BOUNTY}, ledger zeroed`)
+  assert((await ledgerAmount(workerLedger)) === 0, 'ledger must be zeroed by withdraw')
+  console.log(`  ok — worker net +${expectedNet}, ledger zeroed`)
 
   // ── 8. solvency ────────────────────────────────────────────────────────
   step(8, 'solvency')

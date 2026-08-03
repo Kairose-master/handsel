@@ -505,6 +505,45 @@ in this case was an ephemeral test keypair. The money is test-mint tokens and
 the solvency invariant still holds, which is the point: the market can say what
 it owes and prove it holds it.
 
+### The first honest red, and it was the test that was wrong
+
+With the ceiling raised the deploy finished inside it, the byte check passed,
+and the happy path ran through post → accept → submit → **and stopped**:
+
+```
+[6] approve_job — pull-payment credit, no tokens move
+Error: ASSERTION FAILED: fee owed 160000, expected 80000
+```
+
+`set -o pipefail` earned its comment: a script that threw produced a red run
+instead of a green one. But the program is right and the assertion was wrong.
+`credit()` **adds** to a ledger, and the market's fee recipient is fixed at
+`init_market` — so on the second run its ledger already held the first run's
+80,000, and settlement correctly added another. 160,000 is the right answer.
+
+An absolute assertion on an accumulating ledger is really an assertion that
+this is the first run, which this script's own header denies: it adopts the
+existing market by design. Both ledger assertions are deltas now. The worker's
+had been passing by luck — a fresh keypair each run means a fresh PDA — and
+now it passes for the same reason as the fee's.
+
+The chain verifier read the aftermath in one second and confirmed the diagnosis
+before a line was changed:
+
+```
+market   jobs 2 · escrowed 0 · withdrawable 2320000
+  job #0  Completed   job #1  Completed
+  ledger GLPR6K…zKqN  owed 1080000     ← run 1's worker
+  ledger DmpJvW…Y5NA  owed  160000     ← the fee recipient, twice
+  ledger H5uSqE…Gf8q  owed 1080000     ← run 2's worker
+→ chain agrees with itself.
+```
+
+Which is the tool doing exactly what it was built for the day before: turning
+"is CI lying?" from an hour of hand-decoding into one command. The money loop
+is now proven through approve on the fixed program; `withdraw` is the one step
+still unrun.
+
 ## What would stop the sprint
 
 The standing rule from the challenge planning: if someone makes a serious run
