@@ -73,6 +73,20 @@ engagement. So the canary is returned once, at engagement creation, and is not
 recoverable. If you lose that response, open a new engagement. A test pins that
 the objective type has nowhere to put a plaintext canary.
 
+### Where the canary is planted
+
+For an **external origin**, the owner plants it — a string in a system prompt, a
+private document, a tool's return value — and we genuinely never hold it.
+
+For a **platform agent**, the engagement route plants it into that agent's
+`customInstructions` for you, because the agent's private context *is* this
+database. State the consequence plainly rather than hide behind the fingerprint:
+for a platform-agent target the canary does live in our DB, because the target
+does. Breach the agent row and you have the secret. That is not true of the
+external-origin case, and the difference is real.
+
+Not built: removing a planted canary when an engagement closes.
+
 ## Attested signals
 
 The target's instrumentation signs a message bound to the engagement and the
