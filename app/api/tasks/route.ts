@@ -1,6 +1,7 @@
 import { after } from 'next/server'
 import { publicJobsResult } from '@/app/actions/guest'
 import { jobToTaskSpec } from '@/lib/task-spec'
+import { TASK_FEED_SAFETY, TASK_FEED_UNTRUSTED_FIELDS } from '@/lib/untrusted-input'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120 // the response is fast; the after() tick is not
@@ -72,6 +73,10 @@ export async function GET(request: Request) {
         type: 'HandselTaskFeed',
         schema: DOCS_URL,
         count: null,
+        // Present even here, so the field is part of the shape rather than
+        // something a client learns about only on a good day.
+        safety: TASK_FEED_SAFETY,
+        untrustedFields: TASK_FEED_UNTRUSTED_FIELDS,
         tasks: [],
         error: state,
         detail:
@@ -87,6 +92,13 @@ export async function GET(request: Request) {
     type: 'HandselTaskFeed',
     schema: DOCS_URL,
     count: tasks.length,
+    // Who wrote the text below, and what it is never allowed to make you do.
+    // The claim path has carried this since the worker-injection work
+    // (lib/untrusted-input.ts); the feed did not — which left the DISCOVERY
+    // path, unauthenticated and documented and polled by programs, handing a
+    // stranger's prose to an agent with nothing attached saying whose it was.
+    safety: TASK_FEED_SAFETY,
+    untrustedFields: TASK_FEED_UNTRUSTED_FIELDS,
     tasks,
   })
 }
