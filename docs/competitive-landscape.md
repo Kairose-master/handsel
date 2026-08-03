@@ -378,7 +378,8 @@ Not in the July pass. Positioned as credit infrastructure for agents.
 | Model | Recursive Bayesian, updated per task | Rule-based + sample-size damping (`lib/credit-engine/scoring.ts`) |
 | Lending | Collateralized, per-task escrow vault | Collateralized, draw against posted USDC |
 | Lender side | Bilateral lines; the funding lender bears the default | **Not built** — nothing consumes `advanceLimit` |
-| Formal verification | 8 contracts, Certora | Slither + Mythril, dispositioned |
+| Contracts on Base | **8, verified deployed** (`eth_getCode`, 2026-08-03) | `LaborMarketV2` + registry |
+| Formal verification | halmos (path in their bundle); *Certora* is the article's word and is unconfirmed | Slither + Mythril, dispositioned |
 | Usage published | none found | 17 agents, $0.06 credit line |
 | Sybil | not addressed in the source | `docs/self-sybil.md`, unsolved |
 
@@ -405,12 +406,49 @@ forged score buys a credit line, but funds only ever land in a vault an
 evaluator releases. Worth borrowing the thinking from even while the
 portable-score half looks exposed.
 
-**Ahead of us:** the lender side exists, Certora beats Slither+Mythril, and
+**Ahead of us:** the lender side exists, symbolic execution (halmos) beats
+Slither+Mythril, and
 they have a capital-attraction path (published staking APY). **Behind us:** no
 published usage, and no public accounting of what their evaluator network
 costs in trust — every project here relocates trust to an evaluator, and this
 is still the only one that shows the invoice (`GRADER_WEIGHTS`, and the hole
 in it).
+
+### Correction, same day: I checked, and my scepticism was wrong
+
+The section above was written from one article, and I flagged the risk that
+finbold runs placed content and that Kojiru might be pre-launch marketing.
+That was wrong, and the correction belongs next to the claim rather than in a
+changelog.
+
+Checked directly, 2026-08-03:
+
+- **kojiru.com is live** — a Base miniapp (Farcaster frame metadata, Base
+  `app_id`).
+- **Eight contracts are deployed on Base mainnet.** Addresses lifted from
+  their production JS bundle and each confirmed with `eth_getCode` against
+  `mainnet.base.org`: seven with 5–10 KB of bytecode, one small (proxy-shaped).
+  None respond to `name()`/`symbol()`, so they are protocol contracts rather
+  than a token. **The "8 contracts" claim is real**, and the count matches.
+- **Formal verification is real but differently named.** Their bundle
+  references `contracts/formal-verification/halmos/`. halmos is symbolic
+  execution, not Certora; the article says Certora. Recorded as halmos with
+  the discrepancy noted, because guessing which one is right would repeat the
+  mistake this correction exists for.
+- **The GitHub repo their own bundle links to is not publicly reachable.**
+  `github.com/faulknerwayne73-droid/kojiru-platform` returns 404 through one
+  fetch path and 403 through another, and is not in search indexes. Either
+  private or gone — while shipping in production JS either way. So the outreach
+  route is email (`wayne@kojiru.com`, `security@kojiru.com`), not an issue.
+
+What this changes about the assessment: **the biggest claim checked out.**
+"Usage published: none found" still stands — contracts deployed is not
+activity, and no agent count or volume was published. But "deployed on Base
+mainnet" is now verified rather than reported, and it was the load-bearing one.
+
+Worth keeping as a method note: the check that settled it was `eth_getCode`
+against the chain, not more reading. Same instinct as `npm run verify:solana`
+— when a claim is about a chain, the chain is cheaper to ask than the internet.
 
 ## The Agentcoin question
 
