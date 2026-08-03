@@ -453,6 +453,107 @@ Worth keeping as a method note: the check that settled it was `eth_getCode`
 against the chain, not more reading. Same instinct as `npm run verify:solana`
 — when a claim is about a chain, the chain is cheaper to ask than the internet.
 
+### Catching up: what the 8183 thread is actually building
+
+*Read #300–#358 on 2026-08-03. The first pass read page 1 (20 posts of 358) and
+drew conclusions from it, which is how the correction below happened. Recorded
+because "I read the thread" and "I read the first page" are different claims and
+only one of them was true.*
+
+**Correction: the worker bond is not ours alone.** The previous section framed
+provider collateral as the thing 8183 cannot see and implied it was distinctive.
+It is under active discussion — @honeytones opened it at #341 (*"the client
+funds everything and the provider risks nothing"*), @pipavlo82 agreed at #343
+that it should not be ruled out, and #348 mentions `workerbond 6 added in v2` in
+a shipped storage layout. At least one other implementation already has it. What
+is still ours to contribute is the *numbers* (5% + $0.03, slashed on
+abandonment, live) and the observation that a bond changes **who shows up**
+rather than improving work quality — not the idea.
+
+**The digest chain, and a correction to what `reason` is for.** #301–#316
+converge on `commitmentHash → verificationDigest → job.reason`, with ERC-8274
+(*AI Inference Proof Verification Interfaces*, PR #1771 on `ethereum/ERCs`)
+defining `IAgentVerifier.verify()` as the producer. The requirement they settled
+on is that `reason` be **deterministic and independently recomputable** from the
+task and agent identifiers — explicitly *not* an opaque blob.
+
+That kills an idea from the previous pass. It suggested `reason` was "where the
+work proof CID goes". A CID is a **pointer**, not a recomputation: an observer
+holding one must fetch something and trust whoever serves it. The thread's
+direction is strictly better and we should follow it rather than the standard
+following us.
+
+**`IAgentVerifiable`, soft declaration** (#309–#312): the settlement contract
+exposes `getAgentVerifier()`, resolved at settlement time; the registry handles
+staking and slashing and never learns verifier addresses. The reasoning — that
+coupling verifier registration to staking makes every new verifier type a
+registry upgrade — is worth keeping whatever we do with 8183.
+
+### Two things worth taking, from #320–#340
+
+Both are ours already, arrived at from a different direction and named better.
+Adopting the vocabulary is cheap and adopting the sharper version of an argument
+you already hold is the whole point of reading other people's threads.
+
+**1. "Stake, not truth."** #321–#322 draw the line between what re-derives and
+what does not: the settlement fact recomputes from chain, the evaluator's
+compliance ratio does not — *"it is an evaluator's commitment that money moved
+on it, non-repudiable, not correct."*
+
+That is `docs/product-thesis.md`'s argument — *"a signed proof verifies
+provenance, not quality... verifiability relocates trust to the grader set"* —
+in four words. Take the phrasing.
+
+**2. "A timing state must never collapse into a validity state."** #324–#325.
+not-yet-committed is a fact about *when you looked*; not-admitted is a fact
+about *whether the record is real*. @pipavlo82's note at #325 is the part that
+stings: he had been deriving it case by case — *stale versus rejected,
+not-yet-committed versus not-admitted, could-not-check versus did-not-match*.
+
+**So have we, everywhere, for months, without ever naming it:**
+
+| Where | The case |
+|---|---|
+| `GET /api/tasks` 503 | "no open jobs" vs "I could not read the market" |
+| `checkMarketInvariants` | an unread vault balance fails the solvency check rather than passing it |
+| `/challenge` read state | `ok` / `unconfigured` / `unreachable` |
+| `readJobsOrUnknown` | the three-valued read the two-valued one replaced |
+| `failure-modes.md` §12 | `catch(() => [])` — when "I can't see" becomes "there's nothing there" |
+| `decodeJobAccount` | an unknown status variant returns null instead of a guess |
+
+Six independent instances of one invariant, each fixed on its own. That is the
+argument for adopting the sentence: the next instance gets recognised before it
+ships instead of after.
+
+### The one that bites: scores have no comparability class
+
+#338–#340 close the loop with a rule about aggregates:
+
+> Any aggregate that can be consumed by a higher-order fold must itself remain a
+> first-class, class-carrying, independently recomputable object, with its
+> inclusion set and pre-aggregation breakdown preserved.
+
+Applied to reputation (#329): entries decided under different pinned policy
+versions belong to **different comparability classes and must not be folded into
+one score silently.**
+
+**The credit score is a fold, and it carries no class.** `agent.creditScore` is
+a bare decimal; `credit_scores` rows carry a `calculationReason` string and no
+engine version. And this is not hypothetical — the scoring engine changed this
+week. Anchoring `dampen()` at 0 and counting deliveries rather than attempts
+moved a one-job agent from 673 to 394. Both numbers can sit in that column, both
+render identically on a public page, and nothing distinguishes them.
+
+`failure-modes.md` §20 already recorded the narrower version — *changing a
+formula does not change stored results*, fixed with a backfill endpoint. The
+thread's rule is stronger and the difference matters: a backfill makes old rows
+current, but it cannot make a **historical** score comparable, and it silently
+destroys the record of what was believed at decision time. A stamped engine
+version fixes both, and it is one column.
+
+That is the most actionable thing this landscape pass produced, and it came from
+a thread about something else.
+
 ## The Agentcoin question
 
 A collaboration thesis arrived with the summary: mining as the currency layer,
