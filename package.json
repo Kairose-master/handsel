@@ -14,7 +14,8 @@
     "i18n:check": "node scripts/translate-dict.mjs --check",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "verify:solana": "node scripts/verify-solana-chain.mjs"
+    "verify:solana": "node scripts/verify-solana-chain.mjs",
+    "redteam:e2e": "tsx scripts/redteam-e2e.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.111.0",

@@ -81,6 +81,16 @@ describe('the scope key — what a proof can actually cover', () => {
     expect(redTeamTargetKey({ kind: 'platform-agent', agentId: '  ' })).toBeNull()
   })
 
+  it('refuses localhost and private hosts, and this is NOT a dev-convenience bug', () => {
+    // The tempting "fix" is to allow http on localhost so an owner can verify a
+    // dev server. That inverts who is being proven: WE fetch the URL, so
+    // http://localhost is OUR loopback, not theirs — it would prove nothing
+    // about the caller and would point our own fetcher at our own infra.
+    // A dev origin simply cannot be red-teamed, and that is the correct answer.
+    expect(redTeamTargetKey({ kind: 'endpoint', url: 'http://localhost:3000' })).toBeNull()
+    expect(redTeamTargetKey({ kind: 'endpoint', url: 'http://127.0.0.1:3000' })).toBeNull()
+  })
+
   it('keeps ports distinct — a different port is a different origin', () => {
     expect(redTeamTargetKey({ kind: 'endpoint', url: 'https://a.example:8443' })).not.toBe(
       redTeamTargetKey({ kind: 'endpoint', url: 'https://a.example' }),

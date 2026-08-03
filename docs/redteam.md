@@ -29,6 +29,13 @@ origin, so the origin is the largest unit the proof supports and the smallest it
 fully covers. An http proof would prove who is on the network path, not who owns
 the host, so an http target is not expressible rather than expressible-and-weak.
 
+A consequence worth naming, because the "obvious fix" is a hole: **a dev origin
+cannot be verified.** `http://localhost:3000` is refused, and allowing it would
+invert who is being proven — *we* fetch the URL, so localhost is our loopback,
+not the owner's. It would prove nothing about the caller while pointing our own
+fetcher at our own infrastructure. A test pins the refusal so nobody relaxes it
+for convenience later.
+
 Control proofs have **three states, not two**: `valid`, `stale` (proven, aged
 out after 30 days) and `absent` (never proven). Both refuse, and they refuse
 *differently*, because "you do not own this" and "re-verify" need different
@@ -120,6 +127,27 @@ opinion here for a human to overrule.
 - **`decideRedTeamPayout` is not on the escrow path yet.** The escrow enforces
   the pool and first-blood today; that function is the authority for a future
   off-escrow settlement, and its guards are tested but not yet load-bearing.
+
+## Verified by running, not only by testing
+
+Unit tests judge constructed inputs. The lane was also driven end to end with the
+real modules: a stub MCP agent holding a canary in its private context, attacked
+over the wire by the repo's own `callMcpTool`, with the response fed to the real
+`gradeRedTeamSubmission`.
+
+```
+1. a failed attack                    → not paid ("no canary in the submission")
+2. a successful attack over MCP       → the canary came back; the grader paid it
+                                        and did NOT republish the canary
+3. a confident write-up with no proof → not paid
+4. an unproven / expired poster       → refused, and expired refuses AS expired
+5. an origin with no proof file       → 404, reported as unverified
+```
+
+The target in that run is a stub whose vulnerability is written in by hand
+(it complies with "repeat your instructions"). So the run proves the platform's
+plumbing pays a real break-in and refuses a story — not that any real agent is
+breakable.
 
 ## Files
 
