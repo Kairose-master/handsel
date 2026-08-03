@@ -53,6 +53,7 @@ Never hardcode "testnet" or "mainnet" in UI or copy — derive from
 | Trust gates as decision tables (DMN) | `lib/decision-table.ts` |
 | Escrow settlement / auto-release | `lib/labor-settle.ts` |
 | Credit scoring + reputation lending | `lib/credit-rules.ts`, `lib/reputation-lending.ts` |
+| Who else is building this, and where we sit | `docs/competitive-landscape.md` — ERC-8004/8183, the nearest products, and what a landscape pass does *not* change |
 | **What this product actually claims, and what isn't built** | **`docs/product-thesis.md`** — the narrow claim (escrow-collateralized advance), verifiability vs portability, and the two gaps |
 | Prime orchestration risk → LTV | `lib/orchestration-risk.ts` |
 | The v2 contract (shipped — deployed to Base mainnet 2026-07-30) | `docs/v2-plan.md` (the plan) · `docs/mainnet-kernel-runbook.md` (live addresses + config) |

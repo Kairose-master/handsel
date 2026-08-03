@@ -277,3 +277,177 @@ Bot marketplace listing; algora.io; the GitHub blog post on assigning issues
 to the Copilot coding agent. Everything attributed to a competitor here is
 from public material — where I am inferring rather than reporting, the text
 says so.*
+
+
+---
+
+# Second pass, 2026-08-03
+
+*Prompted by a landscape summary that arrived from outside. Roughly half
+survived checking, and the half that did not is the more useful half. Every
+project below was confirmed to exist before being written down; the two EIPs
+were read from the spec text rather than from commentary; single-source claims
+are marked as reported rather than verified.*
+
+## The framing this pass corrects
+
+The July version leads with the wedge as *"credit underwriting"*. That is the
+phrase `docs/product-thesis.md` — written a few days later, after an outside
+critique — explicitly rejects:
+
+> *Not "credit for AI agents". That phrase is **true and useless**: it
+> describes a market that mostly does not exist in 2026, and it buries the one
+> case here that is real and checkable.*
+
+The defensible claim is narrower: **an escrow-collateralized advance to a
+prime contractor, where the score prices execution risk and therefore sets
+LTV.** Nothing in the table below is making that claim. The broad one, several
+of them are.
+
+## ERC-8183 — the standard that arrived on top of what we built
+
+New since the July pass, and the more consequential of the two EIPs.
+Virtuals Protocol with the Ethereum Foundation. It standardises the **Job
+primitive**: client, provider, evaluator, escrowed budget, lifecycle
+`Open → Funded → Submitted → {Completed, Rejected, Expired}`, evaluator alone
+may complete. ([EIP-8183](https://eips.ethereum.org/EIPS/eip-8183) ·
+[context](https://cryptobriefing.com/erc-8183-virtuals-protocol-ethereum-ai-agent-commerce/))
+
+That is LaborMarketV2's shape. Which is not a threat to anything the thesis
+claims — *"the asset is the ledger, not the score"* — and is a reason to speak
+the vocabulary instead of competing with it.
+
+`lib/onchain/erc8183.ts` is the projection, with the gap analysis in its
+header. The summary:
+
+| | Cost |
+|---|---|
+| **V2 → 8183** (export) | A pure function. Every V2 job projects into an 8183 state. Shipped. |
+| **8183 → V2** (conform inbound) | A new contract. 8183 has the client *assign* a provider; this market has the worker *claim* one, behind a credit gate, staking a bond. That is the mechanism, not the interface. |
+
+Three things the standard cannot represent, which the projection reports
+rather than drops:
+
+- **The worker bond.** 8183 has no state between funded and submitted, because
+  its model is procurement — the client picks the provider, so nothing needs to
+  make claiming costly. The bond is this market's Sybil resistance on the
+  supply side, and it is invisible in 8183.
+- **The dispute process.** `Disputed` projects to `Submitted`, which is the
+  right lifecycle position (delivered, evaluator has not ruled) and loses the
+  procedure.
+- **The word *Expired*.** 8183 means "refunded to the client after timeout".
+  V2 means "settled by a deadline with no verdict", and `expireReview` pays the
+  **worker**. Same word, opposite settlement.
+
+## ERC-8004 — the July call now has evidence
+
+July called 8004 "the most important thing on this page" and treated
+portability as the arriving tailwind. `docs/product-thesis.md` then argued the
+opposite from first principles:
+
+> *If identity is free, a portable reputation is **portable for the forger
+> too**. Portability and Sybil resistance are not two problems. They are one
+> problem, and portability makes it worse.*
+
+An empirical study of the deployed 8004 ecosystem has since found a
+substantial share of registered agents inactive or non-functional, and named
+**reputation gaming and Sybil attacks** as the critical vulnerabilities —
+concluding that *"decentralized verification mechanisms alone may prove
+insufficient"*. ([arXiv 2606.26028](https://arxiv.org/abs/2606.26028))
+
+Prediction and measurement agree. Two cautions on using that:
+
+1. The paper says the ecosystem is gameable, **not that anyone solved it**.
+   Handsel has not. `docs/self-sybil.md` is an admission, not a defence.
+2. The July claim that standards are "arriving exactly when we would need
+   portability" now reads as the wrong wish. What is arriving is the surface
+   this project decided not to build on, and being right about that is worth
+   more than the interop would have been.
+
+## Kojiru — the nearest product, and closer than expected
+
+Not in the July pass. Positioned as credit infrastructure for agents.
+([source](https://finbold.com/fico-was-built-in-1989-ai-agents-need-a-score-for-2026/)
+— one article, so details are reported rather than verified)
+
+| | Kojiru | Handsel |
+|---|---|---|
+| Chain | Base mainnet | Base mainnet |
+| Score range | 300–850 | 300–850 |
+| Primary axis | *Operational Integrity* — probability of successful task completion | Execution risk, from graded outcomes |
+| Model | Recursive Bayesian, updated per task | Rule-based + sample-size damping (`lib/credit-engine/scoring.ts`) |
+| Lending | Collateralized, per-task escrow vault | Collateralized, draw against posted USDC |
+| Lender side | Bilateral lines; the funding lender bears the default | **Not built** — nothing consumes `advanceLimit` |
+| Formal verification | 8 contracts, Certora | Slither + Mythril, dispositioned |
+| Usage published | none found | 17 agents, $0.06 credit line |
+| Sybil | not addressed in the source | `docs/self-sybil.md`, unsolved |
+
+**The core insight converged.** Kojiru's first axis is *probability of
+successful task completion*; the thesis independently reached *"execution risk
+is what a record of graded outcomes actually measures"*. Two teams landing in
+the same place is evidence the place is right.
+
+**Both are collateralized, and that is the sharp observation.** Kojiru's
+capital flows into a vault tied to one task and releases on evaluator
+confirmation; the agent never holds general funds. So the thesis's own line
+applies to them at full strength:
+
+> *A loan against observable collateral does not need a credit score — it needs
+> an escrow lookup.*
+
+Two agent-credit protocols on Base both quietly collateralize everything, and
+both therefore have a score doing less work than the pitch implies. The
+difference is not architectural — **one of us wrote it down.** That comparison
+is only usable because it is self-implicating first.
+
+**Their per-task escrow is itself a partial Sybil answer**, and a good one: a
+forged score buys a credit line, but funds only ever land in a vault an
+evaluator releases. Worth borrowing the thinking from even while the
+portable-score half looks exposed.
+
+**Ahead of us:** the lender side exists, Certora beats Slither+Mythril, and
+they have a capital-attraction path (published staking APY). **Behind us:** no
+published usage, and no public accounting of what their evaluator network
+costs in trust — every project here relocates trust to an evaluator, and this
+is still the only one that shows the invoice (`GRADER_WEIGHTS`, and the hole
+in it).
+
+## The Agentcoin question
+
+A collaboration thesis arrived with the summary: mining as the currency layer,
+Handsel as the labour layer, five integration points. Two of them are opposite
+in quality.
+
+**Staked tokens as collateral — sound.** Observable collateral needs a lookup,
+not a score, and this plugs into a mechanism that exists.
+
+**Mining history as a credit signal — unsound**, and not for the usual reason.
+The objection is not that the trust models differ and weights need tuning. The
+two measure **different quantities**: proof-of-work proves *compute spent*, and
+the score exists to price *execution risk*. An agent with a flawless mining
+record has demonstrated nothing about finishing a job. In `GRADER_WEIGHTS` it
+would be a ruler in a table of thermometers.
+
+One honest use, and it is the more valuable one:
+
+> Mining history as a **cost-to-forge signal**, not a competence signal.
+
+What proof-of-work genuinely establishes is that an identity cost money — which
+is Sybil resistance, the hole both the arXiv study and this project's own
+thesis point at. It even fixes cold start honestly: not *"this agent is good"*
+but *"this agent is expensive to throw away and remake"*.
+
+## What this pass changes
+
+Nothing about what to build next, which is the right outcome for a landscape
+document and the reason to distrust one that concludes otherwise. Three
+smaller things:
+
+1. **Speak ERC-8183** — the projection exists; use its vocabulary.
+2. **Stop saying "credit for AI agents"** — the field says it, it is true and
+   useless, and the narrow claim is the only defensible one.
+3. **The lender side is the real gap**, and a competitor shipping it first is
+   the concrete version of the thesis's own "not built" list.
+
+*Unverified, listed so the next pass knows where to start: AgentKarma, iAgentFi,
+ChainAware, Kustodia, RIP-302, AI Lance, AGIJobManager, OKX AI.*
