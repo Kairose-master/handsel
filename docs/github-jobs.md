@@ -118,14 +118,30 @@ unconfigured App, an uninstalled App, or GitHub being down is **ours**
 Create at github.com/settings/apps → New GitHub App:
 
 - **Permissions:** Contents: Read & write (branches) · Pull requests:
-  Read & write · Checks: Read · Metadata: Read. Nothing else.
+  Read & write · **Issues: Read & write** · Checks: Read · Metadata: Read.
+  Nothing else.
+
+  Issues is not optional, and this list said it was. The label bot's entire
+  input is the `issues` webhook and its only output is a comment on the issue,
+  so an App configured from the old list installs cleanly, reports no error,
+  and simply never fires — the flagship "label an issue, get a job" flow
+  silently does nothing. Commenting on a *pull request* goes through the same
+  `/issues/{n}/comments` endpoint but is granted by Pull requests, which is how
+  a gap this size survived a path that was tested end to end.
+
+  `/doctor` catches both this and the event subscription (`issues-permission`,
+  `app-events`), so run it right after saving the App — it is faster than
+  wondering why a labelled issue did nothing.
 - **Webhook:** `https://handsel-main.vercel.app/api/github/webhook`
   (use your own deployment's host),
   secret minted and set as `GITHUB_WEBHOOK_SECRET` (or `github_webhook_secret`
   in `platform_secrets`). The private key goes in `GITHUB_APP_PRIVATE_KEY`
   **including** its `-----BEGIN/END RSA PRIVATE KEY-----` lines; it never
   belongs in the repo.
-- **Events:** Pull request, Check suite, Check run.
+- **Events:** Pull request, Check suite, Check run, **Issues**. Same trap as
+  the permission above: without the Issues event the bot is deaf and GitHub
+  reports nothing. Event subscriptions need no installation re-approval, so
+  this one is cheap to fix later — the permission is not.
 - **Callback URL:** `https://handsel-main.vercel.app/api/github/oauth/callback`
   (again, your own deployment's host),
   plus a generated client secret in `GITHUB_CLIENT_SECRET` and the client id
