@@ -81,17 +81,28 @@ export async function settleLaborMarketJob(agentTaskId: string, output: string):
   const isRepoJob = Boolean(spec.repoFullName)
   const isImageJob = spec.deliverableKind === 'image'
   const isAudioJob = spec.deliverableKind === 'audio' && Boolean(spec.acceptanceCriteria?.trim())
+  // A red-team job carries its objective on the spec, and that marker outranks
+  // every other route: the objective IS the acceptance criterion, so sending
+  // this submission to an LLM reviewer would replace a hash comparison with an
+  // opinion — and the party writing the submission is the party being judged.
+  const redteamMarker = spec.redteamObjective ?? null
   const isLlmGradableText =
+    !redteamMarker &&
     !spec.testCode &&
     !testSuiteSpec &&
     !isRepoJob &&
     !isImageJob &&
     (spec.deliverableKind ?? 'text') === 'text' &&
     Boolean(spec.acceptanceCriteria?.trim())
-  if (!spec.testCode && !testSuiteSpec && !isRepoJob && !isImageJob && !isAudioJob && !isLlmGradableText) return null
+  if (!redteamMarker && !spec.testCode && !testSuiteSpec && !isRepoJob && !isImageJob && !isAudioJob && !isLlmGradableText) {
+    return null
+  }
   try {
     let grade: { passed: boolean | null; output: string; gradedAt: string }
-    if (isRepoJob) {
+    if (redteamMarker) {
+      const { gradeRedTeamSubmission } = await import('@/lib/redteam-grade')
+      grade = await gradeRedTeamSubmission(redteamMarker, output)
+    } else if (isRepoJob) {
       // GitHub repo job: the deliverable is a diff. Opening the PR is where
       // grading STARTS — the requester's CI writes the verdict later, via
       // /api/github/webhook. Only a bad diff fails here and now.

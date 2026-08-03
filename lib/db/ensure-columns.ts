@@ -27,6 +27,7 @@ import { pool } from '@/lib/db'
  *  scripts/migrate.mjs — this is a safety net, not the source of truth. */
 const JOB_SPEC_ADDITIONS = [
   'ALTER TABLE job_specs ADD COLUMN IF NOT EXISTS ci_check_signature text',
+  'ALTER TABLE job_specs ADD COLUMN IF NOT EXISTS redteam_objective jsonb',
   'ALTER TABLE job_specs ADD COLUMN IF NOT EXISTS repo_full_name text',
   'ALTER TABLE job_specs ADD COLUMN IF NOT EXISTS base_branch text',
   'ALTER TABLE job_specs ADD COLUMN IF NOT EXISTS pr_number integer',
@@ -65,6 +66,22 @@ const CI_BOUNTY_ADDITIONS = [
   )`,
 ]
 
+/** Origin-control proofs for the red-team lane (lib/redteam.ts). `verified_at`
+ *  is nullable because an issued-but-unanswered challenge is a real state, not
+ *  a missing row. The unique index is on (target_key, user_id): two accounts may
+ *  each hold a challenge for the same origin, but neither gets two. */
+const REDTEAM_ADDITIONS = [
+  `CREATE TABLE IF NOT EXISTS redteam_origin_proofs (
+    target_key text NOT NULL,
+    user_id text NOT NULL,
+    nonce text NOT NULL,
+    verified_at timestamptz,
+    issued_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS redteam_origin_proofs_target_user
+     ON redteam_origin_proofs (target_key, user_id)`,
+]
+
 /** The comparability class of a stored score (lib/credit-engine/version.ts).
  *  Nullable on purpose — rows written before the stamp existed have no honest
  *  value, and null is the honest one. */
@@ -76,6 +93,7 @@ let inFlight: Promise<void> | null = null
 let creditTxInFlight: Promise<void> | null = null
 let creditScoreInFlight: Promise<void> | null = null
 let ciBountyInFlight: Promise<void> | null = null
+let redteamInFlight: Promise<void> | null = null
 
 /**
  * Ensure job_specs has every column the running schema declares. Memoized per
@@ -148,4 +166,21 @@ export function ensureCiBountyTable(): Promise<void> {
     })()
   }
   return ciBountyInFlight
+}
+
+/** Create the red-team origin-proof table on first use. Called from the
+ *  verification API and from engagement creation. */
+export function ensureRedteamTables(): Promise<void> {
+  if (!redteamInFlight) {
+    redteamInFlight = (async () => {
+      for (const statement of REDTEAM_ADDITIONS) {
+        try {
+          await pool.query(statement)
+        } catch (error) {
+          console.error('[ensure-columns]', statement.slice(0, 60), error)
+        }
+      }
+    })()
+  }
+  return redteamInFlight
 }

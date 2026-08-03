@@ -1,4 +1,5 @@
 import { pgTable, text, timestamp, boolean, decimal, integer, jsonb, primaryKey, index } from 'drizzle-orm/pg-core'
+import type { RedTeamObjective } from '@/lib/redteam'
 
 // Better Auth Tables
 export const user = pgTable('user', {
@@ -195,6 +196,23 @@ export const ciBountyPolicy = pgTable('ci_bounty_policies', {
   enabled: boolean('enabled').notNull().default(true),
   createdBy: text('created_by'), // userId who set it
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+/**
+ * redteam_origin_proofs — proof that an account controls an https origin, and
+ * may therefore authorise attacks against it (lib/redteam.ts).
+ *
+ * `verifiedAt` is nullable ON PURPOSE. A row with a nonce and no timestamp is a
+ * challenge that was issued and never answered — a different fact from "verified
+ * a long time ago". Both refuse an engagement; they refuse it differently, and
+ * the schema has to be able to tell them apart or the code above it cannot.
+ */
+export const redteamOriginProof = pgTable('redteam_origin_proofs', {
+  targetKey: text('target_key').notNull(), // 'endpoint:https://host[:port]'
+  userId: text('user_id').notNull(),
+  nonce: text('nonce').notNull(),
+  verifiedAt: timestamp('verified_at', { withTimezone: true }),
+  issuedAt: timestamp('issued_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
 export const creditRatingRule = pgTable('credit_rating_rules', {
@@ -531,6 +549,15 @@ export const jobSpec = pgTable('job_specs', {
   // is ciFailureSignature() — the dedup key ("one red check is one job") and
   // the marker that makes daily spend countable per repo.
   ciCheckSignature: text('ci_check_signature'),
+  // Red-team lane: the objective this job pays for (lib/redteam.ts). Present
+  // ONLY on jobs minted by an authorised engagement, and its presence is what
+  // routes grading to the deterministic canary/attestation judge instead of an
+  // LLM. It holds a canary FINGERPRINT, never a canary.
+  redteamObjective: jsonb('redteam_objective').$type<{
+    engagementId: string
+    targetKey: string
+    objective: RedTeamObjective
+  }>(),
   // Rising-price (Dutch auction) plan for an unclaimed job: PricingPlan from
   // lib/market-price.ts, or null for an ordinary fixed-price job. The CURRENT
   // price is never stored here — it is always the live on-chain bounty, since
