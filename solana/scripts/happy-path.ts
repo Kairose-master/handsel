@@ -20,6 +20,7 @@
 import * as anchor from '@coral-xyz/anchor'
 import { BN, Program } from '@coral-xyz/anchor'
 import {
+  Connection,
   Keypair,
   LAMPORTS_PER_SOL,
   PublicKey,
@@ -61,7 +62,27 @@ function step(n: number, msg: string) {
 }
 
 async function main() {
-  const provider = anchor.AnchorProvider.env()
+  // `confirmed`, not Anchor's default `processed`, and it is load-bearing.
+  //
+  // `processed` means ONE node has executed the transaction — not that the
+  // cluster agrees. `withdraw` runs 66 milliseconds after the `approve_job`
+  // that creates its ledger, a slot is ~400ms, and a dedicated endpoint spreads
+  // requests across nodes. So the withdraw's PREFLIGHT SIMULATION landed on a
+  // node one slot behind and reported `AccountNotInitialized` for an account
+  // that demonstrably existed: the address the client derived
+  // (`5PkWWwh…DERF`, bump 254) held 1,080,000 on chain at that moment. The
+  // balance read in between happened to hit a current node, which is exactly
+  // what makes this kind of failure look like a program bug.
+  //
+  // A sleep would also make it pass, and would be a guess about how far behind
+  // a node may be. Waiting for cluster confirmation is the actual invariant the
+  // next instruction depends on.
+  const base = anchor.AnchorProvider.env()
+  const provider = new anchor.AnchorProvider(
+    new Connection(base.connection.rpcEndpoint, 'confirmed'),
+    base.wallet,
+    { commitment: 'confirmed', preflightCommitment: 'confirmed' },
+  )
   anchor.setProvider(provider)
   const program = new Program<HandselMarket>(idl as HandselMarket, provider)
   const payer = provider.wallet.publicKey
