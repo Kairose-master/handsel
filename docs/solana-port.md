@@ -71,7 +71,7 @@ demo doesn't take an afternoon; everything else mirrors the mainnet schedule
 | Week | Deliverable | Gate |
 |---|---|---|
 | 1 ✅ | Program compiles, design doc, this scope contract | `cd solana && cargo check` — in the standard gate list |
-| 2 ▸ | CI build + deploy workflow, happy-path script | Workflow written; **the deploy itself is blocked on an operator step**, below |
+| 2 ✅ | CI build + deploy workflow, happy-path script | **Deployed and the money loop is closed on devnet** — post → accept → submit → approve → withdraw, tokens out of the vault, verified against the chain independently |
 | 3 ▸ | Off-chain integration: read path + chain discriminator done; the write path (signing) is what remains | Codec and discriminator unit-tested; board wiring waits on a deployed program id |
 | 4 | Eternal submission: 1-min updates backlog, product description, technical walkthrough, demo video | Submitted |
 
@@ -543,6 +543,37 @@ Which is the tool doing exactly what it was built for the day before: turning
 "is CI lying?" from an hour of hand-decoding into one command. The money loop
 is now proven through approve on the fixed program; `withdraw` is the one step
 still unrun.
+
+### Closed: withdraw moved real tokens out of the vault
+
+Job #3 ran the whole loop on the fixed program, and `npm run verify:solana`
+read the aftermath from the chain rather than from the run page:
+
+```
+market   jobs 4 · escrowed 0 · withdrawable 3560000
+vault    FF4ahh…EhHQ holds 3560000
+  ledger ESFHWY…ZD9A  owed 0          <- this run's worker, drained
+  ledger DmpJvW…Y5NA  owed 320000     <- the fee recipient, four jobs deep
+```
+
+The arithmetic is the proof, and it is exact:
+
+```
+before          3,480,000
+credit        + 1,160,000   (worker 1,080,000 + fee 80,000)
+withdraw      - 1,080,000
+                3,560,000   == what the vault actually holds
+```
+
+The vault balance fell with the ledger. That is the difference between
+settlement bookkeeping — which every earlier run already proved — and tokens
+leaving custody, which is the instruction the `bump` bug had made impossible.
+Five ledgers now sit next to each other as a record of the whole sprint: two
+with `bump 0` from before the fix and permanently orphaned, two credited after
+it, and one drained to zero.
+
+Weeks 1 and 2 are done. What remains is week 3's write path and the week 4
+submission.
 
 ## What would stop the sprint
 
