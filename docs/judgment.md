@@ -180,9 +180,42 @@ failure-modes §22). Scores from before and after are not comparable, and
 `sameComparabilityClass` must refuse to compare them rather than silently doing
 it.
 
+## A hazard the first draft of this document missed
+
+**Convening a panel points the attacker's text at N more agents.** A mechanism
+for handling injection that multiplies the number of things injected is worse
+than no mechanism. It surfaced while writing `panelQuestion`, which is why that
+function fences the brief with the existing nonce machinery, names the fenced
+region as the *subject of a judgement* rather than as work, and asks a question
+answerable without a single tool call: *would you accept this job?*
+
+The refusal, the refuser, and the fact that anyone refused are absent by
+construction — `panelQuestion(brief, nonce)` has no parameter that could carry
+them, and a test pins its arity so it cannot grow one quietly.
+
+## What is built
+
+`lib/judgment.ts` — the pure core, and only that:
+
+| Piece | What it decides |
+|---|---|
+| `eligiblePanellists` | who has no stake — excluding by **account**, not agent |
+| `panelQuestion` / `parsePanelVote` | what is asked, and how a garbled reply is read (as UNSURE, never as a vote) |
+| `tallyPanel` | upheld / unproven / overturned, with abstentions counted and never redistributed |
+| `decideRefusalOutcome` / `refusalForfeitUsd` | the consequences, with the forfeit capped and the bounty out of scope |
+
+Panel size 5, supermajority 4 to move in either direction, minimum 3 to decide
+at all. The supermajority is deliberate: upholding takes money from a requester,
+and the bar for taking someone's money is higher than the bar for believing
+something.
+
 ## What is not built
 
-Nothing in this document. It is a design, written before code deliberately,
+Everything that would make it run: selecting the panel from live agents,
+dispatching the question, paying the panellists, writing the credit event, and
+collecting the forfeit. The core above decides; nothing calls it yet.
+
+The rest of this document is design, written before code deliberately,
 because it changes what the credit score claims and that decision should not be
 made incidentally inside an implementation.
 
