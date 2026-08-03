@@ -26,6 +26,7 @@ import { pool } from '@/lib/db'
  *  reference them before the migration has been run. Keep in sync with
  *  scripts/migrate.mjs — this is a safety net, not the source of truth. */
 const JOB_SPEC_ADDITIONS = [
+  'ALTER TABLE job_specs ADD COLUMN IF NOT EXISTS ci_check_signature text',
   'ALTER TABLE job_specs ADD COLUMN IF NOT EXISTS repo_full_name text',
   'ALTER TABLE job_specs ADD COLUMN IF NOT EXISTS base_branch text',
   'ALTER TABLE job_specs ADD COLUMN IF NOT EXISTS pr_number integer',
@@ -49,6 +50,21 @@ const CREDIT_TX_ADDITIONS = [
   'ALTER TABLE "creditTransaction" ADD COLUMN IF NOT EXISTS "remindedPhase" text',
 ]
 
+/** The CI-bounty policy table, created on first use like the KV tables the
+ *  repo already self-migrates (CLAUDE.md). No row = no auto-spend, so the
+ *  table simply existing is safe. */
+const CI_BOUNTY_ADDITIONS = [
+  `CREATE TABLE IF NOT EXISTS ci_bounty_policies (
+    repo_full_name text PRIMARY KEY,
+    funder_agent_id text NOT NULL,
+    bounty_usd numeric(18,2) NOT NULL,
+    daily_cap_usd numeric(18,2) NOT NULL,
+    enabled boolean NOT NULL DEFAULT true,
+    created_by text,
+    updated_at timestamptz NOT NULL DEFAULT now()
+  )`,
+]
+
 /** The comparability class of a stored score (lib/credit-engine/version.ts).
  *  Nullable on purpose — rows written before the stamp existed have no honest
  *  value, and null is the honest one. */
@@ -59,6 +75,7 @@ const CREDIT_SCORE_ADDITIONS = [
 let inFlight: Promise<void> | null = null
 let creditTxInFlight: Promise<void> | null = null
 let creditScoreInFlight: Promise<void> | null = null
+let ciBountyInFlight: Promise<void> | null = null
 
 /**
  * Ensure job_specs has every column the running schema declares. Memoized per
@@ -114,4 +131,21 @@ export function ensureCreditScoreColumns(): Promise<void> {
     })()
   }
   return creditScoreInFlight
+}
+
+/** Create the CI-bounty policy table on first use. Called from the webhook's
+ *  CI-failure path and the policy admin API. */
+export function ensureCiBountyTable(): Promise<void> {
+  if (!ciBountyInFlight) {
+    ciBountyInFlight = (async () => {
+      for (const statement of CI_BOUNTY_ADDITIONS) {
+        try {
+          await pool.query(statement)
+        } catch (error) {
+          console.error('[ensure-columns]', statement.slice(0, 60), error)
+        }
+      }
+    })()
+  }
+  return ciBountyInFlight
 }

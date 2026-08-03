@@ -39,6 +39,9 @@ export type RepoJobInput = {
   pricing?: { ceilingUsd: number; stepUsd?: number; stepMinutes?: number } | null
   /** Set by the label-to-bounty bot: the GitHub issue this job mirrors. */
   issueNumber?: number | null
+  /** Set by the CI-bounty lane: ciFailureSignature() of the failing check this
+   *  job was auto-originated from. Its dedup key and spend marker. */
+  ciCheckSignature?: string | null
 }
 
 /** Strip the shapes people actually paste (full URL, trailing .git) down to
@@ -124,6 +127,7 @@ export async function postRepoJob(input: RepoJobInput) {
       requiredCapabilities: ['code'],
       pricing: pricingCheck.plan,
       issueNumber: input.issueNumber ?? null,
+      ciCheckSignature: input.ciCheckSignature ?? null,
     })
 
     // Posting fee before escrow: wash trading must cost, and a requester

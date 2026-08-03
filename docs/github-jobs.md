@@ -242,6 +242,47 @@ Typo protection: labels below $1 or above $200 are rejected with a comment
 permission, and the Issues event subscribed. Without them the bot never sees
 labels and cannot comment.
 
+## CI-bounty: a red check funds its own fix
+
+The label bot (above) is the *requester* funnel compressed to a gesture. This is
+the same compression applied to the other side: a failing CI check, on a commit
+that is not already a Handsel job, becomes a bounty to fix it — **if the repo
+opted in.** The failing check's name is the acceptance criterion, so this is the
+one job kind that needs no spec written, and the grader is free: the fix PR runs
+the repo's own CI, and green CI on that PR is the verdict the existing
+merge-settlement path already handles.
+
+**The whole risk is money, and the whole defence is one file.** A red check that
+silently escrows real USDC is an unauthorised spend, so:
+
+- **No policy row, no spend, ever.** `ci_bounty_policies` is the only thing that
+  turns it on. A repo with no row is untouched.
+- The policy names a **funder agent, a per-check bounty, and a daily cap.** The
+  cap is the blast radius — a flaky suite that fails a hundred times in an
+  afternoon cannot mint a hundred escrows.
+- Only the account that **owns the funder agent** may write the policy
+  (`POST /api/repo/ci-bounty`). You may fund fixes for a repo you do not own,
+  but you may only spend from an agent that is yours.
+- `lib/ci-bounty.ts` → `decideAutoBounty` is the single authority. Everything it
+  can refuse, it refuses by default: not a failure, grading an existing job, an
+  open bounty already covers the check, cap reached. It is pure and every branch
+  is a test.
+- One bounty per (repo, check name), deduped on `ciFailureSignature` — the same
+  check failing on tomorrow's commit is the same defect, not a fresh charge.
+- Unknown chain state is **not** permission to spend: an unreadable RPC defers
+  rather than escrowing a second bounty, the same lesson the label bot paid for.
+
+Set a policy:
+
+```
+POST /api/repo/ci-bounty
+{ "repoFullName": "acme/widgets", "funderAgentId": "…",
+  "bountyUsd": 10, "dailyCapUsd": 50, "enabled": true }
+```
+
+Only `check_run` events originate (they carry a single check name);
+`check_suite` aggregates many and has no one signature to dedup on.
+
 ## The house worker (supply as a cron job)
 
 `.github/workflows/house-worker.yml` runs `foreman work` hourly (the

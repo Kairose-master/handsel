@@ -182,6 +182,21 @@ export const adminGrant = pgTable('admin_grants', {
  * 'credit_rules' permission) so a non-engineer can change lending policy
  * without touching code.
  */
+/**
+ * ci_bounty_policies — a repo owner's standing authorisation to turn red CI
+ * checks into funded jobs. This table IS the money surface for the CI-bounty
+ * lane: no row for a repo means no auto-spend, ever. See lib/ci-bounty.ts.
+ */
+export const ciBountyPolicy = pgTable('ci_bounty_policies', {
+  repoFullName: text('repo_full_name').primaryKey(),
+  funderAgentId: text('funder_agent_id').notNull(),
+  bountyUsd: decimal('bounty_usd', { precision: 18, scale: 2 }).notNull(),
+  dailyCapUsd: decimal('daily_cap_usd', { precision: 18, scale: 2 }).notNull(),
+  enabled: boolean('enabled').notNull().default(true),
+  createdBy: text('created_by'), // userId who set it
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
 export const creditRatingRule = pgTable('credit_rating_rules', {
   id: text('id').primaryKey(),
   kind: text('kind').notNull(), // 'rating' | 'risk_level'
@@ -511,6 +526,11 @@ export const jobSpec = pgTable('job_specs', {
   // Label-to-bounty bot: the GitHub issue this job was minted from. One job
   // per (repoFullName, issueNumber) — the idempotency and cancel key.
   issueNumber: integer('issue_number'),
+  // CI-bounty lane: the failing check this job was auto-originated from
+  // (lib/ci-bounty.ts). Present ONLY on auto-posted CI-fix jobs, and its value
+  // is ciFailureSignature() — the dedup key ("one red check is one job") and
+  // the marker that makes daily spend countable per repo.
+  ciCheckSignature: text('ci_check_signature'),
   // Rising-price (Dutch auction) plan for an unclaimed job: PricingPlan from
   // lib/market-price.ts, or null for an ordinary fixed-price job. The CURRENT
   // price is never stored here — it is always the live on-chain bounty, since

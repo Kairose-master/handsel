@@ -378,12 +378,20 @@ async function handleCheck(event: string, payload: any) {
   // check_run carries its PRs on the run; check_suite on the suite.
   const prs: Array<{ number: number }> = node.pull_requests ?? node.check_suite?.pull_requests ?? []
   const conclusion: string = node.conclusion ?? ''
-  if (!prs.length) return Response.json({ status: 'ignored', reason: 'no pull requests on this check' })
+
+  // A failing check on a commit that is not a Handsel job is not a verdict —
+  // it is a NEW defect, and (if the repo opted in) a bounty to fix it. This
+  // runs even with no PR: a red default branch is the purest case. It has to
+  // know whether any PR here is a Handsel job first, because a failing check on
+  // a worker's fix attempt is grading, not origination — so it goes after the
+  // grading loop, which sets `gradedAHandselJob`.
+  let gradedAHandselJob = false
 
   let handled = 0
   for (const pr of prs) {
     const spec = await specForPr(repoFullName, pr.number)
     if (!spec) continue
+    gradedAHandselJob = true
 
     if (conclusion === 'success') {
       // Green CI is the independent verdict — recorded, and announced on the
@@ -452,7 +460,139 @@ async function handleCheck(event: string, payload: any) {
     }
     // neutral / skipped / cancelled / action_required: not a verdict — ignore.
   }
-  return Response.json({ status: 'ok', handled })
+
+  // Origination: a red check → a bounty to fix it, if the repo authorised it.
+  // Only check_run carries a single check name; check_suite aggregates many, so
+  // there is no one signature to dedup on and origination is a no-op there.
+  const originated =
+    event === 'check_run'
+      ? await maybeOriginateCiBounty({
+          repoFullName,
+          checkName: String(node?.name ?? ''),
+          conclusion,
+          headSha: String(node?.head_sha ?? ''),
+          runUrl: String(node?.html_url ?? ''),
+          gradedAHandselJob,
+        })
+      : { status: 'skipped', reason: 'not a check_run' }
+
+  return Response.json({ status: 'ok', handled, originated })
+}
+
+/**
+ * A failing check becomes a funded fix-job — or, far more often, does not.
+ *
+ * The default is no spend: without a `ci_bounty_policies` row for the repo this
+ * returns before touching a wallet. `decideAutoBounty` (lib/ci-bounty.ts) is the
+ * authority; everything here is the plumbing that gives it honest inputs — the
+ * live open-bounty check and the day's spend — and the lease that stops one red
+ * check, redelivered, from escrowing twice (the exact race the label bot hit).
+ */
+async function maybeOriginateCiBounty(input: {
+  repoFullName: string
+  checkName: string
+  conclusion: string
+  headSha: string
+  runUrl: string
+  gradedAHandselJob: boolean
+}): Promise<{ status: string; reason?: string; jobSpec?: string }> {
+  const { repoFullName, checkName, conclusion, headSha, runUrl, gradedAHandselJob } = input
+  const { isFailingConclusion, ciFailureSignature, decideAutoBounty, ciBountyBrief } = await import('@/lib/ci-bounty')
+
+  // Cheapest rejections first, before any DB or chain read.
+  if (!checkName || !isFailingConclusion(conclusion)) {
+    return { status: 'skipped', reason: 'not a failing named check' }
+  }
+
+  const { ensureCiBountyTable } = await import('@/lib/db/ensure-columns')
+  await ensureCiBountyTable()
+  const { ciBountyPolicy, jobSpec: jobSpecTable } = await import('@/lib/db/schema')
+  const [policyRow] = await db.select().from(ciBountyPolicy).where(eq(ciBountyPolicy.repoFullName, repoFullName))
+  const policy = policyRow
+    ? {
+        repoFullName: policyRow.repoFullName,
+        funderAgentId: policyRow.funderAgentId,
+        bountyUsd: parseFloat(policyRow.bountyUsd),
+        dailyCapUsd: parseFloat(policyRow.dailyCapUsd),
+        enabled: policyRow.enabled,
+      }
+    : null
+
+  const signature = ciFailureSignature(repoFullName, checkName)
+
+  // Open-bounty dedup and today's spend, both read live rather than assumed.
+  // An unreadable chain here must NOT read as "nothing open" — that is how a
+  // second escrow lands (§the label bot's own lesson). Treat unknown as "an
+  // open bounty might exist" and skip: refusing to spend on doubt is the safe
+  // direction.
+  let openBountyExists = true
+  let spentTodayUsd = 0
+  try {
+    const dayStart = new Date()
+    dayStart.setUTCHours(0, 0, 0, 0)
+    const rows = await db
+      .select({ id: jobSpecTable.onchainJobId, sig: jobSpecTable.ciCheckSignature, created: jobSpecTable.createdAt })
+      .from(jobSpecTable)
+      .where(and(eq(jobSpecTable.repoFullName, repoFullName), isNotNull(jobSpecTable.ciCheckSignature)))
+    const { readJobsOrUnknown } = await import('@/lib/onchain/labor-read')
+    const jobs = await readJobsOrUnknown({ maxAgeMs: 0 })
+    if (jobs === null) return { status: 'deferred', reason: 'chain state unknown — no bounty originated' }
+    // The amount lives on-chain, not in the spec row — the spec never stores a
+    // price because the live bounty can rise (Dutch auction). So spend is
+    // summed from the chain's own bounty, matched by onchain job id.
+    const statusById = new Map(jobs.map((j) => [j.id, j.status]))
+    const bountyById = new Map(jobs.map((j) => [j.id, j.bounty]))
+
+    openBountyExists = rows.some(
+      (r) => r.sig === signature && r.id !== null && statusById.get(r.id) === 'Open',
+    )
+    spentTodayUsd = rows
+      .filter((r) => r.created && r.created >= dayStart && r.id !== null)
+      .reduce((sum, r) => sum + (bountyById.get(r.id!) ?? 0), 0)
+  } catch (error) {
+    console.error('[ci-bounty] pre-post read failed — not originating:', error)
+    return { status: 'error', reason: 'pre-post read failed' }
+  }
+
+  const decision = decideAutoBounty({ policy, conclusion, isHandselJobPr: gradedAHandselJob, openBountyExists, spentTodayUsd })
+  if (!decision.post) return { status: 'skipped', reason: decision.reason }
+
+  // One in-flight origination per signature, mirroring the issue lock: a
+  // redelivered webhook must not escrow twice while the first post is landing.
+  const { acquireOpsLease, releaseOpsLease } = await import('@/lib/ops-lease')
+  const lock = `ci-bounty:${signature}`
+  if (!(await acquireOpsLease(lock, 120_000))) {
+    return { status: 'ignored', reason: 'a bounty for this check is already being escrowed' }
+  }
+
+  try {
+    const { postRepoJob } = await import('@/lib/repo-job-post')
+    const res = await postRepoJob({
+      requesterAgentId: policy!.funderAgentId,
+      repoFullName,
+      title: `Fix failing check: ${checkName}`,
+      brief: ciBountyBrief({ repoFullName, checkName, runUrl, headSha }),
+      bountyUsd: decision.bountyUsd,
+      ciCheckSignature: signature,
+    })
+    const { logPlatformEvent } = await import('@/lib/platform-feed')
+    await logPlatformEvent(
+      'CI_BOUNTY_POSTED',
+      `A red check "${checkName}" on ${repoFullName} minted a $${decision.bountyUsd} fix bounty`,
+    ).catch(() => {})
+    return { status: 'ok', jobSpec: res.specHash }
+  } catch (error) {
+    // A pending post KEEPS the lock — the escrow probably landed, and releasing
+    // is how one red check becomes two bounties. A real failure releases.
+    const { isUserOpPending } = await import('@/lib/onchain/account')
+    if (isUserOpPending(error)) {
+      console.warn(`[ci-bounty] post for ${signature} is pending — holding the lock`)
+      return { status: 'pending' }
+    }
+    await releaseOpsLease(lock)
+    console.error('[ci-bounty] origination post failed:', error)
+    return { status: 'error', reason: error instanceof Error ? error.message : String(error) }
+  }
 }
 
 async function handlePullRequest(payload: any) {
