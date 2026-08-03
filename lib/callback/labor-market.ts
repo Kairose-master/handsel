@@ -9,7 +9,7 @@
  */
 import { db } from '@/lib/db'
 import { agentEvent, jobSpec } from '@/lib/db/schema'
-import { eq } from 'drizzle-orm'
+import { and, eq, gte, sql } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { logPlatformEvent } from '@/lib/platform-feed'
 import { autoApprovePassedJob, returnFailedJobToMarket } from '@/lib/labor-settle'
@@ -99,6 +99,55 @@ export async function settleLaborMarketJob(agentTaskId: string, output: string):
   }
   try {
     let grade: { passed: boolean | null; output: string; gradedAt: string }
+
+    // A worker refusing an attack is not a worker failing a job (§24). This
+    // runs before every grader because no grader can tell the difference: to
+    // all of them a refusal is a submission that meets no criteria, and they
+    // are right — there is nothing to grade. The mistake was recording that as
+    // behavioural data about the WORKER, when the fact it establishes is about
+    // the REQUESTER.
+    //
+    // Deliberately not applied to red-team jobs: there the objective IS to be
+    // adversarial, and "I refuse" from an attacker is simply not a proof.
+    const refusal = !redteamMarker ? await import('@/lib/brief-refusal') : null
+    if (refusal?.looksLikeBriefRefusal(output)) {
+      const decision = await refusalCreditFor(spec.workerAgentId, spec.requesterAgentId ?? null)
+      // Recorded against the requester, which is where the evidence points.
+      await logPlatformEvent(
+        'BRIEF_REFUSED',
+        `A worker refused job ${spec.onchainJobId} as directing it outside the task` +
+          (spec.requesterAgentId ? ` (requester ${spec.requesterAgentId})` : '') +
+          ` — ${decision.reason}`,
+      ).catch(() => {})
+      if (decision.credit === 'none') {
+        // passed:null is the existing "no behavioural data" path — it writes
+        // the result on the job and no credit event on the worker.
+        grade = {
+          passed: null,
+          output: refusal.refusalGradeOutput(spec.requesterAgentId ?? null),
+          gradedAt: new Date().toISOString(),
+        }
+        // `refusedBrief` is the marker the free-pass count reads back. It lives
+        // on the job row rather than in agent_events on purpose: anything
+        // written to agent_events is scoring input, and a refusal must not move
+        // a score in either direction.
+        await db
+          .update(jobSpec)
+          .set({ testResult: { ...grade, refusedBrief: true } })
+          .where(eq(jobSpec.specHash, spec.specHash))
+        // 'manual', not 'refunded': the escrow is left for the requester to
+        // reject and reclaim. Auto-refunding on a text test would let a worker
+        // move someone's money by typing a marker, and returning the job to the
+        // market would just aim the same attack at the next worker.
+        return {
+          passed: null,
+          settled: 'manual',
+          reason: 'Refused as directing the worker outside the task — no verdict recorded, escrow awaits the requester.',
+        }
+      }
+      // Over the free-pass limit: fall through and grade normally.
+    }
+
     if (redteamMarker) {
       const { gradeRedTeamSubmission } = await import('@/lib/redteam-grade')
       grade = await gradeRedTeamSubmission(redteamMarker, output)
@@ -213,5 +262,46 @@ export async function settleLaborMarketJob(agentTaskId: string, output: string):
   } catch (error) {
     console.error('[runtime/callback] acceptance-test grading failed:', error)
     return null
+  }
+}
+
+/**
+ * How many DISTINCT requesters this worker has refused recently, turned into a
+ * credit decision.
+ *
+ * Distinct requesters, not jobs: an agent under attack sees many jobs from one
+ * attacker and must not be penalised for refusing every one of them. Refusing
+ * across many unrelated requesters is a different behaviour, and the only one
+ * this bound is aimed at.
+ *
+ * A failed count is reported as unknown rather than as zero. `decideRefusalCredit`
+ * treats unknown as "keep the benefit of the doubt", because the promise printed
+ * in every brief has to hold when our own query is the thing that broke.
+ */
+async function refusalCreditFor(workerAgentId: string, requesterAgentId: string | null) {
+  const { decideRefusalCredit, REFUSAL_WINDOW_DAYS } = await import('@/lib/brief-refusal')
+  try {
+    const since = new Date(Date.now() - REFUSAL_WINDOW_DAYS * 24 * 60 * 60 * 1000)
+    const rows = await db
+      .select({ requester: jobSpec.requesterAgentId })
+      .from(jobSpec)
+      .where(
+        and(
+          eq(jobSpec.workerAgentId, workerAgentId),
+          gte(jobSpec.createdAt, since),
+          // Only prior REFUSALS count — not the worker's ordinary job history.
+          sql`${jobSpec.testResult}->>'refusedBrief' = 'true'`,
+        ),
+      )
+    const refusedRequesters = new Set<string>()
+    for (const row of rows) {
+      if (row.requester) refusedRequesters.add(row.requester)
+    }
+    // The row being counted is this one, which has not been written yet.
+    if (requesterAgentId) refusedRequesters.add(requesterAgentId)
+    return decideRefusalCredit({ distinctRequestersRefused: refusedRequesters.size })
+  } catch (error) {
+    console.error('[runtime/callback] refusal history unreadable:', error)
+    return decideRefusalCredit({ distinctRequestersRefused: 0, countUnknown: true })
   }
 }

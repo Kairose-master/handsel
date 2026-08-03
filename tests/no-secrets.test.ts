@@ -120,7 +120,13 @@ describe('nothing that looks like a credential is committed', () => {
       }
     }
     expect(findings).toEqual([])
-  })
+    // Every pattern against every line of every tracked file takes ~12s while
+    // the rest of the suite runs in parallel, and vitest's default budget is 5s.
+    // It passed alone and went red in the full run, which is the worst possible
+    // behaviour for a credential scanner: a check that fails at random teaches
+    // you to re-run rather than to look, and then a real finding reads like the
+    // usual flake. Give it room instead of making it shallower.
+  }, 60_000)
 })
 
 describe('the environment file cannot be committed by accident', () => {

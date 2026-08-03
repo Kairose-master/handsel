@@ -495,7 +495,17 @@ export const jobSpec = pgTable('job_specs', {
    * for why that distinction is worth a third enum value.
    */
   briefNonce: text('brief_nonce'),
-  testResult: jsonb('test_result').$type<{ passed: boolean | null; output: string; gradedAt: string }>(),
+  // `refusedBrief` marks a submission the worker declined as directing them
+  // outside the task (§24). It is stored HERE rather than in agent_events on
+  // purpose: everything written to agent_events is scoring input, and a refusal
+  // must not move a score in either direction. This is also what the free-pass
+  // count reads back.
+  testResult: jsonb('test_result').$type<{
+    passed: boolean | null
+    output: string
+    gradedAt: string
+    refusedBrief?: boolean
+  }>(),
   // Requester's explicit, authenticated-at-posting-time consent to release
   // escrow automatically on a passing verdict, with no further approval
   // click. Only meaningful when testCode is set. Defaults true (matches
