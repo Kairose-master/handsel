@@ -31,6 +31,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getShellStatus } from "@/app/actions/shell"
+import { RiskBanner } from "@/components/risk-banner"
 import { SiteFooter } from "@/components/site-footer"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { LanguageSwitcher, useI18n } from "@/lib/i18n"
@@ -273,6 +274,9 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       )}
 
       <div className="lg:pl-64">
+        {/* Above the header, not inside it: a warning that scrolls away is a
+            warning the user reads once. */}
+        <RiskBanner realMoney={status?.chain?.realMoney ?? null} />
         <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur-md md:px-6">
           <button
             onClick={() => setMobileOpen(true)}

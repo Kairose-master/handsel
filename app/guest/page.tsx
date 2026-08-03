@@ -22,6 +22,7 @@ import { getGuestOverview } from '@/app/actions/guest'
 import { BpmnViewer } from '@/components/bpmn-viewer'
 import { X402Flow } from '@/components/x402-flow'
 import { X402Live } from '@/components/x402-live'
+import { RiskBanner } from '@/components/risk-banner'
 import { SiteFooter } from '@/components/site-footer'
 import { PipelineDemo } from './pipeline-demo'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -121,6 +122,8 @@ export default function GuestPage() {
           </Link>
         </nav>
       </header>
+
+      <RiskBanner realMoney={data?.realMoney ?? null} />
 
       <main className="mx-auto max-w-[1100px] space-y-6 p-4 md:p-6">
         {/* Hero */}

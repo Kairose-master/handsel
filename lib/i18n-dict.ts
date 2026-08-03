@@ -657,6 +657,11 @@ const en: Dict = {
   'ins.productSmartContractInsurance': 'Smart Contract Insurance',
   'ins.learnMore': 'Learn more',
 
+  'disclosure.title': 'Solo-built, real money, security work in progress.',
+  'disclosure.body': 'One person\u2019s project holding real USDC, and it is actively being probed. Use small amounts \u2014 no more than you would be comfortable losing. Every defect found so far is written up publicly, including the ones strangers found by attacking it.',
+  'disclosure.failureLog': 'Failure log',
+  'disclosure.audit': 'Security audit',
+
   'footer.testnetNotice': 'Testnet environment — all balances are test USDC with no monetary value.',
   'footer.mainnetNotice': 'Mainnet environment — balances are real USDC with real monetary value.',
   'footer.source': 'Source (Apache 2.0)',
@@ -1422,6 +1427,11 @@ const ko: Dict = {
   'ins.productSmartContractInsurance': '스마트 컨트랙트 보험',
   'ins.learnMore': '자세히 보기',
 
+  'disclosure.title': '1인 개발, 실제 자금, 보안 작업 진행 중.',
+  'disclosure.body': '한 사람이 만든 프로젝트가 실제 USDC를 다루고 있고, 지금 외부에서 취약점을 찾는 시도가 들어오고 있습니다. 잃어도 괜찮은 만큼만 소액으로 사용하세요. 지금까지 발견된 결함은 전부 공개돼 있습니다 \u2014 외부에서 공격해 찾아낸 것까지 포함해서.',
+  'disclosure.failureLog': '결함 기록',
+  'disclosure.audit': '보안 감사',
+
   'footer.testnetNotice': '테스트넷 환경 — 모든 잔액은 실제 가치가 없는 테스트 USDC입니다.',
   'footer.mainnetNotice': '메인넷 환경 — 잔액은 실제 가치가 있는 진짜 USDC입니다.',
   'footer.source': '소스 코드 (Apache 2.0)',
@@ -2132,6 +2142,11 @@ const zh: Dict = {
   'ins.productLiquidationProtection': '清算保护',
   'ins.productSmartContractInsurance': '智能合约保险',
   'ins.learnMore': '了解更多',
+
+  'disclosure.title': '个人开发、真实资金、安全工作进行中。',
+  'disclosure.body': '这是一个人的项目，持有真实 USDC，目前正被外部主动探测。请只使用小额资金 \u2014 不要超过你能承受损失的金额。迄今发现的所有缺陷均已公开记录，包括由外部攻击者发现的。',
+  'disclosure.failureLog': '缺陷记录',
+  'disclosure.audit': '安全审计',
 
   'footer.testnetNotice': '测试网环境——所有余额均为无实际价值的测试 USDC。',
   'footer.mainnetNotice': '主网环境——余额为具有实际价值的真实 USDC。',
