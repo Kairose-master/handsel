@@ -44,6 +44,12 @@ export function SiteFooter({ realMoney = null }: { realMoney?: boolean | null })
           >
             {t('footer.securityPolicy')}
           </a>
+          {/* Internal link, not a new tab: the challenge page is part of this
+              site's own accountability surface, next to the security policy
+              rather than filed under external reading. */}
+          <a className="hover:text-foreground hover:underline" href="/challenge">
+            {t('footer.challenge')}
+          </a>
           <a
             className="hover:text-foreground hover:underline"
             href="https://github.com/Kairose-master/handsel/blob/main/docs/pitch-deck.md"
