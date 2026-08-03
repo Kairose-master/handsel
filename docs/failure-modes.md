@@ -1102,6 +1102,58 @@ change.
 
 ---
 
+## 23. The wrong market answered, and its receipt looked identical
+
+**Symptom.** A `bounty:$1` label was added to an issue on `Kairose-master/handsel`
+to smoke-test the freshly configured **mainnet** App. Within seconds a bot
+comment appeared: *"💰 $1 bounty escrowed on this issue as a job."* It read as a
+clean pass, and it was written down as one.
+
+It was not. The comment came from the **v1 testnet deployment**. The v1 App was
+still installed on that repository, it heard the same label, and it escrowed a
+freely-minted Sepolia token. The mainnet App had produced no evidence of having
+done anything at all.
+
+**How it was caught.** The comment said `[Ledgermind](…ai-agent-credit-dashboard…)`
+while the current source says `[Handsel](${origin})` — the rename landed in
+`f392d74`, so the text dated the code that wrote it. Confirmed by reading both
+deployments' public `/api/tasks`: the job was on the v1 board.
+
+**Root cause, in two parts.**
+
+1. **Nothing binds a repository to one market.** Both Apps were legitimately
+   installed, each delivered to its own webhook, each verified its own signature,
+   each acted. There is no "wrong" delivery to reject — the per-deployment
+   webhook secret already prevents genuine cross-talk. Two correct systems
+   answering the same question is not a bug either can detect.
+2. **The receipt did not distinguish real money from play money.** `"$1 bounty
+   escrowed"` is byte-identical whether a dollar moved or a test token did. That
+   sentence is the entire basis on which a repo owner decides to merge and a
+   worker decides the work is worth doing.
+
+**The fix.** Part 2 is fixable in code and is fixed: `bountyPostedComment` now
+takes `realMoney` (from `isRealMoney()`, which derives it from the chain id
+rather than a self-declared flag) and states it in the headline — *"$1 in real
+USDC"* versus *"$1 in testnet tokens (no real value)"*. The sandbox version also
+names the likeliest cause of the surprise: another market's App answered.
+
+Part 1 is **operational, and the rule had never been written down**: one Handsel
+App per repository. It is now in `docs/github-jobs.md`. A deployment cannot see
+its sibling's installation, so no amount of code makes this self-enforcing — but
+a receipt that says which money it is makes the mistake visible on first read,
+in the place a human is already looking.
+
+**What this cost.** Nothing, because the money was worthless — which is exactly
+why it is worth writing down. Reverse the two deployments and the same
+configuration spends real USDC on a repo whose owner believed they were in a
+sandbox, and the receipt still looks fine.
+
+**The invariant.** *A receipt must state the one property that changes what the
+reader should do* — not in a footer, not inferable from a hostname, not implied
+by a brand name, but in the sentence making the claim.
+
+---
+
 ## Diagnostic surfaces
 
 Check these before reading code:

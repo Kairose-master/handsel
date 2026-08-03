@@ -70,11 +70,36 @@ describe('bountyLabelOn', () => {
 
 describe('bot comments', () => {
   it('the posted comment states the two rules that matter: merge pays, close refunds', () => {
-    const c = bountyPostedComment({ bountyUsd: 15, jobId: 42, origin: 'https://x.dev' })
+    const c = bountyPostedComment({ bountyUsd: 15, jobId: 42, origin: 'https://x.dev', realMoney: true })
     expect(c).toContain('$15')
     expect(c).toContain('job #42')
     expect(c).toContain('merging the PR releases the escrow'.slice(0, 10))
     expect(c.toLowerCase()).toContain('refund')
+  })
+
+  /**
+   * §23: a repo had two markets' Apps installed, the testnet one answered
+   * first, and its comment was word-for-word what a real bounty looks like.
+   * Whether the money is real is the one fact this comment must never leave
+   * ambiguous — it is all most people will ever read about that job.
+   */
+  it('says whether the money is real, in the headline sentence itself', () => {
+    const real = bountyPostedComment({ bountyUsd: 1, jobId: 7, origin: 'https://x.dev', realMoney: true })
+    const test = bountyPostedComment({ bountyUsd: 1, jobId: 7, origin: 'https://x.dev', realMoney: false })
+    expect(real).toMatch(/real USDC/)
+    expect(test).toMatch(/testnet tokens \(no real value\)/)
+    // Not merely different somewhere — different in the first line, so it
+    // cannot be missed by someone who reads nothing else.
+    expect(real.split('\n')[0]).not.toBe(test.split('\n')[0])
+  })
+
+  it('a sandbox comment names the mix-up it is most likely to be', () => {
+    const test = bountyPostedComment({ bountyUsd: 1, jobId: null, origin: 'https://x.dev', realMoney: false })
+    expect(test).toMatch(/different market's App answered/)
+    // The real one must NOT carry that hedge — a genuine bounty hinting that
+    // another market may have answered would undercut what it is asserting.
+    const real = bountyPostedComment({ bountyUsd: 1, jobId: null, origin: 'https://x.dev', realMoney: true })
+    expect(real).not.toMatch(/different market/)
   })
   it('the not-linked comment is onboarding, not an error dump', () => {
     const c = notLinkedComment('https://x.dev')

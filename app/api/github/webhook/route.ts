@@ -239,7 +239,12 @@ async function handleIssue(payload: any): Promise<Response> {
         .select({ onchainJobId: jobSpec.onchainJobId })
         .from(jobSpec)
         .where(eq(jobSpec.specHash, res.specHash))
-      await commentOnPr(repoFullName, issueNumber, bountyPostedComment({ bountyUsd, jobId: posted?.onchainJobId ?? null, origin }))
+      const { isRealMoney } = await import('@/lib/onchain/real-money')
+      await commentOnPr(
+        repoFullName,
+        issueNumber,
+        bountyPostedComment({ bountyUsd, jobId: posted?.onchainJobId ?? null, origin, realMoney: isRealMoney() }),
+      )
       const { logPlatformEvent } = await import('@/lib/platform-feed')
       await logPlatformEvent('BOUNTY_LABELED', `A bounty label minted a $${bountyUsd} job from ${repoFullName}#${issueNumber}`).catch(() => {})
       return Response.json({ status: 'ok', posted: res.specHash })

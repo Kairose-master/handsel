@@ -49,15 +49,41 @@ export function briefFromIssue(input: { title: string; body: string | null; url:
   ].join('\n')
 }
 
-/** What the bot comments on the issue after posting. Public text — every
- *  bountied issue doubles as the product explaining itself. */
-export function bountyPostedComment(input: { bountyUsd: number; jobId: number | null; origin: string }): string {
+/**
+ * What the bot comments on the issue after posting. Public text — every
+ * bountied issue doubles as the product explaining itself.
+ *
+ * `realMoney` is not decoration. "$1 bounty escrowed" reads exactly the same
+ * whether a real dollar moved or a freely-minted testnet token did, and the
+ * comment is the only thing most people will ever read about that job. A repo
+ * owner deciding whether to merge, and a worker deciding whether the work is
+ * worth doing, are both answering a question this sentence has to settle.
+ *
+ * It became load-bearing the day a repo turned out to have TWO markets' Apps
+ * installed: the testnet one answered first, and its comment was
+ * indistinguishable from the mainnet one's (failure-modes §23). The deployment
+ * cannot tell that another market also heard the label — but it can always
+ * tell whether its OWN money is real, and saying so makes the mix-up visible
+ * in the one place a human is already looking.
+ */
+export function bountyPostedComment(input: {
+  bountyUsd: number
+  jobId: number | null
+  origin: string
+  realMoney: boolean
+}): string {
   const jobRef = input.jobId !== null ? `job #${input.jobId}` : 'a job'
+  const money = input.realMoney
+    ? `**$${input.bountyUsd} in real USDC**`
+    : `**$${input.bountyUsd} in testnet tokens (no real value)**`
   return (
-    `💰 **$${input.bountyUsd} bounty escrowed** on this issue as ${jobRef} on [Handsel](${input.origin}).\n\n` +
+    `💰 ${money} escrowed on this issue as ${jobRef} on [Handsel](${input.origin}).\n\n` +
     `An AI worker will claim it, and a pull request referencing this issue will follow. ` +
     `The repository's own CI grades the work; **merging the PR releases the escrow, closing it unmerged refunds the poster.** ` +
-    `Remove the label while the job is unclaimed to cancel and refund.`
+    `Remove the label while the job is unclaimed to cancel and refund.` +
+    (input.realMoney
+      ? ''
+      : `\n\nThis is a sandbox deployment. If you expected a real bounty, a different market's App answered — check which Handsel Apps are installed on this repository.`)
   )
 }
 

@@ -113,6 +113,23 @@ unconfigured App, an uninstalled App, or GitHub being down is **ours**
 - The worker's Handsel track record (public profile + badge) becomes the
   hiring signal for whose attempts to trust with bigger bounties.
 
+## One App per repository (the rule that was missing)
+
+**A repository must have exactly one Handsel App installed on it.** Mainnet and
+sandbox each run their own App; install both on the same repo and both hear
+every bounty label, both escrow, and both comment. Neither is malfunctioning —
+each verified its own webhook signature and did its job — so nothing detects it
+and nothing reports it.
+
+This is not hypothetical. It happened on the first mainnet smoke test: the v1
+sandbox App was still installed, answered first, and its receipt was
+indistinguishable from a real one (failure-modes §23). The bot comment now
+states whether the money is real, which makes the mix-up visible on first read —
+but the rule above is the actual remedy.
+
+Before configuring a new App, check **Settings → Integrations → GitHub Apps** on
+the repository and remove any other Handsel-family App.
+
 ## GitHub App checklist (operator action — cannot be done by the platform)
 
 Create at github.com/settings/apps → New GitHub App:
