@@ -115,10 +115,19 @@ export function toErc8183(job: LaborJobInput): Erc8183Job | null {
   if (hasWorker(job.worker)) lost.push('worker-bond')
   if (job.minScore > 0) lost.push('credit-gate')
   if (job.status === 'Disputed') lost.push('dispute')
-  // 8183's `Expired` means "refunded to the client after timeout". V2's
-  // means "settled by a deadline with no verdict from anyone", and three
-  // different routes land there — one of which pays the WORKER
-  // (`expireReview`). Same word, different settlement.
+  // 8183's `Expired` is defined with one beneficiary: "escrow refunded to
+  // client after timeout". V2's means "settled by a deadline with no verdict
+  // from anyone", and its three routes there settle to three DIFFERENT
+  // parties:
+  //
+  //   expireOpen     nobody took the job    -> requester, in full
+  //   expireReview   requester went silent  -> SPLIT, 10% forfeit to the
+  //                                            worker side, 90% refunded
+  //   expireDispute  arbiter never ruled    -> worker, in full
+  //
+  // So the same terminal word covers a full refund, a partial forfeit, and a
+  // full release. Projecting any of them as 8183 `Expired` tells a reader the
+  // client got their money back, which is true in one case out of three.
   if (job.status === 'Expired') lost.push('no-verdict-expiry')
 
   return {

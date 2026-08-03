@@ -335,9 +335,12 @@ rather than drops:
 - **The dispute process.** `Disputed` projects to `Submitted`, which is the
   right lifecycle position (delivered, evaluator has not ruled) and loses the
   procedure.
-- **The word *Expired*.** 8183 means "refunded to the client after timeout".
-  V2 means "settled by a deadline with no verdict", and `expireReview` pays the
-  **worker**. Same word, opposite settlement.
+- **The word *Expired*.** 8183 defines it with one beneficiary — "escrow
+  refunded to client after timeout". V2's three routes to the same terminal
+  state settle to three different parties: `expireOpen` refunds the requester
+  in full, `expireReview` **splits** (10% forfeit to the worker side, 90%
+  refunded), and `expireDispute` releases to the **worker** in full. One
+  terminal word covering a refund, a partial forfeit and a full release.
 
 ## ERC-8004 — the July call now has evidence
 
