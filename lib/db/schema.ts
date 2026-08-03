@@ -571,6 +571,10 @@ export const creditScoreEntry = pgTable('credit_scores', {
   creditLimit: decimal('credit_limit', { precision: 18, scale: 2 }).notNull(),
   riskLevel: text('risk_level').notNull(), // LOW | MODERATE | ELEVATED | HIGH
   calculationReason: text('calculation_reason').notNull(),
+  /** Which engine produced this number — `epoch@hash` from
+   *  lib/credit-engine/version.ts. Null on rows written before the stamp
+   *  existed, and null is NOT "probably current": see sameComparabilityClass. */
+  engineVersion: text('engine_version'),
   breakdown: jsonb('breakdown').default({}), // per-factor component scores
   registryTxHash: text('registry_tx_hash'), // on-chain limit publish (optional)
   attestationTxHash: text('attestation_tx_hash'), // EAS attestation (optional)

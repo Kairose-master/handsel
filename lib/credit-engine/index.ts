@@ -254,6 +254,13 @@ export async function recalculateCredit(
   }
 
   const scoreEntryId = nanoid()
+  // Stamp which engine produced this number before writing it. A score without
+  // its comparability class cannot be ranked against another score later, and
+  // the engine has already changed once under rows that carry no mark of it
+  // (docs/failure-modes.md §20 — a one-job agent moved 673 -> 394).
+  const { ensureCreditScoreColumns } = await import('@/lib/db/ensure-columns')
+  await ensureCreditScoreColumns()
+  const { scoringEngineVersion } = await import('@/lib/credit-engine/version')
   await db.insert(creditScoreEntry).values({
     id: scoreEntryId,
     agentId,
@@ -262,6 +269,7 @@ export async function recalculateCredit(
     creditLimit: assessment.creditLimit.toString(),
     riskLevel: assessment.riskLevel,
     calculationReason,
+    engineVersion: scoringEngineVersion(),
     breakdown: assessment.breakdown,
   })
 

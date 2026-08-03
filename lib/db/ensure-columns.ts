@@ -49,8 +49,16 @@ const CREDIT_TX_ADDITIONS = [
   'ALTER TABLE "creditTransaction" ADD COLUMN IF NOT EXISTS "remindedPhase" text',
 ]
 
+/** The comparability class of a stored score (lib/credit-engine/version.ts).
+ *  Nullable on purpose — rows written before the stamp existed have no honest
+ *  value, and null is the honest one. */
+const CREDIT_SCORE_ADDITIONS = [
+  'ALTER TABLE credit_scores ADD COLUMN IF NOT EXISTS engine_version text',
+]
+
 let inFlight: Promise<void> | null = null
 let creditTxInFlight: Promise<void> | null = null
+let creditScoreInFlight: Promise<void> | null = null
 
 /**
  * Ensure job_specs has every column the running schema declares. Memoized per
@@ -89,4 +97,21 @@ export function ensureCreditTransactionColumns(): Promise<void> {
     })()
   }
   return creditTxInFlight
+}
+
+/** Same net for `credit_scores`. Called from the credit engine's write path,
+ *  which is the only writer. */
+export function ensureCreditScoreColumns(): Promise<void> {
+  if (!creditScoreInFlight) {
+    creditScoreInFlight = (async () => {
+      for (const statement of CREDIT_SCORE_ADDITIONS) {
+        try {
+          await pool.query(statement)
+        } catch (error) {
+          console.error('[ensure-columns]', statement, error)
+        }
+      }
+    })()
+  }
+  return creditScoreInFlight
 }
