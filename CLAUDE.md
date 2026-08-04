@@ -16,8 +16,9 @@ from real behavior that unlocks borrowing.
   Base mainnet, **real Circle USDC**, `LaborMarketV2`
   `0x96064ef0a6742d5b7bc8abf2584273bd2f022c8c`, fee 5% + $0.03, worker bond
   5% + $0.03, pull payments, gas self-paid (`PAYMASTER_DISABLED=true`).
-  Live since 2026-07-30. NOT on mainnet: vault/lending, on-chain governance,
-  GitHub App, minting.
+  Live since 2026-07-30. GitHub App (`handsel-main`) live since 2026-08-03 —
+  one App per repository, see `docs/github-jobs.md`. NOT on mainnet:
+  vault/lending, on-chain governance, minting.
 - **Testnet sandbox** (the v1 archive, separate repo):
   https://ai-agent-credit-dashboard.vercel.app — Sepolia, MockUSDC, zero
   value, sponsored gas, mint faucet.

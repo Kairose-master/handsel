@@ -8,6 +8,19 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/**/*.test.ts'],
+    // Vitest's 5s default is sized for a test that only computes. Two here do
+    // real work — scanning every tracked file for credentials, and resetting
+    // the module graph to re-import a module that pulls in viem — and both ran
+    // ~12s under a saturated suite while passing in about a second alone.
+    //
+    // The failure mode is why this is fixed globally rather than file by file:
+    // a check that goes red at random teaches you to re-run instead of to look,
+    // and then a real finding reads like the usual flake. Worse, one timeout
+    // cascades — an aborted test never reaches the `finally` that restores
+    // process.env, so the NEXT test fails on state it did not create and points
+    // at innocent code. 30s is still nowhere near "hung"; a genuinely stuck
+    // test still fails.
+    testTimeout: 30_000,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'text-summary', 'json-summary', 'html'],

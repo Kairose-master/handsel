@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 /**
  * The paymaster is not the bundler, and the code now says so.
@@ -33,6 +33,20 @@ const code = (p: string) =>
  *
  * `resolvePaymaster` reads the env, so the env is what a test should vary.
  */
+/**
+ * Restoration must not depend on the test body finishing.
+ *
+ * `resolveWith` restores `process.env` in a `finally`, which never runs if the
+ * test is aborted — and vitest aborting on a timeout is precisely when it
+ * matters. That happened: one test here timed out under a saturated suite and
+ * the NEXT one failed on env it never set, pointing at innocent code. A hook
+ * runs either way.
+ */
+const pristineEnv = { ...process.env }
+afterEach(() => {
+  process.env = { ...pristineEnv }
+})
+
 async function resolveWith(env: Record<string, string | undefined>) {
   const saved = { ...process.env }
   for (const [k, v] of Object.entries(env)) {

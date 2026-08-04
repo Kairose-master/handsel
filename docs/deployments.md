@@ -51,7 +51,7 @@ convention, not an accident):
 | Gas sponsorship (paymaster) | ❌ off — pending a working mainnet paymaster | ✅ ZeroDev | `PAYMASTER_DISABLED`, `PAYMASTER_RPC`/`ZERODEV_RPC` |
 | MiniVault / credit vault (borrowing against score) | ❌ not deployed | ✅ Sepolia sandbox | `MINIVAULT_ADDRESS`, `CREDIT_VAULT_ADDRESS` |
 | On-chain governance (VeilPoll) | ❌ not deployed | ✅ | governance env |
-| GitHub repo jobs (bounty label → PR → merge pays) | ❌ App not configured yet | ✅ | GitHub App env |
+| GitHub repo jobs (bounty label → PR → merge pays) | ✅ live since 2026-08-03 (`handsel-main` App) | ✅ | GitHub App env |
 | Test-USDC minting | ❌ impossible (real USDC) | ✅ | chain (`mintBlocker`) |
 
 If a doc, a UI string or a connector instruction claims one of the ❌ rows
