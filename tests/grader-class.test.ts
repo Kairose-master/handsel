@@ -1,22 +1,43 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   GRADER_CLASSES,
   classifyGrader,
   gradeTag,
-  graderClassRank,
+  graderClassPrior,
   parseGradeTag,
   trustWeightedScore,
   type GraderClass,
 } from '@/lib/grader-class'
 
-describe('grader classes rank by forge-resistance', () => {
-  it('reproducible outranks model outranks declared', () => {
-    expect(graderClassRank('reproducible')).toBeGreaterThan(graderClassRank('model'))
-    expect(graderClassRank('model')).toBeGreaterThan(graderClassRank('declared'))
+/**
+ * These classes were once documented as an ordering by forge-resistance. An
+ * adversarial review refuted that: `attested` is an envelope property that
+ * overlaps every other label, a locked model judge is model+mechanical+
+ * reproducible at once, and a public reproducible test can be cheaper to defeat
+ * than a hidden mechanical one. OpenPGP shipped exactly this scale in RFC 1991
+ * and is now deprecating `casual` because the distinctions proved ill-defined.
+ *
+ * The prior survives for display order only. These tests assert that and say
+ * so, so nobody reads a passing suite as evidence the ordering is sound.
+ */
+describe('graderClassPrior is a display prior, not a measurement', () => {
+  it('orders the labels for triage', () => {
+    expect(graderClassPrior('reproducible')).toBeGreaterThan(graderClassPrior('model'))
+    expect(graderClassPrior('model')).toBeGreaterThan(graderClassPrior('declared'))
   })
 
   it('an unknown class ranks zero, never negative', () => {
-    expect(graderClassRank('nonsense' as GraderClass)).toBe(0)
+    expect(graderClassPrior('nonsense' as GraderClass)).toBe(0)
+  })
+
+  it('is documented as unsafe to settle on', () => {
+    const src = readFileSync(join(process.cwd(), 'lib/grader-class.ts'), 'utf8')
+    expect(src).toMatch(/NOT A TOTAL ORDER/)
+    // Newline-and-comment-prefix tolerant: the phrase wraps in the source.
+    expect(src).toMatch(/not[\s*]+safe as a settlement weight/i)
+    expect(src).toMatch(/RFC 1991/)
   })
 })
 
@@ -80,9 +101,26 @@ describe('the reference fold a third party would run over public 8004 data', () 
     const honest = [{ value: 60, cls: 'reproducible' as GraderClass }]
     const sybilScore = trustWeightedScore(sybil).score
     const honestPulled = trustWeightedScore([...sybil, ...honest]).score
-    // One reproducible 60 measurably drags 50 self-reported 100s downward —
-    // the whole point: cheap opinions cannot swamp one real proof.
     expect(honestPulled).toBeLessThan(sybilScore)
+  })
+
+  /**
+   * The test above reads like a Sybil defence and is not one. This one is the
+   * counterweight: the fold's breakdown point is ZERO. Class weights bound the
+   * per-verdict influence, not the number of verdicts, so an attacker who can
+   * mint `declared` entries freely still moves the result as far as they like.
+   * Blanchard et al. (2017): no linear-combination aggregator is Byzantine
+   * robust. Robustness needs rejection, trimming or capping by principal —
+   * none of which this function does.
+   */
+  it('has a breakdown point of zero — enough cheap verdicts still move it', () => {
+    const honestOnly = trustWeightedScore([{ value: 0, cls: 'reproducible' }]).score
+    const flooded = trustWeightedScore([
+      { value: 0, cls: 'reproducible' },
+      ...Array.from({ length: 5000 }, () => ({ value: 100, cls: 'declared' as GraderClass })),
+    ]).score
+    expect(honestOnly).toBe(0)
+    expect(flooded).toBeGreaterThan(90) // one real 0 is drowned; this is not robust
   })
 
   it('no verdicts is the absence of a score, not a score of zero (§20 cliff)', () => {

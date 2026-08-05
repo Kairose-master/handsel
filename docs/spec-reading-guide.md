@@ -149,9 +149,14 @@ protocol-level flags". Empirically that fallback is 73–90% Sybil
 Our answer rides in the `tag` the registry already has: see `lib/grader-class.ts`
 and the `gradeTag()` call in `lib/callback/labor-market.ts`.
 
-**3. `getSummary()` folds flat.** Any consumer averaging these numbers inherits
-its weakest input. `trustWeightedScore()` in `lib/grader-class.ts` is the
-reference fold that does not.
+**3. `getSummary()` folds flat.** An earlier version of this line said a
+consumer averaging these numbers "inherits its weakest input". That is **false**
+and an adversarial review caught it: an aggregator inherits its *threat model
+and breakdown point*, not its weakest observation — it can reject, cap, cluster
+or trim. `trustWeightedScore()` in `lib/grader-class.ts` is a transparent
+recomputable baseline whose own breakdown point is zero, and it says so; the
+robust versions are Dawid–Skene-style reliability estimation and
+trimmed/median aggregation under a stated contamination bound.
 
 ---
 
