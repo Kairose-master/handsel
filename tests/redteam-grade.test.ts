@@ -134,6 +134,44 @@ describe('the attested-signal path', () => {
  * not reach is decoration, and routing a red-team submission to the LLM reviewer
  * would hand the verdict back to the party writing the submission.
  */
+/**
+ * Every first-class actor here is an ERC-4337 Kernel account, and a contract
+ * cannot produce a signature that ecrecovers to its own address. The first
+ * version of this file only called recoverMessageAddress, which would have
+ * rejected the most likely attester there is — an owner registering their own
+ * agent — forever, with a message blaming them for it.
+ */
+describe('a smart-account attester is verified via ERC-1271, not ecrecover', () => {
+  const src = readFileSync(join(process.cwd(), 'lib/redteam-grade.ts'), 'utf8')
+
+  it('falls back to on-chain signature validation when ECDSA does not match', () => {
+    expect(src).toMatch(/verifyMessage/)
+    expect(src).toMatch(/1271/)
+  })
+
+  it('validates against the SEALED attester, never one the submission chose', () => {
+    // Otherwise an attacker nominates a contract that validates everything.
+    expect(src).toMatch(/registeredAttester/)
+    expect(src).toMatch(/objective\.proof\.attester/)
+  })
+
+  it('does not dial out when no RPC is configured, and bounds the call that does', () => {
+    // A wrong signature is the common case; noise must not cost a round trip
+    // each on the settlement path.
+    expect(src).toMatch(/if \(!onchainEnv\.rpcUrl\) return null/)
+    expect(src).toMatch(/ERC1271_TIMEOUT_MS/)
+  })
+
+  it('a timeout or RPC failure is "not proven", never a pass', async () => {
+    // No RPC in the test env, so this exercises the skip path end to end.
+    const g = await gradeRedTeamSubmission(
+      signalMarker,
+      JSON.stringify({ signal: 'payout.called', signature: `0x${'ab'.repeat(65)}` }),
+    )
+    expect(g.passed).toBe(false)
+  })
+})
+
 describe('the callback routes red-team jobs to the deterministic judge', () => {
   const src = readFileSync(join(process.cwd(), 'lib/callback/labor-market.ts'), 'utf8')
 

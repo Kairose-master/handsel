@@ -63,6 +63,61 @@ export function parseSignalPayload(output: string): SignalPayload | null {
 }
 
 /**
+ * Who signed this — for an EOA *or* a smart account.
+ *
+ * The first version of this called `recoverMessageAddress` and stopped, which
+ * quietly excluded the most likely attester there is. **Every first-class actor
+ * in this system is an ERC-4337 Kernel account**, and a contract cannot produce
+ * a signature that ecrecovers to its own address — it validates one, via
+ * ERC-1271 `isValidSignature(bytes32,bytes) -> 0x1626ba7e` (Final). So an owner
+ * doing the obvious thing, registering their agent's address as the attester,
+ * would have had every signal rejected forever with "did not recover", and the
+ * message would have been describing our bug as their forgery.
+ *
+ * Order matters. ECDSA first, because it is free and offline. Only if that does
+ * not match do we spend a network call, and that call is made **against the
+ * registered attester from the sealed objective** — never against an address
+ * the submission chose, which would let an attacker nominate a contract that
+ * validates everything.
+ *
+ * Returning the registered address on a 1271 pass is not a fudge: 1271 answers
+ * exactly "is this signature valid *for this account*", so naming that account
+ * as the effective signer is what was established. The pure judge above is
+ * unchanged and still does the comparison.
+ *
+ * An RPC that fails yields null → not proven. That is the standing rule, and
+ * here it means a flaky node denies a real claim rather than paying a fake one.
+ */
+async function resolveSigner(message: string, signature: Hex, registeredAttester: string): Promise<string | null> {
+  try {
+    const recovered = await recoverMessageAddress({ message, signature })
+    if (recovered.toLowerCase() === registeredAttester.toLowerCase()) return recovered
+  } catch {
+    /* not an EOA signature, or malformed — fall through to ERC-1271 */
+  }
+  // Everything below costs a network round trip, and a wrong signature is the
+  // COMMON case — an attacker submitting noise must not be able to make us dial
+  // out once per attempt on the settlement path. So: no RPC configured, no call
+  // (the ECDSA answer above stands), and the call that does happen is bounded.
+  const { onchainEnv } = await import('@/lib/onchain/config')
+  if (!onchainEnv.rpcUrl) return null
+  try {
+    const { publicClient } = await import('@/lib/onchain/clients')
+    const ok = await Promise.race([
+      publicClient().verifyMessage({ address: registeredAttester as `0x${string}`, message, signature }),
+      new Promise<false>((resolve) => setTimeout(() => resolve(false), ERC1271_TIMEOUT_MS)),
+    ])
+    return ok ? registeredAttester : null
+  } catch {
+    return null
+  }
+}
+
+/** A slow node must not hold a settlement open. Timing out yields "not proven",
+ *  which denies a real claim rather than paying a fake one — the safe direction. */
+const ERC1271_TIMEOUT_MS = 5_000
+
+/**
  * Judge a submission against the objective stamped on its job spec.
  *
  * For a canary the worker's whole output is the haystack, deliberately: pasting
@@ -89,14 +144,11 @@ export async function gradeRedTeamSubmission(
     // and never as a pass.
     let recoveredAttester: string | null = null
     if (payload) {
-      try {
-        recoveredAttester = await recoverMessageAddress({
-          message: redTeamSignalMessage(marker.engagementId, objective.id, payload.signal),
-          signature: payload.signature as Hex,
-        })
-      } catch {
-        recoveredAttester = null
-      }
+      recoveredAttester = await resolveSigner(
+        redTeamSignalMessage(marker.engagementId, objective.id, payload.signal),
+        payload.signature as Hex,
+        objective.proof.attester,
+      )
     }
     evidence = {
       kind: 'attested-signal',
