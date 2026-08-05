@@ -241,10 +241,24 @@ export async function settleLaborMarketJob(agentTaskId: string, output: string):
       // submission that never actually recorded).
       if (submitted) {
         const { publishValidation } = await import('@/lib/onchain/erc8004')
+        // The tag carries the forge-resistance CLASS, not just the job kind.
+        // ERC-8004 stores a validation as one 0–100 number and — the spec says
+        // so — cannot tell a canary-proven 100 from an LLM's opinion of 100. A
+        // consumer folding those numbers can only down-weight the gameable ones
+        // if the class travels with the verdict, so we put it in the tag the
+        // registry already has (lib/grader-class.ts).
+        const { gradeTag } = await import('@/lib/grader-class')
+        // A repo job here means the PR merely OPENED — the requester's CI has
+        // not graded it yet, so it is NOT a reproducible pass. Classifying it as
+        // 'ci' would over-claim exactly what this file forbids; the reproducible
+        // CI validation belongs on the merge path, not here. An unmapped name
+        // falls to the weakest class ('declared'), which is the honest floor
+        // until CI actually runs.
+        const grader = testSuiteSpec ? 'tests' : isImageJob ? 'vision' : isAudioJob ? 'audio' : isLlmGradableText ? 'llm-review' : isRepoJob ? 'repo-open' : 'code'
         await publishValidation(
           spec.workerAgentId,
           grade.passed ? 100 : 0,
-          isRepoJob ? 'repo-diff' : isImageJob ? 'vision-review' : isAudioJob ? 'audio-review' : isLlmGradableText ? 'llm-review' : 'acceptance-tests',
+          gradeTag(grader),
           `job-${spec.onchainJobId}`,
         )
       }
