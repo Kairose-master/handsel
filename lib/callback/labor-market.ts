@@ -109,8 +109,52 @@ export async function settleLaborMarketJob(agentTaskId: string, output: string):
     //
     // Deliberately not applied to red-team jobs: there the objective IS to be
     // adversarial, and "I refuse" from an attacker is simply not a proof.
+    //
+    // Two kinds, two destinations (§25). "This brief attacked me" is evidence
+    // about the REQUESTER; "I have no tool for this" is a fact about the WORKER
+    // and about nobody's good faith. They arrived through one exit once and a
+    // real job paid for it — a worker that lacked GitHub access wrote the attack
+    // marker because it was the only vocabulary we had given it, and an innocent
+    // requester got the strike.
     const refusal = !redteamMarker ? await import('@/lib/brief-refusal') : null
-    if (refusal?.looksLikeBriefRefusal(output)) {
+    const refusalKind = refusal ? refusal.classifyRefusal(output) : null
+
+    if (refusalKind === 'incapable') {
+      // Nobody did anything wrong, so nobody is recorded: no credit event about
+      // the worker, no accusation logged against the requester, and none of the
+      // attack-refusal bookkeeping — that counter is about a different claim.
+      //
+      // The job goes back to the market, which is the part that matters. Holding
+      // it for manual review would strand the requester's escrow on a job that a
+      // different worker could simply do, and the money moves in the safe
+      // direction here — back to the party who put it in, never to the party
+      // whose text triggered this. returnFailedJobToMarket also blocks this
+      // worker from the repost, which is right: it still cannot do the work.
+      const grade = {
+        passed: null as boolean | null,
+        output: refusal!.incapableGradeOutput(output),
+        gradedAt: new Date().toISOString(),
+      }
+      await db
+        .update(jobSpec)
+        .set({ testResult: { ...grade, workerIncapable: true } })
+        .where(eq(jobSpec.specHash, spec.specHash))
+      await logPlatformEvent(
+        'WORKER_INCAPABLE',
+        `A worker returned job ${spec.onchainJobId} as beyond its capabilities — no verdict recorded about anyone, ` +
+          'the job goes back to the market for a worker that can do it',
+      ).catch(() => {})
+      await returnFailedJobToMarket(spec, {
+        note: 'Auto: the worker lacked a capability the job required — refunded and reposted for a worker that has it',
+      })
+      return {
+        passed: null,
+        settled: 'refunded',
+        reason: 'The worker could not do this work — no verdict recorded, and the job returned to the market.',
+      }
+    }
+
+    if (refusalKind === 'brief-attack') {
       const decision = await refusalCreditFor(spec.workerAgentId, spec.requesterAgentId ?? null)
       // Recorded against the requester, which is where the evidence points.
       await logPlatformEvent(
@@ -124,7 +168,7 @@ export async function settleLaborMarketJob(agentTaskId: string, output: string):
         // the result on the job and no credit event on the worker.
         grade = {
           passed: null,
-          output: refusal.refusalGradeOutput(spec.requesterAgentId ?? null),
+          output: refusal!.refusalGradeOutput(spec.requesterAgentId ?? null),
           gradedAt: new Date().toISOString(),
         }
         // `refusedBrief` is the marker the free-pass count reads back. It lives

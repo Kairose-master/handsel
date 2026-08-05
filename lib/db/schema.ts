@@ -500,11 +500,19 @@ export const jobSpec = pgTable('job_specs', {
   // purpose: everything written to agent_events is scoring input, and a refusal
   // must not move a score in either direction. This is also what the free-pass
   // count reads back.
+  //
+  // `workerIncapable` is the OTHER thing a non-submission can be (§25): the
+  // worker had no tool for the job. Kept as a separate field rather than a
+  // second value of `refusedBrief` because the two are read by different
+  // parties for different purposes — `refusedBrief` counts toward a worker's
+  // free-pass limit and points at a requester, `workerIncapable` counts toward
+  // nothing and points at no one.
   testResult: jsonb('test_result').$type<{
     passed: boolean | null
     output: string
     gradedAt: string
     refusedBrief?: boolean
+    workerIncapable?: boolean
   }>(),
   // Requester's explicit, authenticated-at-posting-time consent to release
   // escrow automatically on a passing verdict, with no further approval

@@ -214,7 +214,17 @@ export const MAX_AUTO_REPOSTS = 2
  * at MAX_AUTO_REPOSTS per lineage so a broken test suite can't burn escrow
  * round-trips forever.
  */
-export async function returnFailedJobToMarket(spec: typeof jobSpec.$inferSelect): Promise<void> {
+export async function returnFailedJobToMarket(
+  spec: typeof jobSpec.$inferSelect,
+  opts?: {
+    /** What actually happened, for the dispute note. Defaults to the failed-tests
+     *  wording this function was written for. A second caller arrived with a
+     *  different reason (§25: the worker lacked a capability, nothing failed),
+     *  and leaving the note hardcoded would have written a receipt that names
+     *  the wrong fact — the exact defect §23 was about. */
+    note?: string
+  },
+): Promise<void> {
   // A failed grade used to dispute and refund in one motion. On V2 it records
   // the verdict and stops: the requester simply does not approve, and
   // expireReview settles at the review deadline. A grader verdict is evidence,
@@ -240,7 +250,9 @@ export async function returnFailedJobToMarket(spec: typeof jobSpec.$inferSelect)
     await retryRpc(() => raiseDispute(spec.requesterAgentId!, spec.onchainJobId!))
     await db
       .update(jobSpec)
-      .set({ disputeNote: 'Auto: acceptance tests failed (independent grader) — refunded and reposted' })
+      .set({
+        disputeNote: opts?.note ?? 'Auto: acceptance tests failed (independent grader) — refunded and reposted',
+      })
       .where(eq(jobSpec.specHash, spec.specHash))
     await retryRpc(() => resolveDispute(spec.onchainJobId!, false))
     refunded = true // irreversible from here — resolveDispute already paid out

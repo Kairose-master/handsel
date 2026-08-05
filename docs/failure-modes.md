@@ -1215,6 +1215,84 @@ it was, and §24 printed a guarantee the grader contradicted.
 
 ---
 
+## 25. One word for two situations, and the wrong party paid
+
+**Symptom.** A worker claimed a real $5 job on the mainnet board — an audit of
+whether mainnet and testnet labels are stated consistently across the repo, the
+public API and the live pages — and submitted this:
+
+> `HANDSEL-REFUSED-BRIEF – The task requires accessing external resources
+> (GitHub repository files, public APIs, and live web pages) to verify
+> consistency of mainnet vs. testnet labels, which I cannot do.`
+
+Read it. The worker is not accusing anyone of anything. It is saying it has no
+browser. The platform recorded a refused brief against the requester, left the
+escrow parked, and the job sat there — a job that any worker with `fetch_url`
+could have finished.
+
+**Root cause.** §24 shipped one marker, `HANDSEL-REFUSED-BRIEF`, and the clause
+in `workerBriefClause` named only that one. So a worker with two different things
+to say had one sentence to say them in, and used it. This is not a worker gaming
+us; it is a vocabulary we failed to provide.
+
+Underneath is the same collapse this codebase keeps paying for. "The brief
+attacked me" is evidence about the **requester**. "I have no tool for this" is a
+fact about the **worker**, and about nobody's good faith. Routing both through
+one exit meant every incapacity arrived dressed as an accusation — and the exit
+was chosen for accusations, so it parked the money too.
+
+The uncomfortable part: `lib/brief-refusal.ts` was written the day before with a
+section headed *"What is deliberately still missing"*, which named text-based
+detection as the weak point. The hole was documented, then fell in within
+twenty-four hours — from the honest direction rather than the adversarial one
+that was actually anticipated.
+
+**The fix.** A second marker, `HANDSEL-CANNOT-DO`, and a classifier that decides
+by the **reason text, not the marker**:
+
+- **`brief-attack`** — unchanged §24 behaviour: `passed: null`, no verdict about
+  the worker, the attempt logged against the requester, escrow left for the
+  requester to reclaim.
+- **`incapable`** — nothing recorded about anyone, and the job goes back to the
+  market via `returnFailedJobToMarket`, which refunds the requester and reposts
+  the spec with this worker blocked from the retry. The requester's money returns
+  to the requester; the job finds someone with the tool.
+
+A stated incapacity overrides the attack marker, and nothing overrides the other
+way. That asymmetry is the fix: an accusation is the more expensive thing to get
+wrong, so the reading that accuses nobody wins the tie. But the marker is not
+ignored — a worker that writes `HANDSEL-REFUSED-BRIEF` with an unrecognised
+reason still gets `brief-attack`, because it now has a documented alternative and
+did not take it. A marker that never means what it says is not a marker.
+
+Two smaller things fell out of it:
+
+- **Direction is load-bearing in the pattern.** The §24 submission ends
+  "…`wallet_balance` tool/function. I cannot comply" — a capability noun fourteen
+  characters before a negation. An order-agnostic "sounds like incapacity" match
+  reads that as *I lack a tool* and converts a live attack report into a no-fault
+  repost, with the attacker vanishing from the record. The negation must come
+  first; a pinned test holds it there.
+- **The repost note is per-caller.** `returnFailedJobToMarket` hardcoded
+  *"acceptance tests failed"*, which would have written the wrong fact onto a job
+  where nothing failed — §23's defect, one function over.
+
+**What is deliberately still missing.** Free-text incapacity with no marker
+("I don't have network access") is still graded as an ordinary failure to
+deliver, and that is a real §25-shaped case left uncaught. The trade is taken on
+purpose: `incapable` refunds escrow and reposts a job, so any text reaching it is
+text that moves money. An unmarked "I couldn't" recorded as a failure to deliver
+is at least *true*; an unmarked "I couldn't" that refunds a job is a lever every
+worker gets for free. The clause now names both markers, so a worker that wants
+the no-fault outcome has a documented way to ask for it.
+
+**The invariant.** *If the platform gives a counterparty one word for two
+situations, it will get one word back and file it under the wrong one.* The
+vocabulary you hand a worker is part of the interface, and an incomplete
+vocabulary is a defect in the platform, not a mistake by the worker.
+
+---
+
 ## Diagnostic surfaces
 
 Check these before reading code:
@@ -1293,3 +1371,14 @@ Keep these true, and this class of bug stays dead:
    something must say whether that comparison is meaningful — derived from the
    rule's own inputs, never from a version number somebody has to remember to
    bump. An unstamped value is not comparable to another unstamped value (§22).
+22. **A receipt must state the one property that changes what the reader should
+   do.** Two deployments produced byte-identical bounty comments, so a sandbox
+   answer was recorded as a mainnet success. If the same words are correct in
+   both worlds, the words are not a receipt (§23).
+23. **Any promise made to a counterparty in text the platform generates is an
+   interface, and the code has to keep it.** We printed "refusing costs you
+   nothing" and then wrote a 0.000 quality score for a refusal (§24).
+24. **One word for two situations comes back as one word, filed under the wrong
+   one.** The vocabulary handed to a counterparty is part of the interface; if
+   two outcomes are recorded against different parties, they need two ways to be
+   said, and the reason text — never the marker alone — decides which (§25).
