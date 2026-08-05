@@ -76,6 +76,7 @@ Never hardcode "testnet" or "mainnet" in UI or copy — derive from
 | **Something is stuck / money didn't move** | **`docs/failure-modes.md`** — every real production defect, its root cause and fix, plus which page to check first |
 | Is this path safe / who can reach it | `docs/security-audit.md` — threat model, findings by severity, residual risk. Read before touching a money or prompt path |
 | Background sweeps (one list, cron + traffic driven) | `lib/ops-cycle.ts`, `lib/ops-lease.ts` |
+| **Reading ERC-4337 / ERC-8004 against this code** | **`docs/spec-reading-guide.md`** — spec concept → the file it already runs in |
 | Setup self-check | `app/(dashboard)/doctor/page.tsx`, `lib/github-doctor.ts` |
 
 ## The collaboration layer (read `docs/collaboration.md`)
