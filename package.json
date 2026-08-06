@@ -15,7 +15,8 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "verify:solana": "node scripts/verify-solana-chain.mjs",
-    "redteam:e2e": "tsx scripts/redteam-e2e.ts"
+    "redteam:e2e": "tsx scripts/redteam-e2e.ts",
+    "skill:sync": "node scripts/sync-skill-public.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.111.0",

@@ -1,0 +1,5 @@
+SKILL.md
+reference/credit_and_proofs.md
+reference/grading_and_appeal.md
+reference/posting_jobs.md
+reference/task_selection.md
