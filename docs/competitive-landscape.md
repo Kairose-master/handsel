@@ -593,3 +593,154 @@ smaller things:
 
 *Unverified, listed so the next pass knows where to start: AgentKarma, iAgentFi,
 ChainAware, Kustodia, RIP-302, AI Lance, AGIJobManager, OKX AI.*
+
+---
+
+# Third pass, 2026-08-06
+
+*Not prompted by an inbound summary this time — prompted by the operator asking
+why the last two passes missed the shipping half of the market. That is the
+honest frame for this section, and it goes first because the gap in method
+matters more than any single competitor added below.*
+
+## The method failure, named
+
+The July and August passes are deep on ERC-8004 and ERC-8183 — **standards** —
+and nearly blind on **shipping products**. The reason is mechanical, not lazy:
+
+- **You can only search for a name you already have.** A spec is a canonical
+  document you look up (`ERC-8195`); a product is a brand you have to already
+  know to type (`Claw Earn`). Concept searches surface specs; only *category*
+  searches ("agent marketplace USDC Base") surface names you did not have — and
+  those were not run until today.
+- **Spec depth felt like diligence and masked the blind spot.** Mining the 8183
+  thread was genuinely valuable, which is exactly why it was dangerous: depth on
+  one axis read as coverage.
+- **Every prior addition was reactive.** §6 arrived because a stranger forked the
+  repo; the second pass arrived from an outside summary. No pass ran an
+  unprompted "who else is doing this" sweep on its own.
+
+The evidence is in this very file: the second pass ended with a "next start" list
+that already contained **OKX AI** — a competitor flagged to check, never checked,
+until the operator pushed. Leaving a TODO to yourself is not research.
+
+Correction going forward: a category sweep runs *before* any positioning claim,
+not after someone asks.
+
+## The shipping half that was missing
+
+Single-source items are marked *reported*; the TaskMarket grading finding is
+*verified* because it was read from their spec directly.
+
+### daydreams / TaskMarket — the one already in a conversation with us
+
+`taskmarket.dev`, by **daydreams.systems**. `daydreamsai/taskmarket-contracts`
+(Beau Williams, ~51 commits, effectively one author — the solo-vs-org framing
+elsewhere overstated their headcount). Authors ERC-8195 and ERC-8194 as EIP
+drafts and ships the reference implementation: Diamond proxy, per-task
+`assignEvaluator`, evaluator stake, `appeal()` → `disputeResolver`.
+
+- **How we learned of it**: inbound (GitHub issue #3, `padsbanger`), not
+  discovery. It should have been found in July.
+- **The verified finding that matters** (read from `erc-8195.md` §4, not
+  reported): *"No automated evaluation — Benchmark-style tasks require **trusted
+  off-chain evaluators with no on-chain finality**,"* and "Trustless evaluation |
+  Optional." Their on-chain "independently verify" (`rev007`) checks that a
+  deliverable **hash was committed** (provenance), not that the work is correct
+  (quality). `evidenceHash` is a commitment, not a recomputation.
+- **So the wedge is real and narrow.** Handsel's *mechanical* verdict class (CI,
+  test suite, mutation, canary) is third-party recomputable; TMP's default
+  evaluator is a trusted opinion, and their standard leaves the trustless slot
+  *optional* behind a hook (`ITMPHook.checkEvaluate`, or `evaluatorFor` →
+  ERC-8004 Validation Registry). Handsel's *LLM-review* verdicts are the same
+  "stake, not truth" as theirs and are **not** differentiated — only the
+  mechanical lane is. This is the honest basis for the #57 outreach.
+
+### The Claw ecosystem — the closest thing to our repo-jobs / bounty lane
+
+**Claw Earn**, **ClawTasks**, **ClawMoney** — all in the **OpenClaw** ecosystem
+(*reported*, via aiagentstore/product listings). On-chain USDC bounty markets on
+Base: non-custodial escrow, worker **stake tiered by trust** (30% first task, 20%
+for #2–3, then 10%), minimum bounty ~9 USDC, primary flow human→agent but rails
+support A→A. That is Handsel's LaborMarket shape — escrow + worker bond +
+auto-settlement — shipped, on our chain.
+
+- **What is missing from them** (inferred from listings, not verified): an
+  *independent grading* layer. "Deliver, get paid per contract rules" is escrow
+  automation, not a verdict a third party recomputes. Same wedge as TMP — needs
+  verification before it becomes a pitch.
+- **Name collision, ours to resolve.** Our capability directory is called
+  **ClawHub** (`lib/clawhub.ts`, `app/directory`). There is now a whole "Claw"-
+  branded competitor family on the same chain. OpenClaw is steipete's project,
+  which `daydreamsai` forked as `dreaming-claw` — so the Claw brand sits across
+  the daydreams/OpenClaw cluster we are already talking to. Keeping "ClawHub" now
+  reads as riding their brand or being confused for it. Rename candidate.
+
+### Distribution incumbents — the fight that is not winnable head-on
+
+- **OKX AI marketplace** (TechCrunch, 2026-06-30): a *licensed exchange* launched
+  a market where agents hire and pay each other in USDT/USDG and build **portable
+  on-chain reputation**; opened after a 50-provider closed beta. Reputation +
+  marketplace with an exchange's distribution.
+- **Circle Agent Stack** (*reported*): the USDC *issuer* shipped agent wallets, a
+  CLI, **an agent marketplace**, and nanopayments down to $0.000001.
+- **Coinbase AgentKit**: MPC wallets + gas sponsorship on Base for agent builders.
+
+None of these can be out-built on distribution by a solo project. The realistic
+posture is the one the thesis already implies: **be honorable-by-others, not
+dominant.** An open, recomputable proof that Circle/OKX/Claw could *consume* is a
+seat a solo builder can hold; "the reputation layer" is not.
+
+### The KYA product boom — the category I positioned into without checking
+
+Thirty minutes before writing this, the strategy discussion positioned Handsel as
+"the Know-Your-Agent / credit layer a16z says is the prerequisite." One category
+search shows that seat is crowded: **RNWY / knowyouragent.network** (claims 100k+
+registered agents), **Vouched** (established identity co., now an Agent Reputation
+Directory), **Billions**, **KnowThat.ai** (trust score + behavioral history)
+(*all reported*). a16z does name KYA as a prerequisite (*Sourcetrail, reported*) —
+but naming the need is not owning it, and identity/fraud KYA is a different
+product from work-quality grading.
+
+The honest residual: **not "KYA," not "agent reputation" (RNWY already has scale)
+— the one thin cell is reputation from independently-graded, third-party-
+recomputable *work outcomes*, wired to credit.** Identity-KYA players do fraud and
+behavioral signals; Claw/TMP do escrow without recomputable grading; Kojiru does
+credit but collateralized. The recomputable-grade-as-underwriting-input cell is
+where Handsel sits, and it is small enough to be either a moat or a graveyard.
+
+## The market-reality check the earlier passes lacked
+
+x402's ecosystem carries a ~$7B valuation and processes **~$28k/day of real
+volume, "much of it… gamed transactions rather than real commerce"** (*Coindesk,
+2026-03*). The category's own headline is *"demand is just not there yet."* This
+reframes our own cold start: **22-submissions-to-1 was not a defeat, it was the
+whole market's demand vacuum.** Do not fight for agent-labor demand that does not
+exist; the durable position is the credential/proof the arriving rails will
+require, honored by one venue first.
+
+## What this pass changes about the thesis
+
+Less than it feels like, and that honesty is the point.
+
+1. **The wedge survives, narrower.** Not the credential category (crowded), not
+   ideas (they converged — Kojiru, the 8183 authors, and this project independently
+   reached "execution risk," "stake not truth," the timing/validity split). The
+   surviving edge is (a) the *mechanical, recomputable* grade specifically, and
+   (b) the **discipline** — writing down our own holes (`failure-modes.md`,
+   `self-sybil.md`) is rarer than any insight here. Convergence validates the
+   *problem*; it does not hand over the *position*.
+2. **Distribution is lost head-on; interop is the only lane.** Publish
+   recomputable proofs others can consume; win one venue (daydreams/#57) before
+   widening. Outreach is sequential and gap-verified, never sprayed — a small
+   interconnected community (OpenClaw ↔ daydreams ↔ TaskMarket) makes a spammer
+   reputation fatal.
+3. **The ClawHub name has to go**, and "the KYA layer" framing with it. Speak the
+   narrow claim: *recomputable grading as a credit input.*
+
+*Verified this pass by reading source: TMP's `erc-8195.md` §4 and `rev007`.
+Everything attributed to a product listing or single article is marked reported.
+Category searches (agent marketplace / KYA / x402 volume) are cited inline. The
+prior "unverified next-start" list still contains AgentKarma, iAgentFi,
+ChainAware, Kustodia, RIP-302, AI Lance, AGIJobManager — still unchecked, now
+honestly labelled as such rather than implied covered.*
