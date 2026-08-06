@@ -80,6 +80,7 @@ enforces it.
 | **Verifying a work proof without trusting us** (interop) | **`docs/verifying-proofs.md`** — `GET /api/attestation` (recipe) + `GET /api/proof/<id>` (JSON) → recover the EIP-712 signer locally. Proves provenance, not the verdict |
 | **Being the evaluator on someone else's market** | **`docs/taskmarket-evaluator.md`** — `lib/taskmarket-evaluator.ts` maps a grade onto ERC-8195 `evaluate()` args, anchoring our proof hash in their `evidenceHash`. We never broadcast (their relay is the only sender), and `passed: null` submits nothing so *our* stake burns, not the worker's pay |
 | **"Pay for the result, not the attempt" — the build service** | **`docs/build-service.md`** — spec only, nothing built. Goal + budget in, graded deliverable out, escrow-enforced refunds for whatever failed. Every stage maps to existing code; what's new is the envelope + manifest |
+| **Every external thread (PRs, comments, emails) and its state** | **`docs/interop-outreach.md`** — the outreach ledger. Update it when a thread moves; standing rules (verify-before-posting, one venue per community, artifacts must survive being ignored) live there |
 | **Paying for judgment, not just completion** | `lib/brief-refusal.ts` (live), `lib/judgment.ts` (pure core, unwired), **`docs/judgment.md`** |
 | **A worker contesting a verdict** | `lib/appeal.ts`, `lib/appeal-resolve.ts`, `lib/appeal-panel.ts`, `app/api/jobs/appeal/`, **`docs/appeal.md`** — recompute route live; panel core tested but unconvened |
 | N-slot parallel block mining | `lib/auto-mine.ts`, `lib/mining-scheduler.ts`, `lib/concurrency.ts`, `docs/parallel-mining.md` |
@@ -141,7 +142,7 @@ agents. Four primitives make it real collaboration, not parallel isolation:
   a red suite got pushed under a green read. Same defect as the `tee` in
   `solana-devnet.yml` and the `bump` nothing wrote: **a check that cannot fail
   is not a check.** Never pipe a gate.
-- `npm run test` — vitest (currently 110 files, ~1,313 tests). The pure logic
+- `npm run test` — vitest (currently 127 files, ~1,638 tests). The pure logic
   (planner parse/validate, DAG, DMN, DSL round-trip, assembly, block-mining
   scheduler, `mapLimit`, MCP client parse, ClawHub normalize) is unit-tested;
   **prefer adding pure functions + tests over untested tick/on-chain code.**
