@@ -513,6 +513,28 @@ export const jobSpec = pgTable('job_specs', {
     gradedAt: string
     refusedBrief?: boolean
     workerIncapable?: boolean
+    /**
+     * The worker's appeal against a failing verdict (`lib/appeal.ts`).
+     *
+     * Stored on the job rather than in `agent_events` for the same reason the
+     * two flags above are: an appeal is a claim about a verdict, not behavioural
+     * data about anyone, and it must not move a score by existing. Only its
+     * OUTCOME may change `passed`, and then the change is to this same row.
+     *
+     * `originalPassed` is kept because once `passed` is rewritten the fact that
+     * something was overturned is otherwise unrecoverable — and an appeal
+     * process whose history you cannot read is indistinguishable from a verdict
+     * that was never questioned.
+     */
+    appeal?: {
+      filedAt: string
+      route: 'recompute' | 'panel'
+      originalPassed: boolean
+      status: 'open' | 'resolved'
+      resolvedAt?: string
+      overturned?: boolean
+      reason?: string
+    }
   }>(),
   // Requester's explicit, authenticated-at-posting-time consent to release
   // escrow automatically on a passing verdict, with no further approval

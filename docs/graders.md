@@ -159,9 +159,100 @@ repeat counterparties earn diminishing weight — and a grader class should feed
 that weighting the way `grader: 'llm-review' | 'tests' | ...` already does. A
 self-registered webhook grader must weigh less than a mutation-graded suite.
 
+## Read against a working implementation
+
+This document was written from our own lanes. Someone else has since shipped the
+interface it argues for, on-chain, and reading it moved several things here from
+"open question" to "answered, and not the way I would have guessed."
+
+The reference is `daydreamsai/taskmarket-contracts` — `ITMPHook.sol` and
+`ITMPEvaluator.sol`, the latter an ERC-8195 draft. Their shape:
+
+```solidity
+// gates — return false and the transition does not happen
+checkFund(taskId, ctx, hookData)               → bool
+checkClaim(taskId, ctx, worker)                → bool
+checkSelectWorker(taskId, ctx, worker)         → bool
+checkSubmit(taskId, ctx, worker, deliverableHash) → bool
+checkEvaluate(taskId, ctx, evaluator)          → bool
+checkComplete(taskId, ctx, verdict)            → bool
+
+// observers — cannot veto, cannot revert the outcome
+onComplete(taskId, ctx, verdict)
+onForfeit(taskId, ctx, worker)
+onCancel(taskId, ctx)
+onExpire(taskId, ctx)
+```
+
+**1. A gate and an observer are different things, and this document merged
+them.** Everything above is "a grader", one concept carrying every job. Theirs
+splits: `check*` may veto, `on*` may only watch. That split is why their
+interface is boring and ours needed a hazards section — an observer that cannot
+change an outcome cannot be an attack surface for changing outcomes, so most of
+what we were worried about only ever applied to half the interface.
+
+**2. The interface is the lifecycle, not the verdict.** We scoped "grader" to
+"who decides passed". They gate funding, claiming, worker selection, submission
+and completion. And we already have every one of those decisions — they are just
+hardcoded in different files (`workerCanDeliver` is `checkClaim`;
+`assertNotSelfDeal` is `checkSelectWorker`; the posting-fee and cap checks are
+`checkFund`). We did not lack the concepts. We lacked the observation that they
+were the same concept five times.
+
+**3. `checkEvaluate` answers our Sybil hazard as a mechanism.** This document
+worries that "a ring could register a permissive grader and farm passes", and
+proposes to handle it with scoring weights. Their answer is a gate on *who may
+evaluate*, checked before the verdict rather than discounted after it. Weighting
+a bad verdict down is strictly worse than not accepting it.
+
+**4. The evaluator is not a hook.** `ITMPEvaluator` is its own interface with
+its own role, stake, window and appeal path. Keeping the thing that *produces*
+the verdict separate from the things that *gate and observe* it is what let each
+stay small. Our single "grader is a money authority" framing is true and is also
+why one abstraction had to solve authentication, Sybil resistance and
+exfiltration at once.
+
+**5. `evidenceHash`, not a reason string.** Their `evaluate()` takes
+`bytes32 evidenceHash`. This document says a verdict "carries a reason for the
+human reading it later" — prose, stored inline. A hash pointing at a fetchable
+document is better on every axis: bounded on-chain, tamper-evident, and it can
+be the work proof `lib/work-proof-store.ts` already issues. **This is also the
+integration point** if Handsel ever evaluates for an external market.
+
+**6. Their contract never sees the deliverable — only `deliverableHash`.** That
+disposes of the exfiltration hazard named below at the protocol layer, by not
+having the protocol hold the work at all. It does not solve it for us (we hold
+submissions because we grade them), but it does mean the hazard is a consequence
+of our architecture rather than an inevitability of the problem.
+
+### Where this document is still ahead
+
+Not everything transfers, and two of these are things an on-chain interface
+structurally cannot express:
+
+- **No regex.** A requester-supplied pattern run against a worker's submission
+  is a denial of service the worker pays for. Their hooks are contracts, so the
+  question never arises for them — but it arises for any off-chain grader, and
+  the rule stands.
+- **Grader authority checked by ACCOUNT, not by address.** One owner with two
+  agents is one party. A contract sees addresses and cannot see that; we can,
+  and the self-deal block and the judgment panel already do.
+- **`null` as a first-class verdict.** Their `VerdictType` has no "I could not
+  tell." Ours must: an unreachable grader is a fact about infrastructure, not
+  behavioural data about a worker, and this repo has paid for that confusion
+  four times (`docs/failure-modes.md`, opening section).
+
 ## What is not built
 
-All of it. This is a design.
+Most of it. This is still a design, with one exception noted below.
+
+**Now built: the appeal.** `lib/appeal.ts` and `POST /api/jobs/appeal` — the
+worker's right to contest a failing verdict, taken directly from ERC-8195's
+`appeal()`. Which route an appeal takes is decided by the grader class this
+document defines: a **reproducible** verdict is re-run, a **model** verdict goes
+to a panel. That makes the class more than a label for the first time — it
+prices the defence of a verdict, and it prices the recomputable one lowest.
+See `docs/appeal.md`.
 
 Specifically unresolved:
 

@@ -310,7 +310,18 @@ export async function settleLaborMarketJob(agentTaskId: string, output: string):
 
     if (grade.passed === false) {
       await returnFailedJobToMarket(spec)
-      return { passed: false, settled: 'refunded', reason: grade.output }
+      // A right the worker is not told about is not a right — §25's lesson, and
+      // this is the sentence that keeps it. The reason goes back to whatever
+      // submitted the work, which for most workers is the only channel there is.
+      const { APPEAL_WINDOW_MS } = await import('@/lib/appeal')
+      return {
+        passed: false,
+        settled: 'refunded',
+        reason:
+          `${grade.output}\n\nIf you believe this verdict is wrong you can appeal it within ` +
+          `${APPEAL_WINDOW_MS / 3_600_000}h: POST /api/jobs/appeal with {agent_id, spec_hash: "${spec.specHash}"} ` +
+          'and your worker secret. It costs nothing and no verdict about you changes while it is open.',
+      }
     } else if (grade.passed === true) {
       await autoApprovePassedJob(spec)
       return { passed: true, settled: 'paid', reason: grade.output }

@@ -77,6 +77,7 @@ enforces it.
 | Red-team jobs (a canary proves the break-in; the poster must prove the target) | `lib/redteam.ts`, `lib/redteam-grade.ts`, `app/api/redteam/`, `docs/redteam.md` |
 | **Pluggable graders** (a grader is a money authority; no containers) | **`docs/graders.md`** — design only, nothing built |
 | **Paying for judgment, not just completion** | `lib/brief-refusal.ts` (live), `lib/judgment.ts` (pure core, unwired), **`docs/judgment.md`** |
+| **A worker contesting a verdict** | `lib/appeal.ts`, `app/api/jobs/appeal/`, **`docs/appeal.md`** — filing live, resolution not wired |
 | N-slot parallel block mining | `lib/auto-mine.ts`, `lib/mining-scheduler.ts`, `lib/concurrency.ts`, `docs/parallel-mining.md` |
 | Capability directory (ClawHub) | `lib/clawhub.ts`, `app/directory/page.tsx` |
 | Public/guest landing | `app/guest/page.tsx` |
