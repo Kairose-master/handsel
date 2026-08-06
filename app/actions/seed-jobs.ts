@@ -43,7 +43,7 @@ const SEED_JOBS: SeedJob[] = [
     testCode:
       'assert sum_multiples(10) == 23\nassert sum_multiples(0) == 0\nassert sum_multiples(1) == 0\nassert sum_multiples(16) == 60\nassert sum_multiples(1000) == 233168\nprint("all tests passed")',
     bountyUsd: 6,
-    minScore: 200,
+    minScore: 0,
   },
   {
     title: 'Implement reverse_words(s)',
@@ -54,7 +54,7 @@ const SEED_JOBS: SeedJob[] = [
     testCode:
       'assert reverse_words("hello world") == "world hello"\nassert reverse_words("one") == "one"\nassert reverse_words("") == ""\nassert reverse_words("  a   b  c ") == "c b a"\nprint("all tests passed")',
     bountyUsd: 5,
-    minScore: 200,
+    minScore: 0,
   },
   {
     title: 'Implement moving_average(nums, k)',
@@ -65,7 +65,7 @@ const SEED_JOBS: SeedJob[] = [
     testCode:
       'assert moving_average([1, 2, 3, 4, 5], 2) == [1.5, 2.5, 3.5, 4.5]\nassert moving_average([10, 20, 30], 3) == [20.0]\nassert moving_average([5], 1) == [5.0]\nassert moving_average([1, 2], 5) == []\nassert moving_average([1, 2, 3], 0) == []\nassert moving_average([1, 1, 1, 4], 2) == [1.0, 1.0, 2.5]\nprint("all tests passed")',
     bountyUsd: 8,
-    minScore: 200,
+    minScore: 0,
   },
   {
     title: 'Implement count_primes(n)',
@@ -76,7 +76,7 @@ const SEED_JOBS: SeedJob[] = [
     testCode:
       'assert count_primes(0) == 0\nassert count_primes(2) == 0\nassert count_primes(3) == 1\nassert count_primes(10) == 4\nassert count_primes(100) == 25\nassert count_primes(1000) == 168\nprint("all tests passed")',
     bountyUsd: 10,
-    minScore: 200,
+    minScore: 0,
   },
   {
     title: 'Implement is_balanced(s)',
@@ -87,7 +87,7 @@ const SEED_JOBS: SeedJob[] = [
     testCode:
       'assert is_balanced("()") is True\nassert is_balanced("([]{})") is True\nassert is_balanced("(]") is False\nassert is_balanced("(((") is False\nassert is_balanced("") is True\nassert is_balanced("a(b[c]d)e") is True\nprint("all tests passed")',
     bountyUsd: 12,
-    minScore: 200,
+    minScore: 0,
   },
   {
     title: 'Implement roman_to_int(s)',
@@ -98,7 +98,7 @@ const SEED_JOBS: SeedJob[] = [
     testCode:
       'assert roman_to_int("III") == 3\nassert roman_to_int("IV") == 4\nassert roman_to_int("IX") == 9\nassert roman_to_int("LVIII") == 58\nassert roman_to_int("MCMXCIV") == 1994\nassert roman_to_int("MMXXVI") == 2026\nprint("all tests passed")',
     bountyUsd: 12,
-    minScore: 200,
+    minScore: 0,
   },
   {
     title: 'Implement parse_duration(s)',
@@ -109,7 +109,7 @@ const SEED_JOBS: SeedJob[] = [
     testCode:
       'assert parse_duration("1h 30m") == 5400\nassert parse_duration("45s") == 45\nassert parse_duration("2h") == 7200\nassert parse_duration("1h 1m 1s") == 3661\nassert parse_duration("90m") == 5400\nassert parse_duration("") == 0\nprint("all tests passed")',
     bountyUsd: 13,
-    minScore: 200,
+    minScore: 0,
   },
   {
     title: 'Implement summarize_ledger(csv_text)',
@@ -120,7 +120,7 @@ const SEED_JOBS: SeedJob[] = [
     testCode:
       'SAMPLE = """task_id,agent,status,duration_s,payout_usd\\nt-1,a,success,10,5.00\\nt-2,b,failure,20,0.00\\nt-3,c,success,30,7.50\\nt-4,d,success,40,12.50\\n"""\nr = summarize_ledger(SAMPLE)\nassert r["total_tasks"] == 4\nassert r["successful_tasks"] == 3\nassert r["success_rate"] == 0.75\nassert r["total_payout_usd"] == 25.00\nassert summarize_ledger("task_id,agent,status,duration_s,payout_usd\\n")["total_tasks"] == 0\nprint("all tests passed")',
     bountyUsd: 15,
-    minScore: 200,
+    minScore: 0,
   },
   {
     title: 'Implement merge_intervals(intervals)',

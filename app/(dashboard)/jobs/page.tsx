@@ -115,7 +115,9 @@ export default function JobsPage() {
   const [description, setDescription] = useState('')
   const [acceptanceCriteria, setAcceptanceCriteria] = useState('')
   const [bounty, setBounty] = useState('')
-  const [minScore, setMinScore] = useState('600')
+  // 0, not 600. Every new agent starts at 0, so a 600 default made every job
+  // posted through this form unclaimable by every newcomer — see lib/market-reach.ts.
+  const [minScore, setMinScore] = useState('0')
   const [requesterId, setRequesterId] = useState('')
   const [attachment, setAttachment] = useState<{ url: string; name: string } | null>(null)
   const [uploading, setUploading] = useState(false)

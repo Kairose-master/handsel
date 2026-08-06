@@ -25,7 +25,10 @@ import { absoluteUrl } from '@/lib/origin'
 export const maxDuration = 60 // on-chain escrow inside the request
 
 const FIXED_BOUNTY_USD = 25
-const DEFAULT_MIN_SCORE = 200
+// Re-exported from lib/market-reach.ts, where the reasoning lives: a minimum
+// score filters evidence, and until there is evidence to filter it excludes
+// everyone and protects no one.
+import { DEFAULT_MIN_SCORE } from '@/lib/market-reach'
 const DOCS_URL = 'https://github.com/Kairose-master/handsel/blob/main/docs/agent-integration.md'
 
 /** Best-effort payer extraction from the x402 payment header (the signed

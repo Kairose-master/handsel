@@ -17,6 +17,16 @@ export type MarketHealth = {
   jobs: { byStatus: Record<string, number>; total: number; escrowedUsd: number; settlementRate: number | null }
   grading: { total: number; passed: number; failed: number; passRate: number | null }
   loans: { byStatus: Record<string, number>; defaultRate: number | null }
+  /**
+   * How many Open jobs no registered worker is permitted to claim, and why.
+   *
+   * The most unflattering number here, and the last one we thought to compute.
+   * An unreachable job does not fail — it sits Open until its deadline, so it
+   * reads on every dashboard as demand nobody wanted. `gated` is worse than
+   * `empty`: it means workers exist who could do the work and a field on our own
+   * form locked them out. See lib/market-reach.ts.
+   */
+  reach: { openJobs: number; unreachable: number; gated: number; empty: number }
 }
 
 /**
@@ -64,9 +74,15 @@ export function summariseJobs(all: readonly { status: string; bounty: number }[]
 
 export async function computeMarketHealth(): Promise<MarketHealth> {
   let jobs: MarketHealth['jobs'] = { byStatus: {}, total: 0, escrowedUsd: 0, settlementRate: null }
+  // Held for computeReach: `minScore` is a CONTRACT field, not a column. Reading
+  // it from the chain is also the only version that can be trusted — the row is
+  // a copy, and a reach estimate computed from a stale copy would report a gate
+  // the market is not actually applying.
+  let onchainJobs: Awaited<ReturnType<typeof import('@/lib/onchain/labor').readJobs>> = []
   try {
     const { readJobs } = await import('@/lib/onchain/labor')
-    jobs = summariseJobs(await readJobs())
+    onchainJobs = await readJobs()
+    jobs = summariseJobs(onchainJobs)
   } catch {
     // On-chain unreadable (no env / RPC down): report the absence honestly.
   }
@@ -103,5 +119,65 @@ export async function computeMarketHealth(): Promise<MarketHealth> {
       byStatus: loanCounts,
       defaultRate: loanTerminal > 0 ? Math.round(((loanCounts.defaulted ?? 0) / loanTerminal) * 1000) / 10 : null,
     },
+    reach: await computeReach(onchainJobs),
+  }
+}
+
+
+/**
+ * Count the Open jobs nobody can claim.
+ *
+ * Best-effort by construction: this is a diagnostic, and a diagnostic that can
+ * take down the page it diagnoses is worse than a missing number. Any failure
+ * reports zeroes rather than throwing — the caller already treats an unreadable
+ * chain as absence.
+ */
+async function computeReach(
+  onchainJobs: { specHash: string; status: string; minScore: number }[],
+): Promise<MarketHealth['reach']> {
+  try {
+    const { agent, jobSpec } = await import('@/lib/db/schema')
+    const { marketReach } = await import('@/lib/market-reach')
+
+    const openJobs = onchainJobs.filter((j) => j.status === 'Open')
+    if (openJobs.length === 0) return { openJobs: 0, unreachable: 0, gated: 0, empty: 0 }
+
+    const [workers, specs] = await Promise.all([
+      db.select({ agentId: agent.id, creditScore: agent.creditScore, capabilities: agent.capabilities }).from(agent),
+      db
+        .select({
+          specHash: jobSpec.specHash,
+          deliverableKind: jobSpec.deliverableKind,
+          requiredCapabilities: jobSpec.requiredCapabilities,
+        })
+        .from(jobSpec),
+    ])
+
+    // creditScore is a numeric column, so it arrives as a string. Coercing here
+    // rather than in marketReach keeps that a storage detail — a comparison
+    // against an unparsed string would silently gate everyone.
+    const pool = workers.map((w) => ({
+      agentId: w.agentId,
+      creditScore: Number(w.creditScore ?? 0) || 0,
+      capabilities: w.capabilities,
+    }))
+    const bySpec = new Map(specs.map((s) => [s.specHash, s]))
+
+    let gated = 0
+    let empty = 0
+    for (const job of openJobs) {
+      const spec = bySpec.get(job.specHash)
+      const r = marketReach(pool, {
+        minScore: job.minScore,
+        kind: spec?.deliverableKind ?? 'text',
+        requiredCapabilities: spec?.requiredCapabilities,
+      })
+      if (r.verdict === 'gated') gated++
+      else if (r.verdict === 'empty') empty++
+    }
+    return { openJobs: openJobs.length, unreachable: gated + empty, gated, empty }
+  } catch (error) {
+    console.error('[market-health] reach unavailable:', error)
+    return { openJobs: 0, unreachable: 0, gated: 0, empty: 0 }
   }
 }
