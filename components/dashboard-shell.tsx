@@ -51,7 +51,7 @@ function SupportCard() {
   }
 
   return (
-    <div className="rounded-lg border border-sidebar-border bg-sidebar-accent/40 p-3">
+    <div className="glass-card rounded-lg border border-sidebar-border bg-sidebar-accent/40 p-3">
       <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
         <Heart className="size-3.5 text-primary" />
         {t('shell.supportProject')}
@@ -138,7 +138,7 @@ function Sidebar({
       >
         <Icon className="size-4 shrink-0" />
         {t(item.labelKey)}
-        {active && <span className="ml-auto size-1.5 rounded-full bg-primary" />}
+        {active && <span className="pulse-dot ml-auto size-1.5 rounded-full bg-primary" />}
       </Link>
     )
   }
@@ -176,12 +176,12 @@ function Sidebar({
       <div className="border-t border-sidebar-border p-3">
         {/* Real network status — live chain + block from the RPC, or an
             honest "off-chain mode" label. Never a made-up number. */}
-        <div className="rounded-lg border border-sidebar-border bg-sidebar-accent/40 p-3">
+        <div className="glass-card rounded-lg border border-sidebar-border bg-sidebar-accent/40 p-3">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-medium text-muted-foreground">{t('shell.network')}</span>
             {status?.chain ? (
               <span className="flex items-center gap-1.5 text-[11px] font-medium text-success">
-                <span className="size-1.5 rounded-full bg-success" />{' '}
+                <span className="pulse-dot size-1.5 rounded-full bg-success" />{' '}
                 {status.chain.realMoney ? t('shell.mainnetLive') : t('shell.testnetLive')}
               </span>
             ) : (
@@ -252,7 +252,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-svh bg-background">
       {/* Desktop sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-sidebar-border bg-sidebar lg:block">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-[232px] border-r border-sidebar-border bg-sidebar shadow-[2px_0_16px_-8px_var(--glass-throw)] lg:block">
         <Sidebar pathname={pathname} status={status} />
       </aside>
 
@@ -273,11 +273,11 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         </div>
       )}
 
-      <div className="lg:pl-64">
+      <div className="lg:pl-[232px]">
         {/* Above the header, not inside it: a warning that scrolls away is a
             warning the user reads once. */}
         <RiskBanner realMoney={status?.chain?.realMoney ?? null} />
-        <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur-md md:px-6">
+        <header className="sticky top-0 z-20 flex h-[52px] items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur-md md:px-6">
           <button
             onClick={() => setMobileOpen(true)}
             className="flex size-9 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-secondary lg:hidden"
