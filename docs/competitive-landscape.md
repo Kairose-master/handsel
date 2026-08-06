@@ -750,3 +750,52 @@ Category searches (agent marketplace / KYA / x402 volume) are cited inline. The
 prior "unverified next-start" list still contains AgentKarma, iAgentFi,
 ChainAware, Kustodia, RIP-302, AI Lance, AGIJobManager — still unchecked, now
 honestly labelled as such rather than implied covered.*
+
+---
+
+# Fourth pass, 2026-08-06 — the similar-repo sweep, verified
+
+*Input: an operator-supplied list of ~25 "projects similar to Handsel" from an
+external AI search. Method, learned from §27: every entry is a claim until the
+repo is fetched. Eight were verifiable (owner/name given) and were verified by
+reading their GitHub pages this pass; the rest were supplied without links and
+are listed as unverified at the bottom rather than silently absorbed.*
+
+## Verified — what actually exists
+
+| Project | Vital signs | What it is | Consequence for us |
+|---|---|---|---|
+| **MeshLedger/MeshLedger** | 3★, Base **mainnet**, escrow contract live (`0x9Fc4…3dA1`), meshledger.io, 15 MCP tools, 347 tests | Escrow + reputation + dispute resolution + MCP marketplace — the most Handsel-shaped repo found to date | **"Escrow market on Base with MCP" is now a commodity shape, not a differentiator.** Same 3-star traction as everyone; reputation algorithm undocumented. The board is a category; the wedge cannot be the board |
+| **arian-gogani/nobulex** | 38★, 445 commits, SDKs on PyPI/npm — and **explicitly archived/pivoted** to "tool reliability" (nobulex-registry) | Ed25519 hash-chained receipts of agent actions, offline third-party verification, trust tiers, priced verification API | Closest thing to our proof-ledger claim — with the load-bearing difference: **their receipts are self-signed by the agent.** That proves log integrity, not outcome. Ours are signed by an independent grader with escrow at stake. Also a demand signal: the best-executed trust-scoring repo in the sweep *pivoted away* from trust scoring |
+| **strangeloopcanon/agent-economy** | 7★, Python, active; SWE-bench-calibrated experiments | Research prototype of the exact build-service mechanism: goal→DAG, worker bidding, sandboxed execution, **pay-only-on-PASS**, oracle classes (tests / LLM consensus / human) | **Simulation, no real money** — an intellectual ally, not a competitor. Their Phase-II market-vs-solo data is prior art `docs/build-service.md` should read; their "Oracle" slot is another socket the evaluator lane fits |
+| **darks0l/synthesis-agent** | 1★, hackathon (Mar 2026), but real on-chain artifacts on Base mainnet | Autonomous arb agent that self-custodies an ERC-8004 identity and outsources work through its own ERC-8183 jobs contract **and Virtuals ACP v2** | Confirms the ERC-8004/8183 lane has third-party adopters beyond daydreams itself, and that ACP (§2, already ranked closest functional competitor) is where hackathon agents actually cross-post |
+| **dolepee/creditgate** | 1★, 27 commits, 0G mainnet, APAC hackathon submission | Reads signed agent history → "**replayable credit score**" → bounded spend cap → "canonical proof packet" on 0G Storage | Our vocabulary, independently invented, at hackathon depth. Validates "recomputable grading as a credit input" as a lane others can see; no execution threat |
+| **capGoblin/Credex** | 0★, 5 commits, Arc **testnet** | Agent lending with a "silent" risk engine, +10% limit on repayment | Hackathon prototype; the credit-scoring method is undisclosed, i.e. not a check |
+| **langoai/lango** | 13★, 1,643 commits, Base Sepolia | Go multi-agent runtime with optional escrow, ERC-4337/7579, x402 | Infrastructure-adjacent, experimental, testnet. A potential *client* of proofs, not a competitor |
+| **agent-matrix/matrix-treasury** | 0★, no visible commits, "admin/admin123" in docs | "Enterprise economic OS" README | Aspirational documentation. Vaporware tier — recorded so the next sweep doesn't re-inflate it |
+
+## Not verified (supplied without links — names only)
+
+Claw Town, Agent Guild, AgentCredit (OpenClaw skill), Primordia/Kaledge, ASA,
+Aegis (Sui), AutoClaw, elisym, Agent Starter, Agent Wallet, Post Quantum Agent,
+AgentBazaar (Arc), polyagent, autonomous-ai-data-marketplace, Open MCP
+Marketplace. Any of these may be real; none was fetched. They are names in an
+AI-generated list until someone runs the command.
+
+## What this pass changes
+
+1. **Nothing about the wedge — and that is now better evidenced.** The
+   commodity shape (escrow board + reputation + MCP) has a live Base-mainnet
+   instance with our exact traction problem. The two properties still absent
+   everywhere verified: verdicts signed by an **independent** grader with money
+   at stake (nobulex self-signs; MeshLedger doesn't document; creditgate
+   replays *history*, not verdicts), and the **evaluator-for-other-markets**
+   interop lane.
+2. **A demand datapoint from the best-executed neighbour.** nobulex — more
+   stars, more commits, published SDKs, OWASP adoption — pivoted *away* from
+   agent trust scoring toward tool reliability. Trust scores alone did not find
+   buyers there either. Consistent with this session's turn: attach to where
+   agents already work; sell outcomes, not membership.
+3. **agent-economy goes on the build-service reading list** — pre-existing
+   experimental evidence for pay-on-pass market mechanics, including the
+   failure-penalty/reputation-weighted bidding math we have not designed yet.
