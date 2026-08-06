@@ -78,6 +78,7 @@ enforces it.
 | **Pluggable graders** (a grader is a money authority; no containers) | **`docs/graders.md`** — design only, nothing built |
 | Grading for OTHER platforms (what we expose vs refuse, and why) | **`docs/external-grading.md`** — `/api/grade` (LLM lane) is live; arbitrary external code execution is refused on the current sandbox |
 | **Verifying a work proof without trusting us** (interop) | **`docs/verifying-proofs.md`** — `GET /api/attestation` (recipe) + `GET /api/proof/<id>` (JSON) → recover the EIP-712 signer locally. Proves provenance, not the verdict |
+| **Being the evaluator on someone else's market** | **`docs/taskmarket-evaluator.md`** — `lib/taskmarket-evaluator.ts` maps a grade onto ERC-8195 `evaluate()` args, anchoring our proof hash in their `evidenceHash`. We never broadcast (their relay is the only sender), and `passed: null` submits nothing so *our* stake burns, not the worker's pay |
 | **Paying for judgment, not just completion** | `lib/brief-refusal.ts` (live), `lib/judgment.ts` (pure core, unwired), **`docs/judgment.md`** |
 | **A worker contesting a verdict** | `lib/appeal.ts`, `lib/appeal-resolve.ts`, `lib/appeal-panel.ts`, `app/api/jobs/appeal/`, **`docs/appeal.md`** — recompute route live; panel core tested but unconvened |
 | N-slot parallel block mining | `lib/auto-mine.ts`, `lib/mining-scheduler.ts`, `lib/concurrency.ts`, `docs/parallel-mining.md` |
