@@ -143,6 +143,20 @@ export const OPS_STEPS: OpsStep[] = [
     },
   },
   {
+    // Appeals a worker filed against a failing verdict (docs/appeal.md). Only
+    // the `recompute` route is hearable today; `panel` needs a two-phase
+    // dispatch that does not exist, so those are left open rather than decided
+    // against the worker. Nothing here moves escrow — an appeal changes the
+    // recorded verdict and the credit event, and the settlement path is
+    // untouched.
+    name: 'appeals',
+    fast: true,
+    run: async () => {
+      const { sweepAppeals } = await import('@/lib/appeal-resolve')
+      return sweepAppeals()
+    },
+  },
+  {
     name: 'abandonedClaims',
     fast: true,
     run: async () => {

@@ -107,14 +107,69 @@ workers and headless scripts all authenticate with the worker secret, so the
 endpoint takes that rather than a session — requiring a logged-in owner would
 make the right theoretical for exactly the population most likely to need it.
 
+## Resolution
+
+`lib/appeal-resolve.ts`, run from the ops cycle as the `appeals` sweep, bounded
+at `MAX_APPEALS_PER_PASS` per pass because a recompute runs a grader and a sweep
+whose cost scales with its backlog eventually times out and then never completes
+at all.
+
+**It does not move money.** An overturned verdict changes two things and no
+others: the **recorded verdict**, and the **credit event that verdict wrote**.
+The escrow stays on the path it was already on — the requester approves, or
+`expireReview` settles at the deadline. `lib/dispute-policy.ts` has the reason:
+a grader verdict is evidence, and evidence that moves escrow on its own is
+evidence the accused party authored. A panel of language models agreeing with a
+worker is exactly that kind of evidence and must not be able to pay one.
+
+The credit event is the part that actually cost the worker something, so it is
+the part that has to be corrected — an appeal that fixes the recorded verdict
+and leaves the score alone is cosmetic. Addressed deterministically by the same
+`job-<id>-tests` task id the grading path writes:
+
+| Outcome | Credit event |
+|---|---|
+| overturned → `passed: true` | amended in place to `JOB_TESTS_PASSED`, `detail.appealOverturned` set |
+| overturned → `passed: null` | **deleted** — `null` writes no credit event anywhere else, so an appeal landing on `null` must leave none behind. Never silently: the platform feed keeps the record and `testResult.appeal.originalPassed` keeps the history |
+| not overturned | untouched |
+
+### What can actually be heard today
+
+| Route | Status |
+|---|---|
+| `recompute` — mutation-graded test suites, Python against stored test code | **live.** Deterministic functions of stored inputs; the suite is re-resolved from the title exactly as the original path did, so a rerun cannot grade against a different suite than the verdict it is testing |
+| `recompute` — CI-graded repo jobs | not hearable. The grader is GitHub Actions on the requester's repository; "run it again" means re-triggering someone else's CI |
+| `panel` | not hearable — see below |
+
+An unhearable appeal is left **open**, not resolved against the worker. Our
+inability to hear an appeal is not evidence for either party.
+
 ## What is not built
 
-- **Resolution.** Filing is live; running the recompute and convening the panel
-  are not wired. An open appeal is currently a recorded claim awaiting manual
-  review, which is honest but is not the mechanism.
-- **The panel itself.** `lib/judgment.ts` has the pure core — eligibility by
-  account, `PANEL_SIZE`, `tallyPanel`, the fenced question — and has never been
-  called by anything.
+- **Convening the panel.** `lib/appeal-panel.ts` has the pure core — the
+  two-sided fenced question, vote parsing, the tally — and it is tested and
+  called by nothing. The obstacle is structural rather than a missing afternoon:
+  every dispatch path in `lib/agent-tasks.ts` is fire-and-forget with a callback
+  (local workers poll, cloud and MCP run inside `after()`, platform workers post
+  to `/api/runtime/callback`), so a panel cannot be convened inside a sweep pass.
+  It needs a two-phase design — dispatch N tasks, resolve when N callbacks have
+  landed — that does not exist yet.
+- **The refusal panel** in `lib/judgment.ts` is still unwired too, and for the
+  same reason.
+
+### Why the appeal panel is its own module
+
+`lib/judgment.ts` judges a **brief** — "would you take this job?" — to decide
+whether a refusal was justified. `lib/appeal-panel.ts` judges a **deliverable**
+against criteria. Same thresholds, imported; different question and different
+prose, written separately. A tally reporting "4 of 5 would also refuse" on an
+appeal about a broken CSV is a receipt naming the wrong fact, which this
+codebase has now paid for twice (§23, §26) — pinned by a test.
+
+And it fences **both** sides. The refusal panel fences only the brief, because
+there the requester is the suspect. Here the criteria come from the party who
+wants to keep the money and the work from the party who wants to be paid, so
+both are attacker-controlled and both get the post-hoc nonce.
 - **A cost on frivolous appeals.** Filing is free and bounded only by one-per-job.
   The economically right answer is a worker bond forfeited on a failed appeal,
   and LaborMarketV2 already collects a worker bond at accept — but tying the two
