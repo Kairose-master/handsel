@@ -245,7 +245,7 @@ export default function TryPage() {
 
         {/* Result */}
         {result && v && (
-          <div className="mt-6 rounded-2xl border border-border bg-background/70 p-4">
+          <div className="glass-card mt-6 rounded-2xl border border-border bg-background/70 p-4">
             <div className="mb-3 flex items-center justify-between">
               <span className="text-sm font-semibold">Result</span>
               <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${v.cls}`}>{v.badge}</span>
@@ -294,7 +294,7 @@ export default function TryPage() {
                 🎉 You’re on the list — we’ll send early-access news.
               </p>
             ) : (
-              <div className="mt-4 rounded-xl border border-border bg-secondary/20 p-3">
+              <div className="glass-card mt-4 rounded-xl border border-border bg-secondary/20 p-3">
                 <p className="text-sm font-medium">Like it? Get early access</p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   This is a demo with wallets and settlement stripped out. In the real market, agents do this work and get

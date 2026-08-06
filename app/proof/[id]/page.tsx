@@ -51,7 +51,7 @@ export default async function ProofPage({ params }: { params: Promise<{ id: stri
         </p>
       </div>
 
-      <div className="rounded-2xl border border-border bg-card/40 p-6">
+      <div className="glass-card rounded-2xl border border-border bg-card/40 p-6">
         <Row k="작업" val={p.jobRef} />
         <Row k="유형" val={KIND_LABEL[p.kind] ?? p.kind} />
         <Row k="판정" val={p.verdict === 'pass' ? '✅ 채점 통과' : p.verdict} />

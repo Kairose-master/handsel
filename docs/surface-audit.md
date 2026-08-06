@@ -82,3 +82,24 @@ size of the other two combined. Restyling it in the same sweep as the small
 pages would have meant reviewing money-path JSX at the same speed as
 navigation copy. It gets its own pass, its own gates run, and its own visual
 check before anything in it changes.
+
+## Phase 4 — app-wide glass-card sweep
+
+Every remaining page (25 files beyond 2a/2b/2c) swept for the same card-shell
+convention (`rounded-{md,lg,xl,2xl} border border-border p-{3..8}`, either
+attribute order) and given `glass-card`. Element-scoped to `<div>` only —
+verified by a first pass that caught a `<textarea>` false positive (reverted)
+before re-running restricted to div tags. `<Link>`/`<a>`-based cards
+(agents.tsx roster, a few empty-state paragraphs, `<pre>` log blocks) were
+excluded from the automated pass by design; one (`agents/page.tsx`, mirrors
+the dashboard-home agent list already styled in Phase 3a) was patched by hand
+to match. `lift` was NOT swept automatically — several pages already hand-code
+their own hover transform (`mine.tsx`, `guest.tsx`: `hover:-translate-y-0.5`)
+and stacking a second transform risked visual conflict; only Phase 3's
+explicitly-reviewed list-item cards carry it.
+
+81 total `glass-card` insertions across 23 files, every one verified via
+`git diff` to be a className-only change (79+2 insertions, matching deletions,
+zero other lines touched). Visually confirmed on `/guest` (full-page
+screenshot, Nocturne dark) — consistent sheen across every card, no layout
+regressions, no overlaps.

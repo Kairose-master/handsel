@@ -154,7 +154,7 @@ function ConnectAssistantCard() {
         ))}
       </ol>
 
-      <div className="mt-4 rounded-md border border-border bg-background/60 p-3 text-sm">
+      <div className="glass-card mt-4 rounded-md border border-border bg-background/60 p-3 text-sm">
         <span className="text-muted-foreground">{t('guide.connect.tryLabel')} </span>
         <span className="font-medium">{t('guide.connect.tryExample')}</span>
       </div>
@@ -204,7 +204,7 @@ export default function GuidePage() {
       </div>
 
       {/* Progress bar — fills as the account really progresses */}
-      <div className="rounded-lg border border-border p-4">
+      <div className="glass-card rounded-lg border border-border p-4">
         <div className="flex items-center justify-between text-sm">
           <span className="font-semibold">
             {doneCount}/{STEPS.length} {t('guide.progress')}

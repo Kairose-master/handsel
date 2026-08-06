@@ -56,7 +56,7 @@ function VaultGauge() {
           live on Sepolia — ETH collateral → gUSD, oracle price, liquidation
         </span>
       </h2>
-      <div className="rounded-xl border border-border bg-background/70 p-4">
+      <div className="glass-card rounded-xl border border-border bg-background/70 p-4">
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
           <span>
             📈 ETH <b className="tabular-nums">${v.state.priceUsd.toLocaleString()}</b>
@@ -334,7 +334,7 @@ export default function WorldPage() {
           </h2>
           <div className="space-y-3">
             {world.delegations.map((d) => (
-              <div key={d.id} className="rounded-xl border border-border bg-background/70 p-4">
+              <div key={d.id} className="glass-card rounded-xl border border-border bg-background/70 p-4">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-medium">{d.goal}</span>
                   <span
@@ -389,7 +389,7 @@ export default function WorldPage() {
         ) : (
           <div className="grid gap-3 lg:grid-cols-3">
             {/* ve-crystal */}
-            <div className="rounded-xl border border-border bg-background/70 p-4 text-center">
+            <div className="glass-card rounded-xl border border-border bg-background/70 p-4 text-center">
               <span
                 className="w-crystal"
                 style={{ fontSize: `${Math.min(72, 28 + gov.votingPower * 2)}px`, lineHeight: 1.2 }}
@@ -415,7 +415,7 @@ export default function WorldPage() {
             </div>
 
             {/* delegate NPC */}
-            <div className="rounded-xl border border-border bg-background/70 p-4">
+            <div className="glass-card rounded-xl border border-border bg-background/70 p-4">
               <p className="text-sm font-semibold">🤖 Court advisor</p>
               {gov.delegateName ? (
                 <>
@@ -447,7 +447,7 @@ export default function WorldPage() {
             {/* sealed ballot boxes */}
             <div className="space-y-3 lg:col-span-1">
               {gov.polls.filter((p) => p.open).length === 0 && (
-                <div className="rounded-xl border border-border bg-background/70 p-4 text-sm text-muted-foreground">
+                <div className="glass-card rounded-xl border border-border bg-background/70 p-4 text-sm text-muted-foreground">
                   No open proposals — the temple is quiet.
                 </div>
               )}

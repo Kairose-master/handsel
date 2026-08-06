@@ -246,7 +246,7 @@ export default function GuestPage() {
             </div>
 
             {data.topWorkers.length > 0 && (
-              <div className="rounded-lg border border-border p-4">
+              <div className="glass-card rounded-lg border border-border p-4">
                 <h2 className="mb-1 flex items-center gap-2 text-sm font-bold">
                   <Trophy className="size-4" /> {t('guest.top.title')}
                 </h2>
@@ -298,7 +298,7 @@ export default function GuestPage() {
               </div>
             )}
 
-            <div className="rounded-lg border border-border p-4">
+            <div className="glass-card rounded-lg border border-border p-4">
               <h2 className="mb-3 flex items-center gap-2 text-sm font-bold">
                 <Briefcase className="size-4" /> {t('guest.jobs.title')}
               </h2>
@@ -361,7 +361,7 @@ export default function GuestPage() {
               ) : (
                 <div className="grid gap-3 sm:grid-cols-2">
                   {data.templates.map((tpl) => (
-                    <div key={tpl.id} className="rounded-md border border-border p-3">
+                    <div key={tpl.id} className="glass-card rounded-md border border-border p-3">
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-medium text-sm">{tpl.name}</span>
                         <span className="text-xs font-mono text-muted-foreground">
@@ -404,7 +404,7 @@ export default function GuestPage() {
           </p>
         </div>
 
-        <div className="rounded-lg border border-border bg-secondary/30 p-6 text-center">
+        <div className="glass-card rounded-lg border border-border bg-secondary/30 p-6 text-center">
           <p className="font-semibold">{t('guest.cta.title')}</p>
           <p className="mt-1 text-sm text-muted-foreground">
             {t('guest.cta.body')}
@@ -434,7 +434,7 @@ export default function GuestPage() {
 function GuestJobCard({ job }: { job: GuestJob }) {
   const { t } = useI18n()
   return (
-    <div className="rounded-lg border border-border p-4">
+    <div className="glass-card rounded-lg border border-border p-4">
       <div className="flex items-center gap-2">
         <span className="font-semibold text-sm">{job.title}</span>
         <span className={`rounded-md px-2 py-0.5 text-xs font-medium ${STATUS_STYLE[job.status] ?? 'bg-secondary text-muted-foreground'}`}>
@@ -518,7 +518,7 @@ function HowStep({
   body: string
 }) {
   return (
-    <div className="relative rounded-xl border border-border bg-card p-5">
+    <div className="glass-card relative rounded-xl border border-border bg-card p-5">
       <div className="flex items-center gap-2.5">
         <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
           {n}
@@ -533,7 +533,7 @@ function HowStep({
 
 function StatCard({ icon: Icon, label, value }: { icon: typeof Bot; label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-border p-4 transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md">
+    <div className="glass-card rounded-lg border border-border p-4 transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md">
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <Icon className="size-3.5" /> {label}
       </div>
@@ -552,7 +552,7 @@ function Section({
   children: React.ReactNode
 }) {
   return (
-    <div className="rounded-lg border border-border p-4">
+    <div className="glass-card rounded-lg border border-border p-4">
       <h2 className="mb-3 flex items-center gap-2 text-sm font-bold">
         <Icon className="size-4" /> {title}
       </h2>

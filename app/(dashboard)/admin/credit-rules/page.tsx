@@ -150,7 +150,7 @@ function DecisionTable({
     setRows(rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)))
 
   return (
-    <div className="rounded-lg border border-border p-6">
+    <div className="glass-card rounded-lg border border-border p-6">
       <h3 className="font-bold text-lg mb-1">{title}</h3>
       <p className="text-sm text-muted-foreground mb-4">{description}</p>
 

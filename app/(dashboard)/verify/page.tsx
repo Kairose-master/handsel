@@ -180,7 +180,7 @@ export default function VerifyPage() {
         </div>
       )}
 
-      <div className="rounded-lg border border-border p-6">
+      <div className="glass-card rounded-lg border border-border p-6">
         <h2 className="font-bold text-lg mb-3">{t('verify.runTask')}</h2>
         {!configured ? (
           <p className="text-sm text-muted-foreground">
@@ -237,7 +237,7 @@ export default function VerifyPage() {
       <div className="space-y-3">
         {tasks.length === 0 && <p className="text-sm text-muted-foreground">{t('verify.noTasks')}</p>}
         {tasks.map((task) => (
-          <div key={task.id} className="rounded-lg border border-border p-4">
+          <div key={task.id} className="glass-card rounded-lg border border-border p-4">
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">

@@ -23,7 +23,7 @@ export default function InsurancePage() {
         <p className="text-muted-foreground">{t('ins.subtitle')}</p>
       </div>
 
-      <div className="rounded-lg border border-border p-6">
+      <div className="glass-card rounded-lg border border-border p-6">
         <p className="flex items-center gap-2 font-semibold">
           <ShieldCheck className="size-4 text-muted-foreground" /> {t('ins.notBuiltTitle')}
         </p>
@@ -36,7 +36,7 @@ export default function InsurancePage() {
         </Link>
       </div>
 
-      <div className="rounded-lg border border-border p-6">
+      <div className="glass-card rounded-lg border border-border p-6">
         <h3 className="font-bold text-lg mb-3">{t('ins.plannedTitle')}</h3>
         <div className="space-y-2">
           {[

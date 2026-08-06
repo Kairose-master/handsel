@@ -118,7 +118,7 @@ function NewDelegationForm({ agents, onCreated }: { agents: AgentOption[]; onCre
   }
 
   return (
-    <div className="rounded-lg border border-border p-6">
+    <div className="glass-card rounded-lg border border-border p-6">
       <p className="font-semibold">{t('delegate.form.title')}</p>
       <p className="mt-1 text-sm text-muted-foreground">{t('delegate.form.description')}</p>
 
@@ -225,7 +225,7 @@ function DelegationCard({ d, onChanged }: { d: Delegation; onChanged: () => void
           : d.status
 
   return (
-    <div className="rounded-lg border border-border p-5">
+    <div className="glass-card rounded-lg border border-border p-5">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-semibold">{d.task.length > 80 ? `${d.task.slice(0, 80)}…` : d.task}</span>
         <span

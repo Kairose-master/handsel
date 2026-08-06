@@ -165,7 +165,7 @@ npx @kairose-master/foreman work             # claim, work, submit`}</Code>
         </section>
       </div>
 
-      <div className="mt-10 rounded-lg border border-border bg-muted/30 p-5 text-sm text-muted-foreground">
+      <div className="glass-card mt-10 rounded-lg border border-border bg-muted/30 p-5 text-sm text-muted-foreground">
         <p className="font-medium text-foreground mb-1">The rules that never bend</p>
         <p>
           Grader ≠ solver, always. Escrow locks before work starts. CI green alone never moves money

@@ -80,7 +80,7 @@ export default function ExamplesPage() {
           </a>
         </div>
 
-        <div className="mt-10 flex flex-col items-center gap-3 rounded-2xl border border-border bg-secondary/20 p-6 text-center">
+        <div className="glass-card mt-10 flex flex-col items-center gap-3 rounded-2xl border border-border bg-secondary/20 p-6 text-center">
           <p className="text-lg font-semibold">Ready to try it for real?</p>
           <div className="flex flex-wrap justify-center gap-3">
             <Link href="/try" className="rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90">

@@ -17,7 +17,7 @@ function DelegateRow({
 }) {
   const [policy, setPolicy] = useState(agent.votePolicy)
   return (
-    <div className="rounded-md border border-border p-3">
+    <div className="glass-card rounded-md border border-border p-3">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium">{agent.name}</span>
         <span className="font-mono text-xs text-muted-foreground">score {agent.creditScore.toFixed(0)}</span>
@@ -109,14 +109,14 @@ export default function GovernancePage() {
           ['Voting power', `${s?.votingPower.toFixed(1) ?? '0'}`],
           ['Total earned', `${s?.totalEarned.toFixed(1) ?? '0'} LEDGER`],
         ].map(([label, value]) => (
-          <div key={label} className="rounded-lg border border-border p-4">
+          <div key={label} className="glass-card rounded-lg border border-border p-4">
             <p className="text-xs text-muted-foreground">{label}</p>
             <p className="mt-1 text-2xl font-bold">{value}</p>
           </div>
         ))}
       </div>
 
-      <div className="rounded-lg border border-border p-5">
+      <div className="glass-card rounded-lg border border-border p-5">
         <h2 className="font-semibold">Lock $LEDGER for voting power</h2>
         <p className="mt-1 text-xs text-muted-foreground">
           Power = amount × (weeks / 52). It decays to zero as the lock nears expiry; principal returns to your balance at
@@ -154,7 +154,7 @@ export default function GovernancePage() {
         </div>
       </div>
 
-      <div className="rounded-lg border border-border p-5">
+      <div className="glass-card rounded-lg border border-border p-5">
         <h2 className="font-semibold">Open a proposal</h2>
         <input
           value={pTitle}
@@ -178,7 +178,7 @@ export default function GovernancePage() {
         </button>
       </div>
 
-      <div className="rounded-lg border border-border p-5">
+      <div className="glass-card rounded-lg border border-border p-5">
         <h2 className="font-semibold">🤖 AI delegate voting</h2>
         <p className="mt-1 text-xs text-muted-foreground">
           Let an agent <strong>you trust</strong> cast <strong>your</strong> $LEDGER vote on open proposals automatically,
@@ -214,7 +214,7 @@ export default function GovernancePage() {
           </p>
           <div className="mt-3 space-y-3">
             {gov.reviews.map((r) => (
-              <div key={r.proposalId} className="rounded-md border border-border bg-background p-3">
+              <div key={r.proposalId} className="glass-card rounded-md border border-border bg-background p-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-medium">{r.proposalTitle}</span>
                   <span className="rounded bg-secondary px-2 py-0.5 text-xs">
@@ -260,7 +260,7 @@ export default function GovernancePage() {
         ) : (
           <div className="space-y-3">
             {gov?.proposals.map((p) => (
-              <div key={p.id} className="rounded-lg border border-border p-4">
+              <div key={p.id} className="glass-card rounded-lg border border-border p-4">
                 <div className="flex items-center gap-2">
                   <span className="font-semibold">{p.title}</span>
                   <span

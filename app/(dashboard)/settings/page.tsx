@@ -78,7 +78,7 @@ export default function SettingsPage() {
 
       <AccountCard initialName={user?.name ?? ''} email={user?.email ?? ''} />
 
-      <div className="border border-border rounded-lg p-6">
+      <div className="glass-card border border-border rounded-lg p-6">
         <h3 className="font-bold text-lg mb-1">{t('settings.byok.title')}</h3>
         <p className="text-sm text-muted-foreground mb-4">
           {t('settings.byok.descBeforeLink')}{' '}
@@ -180,7 +180,7 @@ function OpenAiKeyCard() {
   }
 
   return (
-    <div className="border border-border rounded-lg p-6">
+    <div className="glass-card border border-border rounded-lg p-6">
       <h3 className="font-bold text-lg mb-1">{t('settings.openaiByok.title')}</h3>
       <p className="text-sm text-muted-foreground mb-4">{t('settings.openaiByok.description')}</p>
 
@@ -299,7 +299,7 @@ function AccountCard({ initialName, email }: { initialName: string; email: strin
   }
 
   return (
-    <div className="border border-border rounded-lg p-6">
+    <div className="glass-card border border-border rounded-lg p-6">
       <h3 className="font-bold text-lg mb-4">{t('settings.account.title')}</h3>
       <div className="space-y-6">
         <div>

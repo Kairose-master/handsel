@@ -62,7 +62,7 @@ export default function DisputesAdminPage() {
       ) : (
         <div className="space-y-4">
           {jobs.map((job) => (
-            <div key={job.id} className="rounded-lg border border-border p-5 space-y-3">
+            <div key={job.id} className="glass-card rounded-lg border border-border p-5 space-y-3">
               <div className="flex items-center justify-between">
                 <span className="font-semibold">
                   #{job.id} · {job.title}
@@ -133,7 +133,7 @@ export default function DisputesAdminPage() {
                 requester {job.requester.slice(0, 8)}… · worker {job.worker.slice(0, 8)}…
               </p>
 
-              <div className="rounded-md border border-border bg-secondary/30 p-3 text-xs text-muted-foreground">
+              <div className="glass-card rounded-md border border-border bg-secondary/30 p-3 text-xs text-muted-foreground">
                 <p className="mb-1 font-medium text-foreground">
                   No buttons here any more — and that is the change.
                 </p>

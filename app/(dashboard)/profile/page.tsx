@@ -431,7 +431,7 @@ export default function ProfilePage() {
       </div>
 
       {/* Credit profile banner */}
-      <div className="border border-border rounded-lg p-6">
+      <div className="glass-card border border-border rounded-lg p-6">
         <div className="flex flex-col md:flex-row md:items-start gap-6">
           <div className="flex-1">
             <h2 className="text-2xl font-bold">{identity.name}</h2>
@@ -510,7 +510,7 @@ export default function ProfilePage() {
       {agentId && <RuntimeCard agentId={agentId} />}
 
       {/* Task runner — the entry point of the vertical slice */}
-      <div className="border border-border rounded-lg p-6">
+      <div className="glass-card border border-border rounded-lg p-6">
         <h3 className="font-bold text-lg mb-1">{t('profile.task.title')}</h3>
         <p className="text-sm text-muted-foreground mb-4">
           {t('profile.task.subtitle')}
@@ -551,7 +551,7 @@ export default function ProfilePage() {
 
         {lastRun && (lastRun.status === 'completed' || lastRun.status === 'failed') && (
           <div className="mt-4 space-y-3">
-            <div className="rounded-md border border-border p-4">
+            <div className="glass-card rounded-md border border-border p-4">
               <div className="flex items-center gap-2 text-sm font-semibold">
                 {lastRun.result?.success ? (
                   <CheckCircle2 className="size-4 text-success" />
@@ -572,7 +572,7 @@ export default function ProfilePage() {
               <p className="mt-2 text-sm whitespace-pre-wrap">{lastRun.output || lastRun.error}</p>
             </div>
             {lastRun.credit && (
-              <div className="rounded-md border border-border p-4 text-sm">
+              <div className="glass-card rounded-md border border-border p-4 text-sm">
                 <p className="font-semibold mb-1">{t('profile.task.creditUpdate')}</p>
                 <p className="font-mono text-lg">
                   {lastRun.credit.previousScore ?? '—'} → {lastRun.credit.score}{' '}
@@ -605,7 +605,7 @@ export default function ProfilePage() {
        * already guarded separately — `getOnchainInfo` only fills them when
        * `configured` is true, and they render as em dashes otherwise. */}
       {onchain?.agentConfigured && (
-        <div className="border border-border rounded-lg p-6">
+        <div className="glass-card border border-border rounded-lg p-6">
           <h3 className="font-bold text-lg mb-1 flex items-center gap-2">
             <Link2 className="size-5" /> {t('profile.onchain.title', { chain: onchain.chainName ?? 'Sepolia' })}
           </h3>
@@ -709,7 +709,7 @@ export default function ProfilePage() {
       )}
 
       {/* Credit line — borrow and repay against the earned limit */}
-      <div className="border border-border rounded-lg p-6">
+      <div className="glass-card border border-border rounded-lg p-6">
         <h3 className="font-bold text-lg mb-1 flex items-center gap-2">
           <Banknote className="size-5" /> {t('profile.creditLine.title')}
           {onchainReady && <span className="text-xs font-normal text-success">{t('profile.creditLine.onchainBadge')}</span>}
@@ -768,7 +768,7 @@ export default function ProfilePage() {
             {draws.map((d) => (
               <div
                 key={d.id}
-                className="flex items-center justify-between rounded-md border border-border p-3 text-sm"
+                className="glass-card flex items-center justify-between rounded-md border border-border p-3 text-sm"
               >
                 <div>
                   <span className="font-mono font-semibold">
@@ -923,7 +923,7 @@ export default function ProfilePage() {
                 The full address, not the truncated one on the card above:
                 someone pasting this into an exchange has to be able to check
                 what they pasted, and `0x1234 •••• abcd` cannot be checked. */}
-            <div className="rounded-xl border border-border p-4">
+            <div className="glass-card rounded-xl border border-border p-4">
               <p className="mb-2.5 flex items-center gap-1.5 text-xs font-semibold">
                 <Wallet className="size-3.5 text-primary" />
                 {t('profile.treasury.receive')}
@@ -980,7 +980,7 @@ export default function ProfilePage() {
               )}
             </div>
 
-            <div className="rounded-xl border border-border p-4">
+            <div className="glass-card rounded-xl border border-border p-4">
               <p className="mb-2.5 flex items-center gap-1.5 text-xs font-semibold">
                 <Send className="size-3.5 text-primary" />
                 {t('profile.treasury.send')}
@@ -1024,7 +1024,7 @@ export default function ProfilePage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Credit evolution */}
-        <div className="border border-border rounded-lg p-6">
+        <div className="glass-card border border-border rounded-lg p-6">
           <h3 className="font-bold text-lg mb-4">{t('profile.evolution.title')}</h3>
           {evolution.length > 1 ? (
             <CreditEvolutionChart data={evolution} />
@@ -1048,7 +1048,7 @@ export default function ProfilePage() {
         </div>
 
         {/* Activity timeline */}
-        <div className="border border-border rounded-lg p-6">
+        <div className="glass-card border border-border rounded-lg p-6">
           <h3 className="font-bold text-lg mb-4">{t('profile.timeline.title')}</h3>
           {events.length === 0 ? (
             <p className="text-sm text-muted-foreground">
@@ -1113,7 +1113,7 @@ function BalanceSheetCard({ sheet }: { sheet: BalanceSheet }) {
 
   if (!sheet.configured) {
     return (
-      <div className="border border-border rounded-lg p-6">
+      <div className="glass-card border border-border rounded-lg p-6">
         <h3 className="font-bold text-lg mb-1 flex items-center gap-2">
           <Scale className="size-5" /> {t('profile.balance.title')}
         </h3>
@@ -1125,7 +1125,7 @@ function BalanceSheetCard({ sheet }: { sheet: BalanceSheet }) {
   }
 
   return (
-    <div className="border border-border rounded-lg p-6">
+    <div className="glass-card border border-border rounded-lg p-6">
       <h3 className="font-bold text-lg mb-1 flex items-center gap-2">
         <Scale className="size-5" /> {t('profile.balance.title')}
       </h3>
@@ -1377,7 +1377,7 @@ function RuntimeCard({ agentId }: { agentId: string }) {
   }
 
   return (
-    <div className="border border-border rounded-lg p-6">
+    <div className="glass-card border border-border rounded-lg p-6">
       <h3 className="font-bold text-lg mb-1 flex items-center gap-2">
         <Webhook className="size-5" /> {t('profile.runtime.title')}
       </h3>
@@ -1497,7 +1497,7 @@ function RuntimeCard({ agentId }: { agentId: string }) {
       </div>
 
       {showMcpForm && (
-        <div className="mt-3 space-y-2 rounded-md border border-border p-3">
+        <div className="glass-card mt-3 space-y-2 rounded-md border border-border p-3">
           <p className="text-xs text-muted-foreground">
             Point this worker at any external MCP server (Streamable HTTP). When it&apos;s dispatched a
             job, we call the named tool with the task and submit its output for independent grading —
@@ -1545,7 +1545,7 @@ function RuntimeCard({ agentId }: { agentId: string }) {
       )}
 
       {showCloudForm && (
-        <div className="mt-3 space-y-2 rounded-md border border-border p-3">
+        <div className="glass-card mt-3 space-y-2 rounded-md border border-border p-3">
           <div className="flex flex-wrap gap-1.5">
             {CLOUD_PRESETS.map((p) => (
               <button

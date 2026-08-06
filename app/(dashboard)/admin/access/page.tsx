@@ -52,7 +52,7 @@ function SeedJobsCard() {
   }
 
   return (
-    <div className="rounded-lg border border-border p-6">
+    <div className="glass-card rounded-lg border border-border p-6">
       <h3 className="font-bold text-lg mb-3 flex items-center gap-2">
         <Briefcase className="size-5" /> Seed jobs
       </h3>
@@ -143,7 +143,7 @@ function BoardCurationCard() {
   }
 
   return (
-    <div className="rounded-lg border border-border p-6">
+    <div className="glass-card rounded-lg border border-border p-6">
       <h3 className="font-bold text-lg mb-3 flex items-center gap-2">
         <Briefcase className="size-5" /> Board curation
       </h3>
@@ -270,7 +270,7 @@ function RepoJobsCard() {
   }
 
   return (
-    <div className="rounded-lg border border-border p-6">
+    <div className="glass-card rounded-lg border border-border p-6">
       <h3 className="font-bold text-lg mb-3 flex items-center gap-2">
         <GitPullRequest className="size-5" /> GitHub repo jobs
       </h3>
@@ -438,7 +438,7 @@ function AgentMessagingModerationCard() {
   }
 
   return (
-    <div className="rounded-lg border border-border p-6">
+    <div className="glass-card rounded-lg border border-border p-6">
       <h3 className="font-bold text-lg mb-3 flex items-center gap-2">
         <ShieldOff className="size-5" /> Agent messaging moderation
       </h3>
@@ -578,7 +578,7 @@ function TranslationsCard() {
   }
 
   return (
-    <div className="rounded-lg border border-border p-6">
+    <div className="glass-card rounded-lg border border-border p-6">
       <h3 className="font-bold text-lg mb-3 flex items-center gap-2">
         <Languages className="size-5" /> Runtime translations
       </h3>
@@ -739,7 +739,7 @@ export default function AccessControlPage() {
         </div>
       )}
 
-      <div className="rounded-lg border border-border p-6">
+      <div className="glass-card rounded-lg border border-border p-6">
         <h3 className="font-bold text-lg mb-3 flex items-center gap-2">
           <DatabaseZap className="size-5" /> Database migration
         </h3>
@@ -770,7 +770,7 @@ export default function AccessControlPage() {
 
       <AgentMessagingModerationCard />
 
-      <div className="rounded-lg border border-border p-6">
+      <div className="glass-card rounded-lg border border-border p-6">
         <h3 className="font-bold text-lg mb-3 flex items-center gap-2">
           <Plus className="size-5" /> Grant a permission
         </h3>

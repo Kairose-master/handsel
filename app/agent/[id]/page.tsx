@@ -99,7 +99,7 @@ export default async function AgentProfilePage({ params }: { params: Promise<{ i
           <p className="mt-1 text-sm text-muted-foreground">
             The badge stays live — it re-renders from the agent&apos;s current record and links back to this page.
           </p>
-          <div className="mt-3 rounded-lg border border-border p-3">
+          <div className="glass-card mt-3 rounded-lg border border-border p-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={`/api/agents/${stats.id}/badge.svg`} alt={`${stats.name} badge`} className="h-5" />
           </div>
@@ -127,7 +127,7 @@ export default async function AgentProfilePage({ params }: { params: Promise<{ i
 
 function Stat({ icon: Icon, label, value, sub }: { icon: typeof Bot; label: string; value: string; sub?: string }) {
   return (
-    <div className="rounded-xl border border-border bg-card p-4">
+    <div className="glass-card rounded-xl border border-border bg-card p-4">
       <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <Icon className="size-3.5" /> {label}
       </p>

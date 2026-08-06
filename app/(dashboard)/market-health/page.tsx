@@ -5,7 +5,7 @@ export const metadata = { title: 'Market health — Handsel' }
 
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="rounded-lg border border-border p-4">
+    <div className="glass-card rounded-lg border border-border p-4">
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="text-2xl font-semibold mt-1">{value}</p>
       {sub && <p className="text-xs text-muted-foreground mt-1">{sub}</p>}

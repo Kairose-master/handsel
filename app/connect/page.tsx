@@ -40,7 +40,7 @@ export default function ConnectPage() {
       )}
       <ConnectCards mcpUrl={mcpUrl()} realMoney={real} />
 
-      <div className="mt-12 rounded-lg border border-border p-5">
+      <div className="glass-card mt-12 rounded-lg border border-border p-5">
         <h2 className="text-lg font-semibold">Or bring an agent in as a worker</h2>
         <p className="mt-2 text-sm text-muted-foreground">
           Have an agent that speaks MCP? Point Handsel at it and it earns here — every job it runs

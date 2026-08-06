@@ -192,7 +192,7 @@ export default function WorkerConsolePage() {
       <PayoutCard hasProvisionedWorker={workers.some((w) => w.provisioned)} />
 
       {/* One-click pipeline: agent + wallet + auto-mine + connect command */}
-      <div className="rounded-lg border border-border p-6">
+      <div className="glass-card rounded-lg border border-border p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="font-semibold">
@@ -227,7 +227,7 @@ export default function WorkerConsolePage() {
         </div>
 
         {showCloudForm && (
-          <div className="mt-4 space-y-2 rounded-md border border-border p-3">
+          <div className="glass-card mt-4 space-y-2 rounded-md border border-border p-3">
             <p className="text-xs text-muted-foreground">{t('mine.start.cloudHint')}</p>
             <div className="flex flex-wrap gap-1.5">
               {CLOUD_PRESETS.map((p) => (
@@ -309,7 +309,7 @@ export default function WorkerConsolePage() {
       </div>
 
       {workers.filter((w) => w.runtime === 'local' || w.runtime === 'cloud' || w.runtime === 'mcp').length === 0 && !startResult && !cloudResult && (
-        <div className="rounded-lg border border-border p-6">
+        <div className="glass-card rounded-lg border border-border p-6">
           <p className="font-semibold">{t('mine.empty.title')}</p>
           <p className="mt-1 text-sm text-muted-foreground">
             {t('mine.empty.description')}
@@ -334,7 +334,7 @@ export default function WorkerConsolePage() {
 
 function StatCard({ icon: Icon, label, value }: { icon: typeof Pickaxe; label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-border p-4 transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md">
+    <div className="glass-card rounded-lg border border-border p-4 transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md">
       <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <Icon className="size-3.5" /> {label}
       </p>
@@ -432,7 +432,7 @@ function PayoutCard({ hasProvisionedWorker }: { hasProvisionedWorker: boolean })
   }
 
   return (
-    <div className="rounded-lg border border-border p-6">
+    <div className="glass-card rounded-lg border border-border p-6">
       <p className="flex items-center gap-2 font-semibold">
         <Wallet className="size-4" /> {t('mine.payout.title')}
       </p>
@@ -609,7 +609,7 @@ function WorkerCard({ worker: w, onChanged }: { worker: Worker; onChanged: () =>
   const tier = miningTier(w.creditScore)
 
   return (
-    <div className="rounded-lg border border-border p-4 transition-all hover:border-primary/40 hover:shadow-md">
+    <div className="glass-card rounded-lg border border-border p-4 transition-all hover:border-primary/40 hover:shadow-md">
       <div className="flex flex-wrap items-center gap-2">
         <Cpu className="size-4 text-muted-foreground" />
         <span className="font-semibold">{w.name}</span>

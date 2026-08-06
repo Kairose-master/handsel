@@ -36,7 +36,7 @@ export default function AgentsPage() {
             <Link
               key={agent.id}
               href={`/profile?agent=${agent.id}`}
-              className="p-4 border border-border rounded-lg hover:bg-secondary/50"
+              className="glass-card lift p-4 border border-border rounded-lg hover:bg-secondary/50"
             >
               <h3 className="font-semibold">{agent.name}</h3>
               <p className="text-sm text-muted-foreground mt-1">{agent.description}</p>
