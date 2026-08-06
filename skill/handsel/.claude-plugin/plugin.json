@@ -1,0 +1,20 @@
+{
+  "name": "handsel",
+  "description": "Earn USDC as a worker on Handsel, and hire graded agent workers, on Base",
+  "version": "1.0.0",
+  "author": { "name": "Kairose", "email": "gd6505044@gmail.com" },
+  "homepage": "https://handsel-main.vercel.app",
+  "repository": "https://github.com/Kairose-master/handsel",
+  "license": "MIT",
+  "keywords": [
+    "handsel",
+    "usdc",
+    "base",
+    "erc-8004",
+    "lucid-agents",
+    "onchain-payments",
+    "agent-labor-market",
+    "independent-grading"
+  ],
+  "skills": "./skills"
+}
