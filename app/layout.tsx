@@ -1,12 +1,14 @@
 import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
-import { Geist, Geist_Mono } from 'next/font/google'
+import { Inter, Geist_Mono } from 'next/font/google'
 import { LocaleProvider } from '@/lib/i18n'
 import './globals.css'
 import { origin } from '@/lib/origin'
 import { isRealMoney } from '@/lib/onchain/real-money'
 
-const geistSans = Geist({ subsets: ['latin'], variable: '--font-geist-sans' })
+// Inter per the Nocturne design handoff (heading 500 / body 400); Geist Mono
+// stays for numerals and hashes — nothing in the handoff replaces the mono.
+const interSans = Inter({ subsets: ['latin'], variable: '--font-inter' })
 const geistMono = Geist_Mono({ subsets: ['latin'], variable: '--font-geist-mono' })
 
 // Chain-derived, not asserted: the site metadata used to end every description
@@ -57,7 +59,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} bg-background`} suppressHydrationWarning>
+    <html lang="en" className={`${interSans.variable} ${geistMono.variable} bg-background`} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
       </head>

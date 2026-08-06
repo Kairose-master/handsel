@@ -1,0 +1,70 @@
+# Surface audit — every route, script and external path, classified
+
+Taken 2026-08-06 as the precondition for the Nocturne UI overhaul: you cannot
+promise "no functionality lost" without first writing down what the functality
+*is*. This is that inventory. Rule inherited from the outreach ledger: an
+unclassified surface is a surface that gets dropped.
+
+## Pages (35) — reachability
+
+**Nav-reachable (dashboard shell):** `/`, `/guide`, `/agents`, `/jobs`,
+`/delegate`, `/mine`, `/settings` + Advanced group: `/credit-scores`,
+`/transactions`, `/messages`, `/verify`, `/risk`, `/insurance`, `/governance`,
+`/world`, `/directory`.
+
+**Linked from pages/flows (in-code references verified):** `/agent/[id]`,
+`/connect`, `/disputes`, `/doctor`, `/examples`, `/guest`, `/live`,
+`/profile`, `/proof/[id]`, `/sign-in`, `/sign-up`, `/start`, `/try`,
+`/oauth/authorize`, `/challenge`, `/admin/access`, `/admin/credit-rules`.
+
+**⚠ Orphans found (0 in-code references):**
+
+| Route | What it is | Disposition |
+|---|---|---|
+| `/admin/disputes` | Working admin review page for disputed jobs (`getDisputedJobs`) | **Keep** — operator tool, direct-URL by design, but it predates `/disputes` and the overlap should be reconciled eventually. Recorded, not deleted |
+| `/market-health` | The public honest-numbers page | Linked heavily from README/outreach but **not from anywhere in the app**. Overhaul fix: link it from the shell (the mockup's "network status" sidebar card is the natural home) |
+
+## API routes (~70) — classification
+
+- **UI-consumed:** agents/tasks/jobs/delegations/worker/wallet/world/vault/me —
+  exercised by the pages above (fetch calls verified by grep).
+- **Headless-by-design (documented in docs/, not UI-linked — correct):**
+  `/api/grade`, `/api/evaluator/verdict`, `/api/attestation`,
+  `/api/proof/*`, `/api/tasks`, `/api/agents/register`, `/api/mcp`,
+  `/api/oauth/*`, `/api/github/webhook`, `/api/redteam/*`, `/api/repo/ci-bounty`,
+  `/api/x402/live`, `/api/capabilities`, `/api/fleet`, `/api/market/index`.
+- **Ops/cron:** `/api/cron/settle`, `/api/runtime/*`, `/api/admin/*` (13 routes,
+  token-gated). `/api/admin/demo-negotiation` and `/api/admin/post-image-jobs`
+  are the staleness candidates here — both still referenced by ops docs, kept.
+- **Verdict: no dead API routes.** Every route is UI-consumed, documented
+  headless, or an ops tool.
+
+## scripts/ (21) — 0-reference entries, classified not deleted
+
+`compile-evm-fixtures.mjs`, `compile-labor-v2.mjs`, `deploy-governance-poll.mjs`,
+`migrate-agents-to-kernel.mjs`, `recover-agent-funds.mjs` have zero references
+from package.json/CI/docs. All five are **operational one-shots** (compile
+artifacts, one-time migration, emergency fund recovery). `recover-agent-funds`
+especially is exactly the script you want findable in an emergency —
+**disposition: keep, now referenced from this doc** so they are no longer
+unreferenced.
+
+## External paths — findings
+
+| Path | Where | Verdict |
+|---|---|---|
+| `sepolia.etherscan.io` ×3 | `verify/page.tsx` initial state (server data replaces it on load), `config.ts` fallback, `feed-meta.ts` per-chain map | Benign: keyed/fallback values, not user-facing assertions. Initial-state flash on /verify noted, not worth churn |
+| `ai-agent-credit-dashboard/releases` ×2 | MCP guide (desktop download) | **Correct today** — handsel has zero GitHub releases, so the v1 repo is genuinely where the binaries are. Must flip when `desktop-v*` first runs on this repo |
+| `clawhub.ai` ×3 | directory read client | Deliberate (OpenClaw's registry; see competitive-landscape correction) |
+| groq/openrouter/hf/pollinations/google-tts | model + media lanes | Feature dependencies, env-gated, degrade gracefully per repo convention |
+| `sepolia-rpc.giwa.io` / explorer | chain config | GIWA testnet rehearsal lane (pitch deck §8) |
+
+## The overhaul contract
+
+The Nocturne/Sage restyle (design handoff 2026-08-06) touches **tokens,
+shell chrome and card presentation only**. The functionality baseline it must
+not regress is: 16 nav destinations, 17 linked flows, 2 recorded orphans, ~70
+API routes, all forms/actions on `/jobs`, `/delegate`, `/mine`, `/settings`,
+`/credit-scores`. Any restyle commit that changes an action handler, form
+field, fetch call or i18n key is out of scope by definition and needs its own
+commit with its own reasoning.

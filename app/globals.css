@@ -5,7 +5,7 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --font-sans: 'Geist', 'Geist Fallback';
+  --font-sans: 'Inter', 'Inter Fallback', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'Geist Mono', 'Geist Mono Fallback';
 
   --color-sidebar-ring: var(--sidebar-ring);
@@ -53,90 +53,105 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* Light theme — "ledger paper": warm near-white ground, ink foreground,
-   the same brand hues re-weighted for contrast on light. */
+/* Light theme — "Sage & Linen" (mockup organic light): warm linen ground,
+   ink-green foreground, sage accent. Hex values from the design handoff are
+   verbatim; borders derive from the handoff divider rgba(61,58,48,.16)
+   flattened over the ground. */
 :root {
   color-scheme: light;
-  --background: oklch(0.98 0.003 85);
-  --foreground: oklch(0.22 0.012 260);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.22 0.012 260);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.22 0.012 260);
-  --primary: oklch(0.52 0.14 235);
-  --primary-foreground: oklch(0.99 0.002 260);
-  --secondary: oklch(0.94 0.004 85);
-  --secondary-foreground: oklch(0.25 0.012 260);
-  --muted: oklch(0.95 0.004 85);
-  --muted-foreground: oklch(0.5 0.014 260);
-  --accent: oklch(0.92 0.02 235);
-  --accent-foreground: oklch(0.25 0.012 260);
+  --background: #f5f1e6;
+  --foreground: #34382c;
+  --card: #fbf8f0;
+  --card-foreground: #34382c;
+  --popover: #fbf8f0;
+  --popover-foreground: #34382c;
+  --primary: #5a6b4d;
+  --primary-foreground: #f7f5ea;
+  --secondary: #efe9da;
+  --secondary-foreground: #3a3d31;
+  --muted: #efe9da;
+  --muted-foreground: #66654f;
+  --accent: #e8ecdd;
+  --accent-foreground: #33402b;
   --destructive: oklch(0.55 0.2 22);
-  --destructive-foreground: oklch(0.99 0.002 260);
+  --destructive-foreground: #fdfcf7;
   --success: oklch(0.55 0.14 155);
-  --success-foreground: oklch(0.99 0.002 260);
+  --success-foreground: #fdfcf7;
   --warning: oklch(0.6 0.13 75);
-  --warning-foreground: oklch(0.99 0.002 260);
-  --border: oklch(0.89 0.006 85);
-  --input: oklch(0.89 0.006 85);
-  --ring: oklch(0.52 0.14 235);
-  --chart-1: oklch(0.52 0.14 235);
+  --warning-foreground: #34382c;
+  --border: #ddd7c6;
+  --input: #ddd7c6;
+  --ring: #5a6b4d;
+  --chart-1: #5a6b4d;
   --chart-2: oklch(0.55 0.14 155);
   --chart-3: oklch(0.6 0.13 75);
   --chart-4: oklch(0.55 0.2 22);
   --chart-5: oklch(0.5 0.1 300);
   --radius: 0.5rem;
-  --sidebar: oklch(0.965 0.004 85);
-  --sidebar-foreground: oklch(0.28 0.012 260);
-  --sidebar-primary: oklch(0.52 0.14 235);
-  --sidebar-primary-foreground: oklch(0.99 0.002 260);
-  --sidebar-accent: oklch(0.92 0.005 85);
-  --sidebar-accent-foreground: oklch(0.22 0.012 260);
-  --sidebar-border: oklch(0.89 0.006 85);
-  --sidebar-ring: oklch(0.52 0.14 235);
+  --sidebar: #efe9da;
+  --sidebar-foreground: #3a3d31;
+  --sidebar-primary: #5a6b4d;
+  --sidebar-primary-foreground: #f7f5ea;
+  --sidebar-accent: #e4ddca;
+  --sidebar-accent-foreground: #33402b;
+  --sidebar-border: #ddd7c6;
+  --sidebar-ring: #5a6b4d;
+  /* Glass depth pass — warm-ink shadows, never pure black on the light theme */
+  --glass-sheen: rgba(255, 255, 255, 0.75);
+  --glass-rim: rgba(255, 255, 255, 0.85);
+  --glass-inner: rgba(61, 58, 48, 0.06);
+  --glass-contact: rgba(61, 58, 48, 0.1);
+  --glass-throw: rgba(61, 58, 48, 0.18);
 }
 
-/* Dark theme — the original look, now opt-in via the .dark class
-   (default for existing users; the toggle persists the choice). */
+/* Dark theme — "Nocturne" (mockup primary): deep indigo ground, blurple
+   accent #9184d9. Surface/neutral steps derived from the handoff ramp around
+   bg #161826 / text #e9e9ed. */
 .dark {
   color-scheme: dark;
-  --background: oklch(0.16 0.008 260);
-  --foreground: oklch(0.96 0.003 260);
-  --card: oklch(0.2 0.009 260);
-  --card-foreground: oklch(0.96 0.003 260);
-  --popover: oklch(0.19 0.009 260);
-  --popover-foreground: oklch(0.96 0.003 260);
-  --primary: oklch(0.68 0.15 235);
-  --primary-foreground: oklch(0.14 0.02 260);
-  --secondary: oklch(0.26 0.01 260);
-  --secondary-foreground: oklch(0.96 0.003 260);
-  --muted: oklch(0.24 0.009 260);
-  --muted-foreground: oklch(0.66 0.012 260);
-  --accent: oklch(0.28 0.02 235);
-  --accent-foreground: oklch(0.96 0.003 260);
+  --background: #161826;
+  --foreground: #e9e9ed;
+  --card: #1b1e30;
+  --card-foreground: #e9e9ed;
+  --popover: #1a1d2e;
+  --popover-foreground: #e9e9ed;
+  --primary: #9184d9;
+  --primary-foreground: #14121f;
+  --secondary: #232741;
+  --secondary-foreground: #e9e9ed;
+  --muted: #202336;
+  --muted-foreground: #9b9dae;
+  --accent: #2a2c4a;
+  --accent-foreground: #cdc6ee;
   --destructive: oklch(0.62 0.2 22);
-  --destructive-foreground: oklch(0.98 0.003 260);
+  --destructive-foreground: #f7f7fa;
   --success: oklch(0.72 0.15 155);
-  --success-foreground: oklch(0.14 0.02 260);
+  --success-foreground: #14121f;
   --warning: oklch(0.78 0.14 75);
-  --warning-foreground: oklch(0.14 0.02 260);
-  --border: oklch(0.3 0.01 260);
-  --input: oklch(0.3 0.01 260);
-  --ring: oklch(0.68 0.15 235);
-  --chart-1: oklch(0.68 0.15 235);
+  --warning-foreground: #14121f;
+  --border: #2b2e45;
+  --input: #2b2e45;
+  --ring: #9184d9;
+  --chart-1: #9184d9;
   --chart-2: oklch(0.72 0.15 155);
   --chart-3: oklch(0.78 0.14 75);
   --chart-4: oklch(0.62 0.2 22);
   --chart-5: oklch(0.6 0.1 300);
   --radius: 0.5rem;
-  --sidebar: oklch(0.18 0.009 260);
-  --sidebar-foreground: oklch(0.9 0.005 260);
-  --sidebar-primary: oklch(0.68 0.15 235);
-  --sidebar-primary-foreground: oklch(0.14 0.02 260);
-  --sidebar-accent: oklch(0.26 0.012 260);
-  --sidebar-accent-foreground: oklch(0.96 0.003 260);
-  --sidebar-border: oklch(0.28 0.01 260);
-  --sidebar-ring: oklch(0.68 0.15 235);
+  --sidebar: #131523;
+  --sidebar-foreground: #d6d6de;
+  --sidebar-primary: #9184d9;
+  --sidebar-primary-foreground: #14121f;
+  --sidebar-accent: #262a44;
+  --sidebar-accent-foreground: #e9e9ed;
+  --sidebar-border: #23263c;
+  --sidebar-ring: #9184d9;
+  /* Glass depth pass — black-based shadows on the dark ground */
+  --glass-sheen: rgba(255, 255, 255, 0.05);
+  --glass-rim: rgba(255, 255, 255, 0.09);
+  --glass-inner: rgba(255, 255, 255, 0.04);
+  --glass-contact: rgba(0, 0, 0, 0.45);
+  --glass-throw: rgba(0, 0, 0, 0.5);
 }
 
 @layer base {
@@ -149,6 +164,60 @@
        scores, balances, block numbers — without per-component classes. */
     font-variant-numeric: tabular-nums;
   }
+}
+
+
+/* ── Nocturne glass depth pass (design handoff): sheen, top rim, bevel and
+   layered shadows. Shadow colors are theme-split via the --glass-* vars —
+   black on dark, warm ink on light — set in :root/.dark above. */
+@layer components {
+  .glass-card {
+    position: relative;
+    background-image: linear-gradient(160deg, var(--glass-sheen) 0%, transparent 32%);
+    box-shadow:
+      inset 0 1px 0 var(--glass-rim),
+      inset 0 0 0 1px var(--glass-inner),
+      0 1px 2px var(--glass-contact),
+      0 14px 36px -14px var(--glass-throw);
+  }
+  .glass-card::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 8%;
+    right: 8%;
+    height: 1px;
+    border-radius: 1px;
+    background: linear-gradient(90deg, transparent, var(--glass-rim), transparent);
+    pointer-events: none;
+  }
+  .lift {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  .lift:hover {
+    transform: translateY(-2px);
+  }
+  .pulse-dot {
+    animation: hs-pulse 1.8s ease-out infinite;
+  }
+  .feed-enter {
+    animation: hs-feed-in 0.4s ease-out;
+  }
+  .fill-in {
+    animation: hs-fill-in 1.1s cubic-bezier(0.22, 0.7, 0.3, 1);
+  }
+}
+@keyframes hs-pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--primary) 45%, transparent); }
+  70% { box-shadow: 0 0 0 6px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+@keyframes hs-feed-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes hs-fill-in {
+  from { width: 0; }
 }
 
 /* Playful layer — used on the mining/market surfaces only; the financial
