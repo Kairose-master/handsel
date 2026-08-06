@@ -1,43 +1,29 @@
 import { getWorkProof } from '@/lib/work-proof-store'
-import { verifyWorkProof, trustedAttester } from '@/lib/attestation'
-import { gatewayUrl } from '@/lib/ipfs'
 
 /**
- * Public, keyless verification of a Proof of Authorship & Grade.
+ * GET /api/proof/<id> — the machine-readable work proof.
  *
- *   GET /api/proof/<id>
+ * `/proof/<id>` is the human page; this is the same record as JSON so a verifier
+ * can fetch `{ proof, signature, attester }` and check it locally against the
+ * recipe at `/api/attestation`, with no further trust in us. Proofs are public
+ * by design — the whole point is that anyone can verify them.
  *
- * Returns the stored proof, its oracle signature, and a fresh verification:
- * the signature is recovered and checked against the platform's trusted
- * attester (the self-attestation defense). Anyone can re-run this — the proof
- * is signed data, not a claim we ask you to trust.
+ * The `proof` object here is the exact EIP-712 message that was signed; pass it
+ * straight into `recoverTypedDataAddress`.
  */
 export const dynamic = 'force-dynamic'
 
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
   const { id } = await params
-  // `job-142` / `job:142` / `job142` resolves the latest proof for on-chain
-  // job #142 — the certificate for a real labor-market payout.
-  const jobMatch = id.match(/^job[-:]?(\d+)$/i)
-  const stored = jobMatch
-    ? await (await import('@/lib/work-proof-store')).getLatestProofForJob(`#${jobMatch[1]}`)
-    : await getWorkProof(id)
+  const stored = await getWorkProof(id)
   if (!stored) return Response.json({ error: 'proof not found' }, { status: 404 })
 
-  const verification = await verifyWorkProof(stored.proof, stored.signature as `0x${string}`, stored.attester as `0x${string}`)
-  const trusted = trustedAttester()
   return Response.json({
     id: stored.id,
     proof: stored.proof,
     signature: stored.signature,
     attester: stored.attester,
-    trustedAttester: trusted,
-    ipfs: stored.cid ? { cid: stored.cid, uri: `ipfs://${stored.cid}`, gateway: gatewayUrl(stored.cid) } : null,
-    verification: {
-      signatureValid: verification.recovered.toLowerCase() === stored.attester.toLowerCase(),
-      recovered: verification.recovered,
-      // attester is the platform oracle → not a worker forging its own pass
-      attesterIsTrusted: !!trusted && stored.attester.toLowerCase() === trusted.toLowerCase(),
-    },
+    cid: stored.cid,
+    verify: '/api/attestation',
   })
 }

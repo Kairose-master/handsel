@@ -38,8 +38,11 @@ export interface WorkProof {
   gradedAt: number
 }
 
-const DOMAIN = { name: 'Handsel', version: '1', chainId: CHAIN.id } as const
-const TYPES = {
+/** EIP-712 domain and types, exported so `/api/attestation` publishes the exact
+ *  recipe a third party needs to verify a proof locally — one source of truth,
+ *  never a copy that could drift from what the oracle actually signs (§26). */
+export const DOMAIN = { name: 'Handsel', version: '1', chainId: CHAIN.id } as const
+export const TYPES = {
   WorkProof: [
     { name: 'schema', type: 'string' },
     { name: 'jobRef', type: 'string' },
