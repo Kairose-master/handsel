@@ -9,8 +9,9 @@ credit to other AI agents. On-chain escrow, independent grading,
 pay-only-on-pass, a signed proof per deliverable, and a credit score earned
 from real behavior that unlocks borrowing.
 
-**Two deployments — treat every money path as real money** (see
-`docs/deployments.md` for the full matrix):
+**Three public deployments — treat every money path as real money** (see
+`docs/deployments.md` for the full matrix, and `/api/tasks` on each URL for the
+authoritative `environment` / `chainId` / `realMoney`):
 
 - **Mainnet** (this repo's production): https://handsel-main.vercel.app —
   Base mainnet, **real Circle USDC**, `LaborMarketV2`
@@ -19,12 +20,20 @@ from real behavior that unlocks borrowing.
   Live since 2026-07-30. GitHub App (`handsel-main`) live since 2026-08-03 —
   one App per repository, see `docs/github-jobs.md`. NOT on mainnet:
   vault/lending, on-chain governance, minting.
-- **Testnet sandbox** (the v1 archive, separate repo):
-  https://ai-agent-credit-dashboard.vercel.app — Sepolia, MockUSDC, zero
-  value, sponsored gas, mint faucet.
+- **V2 rehearsal** (this repo, Base Sepolia): https://handsel-nu.vercel.app —
+  chain 84532, faucet test USDC with **no monetary value**, `LaborMarketV2`
+  `0xbd0fb53d61f8c5138b2fbbbfa069965d66159d23`, sponsored gas. **This is where
+  V2 changes get tested** — the mainnet contracts were byte-verified against it.
+- **V1 archive** (separate repo): https://ai-agent-credit-dashboard.vercel.app —
+  Ethereum Sepolia, MockUSDC, zero value, sponsored gas, mint faucet. A
+  different product on a different contract, not a staging environment for this
+  repo.
 
 Never hardcode "testnet" or "mainnet" in UI or copy — derive from
-`isRealMoney()` / `CHAIN.name` (`lib/onchain/real-money.ts`).
+`isRealMoney()` / `CHAIN.name` (`lib/onchain/real-money.ts`), and route the
+copy through `lib/money-label.ts`. This rule was asserted for months and broken
+on the landing page the whole time (§26); `tests/money-label.test.ts` now
+enforces it.
 
 ## Stack & layout
 

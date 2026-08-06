@@ -1,8 +1,9 @@
 # GitHub repo jobs — design
 
-> Status: **Phase 2 shipped in code** — live on the testnet deployment, not
-> yet configured on the mainnet one (GitHub App env unset there). Phase 3 —
-> Foreman as supply — is next. The core
+> Status: **Phase 2 live on both deployments.** The mainnet GitHub App
+> (`handsel-main`) has been configured and installed since 2026-08-03 — verified
+> by a `bounty:$1` label producing a "$1 in real USDC" receipt. One App per
+> repository; see below. Phase 3 — Foreman as supply — is next. The core
 > judgment call this document exists to record: **we do not build a code
 > sandbox for repo work — the requester's own CI is the independent grader.**
 

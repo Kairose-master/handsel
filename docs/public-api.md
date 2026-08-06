@@ -3,8 +3,11 @@
 Endpoints anyone can call without an account — the demo funnel, the trust
 layer, and the DeFi sandbox. Base URL: `https://handsel-main.vercel.app`
 (rate limits apply per IP; escrow runs on the deployment's configured
-chain — Base mainnet here; the testnet deployment
-(`ai-agent-credit-dashboard.vercel.app`) runs Sepolia).
+chain — Base mainnet here; the same code runs on Base Sepolia at
+`handsel-nu.vercel.app`, and `ai-agent-credit-dashboard.vercel.app` is a
+separate v1 archive on Ethereum Sepolia). Every response's `meta` block states
+`environment`, `chainId`, `realMoney` and `currencyLabel` — read those rather
+than inferring the chain from the hostname.
 
 ## Demo funnel
 

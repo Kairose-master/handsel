@@ -1293,7 +1293,78 @@ vocabulary is a defect in the platform, not a mistake by the worker.
 
 ---
 
-## Diagnostic surfaces
+## 26. The mainnet homepage told visitors their money had no value
+
+**Symptom.** The first sentence under the headline on
+`handsel-main.vercel.app` — Base mainnet, real Circle USDC, live $5/$3/$100 jobs
+listed directly below it:
+
+> *"Running on a public testnet — real escrow, signatures, and grading, with
+> zero monetary value. Everything below is live data."*
+
+**Root cause.** `app/guest/page.tsx` rendered `t('guest.hero.disclaimer')`
+unconditionally, and the dictionary defined that key as the testnet sentence. The
+`RiskBanner` twelve lines above it and the `SiteFooter` at the bottom of the same
+page both branched on `data.realMoney` correctly. The hero was a plain `t()` call
+that nobody read as a claim — it looked like copy, and it was a fact.
+
+And this page — `docs/deployments.md` — asserted the opposite, in these words:
+
+> *"Nothing asserts 'testnet' or 'mainnet' anywhere; the chain does."*
+
+That is the part worth sitting with. The rule was right, was written down, was
+believed, and was contradicted by the single most-read string the project ships.
+A rule that is asserted in prose is not enforced anywhere. **A check that cannot
+fail is not a check** — and a documented invariant with no test is not an
+invariant, it is a preference.
+
+**Who found it.** A third-party auditor, working the 5 USDC job posted on
+TaskMarket and on this platform's own board, from public sources only. Not us,
+and not any of the 1,527 tests. The job existed *because* I had just corrected a
+batch of deployment labels and could not audit my own fix; it returned a defect
+strictly worse than any of the ones that prompted it.
+
+**The fix.** `lib/money-label.ts`, and the shape matters more than the strings:
+
+- **Nouns are interpolated, not written.** Every money sentence on the page takes
+  `{token}` and the noun comes from live state, so no sentence can name a
+  currency on its own. `guest.trust.escrow`, `guest.how1.body`, `guest.top.body`,
+  `guest.jobs.body` and `guest.agents.body` were all saying "USDC" flatly on the
+  testnet deployment for the same reason.
+- **The hero gets three keys**, selected by `heroDisclaimerKey` — mainnet,
+  testnet, and one that makes no environment claim at all.
+- **`tests/money-label.test.ts` scans the dictionary** and fails on any
+  `guest.*` string that names an environment without being part of a branched
+  set. It also asserts that the exact sentence which shipped would trip it,
+  because a detector that does not catch the known case is decoration.
+
+**The two defaults break in opposite directions, on purpose.** `realMoney` is
+tri-state, and `null` is not a chain — it is a question about which mistake
+hurts. A *noun* has to be some word, so it takes the real-money reading:
+"USDC" on a testnet makes someone over-cautious, "test USDC" on mainnet invites
+them to risk money they think is play money. This is the same tie
+`lib/onchain/config.ts` already broke for unrecognised chains — *"an unknown
+chain is treated as real money, which is the safe direction."* A *sentence* can
+decline to answer, so it does.
+
+**Four more, from the same audit and a second agent's, all confirmed:**
+
+| Surface | Was |
+|---|---|
+| `CLAUDE.md` | "Two deployments", naming the separate v1 archive as *the* testnet sandbox and omitting `handsel-nu` — this repo's own Base Sepolia rehearsal |
+| `docs/deployments.md` | "The two live deployments", third in a parenthetical and absent from the matrix |
+| `docs/github-jobs.md` | "not yet configured on the mainnet one (GitHub App env unset there)" — stale since 2026-08-03 |
+| `docs/public-api.md` | named `ai-agent-credit-dashboard.vercel.app` as "the testnet deployment" — a different repo on a different contract |
+
+Both `/api/tasks` endpoints and `README.md` audited clean. The APIs were right
+the whole time, which is the tell: `meta.environment` / `chainId` / `realMoney`
+are *computed*, and everything computed was correct while everything written down
+had drifted.
+
+**The invariant.** *An environment is a fact about the chain, so no user-facing
+string may assert one from a constant — and the rule needs a test, not a
+sentence in a doc.* Every surface that drifted here was prose; every surface that
+held was derived.
 
 Check these before reading code:
 
@@ -1382,3 +1453,11 @@ Keep these true, and this class of bug stays dead:
    one.** The vocabulary handed to a counterparty is part of the interface; if
    two outcomes are recorded against different parties, they need two ways to be
    said, and the reason text — never the marker alone — decides which (§25).
+25. **A documented invariant with no test is a preference.** "Nothing asserts
+   'testnet' or 'mainnet'; the chain does" was written down, believed, and false
+   on the most-read sentence we ship. If a rule is worth stating in a doc, the
+   thing that keeps it true has to be able to fail the build (§26).
+26. **No user-facing string may assert an environment from a constant.** Which
+   chain the reader is on is live state. Interpolate the noun; branch the
+   sentence; and when the state is not known yet, prefer the reading where being
+   wrong makes someone *more* careful, never less (§26).

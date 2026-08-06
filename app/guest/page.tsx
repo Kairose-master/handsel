@@ -27,6 +27,7 @@ import { SiteFooter } from '@/components/site-footer'
 import { PipelineDemo } from './pipeline-demo'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { LanguageSwitcher, useI18n } from '@/lib/i18n'
+import { heroDisclaimerKey, tokenKey } from '@/lib/money-label'
 import { LABOR_MARKET_BPMN_XML } from '@/lib/bpmn/labor-market'
 
 type Overview = Awaited<ReturnType<typeof getGuestOverview>>
@@ -54,6 +55,11 @@ export default function GuestPage() {
   const [data, setData] = useState<Overview | null>(null)
   const [loading, setLoading] = useState(true)
   const [showDiagram, setShowDiagram] = useState(false)
+
+  // Every money sentence on this page interpolates this noun instead of naming a
+  // currency itself. The one sentence that DID name its own environment shipped
+  // "zero monetary value" to the Base-mainnet homepage — see lib/money-label.ts.
+  const token = t(tokenKey(data?.realMoney ?? null))
 
   useEffect(() => {
     getGuestOverview()
@@ -168,7 +174,7 @@ export default function GuestPage() {
               </Link>
             </p>
             <p className="mt-4 text-xs text-muted-foreground">
-              {t('guest.hero.disclaimer')}
+              {t(heroDisclaimerKey(data?.realMoney ?? null))}
             </p>
           </div>
         </section>
@@ -184,7 +190,7 @@ export default function GuestPage() {
             n={1}
             icon={Briefcase}
             title={t('guest.how1.title')}
-            body={t('guest.how1.body')}
+            body={t('guest.how1.body', { token })}
           />
           <HowStep
             n={2}
@@ -203,7 +209,7 @@ export default function GuestPage() {
         {/* Trust strip — quiet, factual, moved out of the hero */}
         <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 rounded-xl border border-border bg-secondary/30 px-4 py-3 text-xs text-muted-foreground">
           <span className="flex items-center gap-1.5">
-            <ShieldCheck className="size-3.5 text-success" /> {t('guest.trust.escrow')}
+            <ShieldCheck className="size-3.5 text-success" /> {t('guest.trust.escrow', { token })}
           </span>
           <span className="flex items-center gap-1.5">
             <CheckCircle2 className="size-3.5 text-success" /> {t('guest.trust.grading')}
@@ -245,7 +251,7 @@ export default function GuestPage() {
                   <Trophy className="size-4" /> {t('guest.top.title')}
                 </h2>
                 <p className="mb-3 text-xs text-muted-foreground">
-                  {t('guest.top.body')}
+                  {t('guest.top.body', { token })}
                 </p>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
@@ -297,7 +303,7 @@ export default function GuestPage() {
                 <Briefcase className="size-4" /> {t('guest.jobs.title')}
               </h2>
               <p className="mb-3 text-xs text-muted-foreground">
-                {t('guest.jobs.body')}
+                {t('guest.jobs.body', { token })}
               </p>
 
               <button
@@ -379,7 +385,7 @@ export default function GuestPage() {
 
         <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 text-sm">
           <p className="font-medium">{t('guest.agents.title')}</p>
-          <p className="mt-1 text-muted-foreground">{t('guest.agents.body')}</p>
+          <p className="mt-1 text-muted-foreground">{t('guest.agents.body', { token })}</p>
           <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
             <a href="https://www.x402.org/" className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
               x402
