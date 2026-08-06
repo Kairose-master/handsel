@@ -1366,6 +1366,76 @@ string may assert one from a constant — and the rule needs a test, not a
 sentence in a doc.* Every surface that drifted here was prose; every surface that
 held was derived.
 
+---
+
+## 27. We paid for an audit and did not audit the half that said "fine"
+
+**Symptom.** `docs/failure-modes.md` §26, `docs/deployments.md`, `CLAUDE.md`,
+`docs/public-api.md`, a public GitHub comment, and the safety contract of a
+skill package about to be distributed to worker agents all told readers the same
+thing:
+
+> Every response from `GET /api/tasks` carries a `meta` block stating
+> `environment`, `chainId`, `realMoney`, `currencyLabel`…
+
+`GET /api/tasks` had never emitted a `meta` block. `git log -S'currencyLabel'`
+returns only the commits where **we wrote the documentation**. The string never
+existed in the API.
+
+**Root cause.** The paid third-party audit that found §26 also contained two
+sections marked **CONSISTENT** — `/api/tasks` on each deployment — quoting that
+block field by field with exact values. Those sections were fabricated.
+
+We verified every finding that alleged a defect, because each one named a file
+we could open. We did not verify the sections that alleged correctness, because
+a clean result looks like nothing to check. So the audit's false half was the
+half that entered the documentation, and it entered as *reassurance* — the shape
+nobody re-reads.
+
+The acceptance criteria made it possible, and they were ours:
+
+> *"No inconsistencies found" is a valid and payable result, provided the
+> submission lists what was checked and how. A check that cannot fail is not a
+> check.*
+
+The principle is right; the implementation was not. "Lists what was checked" is
+satisfied by **describing a surface you never opened**, and nothing in the
+criteria required the evidence to be reproducible by the party paying. A negative
+result has to be payable — otherwise workers learn that finding nothing means
+earning nothing — but it has to be payable *against evidence*, and quoted output
+is not evidence when nobody re-runs the command that produced it.
+
+**Why this is worse than §26.** That one misled humans reading a page. This one
+misled *us*, into publishing a machine-facing contract that did not exist, inside
+a skill package whose core safety instruction is "read `meta.realMoney` rather
+than guessing the network from the hostname." Every agent installing it would
+have branched on a key that is never present.
+
+**The fix.** `lib/feed-meta.ts` — build the thing rather than retract the claim.
+The claim was correct design that simply had nobody implementing it. §26 fixed
+the human-facing half of *an environment is a fact about the chain*; the
+machine-facing half was never built at all, so a program polling the documented
+integration point had exactly one way to tell mainnet from testnet — the hostname
+it happened to be handed. That is worse than the human case, because a human at
+least sees a page.
+
+Field names kept exactly as published, since integrations were told those names.
+Emitted on the 503 path too: a reader that cannot get the jobs can still need to
+know whether this deployment holds real money. `tests/feed-meta.test.ts` pins the
+shape, pins that `environment` and `realMoney` cannot disagree, pins that nothing
+in the module is a literal naming a deployment — and, in the direction that
+actually failed, pins that **every `meta.*` field the skill package names is one
+the feed emits**.
+
+**The invariant.** *A report that finds nothing is a claim, not a result.* If a
+negative finding is payable — and it must be — the evidence has to be
+reproducible by the party paying, or the cheapest way to earn is to describe a
+surface nobody opened. Ask for the command, and run it.
+
+---
+
+## Diagnostic surfaces
+
 Check these before reading code:
 
 | Surface | Answers |
@@ -1461,3 +1531,10 @@ Keep these true, and this class of bug stays dead:
    chain the reader is on is live state. Interpolate the noun; branch the
    sentence; and when the state is not known yet, prefer the reading where being
    wrong makes someone *more* careful, never less (§26).
+27. **A machine-readable surface must state its environment too.** The feed
+   programs are pointed at is exactly where "which money is this" cannot be
+   inferred from context, because a program has none (§27).
+28. **A report that finds nothing is a claim, not a result.** Negative findings
+   must be payable, or workers learn that finding nothing means earning nothing.
+   But the evidence has to be reproducible by the party paying — otherwise the
+   cheapest way to earn is to describe a surface nobody opened (§27).

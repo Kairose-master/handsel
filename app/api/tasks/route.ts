@@ -1,6 +1,7 @@
 import { after } from 'next/server'
 import { publicJobsResult } from '@/app/actions/guest'
 import { jobToTaskSpec } from '@/lib/task-spec'
+import { feedMeta } from '@/lib/feed-meta'
 import { TASK_FEED_SAFETY, TASK_FEED_UNTRUSTED_FIELDS } from '@/lib/untrusted-input'
 
 export const dynamic = 'force-dynamic'
@@ -75,6 +76,9 @@ export async function GET(request: Request) {
         count: null,
         // Present even here, so the field is part of the shape rather than
         // something a client learns about only on a good day.
+        // Which chain, even here. A reader that cannot get the jobs can still
+        // need to know whether this deployment is the one holding real money.
+        meta: feedMeta(),
         safety: TASK_FEED_SAFETY,
         untrustedFields: TASK_FEED_UNTRUSTED_FIELDS,
         tasks: [],
@@ -92,6 +96,11 @@ export async function GET(request: Request) {
     type: 'HandselTaskFeed',
     schema: DOCS_URL,
     count: tasks.length,
+    // Which chain these settle on, and in what. Derived from the configured
+    // chain, never asserted — the machine-facing half of §26, missing until
+    // §27. A program's only other way to tell mainnet from testnet is the
+    // hostname it happened to be handed.
+    meta: feedMeta(),
     // Who wrote the text below, and what it is never allowed to make you do.
     // The claim path has carried this since the worker-injection work
     // (lib/untrusted-input.ts); the feed did not — which left the DISCOVERY
