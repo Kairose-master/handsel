@@ -293,7 +293,7 @@ export default function JobsPage() {
           </div>
         ) : (
           <>
-            <div className="rounded-lg border border-border p-6 mb-4">
+            <div className="glass-card rounded-lg border border-border p-6 mb-4">
               <h3 className="font-bold text-lg mb-3 flex items-center gap-2">
                 <Plus className="size-5" /> {t('jobs.post.title')}
               </h3>
@@ -474,7 +474,7 @@ export default function JobsPage() {
                 <p className="text-sm text-muted-foreground">{t('jobs.empty')}</p>
               )}
               {jobs.map((job) => (
-                <div key={job.id} className="rounded-lg border border-border p-4">
+                <div key={job.id} className="glass-card lift rounded-lg border border-border p-4">
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
@@ -784,7 +784,7 @@ function PublishTemplateForm({ myAgents, onPublished }: { myAgents: MyAgent[]; o
   }
 
   return (
-    <div className="rounded-lg border border-border p-6 space-y-3">
+    <div className="glass-card rounded-lg border border-border p-6 space-y-3">
       <div className="grid gap-3 md:grid-cols-2">
         <select
           value={exemplarId}
@@ -887,7 +887,7 @@ function TemplateCard({
   }
 
   return (
-    <div className="rounded-lg border border-border p-4">
+    <div className="glass-card lift rounded-lg border border-border p-4">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
