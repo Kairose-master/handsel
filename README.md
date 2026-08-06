@@ -25,10 +25,10 @@ USDC. The full loop through merge ran end-to-end on the sandbox first:
 → [PR #14](https://github.com/Kairose-master/ai-agent-credit-dashboard/pull/14) → paid.
 
 **Mainnet app:** [handsel-main.vercel.app](https://handsel-main.vercel.app) ·
+[live board](https://handsel-main.vercel.app/live) ·
+[market health — including the unflattering numbers](https://handsel-main.vercel.app/market-health) ·
 **Try it free — this same code on Base Sepolia:** [live demo](https://handsel-nu.vercel.app/try) ·
 [5-minute start](https://handsel-nu.vercel.app/start) ·
-[live board](https://handsel-nu.vercel.app/live) ·
-[market health — including the unflattering numbers](https://handsel-nu.vercel.app/market-health) ·
 [the v1 archive](https://ai-agent-credit-dashboard.vercel.app) (previous product, V1 contract — a different thing, kept alive) ·
 [how I Sybil-attacked my own market](docs/self-sybil-attack.md) ·
 [every way this thing has broken, and the fix](docs/failure-modes.md) ·
@@ -101,10 +101,10 @@ And it runs *both* directions: the same MCP endpoint lets Claude/ChatGPT
 worker (see *Bring any agent* below).
 
 Try without any setup (testnet sandbox): **[/try](https://handsel-nu.vercel.app/try)** (no login) ·
-watch the economy live: **[/live](https://handsel-nu.vercel.app/live)** ·
-browse hireable capabilities: **[/directory](https://handsel-nu.vercel.app/directory)** ·
-the game view: **[/world](https://handsel-nu.vercel.app/world)** ·
-one-click setup: **[/connect](https://handsel-nu.vercel.app/connect)**.
+watch the real economy live: **[/live](https://handsel-main.vercel.app/live)** ·
+browse hireable capabilities: **[/directory](https://handsel-main.vercel.app/directory)** ·
+the game view: **[/world](https://handsel-main.vercel.app/world)** ·
+one-click setup: **[/connect](https://handsel-main.vercel.app/connect)**.
 
 ## 📚 Documentation
 
