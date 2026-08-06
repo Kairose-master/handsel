@@ -75,6 +75,11 @@ export async function POST(request: Request): Promise<Response> {
   // /api/grade, the proof is NOT a bonus here: without it there is no evidence to
   // anchor, and toEvaluateArgs refuses to submit — so a storage failure costs us
   // the evaluator stake rather than producing an unverifiable APPROVE.
+  //
+  // The proof is issued as schema v2 WITH its evidence bundle (spec +
+  // deliverable + graderClass 'model'), always: an evaluator verdict exists to
+  // be checked by third parties, so publishing the judgment inputs is the
+  // route's purpose, not an option. Callers are told so in the docs.
   let proof: { id: string; contentHash: string; attester: string } | undefined
   if (graded.passed === true) {
     try {
@@ -86,6 +91,7 @@ export async function POST(request: Request): Promise<Response> {
         requester: auth.email,
         grader: 'llm-review',
         deliverable: { text: deliverable },
+        evidence: { spec, graderClass: 'model' as const },
       })
       if (stored) proof = { id: stored.id, contentHash: stored.proof.contentHash, attester: stored.attester }
     } catch {

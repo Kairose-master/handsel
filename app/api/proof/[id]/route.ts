@@ -24,6 +24,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     signature: stored.signature,
     attester: stored.attester,
     cid: stored.cid,
+    // v2 proofs carry their evidence: the bundle whose canonical-JSON keccak256
+    // must equal proof.evidenceHash, and whose deliverable must hash to
+    // proof.contentHash. Null on v1 proofs — those prove provenance only.
+    evidence: stored.evidence,
     verify: '/api/attestation',
   })
 }

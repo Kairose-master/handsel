@@ -1,5 +1,15 @@
 import { pool } from '@/lib/db'
-import { contentHashOf, signWorkProof, trustedAttester, WORK_PROOF_SCHEMA, type WorkProof } from '@/lib/attestation'
+import {
+  contentHashOf,
+  evidenceHashOf,
+  signWorkProof,
+  trustedAttester,
+  EVIDENCE_SCHEMA,
+  WORK_PROOF_SCHEMA,
+  WORK_PROOF_SCHEMA_V2,
+  type EvidenceBundle,
+  type WorkProof,
+} from '@/lib/attestation'
 import { cidOfJson, pinBytes } from '@/lib/ipfs'
 
 /**
@@ -18,6 +28,9 @@ export interface StoredProof {
   /** Content-addressed id (CIDv1) of the {proof, signature, attester} record —
    *  an ipfs:// identity that resolves on any gateway once pinned. */
   cid: string | null
+  /** v2 only: the bundle whose hash the signature commits to (spec +
+   *  deliverable + grader class). Null on v1 proofs — provenance only. */
+  evidence: EvidenceBundle | null
 }
 
 async function ensureTable(): Promise<void> {
@@ -36,6 +49,7 @@ async function ensureTable(): Promise<void> {
   await pool.query(`CREATE INDEX IF NOT EXISTS work_proofs_job_ref_idx ON work_proofs (job_ref)`)
   // Additive migration for tables created before the cid column existed.
   await pool.query(`ALTER TABLE work_proofs ADD COLUMN IF NOT EXISTS cid text`)
+  await pool.query(`ALTER TABLE work_proofs ADD COLUMN IF NOT EXISTS evidence jsonb`)
 }
 
 /**
@@ -51,10 +65,33 @@ export async function issueWorkProof(input: {
   grader: string
   deliverable: { base64?: string | null; dataUrl?: string | null; text?: string | null }
   gradedAt?: number
+  /** When present, the proof is issued as schema v2 with the evidence bundle
+   *  bound into the signature — the caller is choosing to make spec +
+   *  deliverable PUBLIC so third parties can re-derive the verdict. */
+  evidence?: { spec: string; graderClass: EvidenceBundle['graderClass'] }
 }): Promise<StoredProof | null> {
   try {
+    // The evidence bundle stores the deliverable as it will be re-hashed by a
+    // verifier: dataUrl payloads normalize to base64 so contentHashOf(bundle
+    // .deliverable) reproduces the proof's contentHash byte-for-byte.
+    let evidence: EvidenceBundle | null = null
+    if (input.evidence) {
+      const deliverable = input.deliverable.dataUrl
+        ? { base64: input.deliverable.dataUrl.slice(input.deliverable.dataUrl.indexOf(',') + 1) }
+        : input.deliverable.base64
+          ? { base64: input.deliverable.base64 }
+          : { text: input.deliverable.text ?? '' }
+      evidence = {
+        schema: EVIDENCE_SCHEMA,
+        spec: input.evidence.spec,
+        deliverable,
+        grader: input.grader,
+        graderClass: input.evidence.graderClass,
+      }
+    }
+
     const proof: WorkProof = {
-      schema: WORK_PROOF_SCHEMA,
+      schema: evidence ? WORK_PROOF_SCHEMA_V2 : WORK_PROOF_SCHEMA,
       jobRef: input.jobRef,
       kind: input.kind,
       contentHash: contentHashOf(input.deliverable),
@@ -63,6 +100,7 @@ export async function issueWorkProof(input: {
       verdict: 'pass',
       grader: input.grader,
       gradedAt: input.gradedAt ?? Math.floor(Date.now() / 1000),
+      ...(evidence ? { evidenceHash: evidenceHashOf(evidence) } : {}),
     }
     const signed = await signWorkProof(proof)
     if (!signed) return null
@@ -76,11 +114,12 @@ export async function issueWorkProof(input: {
     const id = crypto.randomUUID()
     await ensureTable()
     await pool.query(
-      `INSERT INTO work_proofs (id, job_ref, content_hash, attester, signature, proof, cid)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [id, proof.jobRef, proof.contentHash, signed.attester, signed.signature, JSON.stringify(proof), cid],
+      `INSERT INTO work_proofs (id, job_ref, content_hash, attester, signature, proof, cid, evidence)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [id, proof.jobRef, proof.contentHash, signed.attester, signed.signature, JSON.stringify(proof), cid,
+       evidence ? JSON.stringify(evidence) : null],
     )
-    return { id, proof, signature: signed.signature, attester: signed.attester, cid }
+    return { id, proof, signature: signed.signature, attester: signed.attester, cid, evidence }
   } catch {
     return null
   }
@@ -140,12 +179,12 @@ export async function issueProofForJobSpec(spec: {
 export async function getWorkProof(id: string): Promise<StoredProof | null> {
   try {
     await ensureTable()
-    const { rows } = await pool.query<{ id: string; proof: WorkProof; signature: string; attester: string; cid: string | null }>(
-      `SELECT id, proof, signature, attester, cid FROM work_proofs WHERE id = $1`,
+    const { rows } = await pool.query<{ id: string; proof: WorkProof; signature: string; attester: string; cid: string | null; evidence: EvidenceBundle | null }>(
+      `SELECT id, proof, signature, attester, cid, evidence FROM work_proofs WHERE id = $1`,
       [id],
     )
     if (!rows[0]) return null
-    return { id: rows[0].id, proof: rows[0].proof, signature: rows[0].signature, attester: rows[0].attester, cid: rows[0].cid ?? null }
+    return { id: rows[0].id, proof: rows[0].proof, signature: rows[0].signature, attester: rows[0].attester, cid: rows[0].cid ?? null, evidence: rows[0].evidence ?? null }
   } catch {
     return null
   }
@@ -155,12 +194,12 @@ export async function getWorkProof(id: string): Promise<StoredProof | null> {
 export async function getLatestProofForJob(jobRef: string): Promise<StoredProof | null> {
   try {
     await ensureTable()
-    const { rows } = await pool.query<{ id: string; proof: WorkProof; signature: string; attester: string; cid: string | null }>(
-      `SELECT id, proof, signature, attester, cid FROM work_proofs WHERE job_ref = $1 ORDER BY created_at DESC LIMIT 1`,
+    const { rows } = await pool.query<{ id: string; proof: WorkProof; signature: string; attester: string; cid: string | null; evidence: EvidenceBundle | null }>(
+      `SELECT id, proof, signature, attester, cid, evidence FROM work_proofs WHERE job_ref = $1 ORDER BY created_at DESC LIMIT 1`,
       [jobRef],
     )
     if (!rows[0]) return null
-    return { id: rows[0].id, proof: rows[0].proof, signature: rows[0].signature, attester: rows[0].attester, cid: rows[0].cid ?? null }
+    return { id: rows[0].id, proof: rows[0].proof, signature: rows[0].signature, attester: rows[0].attester, cid: rows[0].cid ?? null, evidence: rows[0].evidence ?? null }
   } catch {
     return null
   }

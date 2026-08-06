@@ -66,7 +66,7 @@ so they never have to trust that we ran it honestly — they re-run it.
 | Lane | External offer | Status |
 |---|---|---|
 | **model** (LLM review, `/api/grade`) | An independent *opinion* — grader ≠ solver, billed to the caller's key. Not recomputable. | Live. `ExternalEvaluatorBridge` calls it, labelled `lane: 'model'`. `POST /api/evaluator/verdict` wraps the same lane as ERC-8195 `evaluate()` arguments (`docs/taskmarket-evaluator.md`). |
-| **recomputable** (CI / test / canary) | A self-contained proof the consumer re-runs. Not a "run my code" service. | The **signature half is shipped**: `GET /api/attestation` + `GET /api/proof/<id>` verify locally with no Handsel trust (`docs/verifying-proofs.md`). The *re-run* half — the proof carrying test + deliverable — remains the next honest build. |
+| **recomputable** (CI / test / canary) | A self-contained proof the consumer re-runs. Not a "run my code" service. | **Shipped as proof schema v2**: the signature binds an `evidenceHash` over spec + deliverable + grader class, served via `GET /api/proof/<id>` and verified locally (`docs/verifying-proofs.md`). The external lanes issue `model`-class evidence today (re-derivable *inputs*, independent opinion on re-judge); `mechanical`-class evidence awaits a lane whose grader is a test suite the consumer can re-run. |
 | **arbitrary external code execution** | — | **Refused** on the current runtime. See above. |
 
 ## The gate, if we ever do offer external execution

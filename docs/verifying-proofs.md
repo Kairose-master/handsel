@@ -77,22 +77,53 @@ whole point.
 - **It proves provenance.** The Handsel oracle signed "this `contentHash` was
   graded `verdict` by `grader` at `gradedAt`." It is non-repudiable: we cannot
   later deny we said it, and nobody can forge our signature.
-- **It does not re-derive the verdict.** A valid signature does not prove the
-  work *actually passes* the test — only that we said it did. For an LLM-lane
-  verdict that is all there is (an opinion, signed). For a mechanical verdict
-  (CI, test suite) the verdict *is* recomputable in principle — but only if the
-  proof carries the test and the deliverable so you can re-run it yourself.
-  Today the proof carries the deliverable's `contentHash`, not its contents, so
-  independent **re-derivation** is the named next step, not something this page
-  delivers. See `docs/external-grading.md`.
+- **The signature alone does not re-derive the verdict.** A valid signature
+  does not prove the work *actually passes* — only that we said it did.
 
-So: provenance now, recomputation next. Stated plainly so nobody ships a
-"recomputable" claim this does not yet back.
+That gap is what **schema v2** (`handsel.work.v2`) closes, to the extent it is
+honestly closable. A v2 proof signs one extra field:
+
+```
+evidenceHash = keccak256(canonicalJson({
+  schema: "handsel.evidence.v1",
+  spec,            // what the deliverable was judged against
+  deliverable,     // { text } or { base64 } — hashes to the signed contentHash
+  grader,
+  graderClass      // "reproducible" | "mechanical" | "model"
+}))
+```
+
+`GET /api/proof/<id>` serves the bundle alongside the proof (`evidence` field;
+null on v1 proofs). A third party checks three things, all local: the
+signature recovers to the attester (the proof's own `schema` field — which is
+*inside* the signature — selects the v1 or v2 types from `/api/attestation`);
+the bundle's canonical-JSON keccak256 equals the signed `evidenceHash`; and
+`contentHash(bundle.deliverable)` equals the signed `contentHash`. Canonical
+JSON = object keys sorted recursively, no whitespace, UTF-8.
+
+What "re-derive" then means depends on the grader class — and the class is
+**inside the hash**, so an opinion cannot be quietly relabelled as a
+computation after the fact:
+
+- `reproducible` / `mechanical` — re-run the spec against the deliverable and
+  you get the same verdict (pin toolchain versions for `mechanical`).
+- `model` — re-judging with your own model yields an independent **opinion**.
+  The evidence lets you re-derive the *inputs* of the judgment, not the
+  judgment itself. This is the class the external lanes issue today
+  (`/api/grade` with `publicEvidence: true` — opt-in, because it makes the
+  submitted text public; `/api/evaluator/verdict` always, because an evaluator
+  verdict exists to be checked).
+
+So: provenance for every proof; recomputation where the grader class supports
+it, with the class itself signed. Market-flow jobs stay v1 deliberately —
+their deliverables were not submitted with publication in mind.
+`tests/proof-evidence.test.ts` pins all of this, including that every
+already-issued v1 proof verifies exactly as before.
 
 ## Endpoints
 
 | Endpoint | Returns |
 |---|---|
-| `GET /api/attestation` | the verification recipe: `schema`, `attester`, `eip712.{domain,types,primaryType}` |
-| `GET /api/proof/<id>` | `{ proof, signature, attester, cid }` for one proof |
+| `GET /api/attestation` | the verification recipe: `schemas` (per-version domain/types), `attester`, `evidence` (canonicalization + grader classes) |
+| `GET /api/proof/<id>` | `{ proof, signature, attester, cid, evidence }` for one proof |
 | `POST /api/proof/verify` | convenience: we recover it for you (`{valid, recovered, trustedAttester}`) — trusts our compute, unlike the local flow above |

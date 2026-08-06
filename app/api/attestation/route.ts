@@ -1,4 +1,4 @@
-import { DOMAIN, TYPES, WORK_PROOF_SCHEMA, trustedAttester } from '@/lib/attestation'
+import { DOMAIN, TYPES, TYPES_V2, EVIDENCE_SCHEMA, WORK_PROOF_SCHEMA, WORK_PROOF_SCHEMA_V2, trustedAttester } from '@/lib/attestation'
 
 /**
  * GET /api/attestation — the recipe for verifying a Handsel work proof WITHOUT
@@ -44,19 +44,45 @@ export async function GET(): Promise<Response> {
     // anchor that is not us.
     attesterIsOnchainOracle: true,
     // The full EIP-712 recipe. A verifier reconstructs the typed-data hash from
-    // exactly these and recovers the signer locally.
+    // exactly these and recovers the signer locally. (Kept as the v1 recipe for
+    // consumers built against it; `schemas` below carries every version.)
     eip712: {
       primaryType: 'WorkProof',
       domain: DOMAIN,
       types: TYPES,
     },
+    // One recipe per proof schema. The proof's own `schema` field — which is
+    // itself inside the signature — selects the recipe, so a proof cannot claim
+    // a recipe it was not signed under.
+    schemas: {
+      [WORK_PROOF_SCHEMA]: { primaryType: 'WorkProof', domain: DOMAIN, types: TYPES },
+      [WORK_PROOF_SCHEMA_V2]: { primaryType: 'WorkProof', domain: DOMAIN, types: TYPES_V2 },
+    },
+    // v2 proofs additionally commit to an evidence bundle: keccak256 of the
+    // canonical JSON (object keys sorted recursively, no whitespace, UTF-8) of
+    // { schema, spec, deliverable, grader, graderClass } must equal the signed
+    // evidenceHash, and contentHash(deliverable) must equal the signed
+    // contentHash. GET /api/proof/<id> serves the bundle alongside the proof.
+    evidence: {
+      schema: EVIDENCE_SCHEMA,
+      canonicalization: 'JSON with object keys sorted recursively, no whitespace, UTF-8, hashed with keccak256',
+      binds: ['spec', 'deliverable', 'grader', 'graderClass'],
+      graderClasses: {
+        reproducible: 're-running the spec against the deliverable yields the same verdict for anyone',
+        mechanical: 're-runnable given the named toolchain (e.g. a test suite); pin versions before comparing',
+        model:
+          're-judging with your own model yields an independent OPINION — the evidence lets you re-derive the inputs, not the verdict',
+      },
+    },
     verify: {
-      how: 'recoverTypedDataAddress({ domain, types, primaryType, message: proof, signature }) === attester',
+      how: 'recoverTypedDataAddress({ domain, types: schemas[proof.schema].types, primaryType, message: proof, signature }) === attester',
       note:
-        'Proves provenance (the oracle signed this verdict), which is non-repudiable. It does NOT re-derive ' +
-        'the verdict — that the work actually passes — which is the recomputable lane, not this. See ' +
+        'The signature proves provenance (the oracle signed this verdict), which is non-repudiable. By itself it does ' +
+        'NOT re-derive the verdict — that the work actually passes. On v2 proofs the signed evidenceHash additionally ' +
+        'binds the spec, deliverable and grader class, so a third party can fetch the evidence and re-derive: ' +
+        'mechanically for the mechanical/reproducible classes, as an independent opinion for the model class. See ' +
         'docs/verifying-proofs.md.',
-      fetchProof: 'GET /api/proof/<id> returns { proof, signature, attester } for any issued proof.',
+      fetchProof: 'GET /api/proof/<id> returns { proof, signature, attester, evidence } for any issued proof.',
     },
   })
 }

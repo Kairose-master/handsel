@@ -31,11 +31,16 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   let deliverable: string, spec: string, label: string
+  let publicEvidence: boolean
   try {
     const body = await request.json()
     deliverable = String(body?.deliverable ?? '')
     spec = String(body?.spec ?? '')
     label = String(body?.label ?? 'External harness run').slice(0, 200)
+    // Opt-in: bind spec + deliverable into the proof (schema v2) so third
+    // parties can re-derive the judgment inputs. Off by default because it
+    // makes the full submitted text PUBLIC via /api/proof/<id>.
+    publicEvidence = body?.publicEvidence === true
   } catch {
     return Response.json({ error: 'invalid body' }, { status: 400 })
   }
@@ -67,6 +72,7 @@ export async function POST(request: Request): Promise<Response> {
         requester: auth.email,
         grader: 'llm-review',
         deliverable: { text: deliverable },
+        ...(publicEvidence ? { evidence: { spec, graderClass: 'model' as const } } : {}),
       })
       if (stored) proof = { id: stored.id, contentHash: stored.proof.contentHash, attester: stored.attester }
     } catch {
