@@ -68,14 +68,14 @@ export default function CreditScoresPage() {
           const unrated = agent.creditRating === 'unrated'
           const breakdown = breakdowns[agent.id]
           return (
-            <div key={agent.id} className="border border-border rounded-lg p-6">
+            <div key={agent.id} className="glass-card lift border border-border rounded-lg p-6">
               <div className="flex items-start justify-between mb-6">
                 <div>
                   <h3 className="font-bold text-xl">{agent.name}</h3>
                   <p className="text-sm text-muted-foreground mt-1">{agent.walletAddress?.substring(0, 20)}...</p>
                 </div>
                 <div className="text-right">
-                  <p className="font-mono text-4xl font-bold">
+                  <p className={`font-mono text-4xl font-bold ${unrated ? 'text-muted-foreground' : 'text-primary'}`}>
                     {unrated ? '—' : Math.round(parseFloat(agent.creditScore))}
                   </p>
                   <p className="text-xs text-muted-foreground">{unrated ? t('scores.unrated') : '/ 990'}</p>

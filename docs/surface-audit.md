@@ -22,7 +22,7 @@ unclassified surface is a surface that gets dropped.
 | Route | What it is | Disposition |
 |---|---|---|
 | `/admin/disputes` | Working admin review page for disputed jobs (`getDisputedJobs`) | **Keep** — operator tool, direct-URL by design, but it predates `/disputes` and the overlap should be reconciled eventually. Recorded, not deleted |
-| `/market-health` | The public honest-numbers page | Linked heavily from README/outreach but **not from anywhere in the app**. Overhaul fix: link it from the shell (the mockup's "network status" sidebar card is the natural home) |
+| `/market-health` | The public honest-numbers page | ~~Not linked from anywhere in the app~~ **Fixed in Phase 3**: the sidebar network-status card is now `<Link href="/market-health">` — same numbers it already summarizes, linked to the page that publishes them in full |
 
 ## API routes (~70) — classification
 
@@ -68,3 +68,17 @@ API routes, all forms/actions on `/jobs`, `/delegate`, `/mine`, `/settings`,
 `/credit-scores`. Any restyle commit that changes an action handler, form
 field, fetch call or i18n key is out of scope by definition and needs its own
 commit with its own reasoning.
+
+## Phase 3 note — scope cut, stated not silently taken
+
+The mockup's screen spec covers 2a (Dashboard), 2b (Labor Market), 2c (Credit
+Scores). 2a and 2c were restyled — both are small (240 and 135 lines) and
+every change was a className addition to existing JSX, nothing structural.
+**2b (`app/(dashboard)/jobs/page.tsx`, 992 lines) was deliberately left for a
+separate pass.** It's the page with the actual money buttons (Approve & pay,
+Dispute, Accept job, the escrow/bounty form) and the template marketplace —
+the highest blast-radius surface in the whole app, and the file is 4x the
+size of the other two combined. Restyling it in the same sweep as the small
+pages would have meant reviewing money-path JSX at the same speed as
+navigation copy. It gets its own pass, its own gates run, and its own visual
+check before anything in it changes.

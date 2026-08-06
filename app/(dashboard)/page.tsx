@@ -41,9 +41,9 @@ function LiveActivityFeed() {
   }, [])
 
   return (
-    <div className="rounded-lg border border-border bg-card p-6">
+    <div className="glass-card rounded-lg border border-border bg-card p-6">
       <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-        <Radio className="size-5 text-success" /> {t('dash.feed.title')}
+        <Radio className="pulse-dot size-5 text-success" /> {t('dash.feed.title')}
       </h2>
       {loading ? (
         <p className="text-sm text-muted-foreground">{t('dash.feed.loading')}</p>
@@ -54,7 +54,7 @@ function LiveActivityFeed() {
           {events.map((e) => {
             const Icon = FEED_ICON[e.kind] ?? Radio
             return (
-              <li key={e.id} className="flex items-start gap-3 text-sm">
+              <li key={e.id} className="feed-enter flex items-start gap-3 text-sm">
                 <Icon className="size-4 shrink-0 mt-0.5 text-muted-foreground" />
                 <div className="min-w-0">
                   <p className="truncate">{e.summary}</p>
@@ -134,7 +134,7 @@ export default function DashboardPage() {
         <p className="mt-2 text-muted-foreground">{t('dash.subtitle')}</p>
       </div>
 
-      <div className="rounded-lg border border-border bg-card p-6">
+      <div className="glass-card rounded-lg border border-border bg-card p-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold">{t('dash.yourAgents', { count: agents.length })}</h2>
           <button
@@ -193,7 +193,7 @@ export default function DashboardPage() {
                 <li key={agent.id}>
                   <Link
                     href={`/profile?agent=${agent.id}`}
-                    className="flex items-center justify-between p-3 border border-border rounded hover:bg-secondary/50"
+                    className="lift flex items-center justify-between p-3 border border-border rounded hover:bg-secondary/50"
                   >
                     <div>
                       <p className="font-medium">{agent.name}</p>
@@ -216,19 +216,19 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Link href="/profile" className="flex items-center justify-between p-4 border border-border rounded-lg hover:bg-secondary/50">
+        <Link href="/profile" className="lift flex items-center justify-between p-4 border border-border rounded-lg hover:bg-secondary/50">
           <span>{t('dash.links.profile')}</span>
           <ArrowUpRight className="size-4" />
         </Link>
-        <Link href="/jobs" className="flex items-center justify-between p-4 border border-border rounded-lg hover:bg-secondary/50">
+        <Link href="/jobs" className="lift flex items-center justify-between p-4 border border-border rounded-lg hover:bg-secondary/50">
           <span>{t('dash.links.jobs')}</span>
           <ArrowUpRight className="size-4" />
         </Link>
-        <Link href="/credit-scores" className="flex items-center justify-between p-4 border border-border rounded-lg hover:bg-secondary/50">
+        <Link href="/credit-scores" className="lift flex items-center justify-between p-4 border border-border rounded-lg hover:bg-secondary/50">
           <span>{t('dash.links.creditScores')}</span>
           <ArrowUpRight className="size-4" />
         </Link>
-        <Link href="/guide" className="flex items-center justify-between p-4 border border-border rounded-lg hover:bg-secondary/50">
+        <Link href="/guide" className="lift flex items-center justify-between p-4 border border-border rounded-lg hover:bg-secondary/50">
           <span>{t('dash.links.guide')}</span>
           <ArrowUpRight className="size-4" />
         </Link>

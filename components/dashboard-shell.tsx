@@ -175,8 +175,15 @@ function Sidebar({
 
       <div className="border-t border-sidebar-border p-3">
         {/* Real network status — live chain + block from the RPC, or an
-            honest "off-chain mode" label. Never a made-up number. */}
-        <div className="glass-card rounded-lg border border-sidebar-border bg-sidebar-accent/40 p-3">
+            honest "off-chain mode" label. Never a made-up number. Links to
+            /market-health: the same numbers, in full, published unflattering —
+            this card is the natural door into that page (surface-audit.md
+            flagged /market-health as unreachable from inside the app). */}
+        <Link
+          href="/market-health"
+          onClick={onNavigate}
+          className="lift glass-card block rounded-lg border border-sidebar-border bg-sidebar-accent/40 p-3 transition-colors hover:bg-sidebar-accent/60"
+        >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-medium text-muted-foreground">{t('shell.network')}</span>
             {status?.chain ? (
@@ -195,7 +202,7 @@ function Sidebar({
               {status.chain.name} · #{status.chain.block.toLocaleString()}
             </p>
           )}
-        </div>
+        </Link>
         <div className="mt-3">
           <SupportCard />
         </div>
