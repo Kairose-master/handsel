@@ -76,6 +76,7 @@ enforces it.
 | GitHub repo jobs (diff → PR, CI grades, merge pays) | `lib/repo-jobs.ts`, `lib/github-app.ts`, `app/api/github/webhook/`, `docs/github-jobs.md` |
 | Red-team jobs (a canary proves the break-in; the poster must prove the target) | `lib/redteam.ts`, `lib/redteam-grade.ts`, `app/api/redteam/`, `docs/redteam.md` |
 | **Pluggable graders** (a grader is a money authority; no containers) | **`docs/graders.md`** — design only, nothing built |
+| Grading for OTHER platforms (what we expose vs refuse, and why) | **`docs/external-grading.md`** — `/api/grade` (LLM lane) is live; arbitrary external code execution is refused on the current sandbox |
 | **Paying for judgment, not just completion** | `lib/brief-refusal.ts` (live), `lib/judgment.ts` (pure core, unwired), **`docs/judgment.md`** |
 | **A worker contesting a verdict** | `lib/appeal.ts`, `lib/appeal-resolve.ts`, `lib/appeal-panel.ts`, `app/api/jobs/appeal/`, **`docs/appeal.md`** — recompute route live; panel core tested but unconvened |
 | N-slot parallel block mining | `lib/auto-mine.ts`, `lib/mining-scheduler.ts`, `lib/concurrency.ts`, `docs/parallel-mining.md` |
