@@ -18,6 +18,13 @@ import { describe, expect, it } from 'vitest'
  *
  * Measured: a market at 0xbd0fb5… on Base Sepolia (84532), an app that could
  * only be told to look at 11155111.
+ *
+ * That address is HISTORICAL — it is the rehearsal deploy this defect was
+ * measured against, not the live testnet market, which is now
+ * 0xD9bCF174…. Left in place because it is evidence for the defect above,
+ * and labelled because it was read out of this comment and copied into
+ * docs/deployments.md as though it were current (§27). Run
+ * `node scripts/verify-deployments.mjs` for the live answer.
  */
 
 const config = readFileSync('lib/onchain/config.ts', 'utf8')

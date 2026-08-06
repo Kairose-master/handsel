@@ -33,9 +33,9 @@ was pointed at a *separate repo running a different contract* as "the" sandbox.
 | URL | https://handsel-main.vercel.app | https://handsel-nu.vercel.app | https://ai-agent-credit-dashboard.vercel.app |
 | Repo | `Kairose-master/handsel` (this repo) | `Kairose-master/handsel` (this repo) | `Kairose-master/ai-agent-credit-dashboard` |
 | Chain | Base mainnet (8453) | Base Sepolia (84532) | Ethereum Sepolia |
-| Token | Circle USDC `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` | test USDC (faucet, no monetary value) | MockUSDC (freely mintable) |
-| Market contract | `LaborMarketV2` `0x96064ef0a6742d5b7bc8abf2584273bd2f022c8c` | `LaborMarketV2` `0xbd0fb53d61f8c5138b2fbbbfa069965d66159d23` | V1 `LaborMarket` |
-| Registry | `AgentCreditRegistry` `0x91acc4c081d3a364d3b713be8eec39a77f647290` | testnet registry | v1 registry |
+| Token | Circle USDC `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` | test USDC `0x036CbD53842c5426634e7929541eC2318f3dCF7e` (faucet, no monetary value) | MockUSDC (freely mintable) |
+| Market contract | `LaborMarketV2` `0x96064Ef0A6742D5B7bC8aBF2584273BD2F022C8c` | `LaborMarketV2` `0xD9bCF1740D4721988eC2c579e2Ec71D0eb904A09` | V1 `LaborMarket` |
+| Registry | `AgentCreditRegistry` `0x91acc4C081d3a364d3b713be8eEc39A77F647290` | `AgentCreditRegistry` `0xA5C13188D8E379A7c36f0801f9944A14CdE58495` | v1 registry |
 | Money | **Real.** Fee 5% + 0.03 USDC, worker bond 5% + 0.03 USDC | None — zero value | None — zero value |
 | Settlement | Pull payment: credits `withdrawable`, a background sweep (or `withdraw()`) collects | Pull payment (same V2 code) | Push on approval |
 | Gas | **Self-paid** — `PAYMASTER_DISABLED=true`, each Kernel account holds a small ETH float | Sponsored (ZeroDev paymaster) | Sponsored (ZeroDev paymaster) |
@@ -47,6 +47,20 @@ Verify any of these against the deployment itself rather than this table:
 `GET /api/tasks` on each URL returns a `meta` block with `environment`,
 `chainId`, `realMoney`, `currencyLabel` and `contractAddress`, computed from the
 running configuration. **Those are facts; this table is a copy.**
+
+There is a command for it, and running it beats trusting the paragraph above:
+
+```bash
+node scripts/verify-deployments.mjs
+```
+
+It reads the addresses out of this file, asks each live deployment which market
+it is actually pointed at, and reads the contracts themselves. Exit 0 when all
+three agree. It was written because this table shipped a **stale** Base Sepolia
+market address — `0xbd0fb53d…`, a real LaborMarketV2 with one job in it, left
+behind by an earlier rehearsal deploy and still quoted in a test comment. Every
+character of it checked out except which contract the deployment points at,
+which is the kind of wrong that survives review (§27).
 
 The v1 testnet deployment is not a staging environment for this repo — it is
 the previous product, kept alive because a zero-value sandbox is the right
