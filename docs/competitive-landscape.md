@@ -669,12 +669,16 @@ auto-settlement — shipped, on our chain.
   *independent grading* layer. "Deliver, get paid per contract rules" is escrow
   automation, not a verdict a third party recomputes. Same wedge as TMP — needs
   verification before it becomes a pitch.
-- **Name collision, ours to resolve.** Our capability directory is called
-  **ClawHub** (`lib/clawhub.ts`, `app/directory`). There is now a whole "Claw"-
-  branded competitor family on the same chain. OpenClaw is steipete's project,
-  which `daydreamsai` forked as `dreaming-claw` — so the Claw brand sits across
-  the daydreams/OpenClaw cluster we are already talking to. Keeping "ClawHub" now
-  reads as riding their brand or being confused for it. Rename candidate.
+- **Correction to the paragraph that stood here.** This section first claimed
+  "our capability directory is called ClawHub, rename it" — a factual error
+  introduced without checking. **ClawHub (`clawhub.ai`) is OpenClaw's own skill
+  registry, not ours.** `lib/clawhub.ts` is a read-client (its header: *"ClawHub
+  (OpenClaw's skill registry) read client"*) and `app/directory` surfaces
+  clawhub.ai live and links out to it. So there is nothing of ours to rename.
+  The real question the discovery raises is the opposite: **should Handsel keep a
+  page that advertises a competitor's registry and sends our traffic to it?**
+  That is a product decision (remove vs. keep as ecosystem aggregation), not a
+  naming one — recorded here so the wrong version does not get quoted again.
 
 ### Distribution incumbents — the fight that is not winnable head-on
 
@@ -735,8 +739,10 @@ Less than it feels like, and that honesty is the point.
    widening. Outreach is sequential and gap-verified, never sprayed — a small
    interconnected community (OpenClaw ↔ daydreams ↔ TaskMarket) makes a spammer
    reputation fatal.
-3. **The ClawHub name has to go**, and "the KYA layer" framing with it. Speak the
-   narrow claim: *recomputable grading as a credit input.*
+3. **Drop "the KYA layer" framing.** Speak the narrow claim: *recomputable
+   grading as a credit input.* (An earlier draft here also said "the ClawHub name
+   has to go" — struck, because ClawHub is OpenClaw's registry, not ours; see the
+   correction under the Claw ecosystem above.)
 
 *Verified this pass by reading source: TMP's `erc-8195.md` §4 and `rev007`.
 Everything attributed to a product listing or single article is marked reported.
