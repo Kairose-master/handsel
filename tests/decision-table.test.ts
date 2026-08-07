@@ -6,8 +6,10 @@ import { describe, it, expect } from 'vitest'
 import {
   evaluate,
   decideAutoRelease,
+  decideBuildDraw,
   reputationCapUsd,
   AUTO_RELEASE_TABLE,
+  BUILD_DRAW_TABLE,
   CREDIT_CEILING_TABLE,
   decisionTableToMarkdown,
 } from '@/lib/decision-table'
@@ -62,5 +64,28 @@ describe('decideAutoRelease — the authoritative gate', () => {
   it('a high-reputation worker clears a bounty the base cap would hold', () => {
     const cap = reputationCapUsd(1000) // $85
     expect(decideAutoRelease({ verdict: 'pass', autoApprove: true, bountyUsd: 80, capUsd: cap }).action).toBe('auto_release')
+  })
+})
+
+describe('decideBuildDraw — the build-envelope draw gate (docs/build-service.md)', () => {
+  it('renders as a table too, same engine as every other gate', () => {
+    expect(decisionTableToMarkdown(BUILD_DRAW_TABLE)).toContain('closed')
+  })
+  it('allows a draw within budget on an open envelope', () => {
+    expect(decideBuildDraw({ closed: false, amountBaseUnits: '50', remainingBaseUnits: '100' }).decision).toBe('allow')
+  })
+  it('rejects any draw on a closed envelope, even a technically-affordable one', () => {
+    const out = decideBuildDraw({ closed: true, amountBaseUnits: '1', remainingBaseUnits: '1000' })
+    expect(out.decision).toBe('reject')
+    expect(out.reason).toMatch(/closed/)
+  })
+  it('rejects a draw that would exceed the remaining budget', () => {
+    const out = decideBuildDraw({ closed: false, amountBaseUnits: '101', remainingBaseUnits: '100' })
+    expect(out.decision).toBe('reject')
+    expect(out.reason).toMatch(/exceed/)
+  })
+  it('rejects zero and non-numeric draw amounts', () => {
+    expect(decideBuildDraw({ closed: false, amountBaseUnits: '0', remainingBaseUnits: '100' }).decision).toBe('reject')
+    expect(decideBuildDraw({ closed: false, amountBaseUnits: 'nope', remainingBaseUnits: '100' }).decision).toBe('reject')
   })
 })

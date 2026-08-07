@@ -281,3 +281,55 @@ export function decideRefund(input: {
 export function authorOfRule(spec: { testSuiteSlug?: string | null }): RuleAuthor {
   return spec.testSuiteSlug ? 'platform' : 'requester'
 }
+
+// ---------------------------------------------------------------------------
+// The build-service draw gate (docs/build-service.md)
+// ---------------------------------------------------------------------------
+
+export type BuildDrawDecision = 'allow' | 'reject'
+
+export const BUILD_DRAW_TABLE: DecisionTable = {
+  name: 'Build-envelope draw gate',
+  hitPolicy: 'FIRST',
+  inputs: [
+    { key: 'closed', label: 'Envelope already closed', type: 'boolean' },
+    { key: 'amountValid', label: 'Amount is a positive integer', type: 'boolean' },
+    { key: 'withinRemaining', label: 'Amount ≤ remaining budget', type: 'boolean' },
+  ],
+  outputs: [
+    { key: 'decision', label: 'Decision' },
+    { key: 'reason', label: 'Why' },
+  ],
+  rules: [
+    { when: ['true', '-', '-'], then: ['reject', 'the envelope is closed — no further draws'] },
+    { when: ['-', 'false', '-'], then: ['reject', 'draw amount must be a positive integer (base units)'] },
+    { when: ['-', '-', 'false'], then: ['reject', 'draw would exceed the remaining budget'] },
+    { when: ['false', 'true', 'true'], then: ['allow', 'within budget'] },
+  ],
+}
+
+/**
+ * The authoritative build-envelope draw decision — the gate `lib/build-
+ * envelope.ts` consults so "the sum of draws can never exceed the budget"
+ * (docs/build-service.md) is one auditable rule, not a scattered if.
+ */
+export function decideBuildDraw(input: {
+  closed: boolean
+  amountBaseUnits: string
+  remainingBaseUnits: string
+}): { decision: BuildDrawDecision; reason: string } {
+  const amountValid = /^\d+$/.test(input.amountBaseUnits) && input.amountBaseUnits !== '0'
+  const withinRemaining = amountValid && /^\d+$/.test(input.remainingBaseUnits)
+    ? BigInt(input.amountBaseUnits) <= BigInt(input.remainingBaseUnits)
+    : false
+
+  const out = evaluate(BUILD_DRAW_TABLE, {
+    closed: input.closed,
+    amountValid,
+    withinRemaining,
+  })
+  return {
+    decision: (out?.decision as BuildDrawDecision) ?? 'reject',
+    reason: (out?.reason as string) ?? 'no matching rule — rejected',
+  }
+}

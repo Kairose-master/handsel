@@ -1,8 +1,13 @@
 # The build service — paying for results, not attempts
 
-**Status: spec. Nothing below is built.** This page exists so the product
-sentence and its money semantics are pinned down before any code, the same way
-`docs/graders.md` pinned pluggable graders.
+**Status: increment 1 shipped (2026-08-06) — the money math, not the
+endpoint.** `lib/build-envelope.ts` + `lib/build-manifest.ts` + a
+`decideBuildDraw` gate in `lib/decision-table.ts`: pure, fully tested (46
+tests), zero DB/chain/UI wiring. Everything below "The sentence" is still
+spec until increment 2 lands. This page exists so the product sentence and
+its money semantics are pinned down before any code, the same way
+`docs/graders.md` pinned pluggable graders — increment 1 is that pinning made
+executable.
 
 ## The sentence
 
@@ -81,8 +86,29 @@ mechanism — which is the point.
 
 ## Increments (each shippable alone)
 
-1. Budget-envelope arithmetic as a pure lib + decision table + tests.
-2. `POST /api/build` accepting only repo goals (mechanical lane end-to-end).
-3. Manifest + `GET /api/build/<id>` with per-subtask proofs and refund lines.
+1. **Done.** Budget-envelope arithmetic as a pure lib + decision table +
+   tests — `lib/build-envelope.ts` (`openEnvelope`/`draw`/`refund`/
+   `closeEnvelope`), `lib/build-manifest.ts` (`buildManifest`,
+   `weakestGraderClass`, `renderManifestSummary`), `decideBuildDraw` in
+   `lib/decision-table.ts`. `remaining()` restores headroom on refund — "a
+   failed or expired subtask's escrow returns to the envelope" is literal,
+   not just refunded to the requester at close. Reserve-then-settle is the
+   caller's contract: `draw()` before the money-moving primitive, `refund()`
+   immediately if it throws — proven by test, not yet exercised by a real
+   caller.
+2. **Next, not started.** `POST /api/build` accepting only repo goals
+   (mechanical lane end-to-end) — wires the envelope to `postRepoJob`
+   (`lib/repo-job-post.ts`), which is a real mainnet money-moving call.
+   Deliberately not attempted in the same pass as increment 1: this repo's
+   own discipline (`docs/surface-audit.md`'s jobs/page.tsx deferral) is that
+   the highest-blast-radius surface gets its own reviewed pass, not a rider
+   on other work. Needs: a self-migrating `build_run` table, the DB-mock test
+   convention this repo uses for on-chain calls, and an explicit decision on
+   whether a v1 build is one repo-job or a planner-decomposed N (the planner,
+   `lib/delegation.ts`, currently has zero repo-goal awareness — confirmed by
+   grep, not assumed).
+3. Manifest + `GET /api/build/<id>` with per-subtask proofs and refund lines
+   — the read side of increment 2; `lib/build-manifest.ts` is ready to
+   consume whatever increment 2 persists.
 4. Text/mixed goals behind the same envelope, manifest labelling classes.
 5. A `/build/<id>` public page — the manifest is the marketing.
