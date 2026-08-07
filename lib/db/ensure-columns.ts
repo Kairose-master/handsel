@@ -66,6 +66,29 @@ const CI_BOUNTY_ADDITIONS = [
   )`,
 ]
 
+/** The build-service run table (docs/build-service.md increment 2), created
+ *  on first use like the other KV/run tables. No row = no build ever posted,
+ *  so the table simply existing is safe. */
+const BUILD_RUN_ADDITIONS = [
+  `CREATE TABLE IF NOT EXISTS build_runs (
+    id text PRIMARY KEY,
+    requester_agent_id text NOT NULL,
+    goal text NOT NULL,
+    repo_full_name text NOT NULL,
+    budget_base_units text NOT NULL,
+    drawn_base_units text NOT NULL,
+    refunded_base_units text NOT NULL,
+    closed boolean NOT NULL DEFAULT false,
+    status text NOT NULL,
+    spec_hash text,
+    bounty_usd numeric(18,2),
+    fee_usd numeric(18,2),
+    reason text,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+  )`,
+]
+
 /** Origin-control proofs for the red-team lane (lib/redteam.ts). `verified_at`
  *  is nullable because an issued-but-unanswered challenge is a real state, not
  *  a missing row. The unique index is on (target_key, user_id): two accounts may
@@ -94,6 +117,7 @@ let creditTxInFlight: Promise<void> | null = null
 let creditScoreInFlight: Promise<void> | null = null
 let ciBountyInFlight: Promise<void> | null = null
 let redteamInFlight: Promise<void> | null = null
+let buildRunInFlight: Promise<void> | null = null
 
 /**
  * Ensure job_specs has every column the running schema declares. Memoized per
@@ -183,4 +207,21 @@ export function ensureRedteamTables(): Promise<void> {
     })()
   }
   return redteamInFlight
+}
+
+/** Create the build_runs table on first use. Called from POST /api/build
+ *  before the first insert. */
+export function ensureBuildRunTable(): Promise<void> {
+  if (!buildRunInFlight) {
+    buildRunInFlight = (async () => {
+      for (const statement of BUILD_RUN_ADDITIONS) {
+        try {
+          await pool.query(statement)
+        } catch (error) {
+          console.error('[ensure-columns]', statement.slice(0, 60), error)
+        }
+      }
+    })()
+  }
+  return buildRunInFlight
 }

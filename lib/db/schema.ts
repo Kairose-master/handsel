@@ -215,6 +215,33 @@ export const redteamOriginProof = pgTable('redteam_origin_proofs', {
   issuedAt: timestamp('issued_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
+/**
+ * build_runs — one row per build (docs/build-service.md increment 2). v1
+ * decision, recorded here because the doc says it must be explicit rather
+ * than assumed: a build is exactly ONE repo job, not a planner-decomposed N
+ * (lib/delegation.ts has zero repo-goal awareness today). `budget`/`drawn`/
+ * `refunded` mirror `BuildEnvelope` (lib/build-envelope.ts) verbatim in base
+ * units — this row IS the envelope's persistence, not a separate model of it.
+ */
+export const buildRun = pgTable('build_runs', {
+  id: text('id').primaryKey(),
+  requesterAgentId: text('requester_agent_id').notNull(),
+  goal: text('goal').notNull(),
+  repoFullName: text('repo_full_name').notNull(),
+  budgetBaseUnits: text('budget_base_units').notNull(),
+  drawnBaseUnits: text('drawn_base_units').notNull(),
+  refundedBaseUnits: text('refunded_base_units').notNull(),
+  closed: boolean('closed').notNull().default(false),
+  // 'posted' (job escrowed, awaiting CI) | 'failed' (draw rejected or postRepoJob threw)
+  status: text('status').notNull(),
+  specHash: text('spec_hash'),
+  bountyUsd: decimal('bounty_usd', { precision: 18, scale: 2 }),
+  feeUsd: decimal('fee_usd', { precision: 18, scale: 2 }),
+  reason: text('reason'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
 export const creditRatingRule = pgTable('credit_rating_rules', {
   id: text('id').primaryKey(),
   kind: text('kind').notNull(), // 'rating' | 'risk_level'

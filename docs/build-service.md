@@ -1,13 +1,17 @@
 # The build service — paying for results, not attempts
 
-**Status: increment 1 shipped (2026-08-06) — the money math, not the
-endpoint.** `lib/build-envelope.ts` + `lib/build-manifest.ts` + a
-`decideBuildDraw` gate in `lib/decision-table.ts`: pure, fully tested (46
-tests), zero DB/chain/UI wiring. Everything below "The sentence" is still
-spec until increment 2 lands. This page exists so the product sentence and
-its money semantics are pinned down before any code, the same way
-`docs/graders.md` pinned pluggable graders — increment 1 is that pinning made
-executable.
+**Status: increment 2 shipped (2026-08-07) — the endpoint, repo lane only.**
+`POST /api/build` (`app/api/build/route.ts`) wires increment 1's envelope to
+`lib/repo-job-post.ts`'s `postRepoJob` — the real mainnet money-moving call.
+A build_runs table (self-migrating, `lib/db/ensure-columns.ts`) persists
+each run. increment 1 (`lib/build-envelope.ts` + `lib/build-manifest.ts` +
+`decideBuildDraw`) is pure and fully tested; increment 2 adds the pure
+bounty/fee split (`lib/repo-build.ts`, tested) and the route itself.
+**`GET /api/build/<id>` does not exist yet** (increment 3) — the POST
+response is currently the only place a caller learns the outcome. This page
+exists so the product sentence and its money semantics stay pinned down as
+each increment lands, the same way `docs/graders.md` pinned pluggable
+graders.
 
 ## The sentence
 
@@ -96,17 +100,20 @@ mechanism — which is the point.
    caller's contract: `draw()` before the money-moving primitive, `refund()`
    immediately if it throws — proven by test, not yet exercised by a real
    caller.
-2. **Next, not started.** `POST /api/build` accepting only repo goals
-   (mechanical lane end-to-end) — wires the envelope to `postRepoJob`
-   (`lib/repo-job-post.ts`), which is a real mainnet money-moving call.
-   Deliberately not attempted in the same pass as increment 1: this repo's
-   own discipline (`docs/surface-audit.md`'s jobs/page.tsx deferral) is that
-   the highest-blast-radius surface gets its own reviewed pass, not a rider
-   on other work. Needs: a self-migrating `build_run` table, the DB-mock test
-   convention this repo uses for on-chain calls, and an explicit decision on
-   whether a v1 build is one repo-job or a planner-decomposed N (the planner,
-   `lib/delegation.ts`, currently has zero repo-goal awareness — confirmed by
-   grep, not assumed).
+2. **Done.** `POST /api/build` accepting only repo goals (mechanical lane
+   end-to-end) — wires the envelope to `postRepoJob` (`lib/repo-job-post.ts`),
+   a real mainnet money-moving call, with the reserve-then-settle sequence
+   the envelope's contract requires: `draw()` before `postRepoJob`, `refund()`
+   immediately if it throws. The v1 decision this increment had to make
+   explicit: **a build is exactly one repo job**, not a planner-decomposed N
+   — `lib/delegation.ts` has zero repo-goal awareness today (confirmed by
+   grep, not assumed), so decomposition is future work. The whole budget
+   therefore funds one job's bounty + posting fee, split by
+   `bountyFromBudget` (`lib/repo-build.ts`, tested — never lets the sum
+   exceed the budget, floors rather than rounds so a sub-cent remainder fails
+   a build closed rather than overspending it). A successful post leaves the
+   envelope OPEN (not closed) — the job is live, and its real outcome settles
+   later; increment 3 is what reads that outcome back.
 3. Manifest + `GET /api/build/<id>` with per-subtask proofs and refund lines
    — the read side of increment 2; `lib/build-manifest.ts` is ready to
    consume whatever increment 2 persists.
