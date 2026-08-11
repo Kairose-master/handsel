@@ -139,6 +139,15 @@ its index, so reordering the Rust variants silently re-labels every job on the
 board). A field added on the Rust side and not mirrored here fails at
 `npm run test`, not on devnet.
 
+**The board page is live**: `/solana` (`app/solana/page.tsx` +
+`app/actions/solana.ts`) renders the devnet board off `readSolanaJobs` — same
+three-value read state ('unconfigured' and 'unreachable' render as themselves,
+never as an empty market), devnet disclosure banner up top, every address an
+explorer link. Verified against the deployed program: 4 Completed jobs from the
+week-2 happy-path runs decode and render. Deploying it is env only:
+`SOLANA_CLUSTER=devnet` + `SOLANA_PROGRAM_ID=<the declare_id>` on any Vercel
+deployment of this repo.
+
 ### The bug this week found: `isRealMoney()` was EVM-shaped
 
 `isRealMoney()` classified a deployment by `CHAIN.id`, which is built from
