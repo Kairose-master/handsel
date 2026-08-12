@@ -158,6 +158,30 @@ export default function SolanaBoardPage() {
           )}
         </div>
 
+        {board?.audit && (
+          <div className="mt-8 rounded-xl border border-white/10 bg-white/5 p-4">
+            <div className="flex items-center gap-2">
+              <span className={`h-2.5 w-2.5 rounded-full ${board.audit.ok ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+              <h2 className="font-semibold">
+                Live audit — every invariant recomputed from raw accounts on this refresh
+              </h2>
+            </div>
+            <p className="mt-1 text-xs text-white/50">
+              escrowed {fmtTokens(board.audit.totalEscrowed)} · withdrawable {fmtTokens(board.audit.totalWithdrawable)} ·
+              vault holds {board.audit.vaultAmount ? fmtTokens(board.audit.vaultAmount) : 'unread'} · {board.audit.ledgerCount} pull-payment ledgers
+            </p>
+            <ul className="mt-3 space-y-1.5">
+              {board.audit.checks.map((c) => (
+                <li key={c.name} className="flex items-start gap-2 text-sm">
+                  <span className={c.ok ? 'text-emerald-400' : 'text-rose-400'}>{c.ok ? '✓' : '✗'}</span>
+                  <span className="text-white/80">{c.name}</span>
+                  <span className="ml-auto font-mono text-xs text-white/40">{c.detail}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         <footer className="mt-10 border-t border-white/10 pt-4 text-xs text-white/40">
           Program source: <code>solana/programs/handsel-market</code> · design &amp; scope:{' '}
           <a

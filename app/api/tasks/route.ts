@@ -1,6 +1,6 @@
 import { after } from 'next/server'
 import { publicJobsResult } from '@/app/actions/guest'
-import { jobToTaskSpec } from '@/lib/task-spec'
+import { jobToTaskSpec, solanaJobToTaskSpec, type TaskSpec } from '@/lib/task-spec'
 import { feedMeta } from '@/lib/feed-meta'
 import { TASK_FEED_SAFETY, TASK_FEED_UNTRUSTED_FIELDS } from '@/lib/untrusted-input'
 
@@ -38,10 +38,34 @@ export async function GET(request: Request) {
   // before we ever see the rows, so asking for exactly `limit` here could
   // return fewer than `limit` Open jobs even when more exist further back.
   const { state, jobs } = await publicJobsResult(Math.max(limit * 3, 60))
-  const tasks = jobs
+  const tasks: TaskSpec[] = jobs
     .filter((j) => statusFilter === 'all' || j.status === statusFilter)
     .slice(0, limit)
     .map(jobToTaskSpec)
+
+  // The Solana port's jobs, in the SAME feed — one TaskSpec vocabulary
+  // across both runtimes. Optional and additive: without SOLANA_* env this
+  // block reads 'unconfigured' and contributes nothing; an unreachable RPC
+  // likewise degrades to the EVM-only feed rather than failing it. Each
+  // entry carries `chain: 'solana:<cluster>'` so readers can tell the
+  // runtimes apart per-job, not just per-deployment.
+  try {
+    const { isSolanaConfigured, solanaClusterName } = await import('@/lib/onchain/solana/config')
+    if (isSolanaConfigured()) {
+      const { readSolanaJobs } = await import('@/lib/onchain/solana/read')
+      const board = await readSolanaJobs()
+      if (board.state === 'ok') {
+        tasks.push(
+          ...board.jobs
+            .filter((j) => statusFilter === 'all' || j.status === statusFilter)
+            .slice(0, limit)
+            .map((j) => solanaJobToTaskSpec(j, solanaClusterName())),
+        )
+      }
+    }
+  } catch {
+    /* the EVM feed must not fail because a second runtime hiccuped */
+  }
 
   // Traffic drives the latency-critical sweeps. GitHub's scheduler delivers
   // the heartbeat every 80-100 minutes against a requested 5, so without

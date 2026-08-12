@@ -9,7 +9,7 @@
  * BigInts are serialized here because server actions can't return them; the
  * base-unit strings stay exact and the client formats for display.
  */
-import { readSolanaJobs, type SolanaReadState } from '@/lib/onchain/solana/read'
+import { readSolanaAudit, readSolanaJobs, type SolanaReadState } from '@/lib/onchain/solana/read'
 import {
   solanaClusterName,
   solanaExplorerUrl,
@@ -24,6 +24,16 @@ export interface SolanaBoardView {
   realMoney: boolean
   programId: string
   programExplorerUrl: string
+  /** The auditor's view — every program invariant recomputed from raw
+   *  accounts at read time. Null when the market/RPC could not be read. */
+  audit: {
+    totalEscrowed: string
+    totalWithdrawable: string
+    vaultAmount: string | null
+    ledgerCount: number
+    ok: boolean
+    checks: Array<{ name: string; ok: boolean; detail: string }>
+  } | null
   jobs: Array<{
     id: number
     status: string
@@ -48,12 +58,23 @@ const ZERO_ADDRESS_RESULT = /^0x0+$/
 
 export async function getSolanaBoard(): Promise<SolanaBoardView> {
   const board = await readSolanaJobs()
+  const audit = board.state === 'ok' ? await readSolanaAudit(board.jobs) : null
   return {
     state: board.state,
     cluster: solanaClusterName(),
     realMoney: solanaIsRealMoney(),
     programId: isSolanaConfigured() ? solanaEnv.programId : '',
     programExplorerUrl: isSolanaConfigured() ? solanaExplorerUrl(solanaEnv.programId) : '',
+    audit: audit
+      ? {
+          totalEscrowed: audit.market.totalEscrowed.toString(),
+          totalWithdrawable: audit.market.totalWithdrawable.toString(),
+          vaultAmount: audit.vaultAmount?.toString() ?? null,
+          ledgerCount: audit.ledgerCount,
+          ok: audit.invariants.ok,
+          checks: audit.invariants.checks,
+        }
+      : null,
     jobs: board.jobs.map((j) => ({
       id: j.id,
       status: j.status,

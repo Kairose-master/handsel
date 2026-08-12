@@ -65,6 +65,12 @@ export interface TaskSpec {
    *  how a headless worker recognises a repo job without parsing prose. */
   repo: { fullName: string; baseBranch: string } | null
   createdAt: string | null
+  /** Which runtime the escrow lives on. Absent/undefined = this deployment's
+   *  EVM chain (the pre-Solana shape, kept so existing readers parse
+   *  unchanged); 'solana:<cluster>' for jobs from the Solana port. The feed's
+   *  `meta` still describes the EVM side; a per-entry field is what lets one
+   *  feed carry both without lying about either. */
+  chain?: string
 }
 
 /** Status values a paid_job's `status` field can hold (mirrors the Labor
@@ -132,6 +138,54 @@ export function jobToTaskSpec(job: PublicJob): TaskSpec {
     verification: job.repoFullName ? 'ci_checks' : job.testResult || job.hasTests ? 'auto_graded_tests' : 'manual_review',
     repo: job.repoFullName ? { fullName: job.repoFullName, baseBranch: job.baseBranch ?? 'main' } : null,
     createdAt: null, // on-chain reads don't currently carry a posted-at timestamp
+  }
+}
+
+type SolanaFeedJob = {
+  id: number
+  status: string
+  bounty: bigint
+  minScore: number
+  requester: string
+  worker: string
+  specHash: string
+  createdAt: number
+}
+
+const shortKey = (address: string) => `${address.slice(0, 4)}…${address.slice(-4)}`
+
+/**
+ * Normalizes a job from the Solana port (lib/onchain/solana/read) into a
+ * TaskSpec, so GET /api/tasks is ONE feed across both runtimes — the concrete
+ * form of "the off-chain stack is chain-agnostic" (docs/solana-port.md).
+ *
+ * What the chain doesn't hold, the spec doesn't invent: the program stores a
+ * spec HASH, not prose, so the title says exactly that; and the reward is in
+ * the cluster's test token, which per-entry `chain` + the feed's own realMoney
+ * meta already disclose — same convention the EVM testnet deployment uses.
+ */
+export function solanaJobToTaskSpec(job: SolanaFeedJob, cluster: string): TaskSpec {
+  const noWorker = /^1+$/.test(job.worker) // Pubkey::default() — base58 all-ones
+  return {
+    id: String(job.id),
+    kind: 'paid_job',
+    title: `Solana escrow job #${job.id} (spec ${job.specHash.slice(0, 10)}…)`,
+    description: null,
+    acceptanceCriteria: null,
+    rewardUsd: Number(job.bounty) / 1e6,
+    minScore: job.minScore,
+    difficulty: null,
+    status: job.status, // same vocabulary as the EVM side, by construction (codec test pins the variant order)
+    requesterAgentId: null,
+    requesterLabel: shortKey(job.requester),
+    requesterName: null,
+    workerAgentId: null,
+    workerLabel: noWorker ? null : shortKey(job.worker),
+    workerName: null,
+    verification: 'manual_review',
+    repo: null,
+    createdAt: job.createdAt > 0 ? new Date(job.createdAt * 1000).toISOString() : null,
+    chain: `solana:${cluster}`,
   }
 }
 

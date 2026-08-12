@@ -176,6 +176,26 @@ lengths (post_job 60B), account counts/order, our derived job PDA equalling
 the chain's account, and the Option-None-is-the-program-id convention on
 `accept_job`. All four instructions match.
 
+**And the platform now OPERATES the market, not just demos it:**
+
+- **Live audit on the board.** `readSolanaAudit` re-runs every
+  `checkMarketInvariants` check from RAW accounts on each /solana refresh —
+  market totals vs what the jobs imply, ledger sums, the one-line solvency
+  comparison against the actual vault balance, no-blind-settlement,
+  no-orphaned-ledger. Verified live: all six hold (owes 3,560,000 = holds
+  3,560,000, exact). The difference between a board that displays numbers
+  and a board that checks them.
+- **One task feed, two runtimes.** `GET /api/tasks` now merges the devnet
+  board into the same TaskSpec vocabulary (`solanaJobToTaskSpec`), each
+  entry stamped `chain: 'solana:devnet'`. The chain stores a spec hash, not
+  prose, so the title says exactly that — nothing invented. This is
+  "the off-chain stack is chain-agnostic" as a queryable fact.
+- **Credit publishes to the second runtime.** `POST /api/admin/solana-credit`
+  writes a real agent's engine-computed score and limit to its `Credit` PDA
+  via `set_credit`, signed by the market's oracle key. The product thesis —
+  a score earned from graded work, readable on-chain — now has two chains
+  it is true on.
+
 ### The bug this week found: `isRealMoney()` was EVM-shaped
 
 `isRealMoney()` classified a deployment by `CHAIN.id`, which is built from

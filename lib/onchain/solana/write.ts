@@ -33,6 +33,7 @@ import {
   encodeAcceptJob,
   encodeApproveJob,
   encodePostJob,
+  encodeSetCredit,
   encodeSubmitWork,
   encodeWithdraw,
 } from './tx'
@@ -71,6 +72,8 @@ export const pda = {
   job: (id: bigint) => PublicKey.findProgramAddressSync(PDA_SEEDS.job(id), programId())[0],
   withdrawable: (owner: PublicKey) =>
     PublicKey.findProgramAddressSync(PDA_SEEDS.withdrawable(owner.toBase58()), programId())[0],
+  credit: (agent: PublicKey) =>
+    PublicKey.findProgramAddressSync(PDA_SEEDS.credit(agent.toBase58()), programId())[0],
 }
 
 export async function fetchMarket(connection: Connection): Promise<SolanaMarket> {
@@ -218,6 +221,35 @@ export async function approveJob(
     ),
     [requester],
   )
+}
+
+/** Oracle publishes an agent's credit score + limit to its Credit PDA — the
+ *  registry half of the EVM pair, on the second runtime. The signer must be
+ *  the market's fixed oracle key; the program enforces it and the caller
+ *  should have checked `fetchMarket().oracle` first for a readable error. */
+export async function setCredit(
+  connection: Connection,
+  oracle: Keypair,
+  agent: PublicKey,
+  score: bigint,
+  limit: bigint,
+): Promise<{ signature: string; creditPda: PublicKey }> {
+  const creditPda = pda.credit(agent)
+  const signature = await send(
+    connection,
+    ix(
+      'set_credit',
+      [
+        { name: 'market', pubkey: pda.market() },
+        { name: 'credit', pubkey: creditPda },
+        { name: 'oracle', pubkey: oracle.publicKey },
+        { name: 'system_program', pubkey: SystemProgram.programId },
+      ],
+      encodeSetCredit(agent.toBase58(), score, limit),
+    ),
+    [oracle],
+  )
+  return { signature, creditPda }
 }
 
 export async function withdraw(
