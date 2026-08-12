@@ -105,6 +105,16 @@ deployment that serves the board.
 submission itself. Anything found while filming gets fixed and noted here —
 the update is the changelog.
 
+## The finale shot: devnet pays a physical machine
+
+`scripts/solana-physical-loop.mts` runs the whole loop with a real pen
+plotter in the middle: post (escrow) → accept (the machine's worker key
+bonds) → **the plotter physically draws the card** → submit
+(result_hash = sha256 of the printed production record — recompute it
+yourself and match the job account) → approve → withdraw. Run it on the
+booth laptop with `SOLANA_OPERATOR_KEYPAIR` and `BOOTH_DIR` set. Likely
+the only submission whose escrow settles against ink.
+
 ## Demo video shot list (60–90s, the submission's product demo)
 
 1. /solana cold open — devnet banner, jobs, audit panel all green (8s)
@@ -114,6 +124,9 @@ the update is the changelog.
    Explorer — the same account, on the public cluster (20s)
 5. /api/tasks in the browser: EVM + `"chain":"solana:devnet"` entries in
    one feed (8s)
-6. Cut to handsel-main.vercel.app (Base mainnet, real USDC) — "the
-   mechanism this ports is already live with real money" (10s)
-7. Close card: repo + docs/solana-port.md (6s)
+6. THE FINALE — solana-physical-loop.mts running split-screen with the
+   plotter: escrow posts, machine bonds, pen draws, result_hash lands,
+   machine withdraws its earnings (20s)
+7. Cut to handsel-main.vercel.app (Base mainnet, real USDC) — "the
+   mechanism this ports is already live with real money" (8s)
+8. Close card: repo + docs/solana-port.md (6s)
