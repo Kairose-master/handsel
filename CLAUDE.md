@@ -57,7 +57,7 @@ enforces it.
 
 | I want to… | look in |
 |---|---|
-| Solana devnet port (Eternal sprint) — scope, cuts, invariant map | `solana/`, `docs/solana-port.md` |
+| Solana devnet port (Eternal sprint) — scope, cuts, invariant map, write path | `solana/`, `docs/solana-port.md`, `lib/onchain/solana/` (codec/read/tx/write), `/solana` board (live audit panel), `POST /api/admin/solana-loop` |
 | Delegation / agent-to-agent collaboration | `lib/delegation.ts` |
 | The readable collaboration DSL | `lib/collab-dsl.ts` |
 | Trust gates as decision tables (DMN) | `lib/decision-table.ts` |
@@ -65,7 +65,7 @@ enforces it.
 | Credit scoring + reputation lending | `lib/credit-rules.ts`, `lib/reputation-lending.ts` |
 | Who else is building this, and where we sit | `docs/competitive-landscape.md` — ERC-8004/8183, the nearest products, and what a landscape pass does *not* change |
 | **What this product actually claims, and what isn't built** | **`docs/product-thesis.md`** — the narrow claim (escrow-collateralized advance), verifiability vs portability, and the two gaps |
-| The machine lane: permissionless operatorship of physical machines | `docs/physical-operatorship.md` — thesis, vertical map, increments (recipe market → machine-as-worker → splits → machine credit) |
+| The machine lane: permissionless operatorship of physical machines | `docs/physical-operatorship.md` — thesis, three archetypes (all with shipped booth software: recipe market, slot market, `[machine:plot]` labor lane), operatorship's necessary-and-sufficient conditions, increments 3–4 pending |
 | Prime orchestration risk → LTV | `lib/orchestration-risk.ts` |
 | The v2 contract (shipped — deployed to Base mainnet 2026-07-30) | `docs/v2-plan.md` (the plan) · `docs/mainnet-kernel-runbook.md` (live addresses + config) |
 | Which deployment is which / what's live where | **`docs/deployments.md`** · `docs/deploy-testnet.md` · `docs/mainnet-deploy.md` |
@@ -80,7 +80,7 @@ enforces it.
 | Grading for OTHER platforms (what we expose vs refuse, and why) | **`docs/external-grading.md`** — `/api/grade` (LLM lane) is live; arbitrary external code execution is refused on the current sandbox |
 | **Verifying a work proof without trusting us** (interop) | **`docs/verifying-proofs.md`** — `GET /api/attestation` (recipe) + `GET /api/proof/<id>` (JSON) → recover the EIP-712 signer locally. v1 proves provenance; **v2 additionally signs an evidenceHash** (spec + deliverable + grader class, canonical JSON) so third parties re-derive — mechanically for mechanical classes, as an independent opinion for the model class |
 | **Being the evaluator on someone else's market** | **`docs/taskmarket-evaluator.md`** — `lib/taskmarket-evaluator.ts` maps a grade onto ERC-8195 `evaluate()` args, anchoring our proof hash in their `evidenceHash`. We never broadcast (their relay is the only sender), and `passed: null` submits nothing so *our* stake burns, not the worker's pay |
-| **"Pay for the result, not the attempt" — the build service** | **`docs/build-service.md`** — increments 1+2 shipped: envelope/manifest/gate (pure) plus `POST /api/build` (repo lane, real escrow via `postRepoJob`). `GET /api/build/<id>` (increment 3) not yet built |
+| **"Pay for the result, not the attempt" — the build service** | **`docs/build-service.md`** — increments 1–3 shipped: envelope/manifest/gate (pure), `POST /api/build` (repo lane, real escrow via `postRepoJob`), and `GET /api/build/<id>` (the read side — manifest assembled fresh from the on-chain job status per read) |
 | **Every external thread (PRs, comments, emails) and its state** | **`docs/interop-outreach.md`** — the outreach ledger. Update it when a thread moves; standing rules (verify-before-posting, one venue per community, artifacts must survive being ignored) live there |
 | **Paying for judgment, not just completion** | `lib/brief-refusal.ts` (live), `lib/judgment.ts` (pure core, unwired), **`docs/judgment.md`** |
 | **A worker contesting a verdict** | `lib/appeal.ts`, `lib/appeal-resolve.ts`, `lib/appeal-panel.ts`, `app/api/jobs/appeal/`, **`docs/appeal.md`** — recompute route live; panel core tested but unconvened |
@@ -143,7 +143,7 @@ agents. Four primitives make it real collaboration, not parallel isolation:
   a red suite got pushed under a green read. Same defect as the `tee` in
   `solana-devnet.yml` and the `bump` nothing wrote: **a check that cannot fail
   is not a check.** Never pipe a gate.
-- `npm run test` — vitest (currently 127 files, ~1,638 tests). The pure logic
+- `npm run test` — vitest (currently 133 files, ~1,735 tests). The pure logic
   (planner parse/validate, DAG, DMN, DSL round-trip, assembly, block-mining
   scheduler, `mapLimit`, MCP client parse, ClawHub normalize) is unit-tested;
   **prefer adding pure functions + tests over untested tick/on-chain code.**
