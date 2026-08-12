@@ -31,6 +31,7 @@ export type CapabilityKey =
   | 'secretsAtRest'
   | 'platformLlm'
   | 'solanaMarket'
+  | 'solanaWrite'
 
 /**
  * How a capability behaves when its configuration is absent.
@@ -99,6 +100,17 @@ export const CAPABILITIES: Capability[] = [
       'SOLANA_CLUSTER=mainnet-beta would flip this deployment to real money, which is the switch working, ' +
       'not a loophole. A half-set pair reads as OFF: a cluster with a typo\'d program id must not present ' +
       'as a market that fails every call.',
+  },
+  {
+    key: 'solanaWrite',
+    label: 'Signing and sending Solana instructions from the platform',
+    requires: ['SOLANA_CLUSTER', 'SOLANA_PROGRAM_ID', 'SOLANA_OPERATOR_KEYPAIR'],
+    optional: true,
+    mode: 'gated',
+    note:
+      'The week-3 write path (docs/solana-port.md): the deployment that serves /solana can run the ' +
+      'money loop itself via POST /api/admin/solana-loop. Devnet-only in code — write.ts refuses any ' +
+      'real-money cluster regardless of what the env says.',
   },
   {
     key: 'creditRegistry',
@@ -211,6 +223,7 @@ export async function capabilityStatus(): Promise<CapabilityStatus[]> {
   const githubOauth = await import('@/lib/github-oauth')
   const email = await import('@/lib/email')
   const solana = await import('@/lib/onchain/solana/config')
+  const solanaWrite = await import('@/lib/onchain/solana/write')
 
   const gates: Record<CapabilityKey, () => boolean | Promise<boolean>> = {
     onchain: config.isOnchainConfigured,
@@ -224,6 +237,7 @@ export async function capabilityStatus(): Promise<CapabilityStatus[]> {
     githubLogin: githubOauth.isGithubLoginEnabled,
     email: email.isEmailConfigured,
     solanaMarket: solana.isSolanaConfigured,
+    solanaWrite: solanaWrite.isSolanaWriteConfigured,
     // The two with no predicate to call. There is nothing to ask because
     // nothing asks — the code reaches for the variable and throws if it is not
     // there. So this checks presence directly, and the length floor mirrors the

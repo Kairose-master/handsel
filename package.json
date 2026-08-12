@@ -23,6 +23,8 @@
     "@anthropic-ai/sdk": "^0.111.0",
     "@base-ui/react": "^1.5.0",
     "@radix-ui/react-label": "^2.1.11",
+    "@solana/spl-token": "^0.4.15",
+    "@solana/web3.js": "^1.98.4",
     "@vercel/analytics": "1.6.1",
     "@vercel/blob": "^2.6.1",
     "@zerodev/ecdsa-validator": "^5.4.9",

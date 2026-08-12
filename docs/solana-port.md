@@ -148,6 +148,34 @@ week-2 happy-path runs decode and render. Deploying it is env only:
 `SOLANA_CLUSTER=devnet` + `SOLANA_PROGRAM_ID=<the declare_id>` on any Vercel
 deployment of this repo.
 
+**The write path is done — the platform itself signs.** Three layers, same
+duplication discipline as the codec:
+
+- `lib/onchain/solana/tx.ts` — PURE instruction encoding: Anchor's
+  `global:<name>` discriminators, Borsh argument layouts, the account order of
+  every `#[derive(Accounts)]` struct, PDA seed layouts, and client-side
+  `fee_for`/`bond_for` mirrors. `tests/solana-tx.test.ts` reads `lib.rs` and
+  diffs all of it — a new instruction, a reordered account, or a flipped
+  `mut`/`Signer` fails at `npm run test`.
+- `lib/onchain/solana/write.ts` — the ONE file that needs an SDK
+  (`@solana/web3.js`): keypair loading (`SOLANA_OPERATOR_KEYPAIR`), PDA
+  derivation over tx.ts's seeds, build/sign/send at `confirmed` commitment
+  (the happy path documents why `processed` bites), and a `guardDevnet()` on
+  every send — the write path refuses any real-money cluster, which is this
+  document's devnet-only decision enforced in code.
+- `POST /api/admin/solana-loop` — the whole money loop from the deployment
+  that serves the board: fund two ephemeral parties, mint test tokens, then
+  post → accept → submit → approve → withdraw, answering with every signature
+  as an explorer link. Operator-secret auth, POST-only.
+
+**Verified against the chain, not just the Rust**:
+`scripts/verify-solana-write.mts` (read-only, no keys) fetches the real
+transactions the happy-path left on a job account and checks our encoders
+against Anchor's actual wire bytes — discriminator identification, data
+lengths (post_job 60B), account counts/order, our derived job PDA equalling
+the chain's account, and the Option-None-is-the-program-id convention on
+`accept_job`. All four instructions match.
+
 ### The bug this week found: `isRealMoney()` was EVM-shaped
 
 `isRealMoney()` classified a deployment by `CHAIN.id`, which is built from
