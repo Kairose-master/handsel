@@ -65,7 +65,7 @@ enforces it.
 | Credit scoring + reputation lending | `lib/credit-rules.ts`, `lib/reputation-lending.ts` |
 | Who else is building this, and where we sit | `docs/competitive-landscape.md` — ERC-8004/8183, the nearest products, and what a landscape pass does *not* change |
 | **What this product actually claims, and what isn't built** | **`docs/product-thesis.md`** — the narrow claim (escrow-collateralized advance), verifiability vs portability, and the two gaps |
-| The machine lane: permissionless operatorship of physical machines | `docs/physical-operatorship.md` — thesis, three archetypes (all with shipped booth software: recipe market, slot market, `[machine:plot]` labor lane), operatorship's necessary-and-sufficient conditions, increments 3–4 pending |
+| The machine lane: permissionless operatorship of physical machines | `docs/physical-operatorship.md` — thesis, three archetypes (all with shipped booth software: recipe market, slot market, `[machine:plot]` labor lane), operatorship's necessary-and-sufficient conditions, increment 3 (settlement splits over x402 `split` param) shipped, increment 4 (machine credit) pending |
 | Prime orchestration risk → LTV | `lib/orchestration-risk.ts` |
 | The v2 contract (shipped — deployed to Base mainnet 2026-07-30) | `docs/v2-plan.md` (the plan) · `docs/mainnet-kernel-runbook.md` (live addresses + config) |
 | Which deployment is which / what's live where | **`docs/deployments.md`** · `docs/deploy-testnet.md` · `docs/mainnet-deploy.md` |

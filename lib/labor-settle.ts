@@ -176,6 +176,15 @@ export async function autoApprovePassedJob(
     const { creditWorkerForJob } = await import('@/app/actions/labor')
     await retry(() => creditWorkerForJob(job.worker, spec.onchainJobId!, job.bounty, approvedTxHash!))
 
+    // Multi-party split (docs/physical-operatorship.md inc. 3): move each
+    // recipient's share out of the worker's account. Best-effort — the job
+    // is settled and the worker paid; a split failure logs SPLIT_INCOMPLETE
+    // and never unsettles anything.
+    const { applySettlementSplit } = await import('@/lib/settlement-split-apply')
+    await applySettlementSplit(spec, job.bounty).catch((e) =>
+      console.error('[labor-settle] split application failed:', e instanceof Error ? e.message : e),
+    )
+
     // Stamp the paid deliverable with a Proof of Authorship & Grade (off-chain
     // EAS-style, oracle-signed, content-addressed). Best-effort: a proof
     // failure must never affect an already-settled payout.

@@ -333,6 +333,19 @@ export async function approveJobAction(requesterAgentId: string, jobId: number) 
     const txHash = await approveJob(signer, jobId)
     await creditWorkerForJob(job.worker, jobId, job.bounty, txHash)
 
+    // Multi-party split (docs/physical-operatorship.md inc. 3) — same
+    // best-effort application as the auto-approve path, so a manually
+    // approved job honors its split table too.
+    try {
+      const [spec] = await db.select().from(jobSpec).where(eq(jobSpec.specHash, job.specHash))
+      if (spec) {
+        const { applySettlementSplit } = await import('@/lib/settlement-split-apply')
+        await applySettlementSplit(spec, job.bounty)
+      }
+    } catch (e) {
+      console.error('[approveJobAction] split application failed:', e instanceof Error ? e.message : e)
+    }
+
     revalidatePath('/jobs')
     return { txHash }
   } catch (error) {

@@ -522,6 +522,10 @@ export const jobSpec = pgTable('job_specs', {
    * for why that distinction is worth a third enum value.
    */
   briefNonce: text('brief_nonce'),
+  // Multi-party settlement split (docs/physical-operatorship.md increment 3):
+  // set at posting time, applied AFTER settlement by transferring shares out
+  // of the worker agent's account. Null = the pre-split behavior, unchanged.
+  splitSpec: jsonb('split_spec'),
   // `refusedBrief` marks a submission the worker declined as directing them
   // outside the task (§24). It is stored HERE rather than in agent_events on
   // purpose: everything written to agent_events is scoring input, and a refusal

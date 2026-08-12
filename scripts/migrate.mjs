@@ -318,6 +318,7 @@ ALTER TABLE job_specs ADD COLUMN IF NOT EXISTS onchain_contract text;
 -- table-level parity guard passed the whole time: job_specs existed.
 ALTER TABLE job_specs ADD COLUMN IF NOT EXISTS test_suite_slug text;
 ALTER TABLE job_specs ADD COLUMN IF NOT EXISTS brief_nonce text;
+ALTER TABLE job_specs ADD COLUMN IF NOT EXISTS split_spec jsonb;
 -- The "creditTransaction" ALTERs used to sit here, ~80 lines ABOVE the CREATE
 -- TABLE that makes it. ADD COLUMN IF NOT EXISTS skips a column that exists; it
 -- does not skip a TABLE that does not, so on a fresh database this raised

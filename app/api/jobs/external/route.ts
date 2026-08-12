@@ -76,6 +76,17 @@ export async function POST(request: Request) {
   const testCode = String(body?.test_code ?? '').trim()
   const minScore = Math.max(0, Math.min(900, Math.round(Number(body?.min_score) || DEFAULT_MIN_SCORE)))
 
+  // Multi-party settlement split (docs/physical-operatorship.md inc. 3):
+  // validated here, applied after settlement. Optional; a malformed split
+  // refuses the post rather than silently dropping someone's share.
+  let splitSpec: unknown = null
+  if (body?.split !== undefined && body?.split !== null) {
+    const { parseSplitSpec } = await import('@/lib/settlement-split')
+    const parsed = parseSplitSpec(body.split)
+    if (!parsed.ok) return Response.json({ error: parsed.error, docs: DOCS_URL }, { status: 400 })
+    splitSpec = parsed.spec
+  }
+
   if (title.length < 3 || title.length > 200) {
     return Response.json({ error: 'title must be 3–200 characters' }, { status: 400 })
   }
@@ -153,6 +164,7 @@ export async function POST(request: Request) {
     const specHash = sealed.specHash
     await db.insert(jobSpec).values({
       ...sealed,
+      ...(splitSpec ? { splitSpec } : {}),
       requesterAgentId: houseAgentId,
       // Always attributed, even when the header could not be parsed — an
       // unattributable post still has to count against a bucket.

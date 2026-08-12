@@ -6,8 +6,8 @@ restructured the same day when the taxonomy below sharpened. Status: all three
 archetypes now have shipped software in the booth repo
 (`kairose-master/onchain-vending-machine`) — recipe market (physical app,
 live), slot market (operator market, awaiting multi-servo hardware), and
-the machine labor lane (`[machine:plot]` bounties). Increments 3–4
-(multi-party splits, machine credit) are handsel-side and not built.
+the machine labor lane (`[machine:plot]` bounties). Increment 3 (multi-party splits) shipped handsel-side 2026-08-12;
+increment 4 (machine credit) is not built.
 
 ## Definition
 
@@ -161,11 +161,19 @@ evidence; the image lane grades; escrow settles. This is honest
 worker-classification by construction. **Done when** one recurring
 physical bounty settles N times unattended.
 
-**3 — Multi-party splits** *(all three)*. Generalize per-job settlement
-from (worker, fee) to a split table: author / machine owner / location.
-The Withdrawable ledger is already per-recipient. Every vertical runs on
-this one primitive — and it is what makes a slot LEASE (operator market)
-expressible: lessee revenue, machine-owner cut, location cut.
+**3 — Multi-party splits** *(all three)* — **SHIPPED (2026-08-12)**.
+A job posted over x402 can carry `split: { recipients: [{role, agentId |
+address, bps}] }` (`lib/settlement-split.ts`, validated at post time — a
+malformed split refuses the post rather than dropping someone's share).
+After settlement — both the auto-release path and a manual approve — the
+platform transfers each share out of the worker agent's smart account
+(`lib/settlement-split-apply.ts` over the existing `transferUsdc`).
+Arithmetic rule: floor to the cent, worker keeps every remainder, so the
+split can never pay out more than settled. Best-effort by design: the job
+is already settled when it runs, so failures log SPLIT_INCOMPLETE naming
+exactly which shares moved and which are owed — never a clawback, never a
+wedged settlement. The on-chain contract is untouched: it still pays the
+worker in full; the split is platform-orchestrated redistribution.
 
 **4 — Machine credit** *(the flywheel)*. Uptime, grading pass-rate and
 settled revenue become a machine operator's credit score (engine

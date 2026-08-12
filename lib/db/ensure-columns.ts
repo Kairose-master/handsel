@@ -42,6 +42,8 @@ const JOB_SPEC_ADDITIONS = [
   // did not break one feature, it broke POSTING A JOB.
   'ALTER TABLE job_specs ADD COLUMN IF NOT EXISTS test_suite_slug text',
   'ALTER TABLE job_specs ADD COLUMN IF NOT EXISTS brief_nonce text',
+  // Multi-party settlement splits (docs/physical-operatorship.md inc. 3).
+  'ALTER TABLE job_specs ADD COLUMN IF NOT EXISTS split_spec jsonb',
 ]
 
 const CREDIT_TX_ADDITIONS = [
