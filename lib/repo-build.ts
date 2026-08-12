@@ -14,6 +14,7 @@
  */
 import { parseUnits, formatUnits } from 'viem'
 import { feeForBounty, platformFeeBps } from '@/lib/platform-fee'
+import type { ManifestLineInput } from '@/lib/build-manifest'
 
 const USDC_DECIMALS = 6
 
@@ -63,4 +64,40 @@ export function bountyFromBudget(
     bountyCents -= 1
   }
   return null
+}
+
+/**
+ * The v1 build's single manifest line, from its one repo job's on-chain
+ * status (increment 3's pure core).
+ *
+ * Verdict mapping is deliberately conservative:
+ * - Open/Accepted/Submitted/Disputed → 'pending' — the money is still in
+ *   motion; a manifest must never call a build settled early.
+ * - Completed → 'pass', class 'mechanical' — the repo lane is graded by CI
+ *   checks (docs/graders.md), which re-run given the named toolchain. Never
+ *   'reproducible': a CI verdict depends on runner state we don't pin.
+ * - Refunded/Cancelled → 'refunded'.
+ * - Expired → 'refunded' for the money column, but the RAW status must
+ *   travel next to the manifest (the route includes it): Expired means a
+ *   deadline settled the job and NOBODY judged the work — reporting it as
+ *   an ordinary refund verdict would collapse the exact distinction the
+ *   contract added a state for (lib/onchain/labor.ts).
+ */
+export function manifestLineForRepoJob(input: {
+  buildId: string
+  goal: string
+  bountyUsd: number
+  jobStatus: string | null
+  proofId: string | null
+}): ManifestLineInput {
+  const pass = input.jobStatus === 'Completed'
+  const refunded = input.jobStatus === 'Refunded' || input.jobStatus === 'Cancelled' || input.jobStatus === 'Expired'
+  return {
+    subtaskId: input.buildId,
+    title: input.goal.slice(0, 120),
+    verdict: pass ? 'pass' : refunded ? 'refunded' : 'pending',
+    amountBaseUnits: pass ? usdToBaseUnits(input.bountyUsd) : '0',
+    graderClass: pass ? 'mechanical' : null,
+    proofId: pass ? input.proofId : null,
+  }
 }

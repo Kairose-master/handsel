@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { baseUnitsToUsd, bountyFromBudget, usdToBaseUnits } from '@/lib/repo-build'
+import { baseUnitsToUsd, bountyFromBudget, manifestLineForRepoJob, usdToBaseUnits } from '@/lib/repo-build'
 
 describe('base-unit conversion round-trips', () => {
   it('goes USD -> base units -> USD without drift', () => {
@@ -52,5 +52,40 @@ describe('bountyFromBudget — the increment 2 v1 decision (one build = one repo
     if (!split) return
     expect(split.bountyUsd).toBeGreaterThan(0)
     expect(Math.round((split.bountyUsd + split.feeUsd) * 100)).toBeLessThanOrEqual(100)
+  })
+})
+
+describe('manifestLineForRepoJob — increment 3, the one line a v1 build has', () => {
+  const base = { buildId: 'b1', goal: 'Fix the flaky retry logic in the sync worker', bountyUsd: 9.8, proofId: null }
+
+  it('in-flight statuses stay pending — a manifest must never settle a build early', () => {
+    for (const status of ['Open', 'Accepted', 'Submitted', 'Disputed', null]) {
+      const line = manifestLineForRepoJob({ ...base, jobStatus: status })
+      expect(line.verdict, String(status)).toBe('pending')
+      expect(line.amountBaseUnits).toBe('0')
+      expect(line.graderClass).toBeNull()
+    }
+  })
+
+  it('Completed pays the bounty as a mechanical-class pass with its proof', () => {
+    const line = manifestLineForRepoJob({ ...base, jobStatus: 'Completed', proofId: 'proof-7' })
+    expect(line.verdict).toBe('pass')
+    expect(line.amountBaseUnits).toBe('9800000')
+    expect(line.graderClass).toBe('mechanical') // CI-graded — never 'reproducible', runner state isn't pinned
+    expect(line.proofId).toBe('proof-7')
+  })
+
+  it('Refunded, Cancelled and Expired read as refunded with nothing paid', () => {
+    for (const status of ['Refunded', 'Cancelled', 'Expired']) {
+      const line = manifestLineForRepoJob({ ...base, jobStatus: status })
+      expect(line.verdict, status).toBe('refunded')
+      expect(line.amountBaseUnits).toBe('0')
+      expect(line.proofId).toBeNull()
+    }
+  })
+
+  it('a proof id on a non-pass line is dropped, not reported', () => {
+    const line = manifestLineForRepoJob({ ...base, jobStatus: 'Refunded', proofId: 'proof-9' })
+    expect(line.proofId).toBeNull()
   })
 })

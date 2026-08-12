@@ -1,17 +1,22 @@
 # The build service — paying for results, not attempts
 
-**Status: increment 2 shipped (2026-08-07) — the endpoint, repo lane only.**
-`POST /api/build` (`app/api/build/route.ts`) wires increment 1's envelope to
-`lib/repo-job-post.ts`'s `postRepoJob` — the real mainnet money-moving call.
-A build_runs table (self-migrating, `lib/db/ensure-columns.ts`) persists
-each run. increment 1 (`lib/build-envelope.ts` + `lib/build-manifest.ts` +
-`decideBuildDraw`) is pure and fully tested; increment 2 adds the pure
-bounty/fee split (`lib/repo-build.ts`, tested) and the route itself.
-**`GET /api/build/<id>` does not exist yet** (increment 3) — the POST
-response is currently the only place a caller learns the outcome. This page
-exists so the product sentence and its money semantics stay pinned down as
-each increment lands, the same way `docs/graders.md` pinned pluggable
-graders.
+**Status: increment 3 shipped (2026-08-12) — the read side.**
+`GET /api/build/<id>` (`app/api/build/[id]/route.ts`) assembles the manifest
+FRESH on every read from what actually happened — the build_runs row, the
+posted job spec, the job's **current on-chain status**, and the signed work
+proof if one was issued. Nothing caches its own verdicts; a manifest that
+did could disagree with the escrow it describes. The v1 mapping (one build
+= one repo job = one line) is pure and tested (`manifestLineForRepoJob` in
+`lib/repo-build.ts`): in-flight → `pending`, Completed → `pass` at class
+`mechanical` (CI-graded — never `reproducible`, runner state isn't pinned),
+Refunded/Cancelled/Expired → `refunded`, with the RAW on-chain status
+answered next to the manifest because Expired (deadline settled, nobody
+judged) must not collapse into an ordinary refund. Increment 2 (the POST,
+repo lane only) shipped 2026-08-07; increment 1 (`lib/build-envelope.ts` +
+`lib/build-manifest.ts` + `decideBuildDraw`) is pure and fully tested. This
+page exists so the product sentence and its money semantics stay pinned
+down as each increment lands, the same way `docs/graders.md` pinned
+pluggable graders.
 
 ## The sentence
 
@@ -114,7 +119,7 @@ mechanism — which is the point.
    a build closed rather than overspending it). A successful post leaves the
    envelope OPEN (not closed) — the job is live, and its real outcome settles
    later; increment 3 is what reads that outcome back.
-3. Manifest + `GET /api/build/<id>` with per-subtask proofs and refund lines
+3. **Done.** Manifest + `GET /api/build/<id>` with per-subtask proofs and refund lines
    — the read side of increment 2; `lib/build-manifest.ts` is ready to
    consume whatever increment 2 persists.
 4. Text/mixed goals behind the same envelope, manifest labelling classes.
