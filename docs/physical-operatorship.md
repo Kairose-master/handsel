@@ -122,7 +122,7 @@ hiding behind increment 1.
 
 | Vertical | Sub-market | Reality filter | Verdict |
 |---|---|---|---|
-| **Vending slot micro-market** | operator | cheapest real MVP of PURE operatorship; needs a slot machine + lease contract (a Handsel job with a duration) | **The canonical case.** Build after increment 2, or with a partner machine |
+| **Vending slot micro-market** | operator | cheapest real MVP of PURE operatorship; needs a slot machine + lease contract (a Handsel job with a duration) | **The canonical case — software SHIPPED in the booth repo** (lease registry, price-as-address payment routing, per-sale on-chain lessee payout, sold-out refund ledger, multi-servo firmware). Awaits multi-servo hardware to go physical |
 | Recipe/transformation market | physical app | goods are low-liability (paper, engraving) | **Live — increment 1 in the booth** |
 | Micro-Lab / test protocols | physical app (protocol author) + machine labor (machine runs it) | output is information: no inventory, ~0 marginal cost; calibration is the hard part; high-stakes verdicts (authenticity) carry liability | Increment 2 territory; start with low-stakes measurements |
 | Physical bounty / oracle | machine labor | same market as Micro-Lab, demand side first | **Increment 2** |
