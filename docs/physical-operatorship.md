@@ -2,9 +2,12 @@
 
 The planning document for Handsel's physical extension. Written 2026-08-12
 after the vending booth (the first physical node) closed its full loop;
-restructured the same day when the taxonomy below sharpened. This is a
-PLAN: increments 2–4 are not built. Increment 1 (the recipe market) is
-live in the booth repo (`kairose-master/onchain-vending-machine`).
+restructured the same day when the taxonomy below sharpened. Status: all three
+archetypes now have shipped software in the booth repo
+(`kairose-master/onchain-vending-machine`) — recipe market (physical app,
+live), slot market (operator market, awaiting multi-servo hardware), and
+the machine labor lane (`[machine:plot]` bounties). Increments 3–4
+(multi-party splits, machine credit) are handsel-side and not built.
 
 ## Definition
 
@@ -125,7 +128,7 @@ hiding behind increment 1.
 | **Vending slot micro-market** | operator | cheapest real MVP of PURE operatorship; needs a slot machine + lease contract (a Handsel job with a duration) | **The canonical case — software SHIPPED in the booth repo** (lease registry, price-as-address payment routing, per-sale on-chain lessee payout, sold-out refund ledger, multi-servo firmware). Awaits multi-servo hardware to go physical |
 | Recipe/transformation market | physical app | goods are low-liability (paper, engraving) | **Live — increment 1 in the booth** |
 | Micro-Lab / test protocols | physical app (protocol author) + machine labor (machine runs it) | output is information: no inventory, ~0 marginal cost; calibration is the hard part; high-stakes verdicts (authenticity) carry liability | Increment 2 territory; start with low-stakes measurements |
-| Physical bounty / oracle | machine labor | same market as Micro-Lab, demand side first | **Increment 2** |
+| Physical bounty / oracle | machine labor | same market as Micro-Lab, demand side first | **SHIPPED (booth-side MVP)**: the booth polls the feed for `[machine:plot]` bounties, parses-before-claiming, claims by id, plots physically, submits a production record (evidence class disclosed: no camera — stats and G-code, not photographs). Camera evidence is the upgrade path |
 | Micro-Brand Factory (drinks, perfume) | physical app, aspirationally operator | ingestible/on-skin → food & cosmetics law immediately. Realistic shape: licensed operator owns the compliance shell; creators sell parameters within a safe envelope (the Coca-Cola Freestyle structure) | Later; needs a licensed partner |
 | Arcade app store | physical app | lowest liability, most viral, low ceiling | Demo vertical, not a wedge |
 | Logistics router | operator (policy over flows) | needs infrastructure density only campuses/offices have | A feature for an existing network, not a startup |
