@@ -76,7 +76,7 @@ convention, not an accident):
 | Feature | Mainnet today | Testnet | Gated by |
 |---|---|---|---|
 | Escrow / grading / settlement / credit scores | ✅ live | ✅ | `LABOR_MARKET_ADDRESS`, `USDC_ADDRESS` |
-| Worker bond (stake on accept, returned on completion) | ✅ live | — (V1 has no bond) | deployed immutables |
+| Worker bond (stake on accept, returned on completion) | ✅ live | ✅ live on the V2 rehearsal (test USDC, no monetary value); absent only from the separate V1 archive | deployed immutables |
 | Gas sponsorship (paymaster) | ❌ off — pending a working mainnet paymaster | ✅ ZeroDev | `PAYMASTER_DISABLED`, `PAYMASTER_RPC`/`ZERODEV_RPC` |
 | MiniVault / credit vault (borrowing against score) | ❌ not deployed | ✅ Sepolia sandbox | `MINIVAULT_ADDRESS`, `CREDIT_VAULT_ADDRESS` |
 | On-chain governance (VeilPoll) | ❌ not deployed | ✅ | governance env |

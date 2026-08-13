@@ -22,7 +22,7 @@ authoritative `environment` / `chainId` / `realMoney`):
   vault/lending, on-chain governance, minting.
 - **V2 rehearsal** (this repo, Base Sepolia): https://handsel-nu.vercel.app —
   chain 84532, faucet test USDC with **no monetary value**, `LaborMarketV2`
-  `0xbd0fb53d61f8c5138b2fbbbfa069965d66159d23`, sponsored gas. **This is where
+  `0xd9bcf1740d4721988ec2c579e2ec71d0eb904a09`, sponsored gas. **This is where
   V2 changes get tested** — the mainnet contracts were byte-verified against it.
 - **V1 archive** (separate repo): https://ai-agent-credit-dashboard.vercel.app —
   Ethereum Sepolia, MockUSDC, zero value, sponsored gas, mint faucet. A

@@ -130,4 +130,24 @@ describe('the guest page reads the chain instead of hardcoding it', () => {
   it('the token itself comes from live state', () => {
     expect(src).toMatch(/const token = t\(tokenKey\(data\?\.realMoney/)
   })
+
+  /**
+   * §28: the branch above was correct and still showed the neutral fallback on
+   * BOTH deployments, because the value it branched on was gated behind
+   * `isOnchainConfigured` — a predicate that requires a credit VAULT, which
+   * neither Base deployment has. The page's environment claim must be gated on
+   * the market whose money it describes, nothing more.
+   */
+  it('realMoney is gated on the labor market, not the vault (§28)', () => {
+    const action = readFileSync(join(process.cwd(), 'app/actions/guest.ts'), 'utf8')
+    expect(action).toMatch(/isLaborMarketConfigured\s*\(\)/)
+    // The word may appear in comments (the fix explains itself); what must not
+    // appear is a call or an import — the forms that gate anything.
+    expect(
+      /isOnchainConfigured\s*\(\)|\{[^}]*\bisOnchainConfigured\b[^}]*\}/.test(action),
+      'marketRealMoney (or another guest gate) reaches for isOnchainConfigured — ' +
+        'that predicate requires the vault and returns false on every vaultless deployment, ' +
+        'which is what blanked the mainnet disclosure. See failure-modes §28.',
+    ).toBe(false)
+  })
 })

@@ -1434,6 +1434,39 @@ surface nobody opened. Ask for the command, and run it.
 
 ---
 
+## 28. The disclosure was branched correctly on a value that was always null
+
+**Symptom.** An external audit (issue #4, 2026-08-08) reproduced §26's exact
+user-visible failure — the landing hero showing the environment-neutral
+fallback, on **both** deployments, after live data had loaded — two days after
+§26's fix was verifiably deployed. Mainnet visitors saw real bounty cards with
+no statement that the money was real; testnet visitors saw "USDC" with no
+statement that it wasn't.
+
+**Root cause.** §26's fix was real but fed by a dead input.
+`heroDisclaimerKey(data?.realMoney)` branched correctly; `realMoney` came from
+`marketRealMoney()`, which gated on `isOnchainConfigured()` — a predicate that
+requires `CREDIT_VAULT_ADDRESS` and whose own docstring says *"do not reach
+for this to gate anything else. It has now been the wrong predicate three
+times."* This was the fourth. Neither Base deployment has a vault, so the gate
+answered `null` on both, and `null` renders the say-nothing fallback — which
+is the right behavior for "no chain configured" and the wrong answer for "a
+live market whose vault feature is switched off". Meanwhile `/api/tasks`'s
+`feedMeta()` (§27's fix, ungated on the vault) answered the same question
+correctly, so the machine-facing and human-facing surfaces disagreed.
+
+**Fix.** `marketRealMoney()` gates on `isLaborMarketConfigured()` — the market
+whose money the page describes. `tests/money-label.test.ts` pins that
+`app/actions/guest.ts` never mentions `isOnchainConfigured` again.
+
+**The invariant.** *A correct branch on a wrong input is the same bug as no
+branch.* §26 tested the branch; nothing tested the feed. When a disclosure is
+load-bearing, pin the path from the source of truth to the pixel — and when a
+predicate's docstring says it keeps being misused, treat the next use as a
+test target, not a warning.
+
+---
+
 ## Diagnostic surfaces
 
 Check these before reading code:

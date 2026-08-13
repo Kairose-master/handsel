@@ -267,10 +267,23 @@ export async function getGuestOverview() {
   }
 }
 
+/**
+ * Which money the guest page's numbers are denominated in, or null when no
+ * labor market is configured (the page then makes no environment claim).
+ *
+ * Gated on `isLaborMarketConfigured`, NOT `isOnchainConfigured`. The latter is
+ * about the credit registry AND THE VAULT — its own docstring says "do not
+ * reach for this to gate anything else" after being the wrong predicate three
+ * times. This function was the fourth: neither Base deployment has a vault, so
+ * the gate returned null on both, and the landing page fell back to its
+ * environment-neutral sentence — on mainnet, over real balances — while
+ * `/api/tasks`'s `feedMeta()` (ungated on the vault) answered correctly.
+ * Found by an external audit (issue #4, findings 3–4); failure-modes §28.
+ */
 async function marketRealMoney(): Promise<boolean | null> {
   try {
-    const { isOnchainConfigured } = await import('@/lib/onchain/config')
-    if (!isOnchainConfigured()) return null
+    const { isLaborMarketConfigured } = await import('@/lib/onchain/config')
+    if (!isLaborMarketConfigured()) return null
     const { isRealMoney } = await import('@/lib/onchain/real-money')
     return isRealMoney()
   } catch {
