@@ -6,8 +6,15 @@ restructured the same day when the taxonomy below sharpened. Status: all three
 archetypes now have shipped software in the booth repo
 (`kairose-master/onchain-vending-machine`) — recipe market (physical app,
 live), slot market (operator market, awaiting multi-servo hardware), and
-the machine labor lane (`[machine:plot]` bounties). Increment 3 (multi-party splits) shipped handsel-side 2026-08-12;
-increment 4 (machine credit) is not built.
+the machine labor lane (`[machine:plot]` bounties). Increment 3 (multi-party
+splits) shipped handsel-side 2026-08-12. Increment 4 shipped 2026-08-14 and
+came back reversed — **operator** credit before machine credit, enforced as a
+rolling bond withheld from earnings rather than an up-front deposit — along
+with a fifth relationship the original taxonomy did not have: the machine as
+**requester**, hiring its own restocking out of the lessee's accrual. Both
+sit on a new unifying object (`Concession`) whose classifier makes the four
+conditions executable. Still unbuilt: machine credit proper, and any
+`instrumented` evidence (no sensor at the outlet yet).
 
 ## Definition
 
@@ -175,11 +182,95 @@ exactly which shares moved and which are owed — never a clawback, never a
 wedged settlement. The on-chain contract is untouched: it still pays the
 worker in full; the split is platform-orchestrated redistribution.
 
-**4 — Machine credit** *(the flywheel)*. Uptime, grading pass-rate and
-settled revenue become a machine operator's credit score (engine
-exists); borrowing against verified machine cashflow (lending code
-exists) funds the next machine. The original thesis — behavior-earned
-credit unlocking capital — closed in the physical world.
+**4 — Operator credit** *(the flywheel)* — **SHIPPED in the booth
+(2026-08-14)**, and it arrived with its priority reversed. This increment
+was written as *machine* credit: a machine's uptime and settled revenue
+become its score. Building it made the ordering obvious — a machine's score
+only starts to matter when there are several machines, whereas an
+**operator's** score matters on the very first one, and the operator's
+record is the object that travels. A lessee who kept slot 3 stocked here
+should be able to lease slot 1 over there against a smaller hold. Machine
+credit is still worth building; it is now downstream of this, not upstream.
+
+`onchain-vending-machine/watcher/src/operator-credit.ts` scores from events
+the booth already generates — fill rate, stockouts (the operator's job
+undone, not bad luck), restock latency and whether the restock was
+*confirmed*, tenure, volume — weighting performance far above age and size.
+No back-fill, and no rating at all under five metered events: one sale with
+no stockouts is a 100% fill rate and means nothing.
+
+The enforced mechanism is a **rolling bond, not an up-front deposit**.
+Demanding collateral before the first sale excludes exactly the people this
+market exists to let in; withholding a slice of earnings (30% unrated → 5%
+proven, released automatically as the score rises) creates real downside
+without requiring any capital to begin. This is the honest way to satisfy
+condition 3 for a cold-start operator, and it is wired into the real payout
+path rather than displayed. The up-front figure is still computed and is
+labeled QUOTED, NOT COLLECTED — a control that reads as enforced and enforces
+nothing is worse than no control.
+
+**5 — The machine as requester** *(the fourth relationship)* — **SHIPPED in
+the booth (2026-08-14)**. Not in the original taxonomy, which had the machine
+on the supply side in all three sub-markets: renting out control, selling a
+design's output, selling its own capability. The missing one is the machine
+**buying** labor. A slot runs empty and the lessee is not in the room — which
+is the whole point of leasing a slot in someone else's machine — so the
+machine posts an escrowed `[machine:restock]` bounty for someone who is,
+funded out of that lessee's own accrued revenue.
+
+Owner owns and does not operate; lessee operates and is not present;
+restocker is present and is neither. Nobody runs the business and the
+business runs. This is the ownership/control separation of the intellectual
+core, extended one step: not only is the manager market-selected, so is the
+maintenance.
+
+Funding rule, load-bearing: the bounty never comes from the booth's till. A
+subsidised restock is the machine owner doing the lessee's job for free,
+which is the arrangement operatorship exists to end — so an operator with
+nothing accrued cannot hire, and is told exactly that.
+
+## Evidence classes: the frontier this work exposed
+
+Everything above assumes the physical event can be known to have happened,
+and mostly it cannot. The booth's honest position has been "no camera —
+stats and G-code". Building increment 5 turned that from a disclaimer into a
+ranked, first-class field (`src/concession.ts`):
+
+`self-reported` < `confirmed-by-sale` < `buyer-attested` < `instrumented`
+
+The middle rung is free and was sitting there unclaimed: **a dispense proves
+the slot had stock, which proves the last claimed restock really happened.**
+No sensor, no photo, no trusted third party — the machine doing its ordinary
+job is the attestation, recomputable by anyone reading the ledger. Confirmed
+restocks score higher than claimed ones, so the upgrade has teeth.
+
+The claim this suggests, stated so it can be tested: **the cheapest sensor
+that raises a class by one level is the highest-return part on the machine.**
+A ¥5 IR gate at the outlet turns "the servo was commanded" into "an object
+crossed the outlet" — worth more than a ¥500 better mechanism, because the
+mechanism raises throughput and the gate is what lets strangers transact
+without trusting each other. `instrumented` is declared in the ordering
+before the hardware exists precisely so this stays falsifiable.
+
+## The unifying object
+
+`src/concession.ts` names what the three sub-markets share: a time-boxed,
+revocable, metered right to direct one physical capability, with a settlement
+rail attached. Slot lease, recipe listing and machine bounty are the same
+record with different meters — which is why a fridge shelf, a 3D-printer
+hour, a locker or a car-wash bay should be configuration rather than new
+code.
+
+It is a projection, not a replacement: `Slot` and `Recipe` stay canonical,
+the same discipline as this repo's DSL/DMN/BPMN layers over canonical JSON.
+
+The classifier in that file is the taxonomy made executable — the four
+conditions and the degeneration table as a function. It earns its place by
+being unflattering about its own repo, with both answers pinned by tests: the
+recipe market comes back `free-option` (registration risks nothing), and the
+machine-labor lane's owner comes back `small-business` (they own the machine),
+which is exactly the "physical oracle's machine owner is a worker, not an
+entrepreneur" claim, now checkable instead of asserted.
 
 ## Metrics that would falsify or confirm this
 
@@ -188,6 +279,15 @@ credit unlocking capital — closed in the physical world.
 - # of physical bounties posted by strangers and settled (inc. 2)
 - repeat rate: does any author register a second design?
 - when a slot machine exists: do slot lessees renew at unsubsidized rents?
+- **the one number that tests everything: the repeat-lease rate of an operator
+  who has never met the machine owner.** If people who know the operator are
+  the only lessees, this is a demo with good documentation; if strangers come
+  back for a second term at an unsubsidised rent, the remaining problems are
+  engineering. Every other metric here is a leading indicator of this one.
+- does a restock bounty get claimed by someone who is not the lessee and not
+  the owner (inc. 5)? That is the moment nobody is running the business.
+- what share of restocks reach `confirmed-by-sale` rather than staying
+  self-reported — the evidence layer's own pass rate.
 
 Zero third-party registrations after real booth traffic = the thesis
 fails at its first gate, and this document gets a postmortem section
