@@ -27,6 +27,7 @@ import { and, eq, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { jobSpec, agentTask, artifact, disputeRuling } from '@/lib/db/schema'
 import { authorOfRule, decideRefund, type RefundGround } from '@/lib/decision-table'
+import { capRemedy, classOfGround, mayMoveMoney, type EvidenceClass } from '@/lib/evidence-assurance'
 import { briefMatchesHash } from '@/lib/spec-hash'
 import { nanoid } from 'nanoid'
 import { acquireOpsLease, releaseOpsLease } from '@/lib/ops-lease'
@@ -53,6 +54,13 @@ export type Ruling = {
    *  "here is the rule, here is the ruling" is two claims a reader has to take
    *  on trust separately. */
   evidence: Record<string, unknown>
+  /** How well the ground could be known, and therefore the strongest remedy it
+   *  was allowed to buy (`lib/evidence-assurance.ts`). Recorded on every ruling
+   *  — including the ones that were NOT capped — because a ceiling that only
+   *  appears when it bites cannot be audited for whether it ever bit. */
+  evidenceClass: EvidenceClass
+  /** True when the table said `refund` and the evidence could not carry it. */
+  cappedByEvidence?: boolean
 }
 
 /**
@@ -182,5 +190,37 @@ export async function ruleOn(onchainJobId: number): Promise<Ruling | null> {
   } as const
   const out = decideRefund(evidence)
 
-  return { jobId: onchainJobId, ...out, evidence }
+  /**
+   * The remedy ceiling (docs/coordination-layer.md, increment 1).
+   *
+   * `decideRefund` answers "does the rule fire?"; this answers "is the thing
+   * that fired it knowable enough to take a worker's escrow?" They are
+   * different questions and the second one had no home before now.
+   *
+   * A refund is a monetary remedy, so it needs evidence at or above
+   * MIN_CLASS_FOR_MONEY. NO_DELIVERABLE and WRONG_KIND sit below that line —
+   * both are the platform reporting its own records, with nothing a stranger
+   * can recompute, while the platform is itself a market participant.
+   *
+   * Capping can only turn `refund` into `no_refund`, and `no_refund` is this
+   * gate's own safe default: the deadline still settles the job
+   * (`lib/deadline-sweep.ts`, `expireDispute` → the worker). So this can
+   * withhold a payout that weak evidence would have made, and it cannot strand
+   * escrow — the property that makes it safe to tighten a live money path.
+   */
+  const evidenceClass = classOfGround(out.ground)
+  if (out.decision === 'refund' && !mayMoveMoney(evidenceClass)) {
+    const capped = capRemedy('BOUNDED_RESTITUTION', evidenceClass)
+    return {
+      jobId: onchainJobId,
+      decision: 'no_refund',
+      ground: out.ground,
+      reason: `${out.reason} — but ${capped.reason}; the deadline decides instead`,
+      evidence: { ...evidence, evidenceClass, cappedFrom: 'refund' },
+      evidenceClass,
+      cappedByEvidence: true,
+    }
+  }
+
+  return { jobId: onchainJobId, ...out, evidence: { ...evidence, evidenceClass }, evidenceClass }
 }
