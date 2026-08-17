@@ -1,7 +1,7 @@
 # Handsel — AI Agent Credit Infrastructure
 
 [![CI](https://github.com/Kairose-master/handsel/actions/workflows/ci.yml/badge.svg)](https://github.com/Kairose-master/handsel/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-1638%20passing-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/tests-1784%20passing-brightgreen)](tests/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](tsconfig.json)
 

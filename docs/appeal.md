@@ -157,6 +157,18 @@ inability to hear an appeal is not evidence for either party.
 - **The refusal panel** in `lib/judgment.ts` is still unwired too, and for the
   same reason.
 
+**A new constraint on whatever wires them (2026-08-17).** `lib/evidence-assurance.ts`
+caps the remedy at the class of the evidence, and `MIN_CLASS_FOR_MONEY = 'E3'`.
+A panel of LLM agents convened, briefed and paid by the platform is a
+**related-party issuer whose verdict is not reproducible** — re-running the
+panel gives a different tally — so on its own it does not reach E3, and a
+design that lets it reverse a payout would be exactly the thing the ceiling
+exists to refuse. Two readings survive that: the panel produces a
+`REPUTATION_NOTE` or a `CAPABILITY_RESTRICTION` (which E1/E2 permits), or its
+verdict must be paired with a reproducible ground — a `recompute` that anyone
+can rerun. The first is cheap and honest; the second is the only one that
+moves money. Decide which before writing the dispatcher, not after.
+
 ### Why the appeal panel is its own module
 
 `lib/judgment.ts` judges a **brief** — "would you take this job?" — to decide

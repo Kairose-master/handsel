@@ -278,6 +278,47 @@ confidence:
 
 ---
 
+## Narrowed since this audit: what evidence may take someone's money
+
+Added 2026-08-15. It belongs in a security document rather than a changelog,
+because it **removes authority the platform previously had**.
+
+`lib/dispute-gate.ts` can move real USDC away from a worker. It fires on four
+grounds from `decideRefund`, and until now all four moved the same money —
+including `NO_DELIVERABLE`, which is **the platform asserting the absence of
+rows in its own database**: nothing an outsider can recompute, asserted by a
+party that is itself a market participant (operator-posted jobs, disclosed at
+`/participation`).
+
+`lib/evidence-assurance.ts` scores each ground on five dimensions
+(reproducibility, issuer independence, tamper resistance, observation coverage,
+subject control), compiles that into a class **E0–E4**, and caps the strongest
+permissible remedy by class. **Nothing below E3 may move money.** The
+load-bearing rule is that reproducibility rescues a related-party issuer: a hash
+comparison against a public chain is E4 even though the platform reports it,
+because any reader can rerun it — while the same platform's report about its own
+database rows is not. Trust the check, not the checker.
+
+| Ground | Class | May refund? | Why |
+|---|---|---|---|
+| `SUBSTITUTED` | E4 | yes | on-chain commitment vs published brief |
+| `PLATFORM_TESTS_FAIL` | E3 | yes | platform-authored suite, deterministic and re-runnable |
+| `WRONG_KIND` | E2 | **no** | the MIME is ours, not the chain's |
+| `NO_DELIVERABLE` | E2 | **no** | no external witness exists |
+
+Why tightening a live money path was safe: capping can only turn `refund` into
+`no_refund`, which is this gate's own default, and the deadline still settles the
+job (`expireDispute` → the worker). It can withhold a payout that weak evidence
+would have made; it cannot strand escrow.
+
+**What this does not fix.** The arbiter remains a single operator-held key, and a
+human operator acting directly is unaffected — this constrains the automated path
+only, for the same reason the dispute-policy guard does not gate the admin action
+(see *Checked and deliberately not changed*). Class A/B/C/D of the older informal
+ladder are superseded by E0–E4; the full model, its critique, and the portable
+receipt format it consumes are in `docs/coordination-layer.md` and
+`docs/action-receipt-v0.1.md`.
+
 ## Residual risk
 
 Not fixed. Named so nobody has to rediscover them.

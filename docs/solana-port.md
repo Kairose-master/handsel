@@ -218,14 +218,49 @@ call — the second degrades into an empty board, which is indistinguishable
 from an empty market. Same rule, and the same reasoning,
 as `MarketReadState` in `app/actions/guest.ts`.
 
-### What remains for week 3
+### What remained for week 3 — both items are now done
 
-- The write path (approve/settle), which needs a signing SDK and a deployed
-  program id — blocked on the operator step in week 2.
-- Wiring `readSolanaJobs` into the board behind `chainKind()`. The read
-  function and its state machine exist; nothing calls them yet, because
-  pointing a page at a program that is not deployed would render an
-  `unreachable` board and teach nothing.
+- ~~The write path (approve/settle), which needs a signing SDK and a deployed
+  program id — blocked on the operator step in week 2.~~ **Built.**
+  `lib/onchain/solana/tx.ts` (instruction encoding, 23 tests) +
+  `lib/onchain/solana/write.ts` (signing, send-and-confirm) +
+  `app/api/admin/solana-loop/route.ts` (the whole post → accept → submit →
+  approve → withdraw loop as one operator-authenticated endpoint).
+- ~~Wiring `readSolanaJobs` into the board behind `chainKind()`.~~ **Wired.**
+  The board reads the deployed program; the state machine that had no caller
+  now has one.
+
+### Verified on chain, 2026-08-17
+
+Re-read from devnet before the week-3 film, not from our own database:
+
+| What | Value |
+|---|---|
+| Program | `8C3gbrTv5vriPiEjuS7BukrnxyAFoDYt8BdBCf7W2G6H` |
+| Market authority / oracle | `DPcYFhXjwvqD3LzSBorL8zStz9sfbmbsf8NvYNEUPR4s` |
+| Jobs | #0–#3 `Completed`, #4 `Open` |
+| Credit PDA | `H5nkGHCG1fjkUoWyLaBdNcjUFiGdb2NNPrNDf2Go5NxN` — score 670, limit 60,000 |
+| Agent key | recomputed as `sha256("handsel-agent:<id>")` and matched the PDA's stored key |
+
+The last row is the one that matters. A score sitting in an account proves
+only that something wrote a number there; recomputing the agent key from the
+agent id and finding it already stored proves *which* agent the number is
+about. That is the difference between a demo account and a readable score.
+
+### `stop_after`: why an unrecognised value must refuse
+
+The loop endpoint runs to `withdraw` by default, which leaves every job
+`Completed` — a correct settlement and an empty board. Filming needs a board
+with an `Open` job on it, so `stop_after` truncates the loop
+(`lib/solana-loop-plan.ts`, 12 tests).
+
+`parseStopAfter` **refuses** an unrecognised value rather than falling back to
+the full loop. Falling back would mean a typo'd `stop_after=pos` silently
+spends real devnet SOL running four more steps than asked and lands in exactly
+the state the caller was trying to avoid — with a `200` on it. A step name is
+either in `LOOP_STEPS` or the request is a mistake; there is no third reading.
+The plan is also computed *before any spend*, so a stop at `post` never funds
+or mints for a worker that will never accept.
 
 ### Deploying a program over a public RPC does not work
 
@@ -629,8 +664,9 @@ Five ledgers now sit next to each other as a record of the whole sprint: two
 with `bump 0` from before the fix and permanently orphaned, two credited after
 it, and one drained to zero.
 
-Weeks 1 and 2 are done. What remains is week 3's write path and the week 4
-submission.
+Weeks 1, 2 and 3 are done — the write path shipped, the board reads the
+deployed program, and the week-3 footage was filmed against the state verified
+above. What remains is the week 4 submission.
 
 ## What would stop the sprint
 

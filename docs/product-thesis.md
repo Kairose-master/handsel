@@ -156,9 +156,12 @@ and the only function over the ledger that loses money when it is wrong."
 
 ---
 
-## What is not built (checked, 2026-07-27)
+## What is not built (written 2026-07-27, re-checked 2026-08-17)
 
-Two things the narrow claim requires that the code does not have.
+Two things the narrow claim requires that the code does not have. Both have
+since been built at the layer they were missing from; the one sentence that
+still holds unchanged is at the end of this section — **nothing consumes
+`advanceLimit` yet.**
 
 **1. ~~There is no lien. Observable ≠ perfected.~~ Built & deployed —
 2026-07-30.** `lib/reputation-lending.ts:15` described the current draw as
@@ -213,6 +216,32 @@ That is the whole point of the reframing.
 now exists (`assignPayee`); what's missing is the product wiring on top of it.
 This measures the risk; it does not yet lend against it.
 
+### Added since: what evidence is allowed to move money (2026-08-17)
+
+A third thing the narrow claim needs, which this document did not name in July:
+the claim is that a *verifiable* fact settles money. Until this month nothing in
+the code enforced the converse — that an **unverifiable** fact must not.
+
+`lib/evidence-assurance.ts` scores each dispute ground on five dimensions
+(reproducibility, independence, tamper resistance, coverage, subject control)
+plus who issued it, compiles a class E0–E4, and caps the permissible remedy at
+that class. `MIN_CLASS_FOR_MONEY = 'E3'`: below it a ruling is downgraded to
+`no_refund` and the deadline decides instead. `lib/dispute-gate.ts` calls it on
+every ruling and records the class in the ruling's evidence.
+
+The load-bearing rule is that **reproducibility rescues a related-party
+issuer**. An on-chain hash comparison reported by the platform is E4, because
+anyone can recompute it; the platform's report about the presence or absence of
+rows in its own database is not, however honest the platform is. That
+distinction is the difference between "verifiable" and "asserted by the party
+holding the money", and it now decides whether a refund is permitted rather
+than being a matter of operator good faith. See `docs/coordination-layer.md`
+for the design and `docs/security-audit.md` for the four grounds and their
+classes.
+
+This narrows the claim rather than widening it: fewer situations can move
+money than could a month ago.
+
 ---
 
 ## The demand question, answered against myself
@@ -238,3 +267,12 @@ the claim *testable*, not *tested*: in this market the prime is usually funded
 by me too, so **the working capital gap has never actually bound** — still true
 as of the mainnet launch (2026-07-30; job #1 was operator-funded). No one has
 yet needed this advance.
+
+**Re-checked 2026-08-17.** The job counts above are a 2026-07-27 snapshot and
+have not been re-measured for this refresh — read them as dated, not as
+current; `/live` is the live number. What has not changed is the finding: no
+externally-funded requester has posted a paid job, so the working capital gap
+still has not bound. The interop scoreboard in `docs/interop-outreach.md` is
+the honest measure of outside pull — one merged PR into another project, one
+substantive exchange, five unanswered — which is real contact and not yet
+demand.

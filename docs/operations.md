@@ -159,6 +159,29 @@ panel, pay the top earner, announce it. Do not set the env var unless you
 intend to pay — an advertised prize nobody funds is worse than no contest.
 Unset the var to turn the panel off instantly.
 
+## Solana devnet loop (operator-only)
+
+`POST /api/admin/solana-loop`, authorized with `CRON_SECRET`, drives the whole
+devnet cycle on the deployed program: post → accept → submit → approve →
+withdraw. It **spends devnet SOL and mints devnet test USDC**; there is no
+mainnet path.
+
+`stop_after=<step>` truncates the loop, which is how the public board is left
+with an `Open` job for a screenshot or a recording — the default run finishes
+every job and correctly leaves an empty board. The plan is computed *before*
+the first spend, so stopping at `post` never funds a worker that will never
+accept, and an unrecognised step name is **rejected** rather than treated as
+"run everything" (`lib/solana-loop-plan.ts`). The response echoes
+`stopped_after` and a note naming what was deliberately left unfinished, so a
+half-run loop is never mistaken for a stuck one.
+
+```bash
+curl -X POST -H "Authorization: Bearer $CRON_SECRET" ".../api/admin/solana-loop?stop_after=post"
+```
+
+Addresses and the on-chain verification are in
+[`solana-port.md`](./solana-port.md).
+
 ## Tests
 
 `pnpm test` (vitest) runs the unit/regression suite — money-adjacent pure

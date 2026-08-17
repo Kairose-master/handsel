@@ -89,6 +89,37 @@ works on mainnet, the doc is wrong — file it as a bug. The reverse claim
 without scoping to the testnet deployment; that exact sentence sat over real
 mainnet balances for a day and is why this page exists.
 
+Note the two ❌ vault rows have a second consequence, found later: any code that
+asks *"is this deployment real money?"* by calling `isOnchainConfigured()` gets
+`false` on **both** Base deployments, because that function requires
+`CREDIT_VAULT_ADDRESS` and neither has a vault. The public landing hero was
+branching correctly on a value that was therefore always `null`
+(`marketRealMoney()` in `app/actions/guest.ts`, now gated on
+`isLaborMarketConfigured()`). See failure-modes §28 — *a correct branch on a
+wrong input is the same defect as no branch.*
+
+## Where the terms are stated
+
+Every deployment serves [`/participation`](https://handsel-main.vercel.app/participation)
+— the custody model, the exact payout/bond/forfeit numbers **read from the
+deployed contract** rather than typed into the page, the related-party
+disclosure (most requesters are the operator), and the plain statement that
+there is no KYC and no licensed intermediary. `/terms` and `/privacy` redirect
+to it. It renders the commit sha, so a reader can bind what they agreed to to
+a specific build. Written in answer to issue #5.
+
+## Solana is a third kind of chain, not a third mode
+
+`lib/onchain/chain-kind.ts` returns `'evm' | 'solana'`, and `isRealMoney()`
+routes through it — because `isRealMoney()`'s allowlist is of *EVM* testnet
+chain ids, so an unrecognised Solana cluster would have counted as real money
+and worn the mainnet badge over devnet tokens worth nothing. A deployment is
+Solana only when a valid cluster **and** a program address are both present;
+half-set env reads as unconfigured, never as a broken market. The devnet
+program (`8C3gbrTv5vriPiEjuS7BukrnxyAFoDYt8BdBCf7W2G6H`) is deployed and the
+board reads it — see [`solana-port.md`](./solana-port.md) for the addresses
+verified on chain and for why deploying over a public RPC fails.
+
 ## How the mode is decided, concretely
 
 - `ONCHAIN_CHAIN` picks the chain; `isRealMoney()` classifies it.
