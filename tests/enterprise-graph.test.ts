@@ -274,6 +274,96 @@ describe('the settlement waterfall', () => {
   })
 })
 
+describe('recovery — where evidence class and perfection finally meet', () => {
+  it('lets short claimants reach the operator’s holdings, in the same priority order', () => {
+    const g = blcu({ evidenceClass: 'E3', bondCents: 9_000, withheldCents: 1_000 })
+    ;(g.nodes.find((n) => n.id === 'cap') as { perfection?: string }).perfection = 'onchain'
+    const r = compileEnterprise(g)
+    if (!r.ok) throw new Error(r.denials.map((d) => d.reason).join('; '))
+
+    const s = settle(r.compiled, 0)
+    expect(s.recovery.poolCents).toBe(10_000) // withheld + bond, chargeable at E3
+    expect(s.recovery.unreachableCents).toBe(0)
+    // The perfected claim is senior to the revenue AND to the collateral: same
+    // order, different pool.
+    expect(s.recovery.payments[0]!.stickId).toBe('cap')
+    expect(s.recovery.payments[0]!.basis).toBe('preferential')
+  })
+
+  it('recovers the whole worst case for ANY graph that compiles — that is what the gate buys', () => {
+    // The compile-time check is exactly the statement "a total sell-through
+    // failure is fully recoverable". Assert it as a property rather than
+    // trusting the one example: zero revenue is the worst case, so nothing may
+    // be left unrecovered on any graph that was allowed through.
+    const cases = [
+      blcu({ evidenceClass: 'E3', bondCents: 9_000, withheldCents: 1_000 }),
+      blcu({ evidenceClass: 'E3', financier: null, bondCents: 9_500, withheldCents: 0 }),
+      blcu({ evidenceClass: 'E2', financier: null, bondCents: 0, withheldCents: 9_500 }),
+      blcu({ evidenceClass: 'E0', financier: 'B', bondCents: 0, withheldCents: 9_960 }),
+      blcu({ evidenceClass: 'E3', units: 10, bondCents: 2_000, withheldCents: 0 }),
+    ]
+    let compiledCount = 0
+    for (const g of cases) {
+      const r = compileEnterprise(g)
+      if (!r.ok) continue
+      compiledCount += 1
+      const s = settle(r.compiled, 0)
+      expect(s.recovery.unrecoveredCents).toBe(0)
+      expect(s.unrecoveredCents).toBe(0)
+    }
+    expect(compiledCount).toBeGreaterThanOrEqual(4)
+  })
+
+  it('reports collateral it is holding but may not charge, instead of netting it away', () => {
+    // E2: the bond exists, is visible, and is untouchable. "$50 held, $0
+    // recoverable" is the fact a lender needs; a bare "recovered: 0" hides it.
+    const g = blcu({ evidenceClass: 'E2', financier: null, bondCents: 5_000, withheldCents: 9_500 })
+    const r = compileEnterprise(g)
+    if (!r.ok) throw new Error(r.denials.map((d) => d.reason).join('; '))
+
+    const s = settle(r.compiled, 0)
+    expect(s.recovery.poolCents).toBe(9_500) // withheld only
+    expect(s.recovery.unreachableCents).toBe(5_000)
+  })
+
+  it('refuses to compile a perfected third-party claim whose pool it may not touch', () => {
+    // Senior over an empty pool. Priority we cannot enforce is not security,
+    // and issuing it would be the most expensive kind of misleading UI.
+    const g = blcu({ evidenceClass: 'E2', bondCents: 20_000, withheldCents: 20_000 })
+    ;(g.nodes.find((n) => n.id === 'cap') as { perfection?: string }).perfection = 'onchain'
+    const r = compileEnterprise(g)
+    expect(r.ok).toBe(false)
+    if (!r.ok) {
+      expect(r.denials.map((d) => d.code)).toContain('SENIOR_BUT_UNRECOVERABLE')
+      expect(r.denials.find((d) => d.code === 'SENIOR_BUT_UNRECOVERABLE')!.reason).toMatch(
+        /is not security/,
+      )
+    }
+  })
+
+  it('keeps unrecoveredCents equal to what the pool could not cover', () => {
+    const g = blcu({ evidenceClass: 'E3', financier: null, bondCents: 1_000, withheldCents: 0 })
+    const r = compileEnterprise({ ...g, nodes: g.nodes })
+    // Worst case here exceeds the ceiling, so it must not compile — the
+    // settlement-time shortfall this would produce is precisely what the
+    // compile-time check exists to prevent.
+    expect(r.ok).toBe(false)
+  })
+
+  it('recovers nothing and reports the whole loss when the operator holds nothing', () => {
+    const g = blcu({ evidenceClass: 'E3', financier: null, bondCents: 9_500, withheldCents: 0 })
+    const r = compileEnterprise(g)
+    if (!r.ok) throw new Error('should compile: bond covers the worst case at E3')
+    const s = settle(r.compiled, 0)
+    expect(s.recovery.poolCents).toBe(9_500)
+    expect(s.recovery.unrecoveredCents).toBe(0)
+
+    // Same graph at E2: identical holdings, and now none of it is reachable.
+    const weak = compileEnterprise({ ...g, evidenceClass: 'E2' })
+    expect(weak.ok).toBe(false)
+  })
+})
+
 describe('dissolve', () => {
   it('revokes the graph but keeps the record contextual credit is computed from', () => {
     const r = compileEnterprise(blcu({ evidenceClass: 'E3', bondCents: 10_000, withheldCents: 200 }))

@@ -47,9 +47,11 @@ import { classRank, type EvidenceClass } from './evidence-assurance'
 import {
   applyMerger,
   distribute,
+  type Distribution,
   type MergerResult,
   type Perfection,
   type Stick,
+  type StickPayment,
 } from './property-sticks'
 
 /** All money in this module is integer USD cents. Floats drift; a waterfall
@@ -231,6 +233,7 @@ export interface Denial {
     | 'ROYALTY_OVERSUBSCRIBED'
     | 'ADVANCE_DOES_NOT_COVER_WHAT_IT_FUNDS'
     | 'FUNDS_UNKNOWN_NODE'
+    | 'SENIOR_BUT_UNRECOVERABLE'
   reason: string
 }
 
@@ -336,6 +339,24 @@ export function compileEnterprise(graph: EnterpriseGraph): CompileResult {
     })
   }
 
+  // Senior over an empty pool: the trap the two axes only reveal together.
+  // A financier can be recorded on-chain, first in line, and still recover
+  // nothing, because the evidence channel cannot support charging the bond
+  // sitting right there. Refusing to compile is the only honest answer — the
+  // alternative is issuing a priority we know cannot be enforced.
+  const perfectedThirdParty = graph.nodes.find(
+    (n) =>
+      n.kind === 'CapitalCommitment' &&
+      n.party !== op?.party &&
+      (n.perfection ?? 'contractual') === 'onchain',
+  )
+  if (perfectedThirdParty && !risk.collateralChargeable && (op?.bondCents ?? 0) > 0) {
+    denials.push({
+      code: 'SENIOR_BUT_UNRECOVERABLE',
+      reason: `${perfectedThirdParty.id} is perfected on-chain and would rank first, but at ${graph.evidenceClass} the operator's ${usd(op?.bondCents ?? 0)} bond cannot be charged — priority over a pool we may not touch is not security`,
+    })
+  }
+
   if (risk.uncoveredCents > 0) {
     denials.push({
       code: 'EXPOSURE_EXCEEDS_CEILING',
@@ -385,6 +406,8 @@ export interface Settlement {
    *  themselves. Reported rather than silently dropped: the money did not
    *  disappear, it was never a claim. */
   merged: MergerResult['merged']
+  /** What short claimants could reach from the operator, and in what order. */
+  recovery: Recovery
 }
 
 /**
@@ -499,13 +522,80 @@ export function settle(compiled: Compiled, revenueCents: Cents): Settlement {
     shortfallCents: 0,
   })
 
-  // A negative residual is charged against the operator's holdings. Anything
-  // beyond them lands on the senior claimants, which is the failure the
-  // compile-time check exists to make impossible.
-  const unrecoveredCents =
-    residualCents < 0 ? Math.max(0, -residualCents - risk.enforceableCeilingCents) : 0
+  const recovery = recover(graph, sticks, dist)
 
-  return { revenueCents, allocations, residualCents, unrecoveredCents, merged }
+  return {
+    revenueCents,
+    allocations,
+    residualCents,
+    unrecoveredCents: recovery.unrecoveredCents,
+    merged,
+    recovery,
+  }
+}
+
+/**
+ * Where the two axes finally meet.
+ *
+ * Until now they ran past each other. **Publicity** decided who gets paid first
+ * out of proceeds that exist (`lib/property-sticks.ts`). **Evidence** decided
+ * whether the operator's collateral may be charged at all
+ * (`MIN_CLASS_FOR_CHARGING_COLLATERAL`). Neither function answered the question
+ * a short claimant actually asks: *given that the sale did not cover me, what
+ * can I reach, and am I ahead of the others reaching for it?*
+ *
+ * The answer is the product of both, and it is a second distribution over a
+ * different pool:
+ *
+ *   pool  = withheld earnings + (collateral, only if the class allows charging)
+ *   order = the same priority order — a perfected claim is senior here too
+ *
+ * The state this exposes is the one worth naming, because it looks safe and is
+ * not: **senior over an empty pool.** A financier can be first in line, recorded
+ * on-chain, and recover nothing, because the evidence channel cannot support
+ * taking the bond that is sitting right there. Priority is not recovery. That
+ * is why `unreachableCents` is reported separately instead of being netted
+ * away — an audit panel that shows "$80 held, $0 recoverable" tells a lender
+ * something a single "recovered: $0" never would.
+ */
+export interface Recovery {
+  /** What may actually be taken from the operator to cover shortfalls. */
+  poolCents: Cents
+  /** Held by the protocol and NOT chargeable at this evidence class. */
+  unreachableCents: Cents
+  /** Who was made whole, in priority order, out of the pool. */
+  payments: StickPayment[]
+  /** Loss that stays with the claimants after the pool is exhausted. */
+  unrecoveredCents: Cents
+}
+
+export function recover(
+  graph: EnterpriseGraph,
+  claims: Stick[],
+  dist: Distribution,
+): Recovery {
+  const op = graph.nodes.find((n): n is OperatingRight => n.kind === 'OperatingRight')!
+  const chargeable = capitalIsSecurable(graph.evidenceClass)
+  const poolCents = op.withheldEarningsCents + (chargeable ? op.bondCents : 0)
+  const unreachableCents = chargeable ? 0 : op.bondCents
+
+  const byId = new Map(claims.map((c) => [c.id, c]))
+  // Each shortfall becomes a claim on the recovery pool, at its own rank: the
+  // party who was senior to the revenue is senior to the collateral too.
+  const shortfalls: Stick[] = dist.payments
+    .filter((p) => p.shortfallCents > 0)
+    .map((p) => {
+      const original = byId.get(p.stickId)!
+      return { ...original, owedCents: p.shortfallCents }
+    })
+
+  const rec = distribute(shortfalls, poolCents)
+  return {
+    poolCents,
+    unreachableCents,
+    payments: rec.payments,
+    unrecoveredCents: rec.shortfallCents,
+  }
 }
 
 /**
