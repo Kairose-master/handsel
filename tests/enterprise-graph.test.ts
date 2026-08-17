@@ -233,12 +233,38 @@ describe('the settlement waterfall', () => {
     expect(s.unrecoveredCents).toBe(0)
   })
 
-  it('pays a percentage claim only after the fixed ones, so a fee never comes out of principal', () => {
+  it('shares a shortfall pro rata among claimants of equal rank, not by list position', () => {
+    // 채권자평등의 원칙. cap ($96.60), restock ($3.00) and the slot fee are all
+    // merely contractual here, so none outranks the others and each takes the
+    // same proportional haircut. The old hand-written order paid whichever I
+    // filtered first in full and left an equal claimant with nothing.
     const s = settle(compiled, 5_000)
+    const owed = { cap: 9_660, restock: 300, slot7: 300 }
+    const total = owed.cap + owed.restock + owed.slot7
+    for (const [id, o] of Object.entries(owed)) {
+      const a = s.allocations.find((x) => x.nodeId === id)!
+      expect(a.cents).toBeGreaterThan(0)
+      // Within a cent of its proportional share (the dust goes to the largest).
+      expect(Math.abs(a.cents - (5_000 * o) / total)).toBeLessThanOrEqual(1)
+    }
+  })
+
+  it('pays a perfected financier in full ahead of everyone — which is what perfection IS', () => {
+    // The same graph, with the advance recorded on-chain (assignPayee) instead
+    // of promised. This is the difference between 물권 and 채권, and it is the
+    // protocol's actual offer to a lender.
+    const g = blcu({ evidenceClass: 'E3', bondCents: 10_000, withheldCents: 200 })
+    ;(g.nodes.find((n) => n.id === 'cap') as { perfection?: string }).perfection = 'onchain'
+    const r = compileEnterprise(g)
+    if (!r.ok) throw new Error('should compile')
+    const s = settle(r.compiled, 5_000)
+
     const cap = s.allocations.find((a) => a.nodeId === 'cap')!
-    const slot = s.allocations.find((a) => a.nodeId === 'slot7')!
-    expect(cap.shortfallCents).toBeGreaterThan(0)
-    expect(slot.cents).toBe(0)
+    expect(cap.cents).toBe(5_000) // takes the whole sale before anyone else
+    expect(cap.shortfallCents).toBe(9_660 - 5_000)
+    for (const id of ['restock', 'slot7']) {
+      expect(s.allocations.find((a) => a.nodeId === id)!.cents).toBe(0)
+    }
   })
 
   it('pays zero to everyone on a zero-revenue graph without going negative anywhere', () => {

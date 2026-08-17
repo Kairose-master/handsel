@@ -44,6 +44,13 @@
  */
 
 import { classRank, type EvidenceClass } from './evidence-assurance'
+import {
+  applyMerger,
+  distribute,
+  type MergerResult,
+  type Perfection,
+  type Stick,
+} from './property-sticks'
 
 /** All money in this module is integer USD cents. Floats drift; a waterfall
  *  that does not sum exactly to the revenue is a waterfall that lost a cent
@@ -58,6 +65,15 @@ interface NodeBase {
   id: string
   /** Who supplies this. Roles are typed; parties are not unique across them. */
   party: string
+  /**
+   * How this node's claim is made good against third parties. Absent means
+   * `contractual` — a promise between two parties, which is where an unstated
+   * right belongs. See `lib/property-sticks.ts`: publicity decides seniority,
+   * so a generous default would hand out priority nobody published.
+   */
+  perfection?: Perfection
+  /** 성립 순위. Absent means "in graph order", which is only a tiebreak. */
+  sequence?: number
 }
 
 /** Policy discretion plus the residual — the operator. Exactly one per graph. */
@@ -365,63 +381,115 @@ export interface Settlement {
    *  it. Non-zero here means the compile-time check was wrong, or the graph
    *  was mutated after compiling. */
   unrecoveredCents: Cents
+  /** Sticks extinguished by 혼동 — security the residual holder held against
+   *  themselves. Reported rather than silently dropped: the money did not
+   *  disappear, it was never a claim. */
+  merged: MergerResult['merged']
 }
 
 /**
- * Pay out one sale, strictly in priority order.
+ * What each node is owed out of one sale, and how its claim is perfected.
  *
- * The order is not a preference. Each rank is senior to the next because its
- * claim is outcome-independent: goods were supplied, labour was performed,
- * capital was advanced, capacity was used. The operator is last because the
- * operator is the only party who *chose* the exposure.
+ * `perfection` is a property of the node rather than of its kind, because two
+ * financiers can be differently secured — one with `assignPayee` set on the
+ * escrow, one with a promise — and that difference is the whole point. It is a
+ * required field: an unstated perfection defaults to `contractual`, never to
+ * something generous.
+ */
+export function claimsOf(graph: EnterpriseGraph, revenueCents: Cents): Stick[] {
+  const funded = fundedNodeIds(graph)
+  const sticks: Stick[] = []
+  let seq = 0
+
+  for (const n of graph.nodes) {
+    seq += 1
+    const base = { id: n.id, party: n.party, sequence: n.sequence ?? seq }
+    switch (n.kind) {
+      case 'InventorySupply':
+        // A funded supplier was already paid in cash and is owed nothing here.
+        if (funded.has(n.id)) continue
+        sticks.push({
+          ...base,
+          incidents: ['capital'],
+          // 소유권유보 if they retained title, otherwise an ordinary trade creditor.
+          perfection: n.perfection ?? 'contractual',
+          owedCents: n.unitCostCents * n.units,
+        })
+        break
+      case 'ServiceJob':
+        if (funded.has(n.id)) continue
+        sticks.push({
+          ...base,
+          incidents: ['use'],
+          perfection: n.perfection ?? 'contractual',
+          owedCents: n.feeCents,
+        })
+        break
+      case 'CapitalCommitment':
+        sticks.push({
+          ...base,
+          incidents: ['security'],
+          perfection: n.perfection ?? 'contractual',
+          owedCents: n.principalCents + Math.round((n.principalCents * n.returnBps) / 10_000),
+          secures: n.fundsNodeIds,
+        })
+        break
+      case 'CapacityJob':
+        sticks.push({
+          ...base,
+          incidents: ['possession', 'income'],
+          perfection: n.perfection ?? 'contractual',
+          owedCents: n.fixedFeeCents + Math.round((revenueCents * n.feeBps) / 10_000),
+        })
+        break
+      case 'RecipeLicense':
+        sticks.push({
+          ...base,
+          incidents: ['income'],
+          perfection: n.perfection ?? 'contractual',
+          owedCents: Math.round((revenueCents * n.royaltyBps) / 10_000),
+        })
+        break
+      case 'OperatingRight':
+        // The residual is not a claim in the queue; it is what is left.
+        break
+    }
+  }
+  return sticks
+}
+
+/**
+ * Pay out one sale.
  *
- *   1. InventorySupply  — cost of goods
- *   2. ServiceJob       — labour, owed on performance
- *   3. CapitalCommitment— principal, then return
- *   4. CapacityJob      — machine fee
- *   5. RecipeLicense    — royalty
- *   6. OperatingRight   — residual, which may be negative
+ * The order is NOT written here. It comes from `lib/property-sticks.ts`:
+ * perfected claims in time order, then equal claimants pro rata, then the
+ * residual. Yesterday this function contained a hand-written sequence
+ * justified by an economic argument — outcome-independent claims are senior —
+ * which was a fairness intuition dressed as a rule, and which paid whichever
+ * equal claimant I happened to filter first in full while another got nothing.
  *
- * Royalty and capacity fees are bps of revenue and sit *below* the fixed
- * claims deliberately: a percentage claim on a sale that did not cover its own
- * cost of goods would be paying a fee out of someone else's principal.
+ * The doctrine's answer is harsher and truer: publicity decides seniority
+ * (물권 > 채권, 성립 순위), and claimants of equal rank share the shortfall
+ * (채권자평등의 원칙).
  */
 export function settle(compiled: Compiled, revenueCents: Cents): Settlement {
   const { graph, risk } = compiled
   const op = graph.nodes.find((n): n is OperatingRight => n.kind === 'OperatingRight')!
-  const funded = fundedNodeIds(graph)
-  let remaining = revenueCents
-  const allocations: Allocation[] = []
+  const kindOf = new Map<string, NodeKind>(graph.nodes.map((n) => [n.id, n.kind]))
 
-  const pay = (nodeId: string, party: string, kind: NodeKind, owed: Cents) => {
-    const paid = Math.max(0, Math.min(owed, remaining))
-    remaining -= paid
-    allocations.push({ nodeId, party, kind, cents: paid, shortfallCents: owed - paid })
-  }
+  // 혼동: security the residual holder holds against themselves is not a claim.
+  const { sticks, merged } = applyMerger(claimsOf(graph, revenueCents), op.party)
+  const dist = distribute(sticks, revenueCents)
 
-  // A node someone already paid in cash is not owed again out of revenue.
-  for (const n of graph.nodes.filter(
-    (x): x is InventorySupply => x.kind === 'InventorySupply' && !funded.has(x.id),
-  )) {
-    pay(n.id, n.party, n.kind, n.unitCostCents * n.units)
-  }
-  for (const n of graph.nodes.filter(
-    (x): x is ServiceJob => x.kind === 'ServiceJob' && !funded.has(x.id),
-  )) {
-    pay(n.id, n.party, n.kind, n.feeCents)
-  }
-  for (const n of graph.nodes.filter((x): x is CapitalCommitment => x.kind === 'CapitalCommitment')) {
-    pay(n.id, n.party, n.kind, n.principalCents + Math.round((n.principalCents * n.returnBps) / 10_000))
-  }
-  for (const n of graph.nodes.filter((x): x is CapacityJob => x.kind === 'CapacityJob')) {
-    pay(n.id, n.party, n.kind, n.fixedFeeCents + Math.round((revenueCents * n.feeBps) / 10_000))
-  }
-  for (const n of graph.nodes.filter((x): x is RecipeLicense => x.kind === 'RecipeLicense')) {
-    pay(n.id, n.party, n.kind, Math.round((revenueCents * n.royaltyBps) / 10_000))
-  }
+  const allocations: Allocation[] = dist.payments.map((p) => ({
+    nodeId: p.stickId,
+    party: p.party,
+    kind: kindOf.get(p.stickId)!,
+    cents: p.paidCents,
+    shortfallCents: p.shortfallCents,
+  }))
 
-  const shortfall = allocations.reduce((s, a) => s + a.shortfallCents, 0)
-  const residualCents = shortfall > 0 ? -shortfall : remaining
+  const residualCents = dist.shortfallCents > 0 ? -dist.shortfallCents : dist.remainingCents
 
   allocations.push({
     nodeId: op.id,
@@ -437,7 +505,7 @@ export function settle(compiled: Compiled, revenueCents: Cents): Settlement {
   const unrecoveredCents =
     residualCents < 0 ? Math.max(0, -residualCents - risk.enforceableCeilingCents) : 0
 
-  return { revenueCents, allocations, residualCents, unrecoveredCents }
+  return { revenueCents, allocations, residualCents, unrecoveredCents, merged }
 }
 
 /**
