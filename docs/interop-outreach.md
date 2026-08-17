@@ -86,13 +86,23 @@ neither side stands alone), which is a different patch than the one we filed.
 Not filing it now — thread 1 shows this repo is not taking outside patches at
 present, so a second unengaged-with PR is cost without upside.
 
-**Not verified this cycle:** the comment threads on issues #6 and #10. Their
-pages returned 403 through the git proxy and 404 through the page fetcher, while
-PR pages fetched normally; the Issues tab exists and shows 5 open. So a reply on
-either could have appeared and we would not see it — recorded as unread rather
-than unchanged, because a gap in observation is not evidence of absence. Same
-distinction this codebase enforces in `lib/evidence-assurance.ts`: coverage 0
-witnesses nothing.
+**Not verified:** the comment threads on issues #6 and #10 — and the reason is
+worth writing down once, because every check-in otherwise rediscovers it.
+
+The pages became readable on the 20:00 pass (they had returned 403/404 four
+hours earlier), and both issues are **still Open**: #6 (fablerlabs, 2026-07-13)
+is not closed by PR #12, #10 (bolivian-peru, 2026-07-31) is untouched. But the
+fetch path renders **only the opening post** — on PR #11 and #12 the single
+"comment" it reported was the PR description itself, and it found no reviews on
+either. So it has never demonstrated that it can see a follow-up comment
+anywhere, and the absence of our own posted comments on #6/#10 is evidence
+about the fetcher, not about the threads.
+
+Which means a maintainer reply on any of these four would be invisible to us.
+Recorded as **unread, not unchanged** — a gap in observation is not evidence of
+absence, the same distinction `lib/evidence-assurance.ts` enforces when coverage
+is 0. Reading these properly needs an authenticated API path, which this session
+does not have for repositories outside its scope.
 
 ## Standing rules for new threads
 
