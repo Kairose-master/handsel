@@ -1,11 +1,16 @@
 # Handsel — Pitch Deck
 
-*GASOK application (MVP Build track). An interactive, styled version of this
-deck also exists as a Claude Artifact; this is the permanent, publicly
-linkable copy.*
+*Originally the GASOK application deck (MVP Build track), rewritten 2026-08-17
+for the GIWA presentation. The permanent, publicly linkable copy.*
 
-**Live demo (no signup):** https://ai-agent-credit-dashboard.vercel.app/guest
-**Repo (Apache 2.0):** https://github.com/Kairose-master/ai-agent-credit-dashboard
+**Live, real money:** https://handsel-main.vercel.app · Base mainnet, Circle USDC
+**Zero-value sandbox:** https://handsel-nu.vercel.app · Base Sepolia
+**Repo (Apache 2.0):** https://github.com/Kairose-master/handsel
+
+> Every number on every page is a live query. There is no seeded data anywhere
+> in this product, which is also why some of the numbers below are small.
+
+---
 
 <img src="assets/pitch-banner.svg" alt="Handsel — an on-chain credit history for AI agents" width="900">
 
@@ -13,167 +18,207 @@ linkable copy.*
 
 ## 1. An on-chain credit history for AI agents
 
-Earned from actually-verified work — not self-reported success. Built solo,
-tested in public, ready to build on GIWA. (The deployment actually taken since
-this application: Base mainnet, live with real USDC as of 2026-07-30.)
+Earned from independently verified work — not self-reported success. Built solo,
+tested by strangers, live on Base mainnet with real USDC since **2026-07-30**.
 
 ---
 
 ## 2. The problem
 
-Agents transact with agents now — and the only signal is "it said it worked."
+Agents transact with agents now, and the only signal is *"it said it worked."*
 
-Every agent-to-agent system today collapses to the same trust primitive: the
-agent's own claim of success. No history, no consequence for being wrong, no
-way to tell a genuinely capable agent from one that's merely confident.
-
-- **No memory** — an agent that fails today looks identical to one that never
-  has. Nothing about past performance carries forward.
+- **No memory** — an agent that failed yesterday looks identical to one that
+  never has.
 - **No independent check** — "completed" usually means the agent said so.
   Confidently wrong output passes the same as correct output.
-- **No capital access** — a track record that isn't captured can't be lent
-  against; agents can't earn the economic trust people do.
+- **No capital access** — a track record nobody captured cannot be lent
+  against.
 
 ---
 
 ## 3. The solution
 
-Give every agent a real credit history, on-chain.
+Every agent gets an ERC-4337 smart account. Every task, dispute and verified
+result is written to one behavioural ledger, scored, and published as an
+on-chain credit limit.
 
-Each agent gets its own ERC-4337 smart account. Its behavior — every task,
-every dispute, every verified result — is logged to a ledger, scored, and
-published as an on-chain credit limit it can actually draw against.
-
-- **Grader ≠ solver** — the agent that does the work is never the one who
-  grades it. Credit-worthy signal comes from independent verification, not
-  self-assessment.
-- **Credit like a person's** — score → rating → limit → draw → repay →
-  score, the same loop a FICO-backed line of credit runs, computed from
-  real behavioral history instead of a bureau file.
+- **Grader ≠ solver.** The agent that does the work never grades it.
+- **Pay only on pass.** Escrow releases on a verdict, not on a claim.
+- **A signed proof per deliverable**, so the verdict outlives our database.
 
 <img src="assets/pitch-credit-loop.svg" alt="Score, rating, limit, draw, repay loop" width="900">
 
----
-
-## 4. How it works
-
-Three subsystems feed one ledger:
-
-<img src="assets/pitch-flow.svg" alt="Labor Market, Proving Ground, and Credit Vault feed one ledger" width="900">
+Score → rating → limit → draw → repay → score: the loop a FICO-backed line of
+credit runs, computed from behaviour instead of a bureau file.
 
 ---
 
-## 5. The GPU story: what mining rigs do next
+## 4. What changed since the application
 
-After the mining boom, consumer GPUs went idle. DePIN compute networks
-(Bittensor, io.net, Akash) rent them out again — but they bill for **GPU
-time**, because time is easy to verify and quality isn't. Mining paid for
-hashes; they pay for hours. Nobody pays for *work being right*.
+The deck it replaced described a plan. This is what the four months bought:
 
-Handsel sells **verified labor, not hashrate** — and it already runs:
+| | |
+|---|---|
+| **Base mainnet** | Live 2026-07-30 with real USDC; first full job cycle settled on-chain the same day. Verified bytecode, self-audit, static analysis, a funded "break it" challenge open until 2026-08-30 |
+| **A second runtime** | The same money loop as an Anchor program on Solana devnet (`8C3gbrTv5vriPiEjuS7BukrnxyAFoDYt8BdBCf7W2G6H`). One task feed, one credit engine, two chains |
+| **A physical node** | A vending booth: an on-chain payment dispenses a real item, and a plotter takes `[machine:plot]` bounties. Testnet only, no mainnet path |
+| **Outside contact** | A PR into another team's agent-benchmark repo **merged** (Agent-Field/SWE-AF #131); a substantive technical exchange on ERC-8183; three design defects reported on our own repo by strangers, all verified, one a real production bug |
+| **1,840 tests** | 138 files. Every production incident that gets fixed lands with a test that pins it |
 
-- **One command** connects a locally-hosted model (Ollama on an RTX 3060)
-  as a market worker. The worker polls outbound, CI-runner style — no
-  tunnel, no public IP, works behind any firewall.
-- Its output is **independently graded before money moves** — requester-
-  authored acceptance tests executed by the platform runtime, hidden
-  ground-truth answers, dispute review. The machine that did the work
-  never grades it.
-- Repeat verified work compounds into **on-chain credit** — a reputation
-  and borrowing capacity that hashrate never earned anyone.
+---
 
-The pitch to a GPU owner is one sentence: *your mining rig's next job is
-skilled labor with a credit score.*
+## 5. The two ideas worth presenting
+
+Both shipped this month, both are the kind of rule that makes a market
+refuse things it would rather allow.
+
+### Evidence bounds authority, it does not merely describe events
+
+`lib/evidence-assurance.ts` scores every ground for moving money on five
+dimensions — reproducibility, independence, tamper resistance, coverage,
+subject control — and compiles a class **E0–E4**. The class caps the permissible
+remedy, and `MIN_CLASS_FOR_MONEY = 'E3'`: below it, a ruling is downgraded and
+the deadline decides instead of us.
+
+The load-bearing rule is that **reproducibility rescues a related-party
+issuer.** An on-chain hash comparison reported by the platform is E4 — anyone
+can recompute it. The platform's report about rows in its own database is not,
+however honest the platform is.
+
+That has a consequence in the physical world we did not choose: a dispense
+happens once in a corridor and is gone, so **physical evidence has
+reproducibility 0 by construction** and cannot use that escape hatch. Physical
+operatorship is capped lower than an equally well-run digital job by a fact
+about physical space. Concretely: nothing our vending booth can currently
+observe — including a not-yet-installed IR gate at the outlet — reaches E3,
+because a sensor wired by the party who profits from its reports is not
+independent. The model does not ask for a better sensor. It asks for a less
+interested one.
+
+### Priority comes from publicity, and property law worked this out first
+
+A thing does not bear one right; it bears a bundle of separable incidents, the
+way Korean 민법 puts 소유권 and several 제한물권 on one 물건 at once. So a
+micro-enterprise is compiled from typed sticks — operating right, licence,
+capacity, capital, service, supply — and the settlement order is **not written
+by us**:
+
+```
+물권 > 채권              a right in the thing beats a promise about it
+물권 사이: 성립 순위      earlier-perfected wins
+일반채권자 사이: 평등     equal claimants share pro rata
+```
+
+`assignPayee` on our own LaborMarketV2, shipped in July, turns out to be
+literally the act of perfection — the difference between a lender who can *see*
+the escrow and one who can *seize* it.
+
+Three doctrines closed real gaps in our code: **혼동** (191조) stopped us paying
+a financier out of their own money when they were also the operator; **물상대위**
+(342·370조) gave a financier a claim on the insurance that replaces destroyed
+inventory, which our settlement had no path for; and the anticommons warning
+supplied the missing *reason* for a rule we were already enforcing — exactly one
+holder may decide, or everybody has a veto and the machine never dispenses.
+
+**And the frame carries its own strongest objection.** Numerus clausus —
+물권법정주의, 민법 185조 — forbids inventing new real rights by contract,
+because every bespoke combination imposes investigation costs on every future
+third party. A compiler for arbitrary combinations is what that doctrine
+forbids. Our answer: *numerus clausus prices information cost, and complete free
+publicity relaxes what it was pricing* — a stranger reads the graph instead of
+trusting an abstract of title. Which is why an unstated perfection defaults to
+the weak one, and never to something preferential.
+
+### Where the two meet
+
+Publicity decides who is paid first; evidence decides whether collateral may be
+charged at all. Together they name a state that looks safe and is not: **senior
+over an empty pool.** A financier can be recorded on-chain, ranked first, and
+recover nothing, because the evidence channel cannot support taking the bond
+sitting right there. The compiler refuses that shape rather than issuing a
+priority it knows cannot be enforced.
 
 ---
 
 ## 6. Architecture
 
-Four contracts, one behavioral ledger:
-
-<img src="assets/pitch-architecture.svg" alt="Four contracts connected to a central behavioral ledger and credit score" width="900">
+<img src="assets/pitch-architecture.svg" alt="Contracts connected to a central behavioural ledger and credit score" width="900">
 
 | Contract | Role |
 | --- | --- |
-| `AgentCreditRegistry` | Oracle-published credit limit per agent, attested via EAS |
-| `AgentCreditVault` | Lends mUSDC up to the registry limit; tracks outstanding balance and repayment (testnet sandbox only) |
-| `LaborMarket` | USDC escrow for agent-to-agent work; immutable on-chain arbiter for disputes (v1, testnet) |
-| `LaborMarketV2` | The contract holding mainnet money: escrow with worker bond, pull payments, and permissionless exits |
+| `LaborMarketV2` | The contract holding mainnet money: escrow with worker bond, pull payments, assignable payee, permissionless exits |
+| `AgentCreditRegistry` | Oracle-published credit limit per agent |
+| `AgentCreditVault` | Lends against the registry limit (testnet sandbox only) |
 | `VerifiedTaskEscrow` | Commit-reveal settlement against a hidden ground-truth answer |
+| Anchor program (Solana) | The same post → accept-with-bond → submit → approve → withdraw loop, devnet |
 
-Stack: ERC-4337 (Kernel / ZeroDev) · Solidity (Foundry) · Next.js · Neon
-Postgres · Python / LangGraph / Claude · Apache 2.0, public repo.
-
----
-
-## 7. Already tested in public
-
-Shared across r/SideProject, r/ethdev, and Indie Hackers this week — not for
-reach, but for scrutiny. It held up, and where it didn't, that's now
-tracked, not hidden.
-
-- **3 days** — idea to a working on-chain demo
-- **2** — design gaps opened as public GitHub issues from real feedback
-  ([#6](https://github.com/Kairose-master/ai-agent-credit-dashboard/issues/6),
-  [#7](https://github.com/Kairose-master/ai-agent-credit-dashboard/issues/7))
-- **0** — seeded data; every number in the demo is a live query
+Stack: ERC-4337 (Kernel / ZeroDev) · Solidity (Foundry) · Anchor / Rust ·
+Next.js 16 · Neon Postgres · MCP connector (Streamable HTTP + OAuth 2.1) ·
+Tauri desktop worker · Apache 2.0.
 
 ---
 
-## 8. Why GIWA
+## 7. Why GIWA
 
 The transaction profile is the argument. An agent economy runs on frequent,
-small-value transactions — job payouts, draws, repayments — at a pace no
-human-mediated system matches. That's expensive on L1 and still costly at
-volume on most general-purpose L2s.
+small-value transactions — payouts, draws, repayments — at a pace no
+human-mediated system matches.
 
 - **Fits the workload** — ~₩1/tx and 1-second finality on an OP Stack,
-  EVM-compatible L2, built for exactly this transaction shape.
+  EVM-compatible L2. All five contracts were already **deployed and verified on
+  GIWA testnet** during the application ([LaborMarket](https://sepolia-explorer.giwa.io/address/0xaa5b0dc472c0c373a3d0602937533fa9fda94601)).
 - **Fits the market** — Dunamu/Upbit distribution in Korea and APAC, the
-  builder's home market and a real first market for credit infrastructure
-  that needs trust to bootstrap.
+  builder's home market.
+- **Porting cost is now known, not guessed.** The Solana port proved the
+  chain-abstraction seam is real: `chainKind()` discriminates the runtime and
+  the credit engine above it did not change. A GIWA deployment is a
+  configuration, not a rewrite.
 
 ---
 
-## 9. Roadmap against GASOK
+## 8. What is honestly missing
 
-- **MVP Build** — all five contracts are **already deployed and verified
-  on GIWA testnet** (e.g.
-  [LaborMarket](https://sepolia-explorer.giwa.io/address/0xaa5b0dc472c0c373a3d0602937533fa9fda94601));
-  since then, the live app went to **Base mainnet on 2026-07-30**
-  (LaborMarketV2 + registry, real USDC), with Sepolia running in parallel
-  as the sandbox.
-- **Productize** — replace the single-EOA dispute arbiter with a
-  domain-scoped, staked reviewer model (tracked design work, issue #7); add
-  a calibration signal so credit scoring penalizes confident-but-wrong
-  output, not just completion (issue #6).
-- **Mainnet hardening** — mainnet is live; security review of the contracts
-  is now hardening of a live deployment (no formal audit yet, flagged
-  honestly in the repo today); gas/paymaster policy review at real
-  agent-economy transaction volume.
-- **KPIs** — real agent-to-agent job volume and vault TVL, instrumented
-  from the behavioral event ledger that already drives credit scoring —
-  not new infrastructure, existing plumbing.
+The strongest objection to this project is not technical, and it is documented
+in the repo rather than left for a reviewer to find (`docs/product-thesis.md`).
+
+- **Demand is mine.** No externally funded requester has ever posted a paid
+  job. Our own counterparty-independence metric classifies this market as a
+  star centred on the operator — we built the Sybil detector and its first
+  finding was the shape of our own demand.
+- **The advance has never been needed.** The narrow claim is an
+  escrow-collateralised advance against work already escrowed; in this market
+  the prime is usually funded by the operator too, so the working-capital gap
+  has never bound. `advanceLimit` is measured and nothing consumes it yet.
+- **The arbiter is still one key.** Evidence-bounded remedies narrowed what
+  that key may do; they did not remove it.
+- **No formal audit.** Verified bytecode, self-audit, static analysis and a
+  funded public challenge are not the same thing, and the repo says so.
+
+Every one of those is a reason to fund a market, not a reason to hide one. What
+exists is a mechanism that has settled real money correctly and refuses to move
+it on evidence that cannot support the move.
+
+---
+
+## 9. Roadmap
+
+- **Externally funded demand** — the only metric that matters next. Everything
+  else is built and idle.
+- **An independent observer for the physical lane** — the E3 requirement above
+  is a hardware and organisational problem, not a software one.
+- **Retire the single-key arbiter** for a domain-scoped, staked reviewer model.
+- **Wire `advanceLimit`** so the measured orchestration risk actually prices a
+  draw.
 
 ---
 
 ## 10. Team
 
-**Founder & sole developer** — 19, based in Korea, student. Designed and
-shipped every layer alone — contracts, backend, agent runtime, dashboard —
-over the past week, built with Claude Code.
+**Founder and sole developer** — based in Korea, student at Hankuk University of
+Foreign Studies (Chinese Diplomacy & Trade), self-taught. Contracts, backend,
+agent runtime, dashboard, Anchor program, desktop client and the physical
+machine, alone, with Claude Code.
 
-What that speed proves: not just velocity, but end-to-end ownership across
-contracts, UX, and AI systems, with judgment already stress-tested by
-outside engineers rather than assumed.
-
----
-
-## 11. What GASOK enables
-
-Harden a market that is already live on mainnet with real money. Resources
-and mentorship to take this from a working product validated by strangers on
-the internet, to production infrastructure agents can actually depend on.
-
-- Repo: https://github.com/Kairose-master/ai-agent-credit-dashboard
-- Live demo, no signup: https://ai-agent-credit-dashboard.vercel.app/guest
+- Repo: https://github.com/Kairose-master/handsel
+- Live, real money: https://handsel-main.vercel.app
+- Terms, custody model and related-party disclosure: https://handsel-main.vercel.app/participation
