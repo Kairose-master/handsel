@@ -229,6 +229,26 @@ subsidised restock is the machine owner doing the lessee's job for free,
 which is the arrangement operatorship exists to end — so an operator with
 nothing accrued cannot hire, and is told exactly that.
 
+## First physical settlement, 2026-08-18
+
+An escrowed job on Solana devnet, worked by a pen plotter over WiFi, ran end to
+end: **job #9 posted, claimed, plotted, submitted, `Completed`.** Money moved
+because a machine did something in the world, which is the whole premise of this
+document and had never actually happened before.
+
+It took five attempts. Jobs **#5–#8 are still `Accepted`** — four escrows held
+by a worker that stopped existing mid-run. The cause was a sagging battery
+wearing three different network error messages; the diagnosis, and the platform
+defect it exposed (an accepted job has no exit but the deadline), are
+failure-modes §29. The stuck jobs are left in place because they are the
+evidence that the gap is real.
+
+Source: the sandbox task feed at `?status=all`, cross-checked against the
+program on devnet. Note the asymmetry this document should be honest about — the
+*settlement* is verifiable by anyone; that a pen actually moved on paper is
+attested by the booth alone. This first run is exactly the E2 claim the section
+below describes, not better.
+
 ## Evidence classes: the frontier this work exposed
 
 Everything above assumes the physical event can be known to have happened,
@@ -244,13 +264,44 @@ No sensor, no photo, no trusted third party — the machine doing its ordinary
 job is the attestation, recomputable by anyone reading the ledger. Confirmed
 restocks score higher than claimed ones, so the upgrade has teeth.
 
-The claim this suggests, stated so it can be tested: **the cheapest sensor
+The claim this suggested, stated so it could be tested: **the cheapest sensor
 that raises a class by one level is the highest-return part on the machine.**
 A ¥5 IR gate at the outlet turns "the servo was commanded" into "an object
-crossed the outlet" — worth more than a ¥500 better mechanism, because the
-mechanism raises throughput and the gate is what lets strangers transact
-without trusting each other. `instrumented` is declared in the ordering
-before the hardware exists precisely so this stays falsifiable.
+crossed the outlet" — worth more, the argument went, than a ¥500 better
+mechanism, because the mechanism raises throughput and the gate is what lets
+strangers transact without trusting each other. `instrumented` was declared in
+the ordering before the hardware existed precisely so this stayed falsifiable.
+
+### It was falsified, 2026-08-18
+
+Not by the hardware — by profiling the channel instead of ranking it. The
+ordinal ladder above is the thing that made the claim look true, because a
+ladder has only one dimension and a sensor obviously climbs it.
+`watcher/src/physical-authority.ts` scores five dimensions instead, and an IR
+gate **installed by the machine's owner** scores `independence: 1`. It compiles
+to **E2 — the same class as `confirmed-by-sale`, which we already have for
+free.** The ¥5 buys a better story and changes no decision the authority model
+makes.
+
+Two things follow, and the second is the one worth keeping.
+
+**The ladder was reordered by the profile.** `confirmed-by-sale` (E2) now
+outranks `buyer-attested` (E1), the reverse of the ordering above. Coverage is
+the dimension nothing substitutes for, and buyer attestation covers only the
+buyers who bother to attest.
+
+**The binding constraint is not sensitivity, it is interest.** No instrument the
+machine's owner controls reaches E3, however good it is, because the question
+E3 asks is not "did the channel see it" but "would the channel have reported
+otherwise". What unlocks third-party inventory capital is an observer the owner
+does not control — an organisational fact, not a bill of materials. So the
+booth's decision (2026-08-18) is to buy no sensor, run on `confirmed-by-sale`,
+and leave the capital-provider leg closed until there is someone independent to
+watch the outlet.
+
+The original claim was not carelessly wrong. It was right about the shape
+(cheap evidence beats expensive mechanism) and wrong about which cheap thing —
+which is what a prediction written to be falsifiable is for.
 
 ## The unifying object
 

@@ -1467,6 +1467,54 @@ test target, not a warning.
 
 ---
 
+## 29. Four jobs are still holding escrow because a battery sagged
+
+**Symptom.** Five attempts at the physical loop — an escrowed job on Solana
+devnet whose worker is a pen plotter over WiFi. Attempts on jobs **#5, #6, #7
+and #8 all died mid-run and left those jobs `Accepted`**, which is where they
+still are. **#9 completed.**
+
+**Three different error messages, and only two causes.**
+
+| Attempt | Error | Actual cause |
+|---|---|---|
+| 1 | `ETIMEDOUT 172.20.10.5:23` | The iPhone hotspot reassigned the board's IP. Fixed by switching `.env` to `grblesp.local:23` (mDNS) |
+| 2 | `GRBL did not answer within 30000ms` | Battery sag |
+| 3 | `ENOTFOUND grblesp.local` | Battery sag — the board had dropped off the network entirely |
+| 4 | — | Battery sag |
+| 5 | *completed* | **Wall power** |
+
+The messages made this look like a networking problem for three attempts
+running, and it was one exactly once. A board that browns out mid-job answers
+nothing (attempt 2) and then fails to appear on mDNS at all (attempt 3), so the
+transport reports a name that will not resolve and the operator debugs DNS. The
+diagnostic that would have shortened this is not in the transport layer:
+**intermittent, worsening, and touching all three of association, mDNS and
+serial response at once is a power symptom, not a network one.**
+
+**Fix.** Wall power. Not "a bigger battery" — the failure is that any battery
+introduces a variable whose signature is indistinguishable from three unrelated
+network faults, on a machine that is one metre from an outlet.
+
+**What this cost, and the actual defect.** Four jobs sit `Accepted` with escrow
+held. That is not a plotter problem, it is ours: **a worker that dies mid-job
+has no path back except the deadline.** The job stays claimed, the escrow stays
+locked, and nothing on the platform notices that the claimant stopped existing.
+`reclaim_job` after the deadline is the only exit, which is correct as a
+backstop and wrong as the primary path — the operator has to wait out a timer
+for a failure that was obvious within thirty seconds.
+
+Left open deliberately rather than swept: the four stuck jobs are the honest
+evidence of it, and clearing them by hand would delete the only record that the
+gap exists. What would close it is a heartbeat on an accepted job — a claimant
+that stops reporting releases the claim early — which is unbuilt and is now the
+first thing the machine lane needs.
+
+**Where to look first.** If a `[machine:*]` job is `Accepted` and nothing is
+moving: check the board's power before anything else, then `ping grblesp.local`,
+then the job's deadline. The order matters — the first check is the one the
+error messages will not suggest.
+
 ## Diagnostic surfaces
 
 Check these before reading code:
