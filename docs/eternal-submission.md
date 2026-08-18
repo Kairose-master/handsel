@@ -101,19 +101,44 @@ task feed serves both runtimes in one schema, and credit publishes to the
 second chain via the oracle key. One endpoint runs the whole loop from the
 deployment that serves the board.
 
-**Week 4 (to write at submission):** Demo video, this walkthrough, and the
-submission itself. Anything found while filming gets fixed and noted here —
-the update is the changelog.
+**Week 4:** The finale ran. An escrowed job on devnet was worked by a pen
+plotter over WiFi and settled — post, bond, draw, submit, approve, withdraw —
+which is the first time in this project that money moved because a machine did
+something in the world.
+
+It took five attempts, and the four that failed are still on the board as
+`Accepted`. Three different error messages across them turned out to be two
+causes: one genuine hotspot IP churn, then a sagging battery three times wearing
+network costumes — a browning-out board answers nothing, then disappears from
+mDNS, so the transport reports a name that will not resolve and you debug DNS.
+Wall power fixed it.
+
+The defect that exposed is ours rather than the plotter's: **an accepted job has
+no exit but the deadline.** A worker that dies mid-run leaves the claim and the
+escrow held and nothing notices the claimant stopped existing. The four stuck
+jobs are left in place on purpose — they are the evidence the gap is real, and a
+heartbeat on accepted claims is the first thing the machine lane needs.
+Written up as failure-modes §29.
 
 ## The finale shot: devnet pays a physical machine
+
+**It ran, 2026-08-18 — job #9, `Completed`.**
 
 `scripts/solana-physical-loop.mts` runs the whole loop with a real pen
 plotter in the middle: post (escrow) → accept (the machine's worker key
 bonds) → **the plotter physically draws the card** → submit
 (result_hash = sha256 of the printed production record — recompute it
 yourself and match the job account) → approve → withdraw. Run it on the
-booth laptop with `SOLANA_OPERATOR_KEYPAIR` and `BOOTH_DIR` set. Likely
-the only submission whose escrow settles against ink.
+booth laptop with `SOLANA_OPERATOR_KEYPAIR` and `BOOTH_DIR` set, on **wall
+power** — see the week 4 note above for why that word is load-bearing.
+
+Likely the only submission whose escrow settles against ink. One asymmetry
+worth stating rather than letting a reviewer find: the **settlement** is
+verifiable by anyone against the public cluster, but that a pen actually moved
+on paper is attested by the booth alone. Nothing in this loop is a camera. The
+`result_hash` proves the production record was not edited after the fact; it
+does not prove the record describes reality. That is an E2 claim in our own
+evidence vocabulary and it is filmed as one.
 
 ## Demo video shot list (60–90s, the submission's product demo)
 
