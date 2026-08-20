@@ -22,8 +22,12 @@ queries cannot drift apart.
 | `bounty_open` | open issues labelled `bounty` | broadest honest proxy |
 | `bounty_open_unassigned` | …and unclaimed | what a newly arrived worker could take |
 | `bounty_fresh_30d` | …created in the last 30 days | flow, not stock — a stale backlog is not demand |
-| `algora_command` | open issues with `/bounty $` in comments | a real dollar figure behind the label |
-| `dollar_in_title` | open bounty issues with `$` in the title | an amount stated up front |
+| `sampled_n` | how many recent open unassigned bounty issues were opened and read | denominator |
+| `sampled_with_amount` | how many of those actually state a figure | the column that separates *labelled* from *funded* |
+
+Two columns were dropped after the first reading because they were measuring
+something other than their names — see [`CHANGELOG.md`](CHANGELOG.md). Read it
+before comparing dates.
 
 **An empty field means the query failed, and is never written as `0`.** A
 failure recorded as zero is indistinguishable from a channel that emptied out,

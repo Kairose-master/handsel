@@ -61,17 +61,65 @@ export const QUERIES: CensusQuery[] = [
     q: 'is:issue is:open label:bounty created:>{{d30}}',
     why: 'flow rather than stock. A large backlog of stale bounties is not demand',
   },
-  {
-    key: 'algora_command',
-    q: 'is:issue is:open "/bounty $" in:comments',
-    why: "Algora's funding command, which puts a real dollar figure behind the label",
-  },
-  {
-    key: 'dollar_in_title',
-    q: 'is:issue is:open label:bounty "$" in:title',
-    why: 'an amount stated up front, the strongest signal available from search alone',
-  },
 ]
+
+/**
+ * Two queries were removed after the first reading (2026-08-20), and the reason
+ * is worth keeping because it is a hole in this module's original design.
+ *
+ * `dollar_in_title` was `label:bounty "$" in:title` and returned **0**. GitHub
+ * search discards `$` as punctuation, so the query could never match anything.
+ * That is not a measurement of zero, it is a broken question — and it returned
+ * HTTP 200 with `total_count: 0`, so `parseCount` correctly recorded a *valid*
+ * zero. The null-vs-zero rule protects against a failed request. It does
+ * nothing against a request that succeeds while asking the wrong thing, and
+ * the wrong thing happened to answer in our favour.
+ *
+ * `algora_command` was `"/bounty $" in:comments` and returned 17,798 — four
+ * times the total number of issues labelled `bounty`. Search almost certainly
+ * dropped the punctuation and matched the bare word, so the column was
+ * measuring something other than its name.
+ *
+ * Both are replaced by `sampleAmountRate` below, which opens real issues
+ * instead of trusting a count. Counting is cheap and answers the wrong
+ * question; a label is not money.
+ */
+
+/** A `$12`, `$1,500`, `500 USDC`, `50 usd` in text. Deliberately strict about
+ *  requiring digits, so the word "bounty" alone never counts as an amount. */
+export const AMOUNT_RE = /(?:\$\s?\d[\d,]*(?:\.\d+)?)|(?:\b\d[\d,]*(?:\.\d+)?\s?(?:usdc|usd|dai|eth|sats)\b)/i
+
+export interface SampledIssue {
+  title: string
+  body?: string | null
+}
+
+export interface AmountRate {
+  sampled: number
+  withAmount: number
+  /** Share of the sample that states a figure, 0–1, or null on an empty sample. */
+  rate: number | null
+}
+
+/**
+ * What share of labelled bounty issues actually state a number?
+ *
+ * This is the column that separates "someone applied a label" from "someone
+ * named a price", and it is the only one of the two that bears on demand. It is
+ * a *rate over a sample*, never extrapolated to a count in the CSV — multiplying
+ * a sampled rate by a search total to produce "3,102 funded bounties" would be
+ * exactly the manufactured number this repo keeps deleting.
+ */
+export function sampleAmountRate(issues: SampledIssue[]): AmountRate {
+  const withAmount = issues.filter(
+    (i) => AMOUNT_RE.test(i.title) || AMOUNT_RE.test(i.body ?? ''),
+  ).length
+  return {
+    sampled: issues.length,
+    withAmount,
+    rate: issues.length === 0 ? null : Math.round((withAmount / issues.length) * 1000) / 1000,
+  }
+}
 
 /** Substitute the date placeholders. Kept pure so the query set is testable. */
 export function renderQuery(q: string, nowMs: number): string {
@@ -98,12 +146,14 @@ export interface CensusRow {
   counts: Record<string, number | null>
 }
 
-export const CSV_HEADER = ['date', ...QUERIES.map((q) => q.key)].join(',')
+export const SAMPLED_KEYS = ['sampled_n', 'sampled_with_amount'] as const
+export const CSV_HEADER = ['date', ...QUERIES.map((q) => q.key), ...SAMPLED_KEYS].join(',')
 
 /** One CSV line. `null` is written as an empty field, never as 0. */
 export function toCsvLine(row: CensusRow): string {
-  const cells = QUERIES.map((q) => {
-    const v = row.counts[q.key]
+  const keys = [...QUERIES.map((q) => q.key), ...SAMPLED_KEYS]
+  const cells = keys.map((k) => {
+    const v = row.counts[k]
     return v === null || v === undefined ? '' : String(v)
   })
   return [row.date, ...cells].join(',')

@@ -57,13 +57,47 @@ for (const { key, q } of QUERIES) {
   await new Promise((res) => setTimeout(res, 3_000)) // search API is 30 req/min; be well under
 }
 
+// Sampled column: open real issues and count how many state a figure. A label
+// is not money, and counting labels cannot tell the difference. The rate is
+// recorded as sampled_n / sampled_with_amount and never extrapolated to a
+// total — a sampled rate multiplied by a search count is a manufactured number.
+const AMOUNT_RE = /(?:\$\s?\d[\d,]*(?:\.\d+)?)|(?:\b\d[\d,]*(?:\.\d+)?\s?(?:usdc|usd|dai|eth|sats)\b)/i
+try {
+  const url =
+    'https://api.github.com/search/issues?q=' +
+    encodeURIComponent('is:issue is:open label:bounty no:assignee sort:created-desc') +
+    '&per_page=100'
+  const r = await fetch(url, {
+    headers: { authorization: `Bearer ${TOKEN}`, accept: 'application/vnd.github+json' },
+  })
+  if (r.ok) {
+    const body = await r.json()
+    const items = Array.isArray(body.items) ? body.items : []
+    const withAmount = items.filter(
+      (i) => AMOUNT_RE.test(i.title ?? '') || AMOUNT_RE.test(i.body ?? ''),
+    ).length
+    counts.sampled_n = items.length
+    counts.sampled_with_amount = withAmount
+    console.log(`sample                   ${withAmount}/${items.length} state an amount`)
+  } else {
+    counts.sampled_n = null
+    counts.sampled_with_amount = null
+    console.log('sample                   FAILED')
+  }
+} catch {
+  counts.sampled_n = null
+  counts.sampled_with_amount = null
+  console.log('sample                   FAILED')
+}
+
 if (Object.values(counts).every((v) => v === null)) {
   console.error('every query failed — writing nothing rather than a row of blanks')
   process.exit(0)
 }
 
 mkdirSync('data/demand-census', { recursive: true })
-const header = ['date', ...QUERIES.map((q) => q.key)].join(',')
+const SAMPLED = ['sampled_n', 'sampled_with_amount']
+const header = ['date', ...QUERIES.map((q) => q.key), ...SAMPLED].join(',')
 if (!existsSync(OUT)) writeFileSync(OUT, header + '\n')
 
 const existing = readFileSync(OUT, 'utf8')
@@ -72,7 +106,7 @@ if (existing.split('\n').some((l) => l.startsWith(today + ','))) {
   process.exit(0)
 }
 
-const line = [today, ...QUERIES.map((q) => (counts[q.key] ?? ''))].join(',')
+const line = [today, ...QUERIES.map((q) => counts[q.key] ?? ''), ...SAMPLED.map((k) => counts[k] ?? '')].join(',')
 writeFileSync(OUT, existing.replace(/\n*$/, '\n') + line + '\n')
 console.log(`appended: ${line}`)
 

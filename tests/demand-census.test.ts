@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import {
+  AMOUNT_RE,
   CSV_HEADER,
+  sampleAmountRate,
+  SAMPLED_KEYS,
   MIN_OBSERVATIONS_FOR_TREND,
   parseCount,
   parseCsv,
@@ -40,10 +43,10 @@ describe('the CSV never turns a missing reading into a number', () => {
   })
 
   it('round-trips through parseCsv preserving null vs zero', () => {
-    const csv = [CSV_HEADER, toCsvLine(row('2026-08-20', { bounty_open: 0, algora_command: null }))].join('\n')
+    const csv = [CSV_HEADER, toCsvLine(row('2026-08-20', { bounty_open: 0, sampled_with_amount: null }))].join('\n')
     const parsed = parseCsv(csv)
     expect(parsed[0]!.counts.bounty_open).toBe(0)
-    expect(parsed[0]!.counts.algora_command).toBeNull()
+    expect(parsed[0]!.counts.sampled_with_amount).toBeNull()
   })
 
   it('treats a header-only file as no data', () => {
@@ -100,8 +103,17 @@ describe('trends refuse to speak too early', () => {
 })
 
 describe('the query set stays comparable over time', () => {
-  it('has a stable header derived from the queries', () => {
-    expect(CSV_HEADER).toBe(['date', ...QUERIES.map((q) => q.key)].join(','))
+  it('has a stable header derived from the queries plus the sampled pair', () => {
+    expect(CSV_HEADER).toBe(['date', ...QUERIES.map((q) => q.key), ...SAMPLED_KEYS].join(','))
+  })
+
+  it('matches the header actually written in the committed series', () => {
+    // The series and the code drifting apart is the failure a CHANGELOG cannot
+    // catch — every historical row would silently shift a column.
+    const first = readFileSync(new URL('../data/demand-census/series.csv', import.meta.url), 'utf8')
+      .split('\n')[0]!
+      .trim()
+    expect(first).toBe(CSV_HEADER)
   })
 
   it('gives every query a stated reason, because a column nobody can justify is noise', () => {
@@ -116,10 +128,42 @@ describe('the query set stays comparable over time', () => {
   })
 })
 
+describe('sampling separates labelled from funded', () => {
+  it('counts only issues that state an actual figure', () => {
+    const r = sampleAmountRate([
+      { title: 'Fix login $50' },
+      { title: 'Add dark mode', body: 'we will pay 500 USDC' },
+      { title: 'bounty: help wanted', body: 'no amount here' },
+      { title: 'Refactor', body: null },
+    ])
+    expect(r.sampled).toBe(4)
+    expect(r.withAmount).toBe(2)
+    expect(r.rate).toBe(0.5)
+  })
+
+  it('does not treat the word bounty, or a bare $, as an amount', () => {
+    expect(AMOUNT_RE.test('bounty available')).toBe(false)
+    expect(AMOUNT_RE.test('costs $ tbd')).toBe(false)
+    expect(AMOUNT_RE.test('paid $12.50')).toBe(true)
+    expect(AMOUNT_RE.test('1000 sats')).toBe(true)
+  })
+
+  it('returns a null rate on an empty sample rather than 0', () => {
+    expect(sampleAmountRate([]).rate).toBeNull()
+  })
+})
+
 describe('the module states its own limits', () => {
   const src = readFileSync(new URL('../lib/demand-census.ts', import.meta.url), 'utf8')
 
   it('says out loud that this is not a measurement of demand', () => {
     expect(src).toMatch(/It is not "demand for agent labor"/)
+  })
+
+  it('keeps the record of why two columns were dropped', () => {
+    // The null-vs-zero rule defends the transport, not the semantics. That
+    // distinction cost us a column on day one and must not be re-learned.
+    expect(src).toMatch(/defends the transport, not\s*\n?\s*\*?\s*the semantics|protects against a failed request/)
+    expect(src).toMatch(/a label is not money/i)
   })
 })
