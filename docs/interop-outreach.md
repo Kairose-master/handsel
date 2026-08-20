@@ -123,8 +123,17 @@ one public bounty surface an outside crawler can see is advertising a test.
 Of the eight entries in that scan, seven are **supply side** — agents, runtimes
 and platforms looking for paid work, or infrastructure for paying:
 `relayhop/ClaudeEarnSelf-runtime` (×2), `relayhop/sn-monetization-runtime`,
-`Doris-sudo/monee-pay` (escrow contracts), `Scottcjn/Rustchain`, and us. One
-(`snowdensb/litellm`, a vulnerability scan) is arguably real demand.
+`Doris-sudo/monee-pay` (escrow contracts), `Scottcjn/Rustchain`, and us.
+
+The eighth was checked rather than assumed, and it changes the finding.
+`snowdensb/litellm` looked like the one real demand item — "67 vulnerabilities,
+severity 10.0". Its issue list is automated dependency-scanner reports on a
+fork, every one of them, and **not one offers payment**.
+
+So: a crawler whose entire job is finding bounties scanned GitHub, filed a
+digest titled *"Bounty Alert: 8 New Opportunities found"*, and **none of the
+eight is someone paying for work.** That is not "demand is thin". On this
+sample it is zero, and the sample is not ours.
 
 That is the same finding `docs/product-thesis.md` reaches from our own numbers —
 *the constraint is demand, not infrastructure* — reached independently, from a
