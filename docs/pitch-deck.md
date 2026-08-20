@@ -72,6 +72,15 @@ The deck it replaced described a plan. This is what the four months bought:
 Both shipped this month, both are the kind of rule that makes a market
 refuse things it would rather allow.
 
+> **Prior art, named up front.** The first of these two — no money on evidence
+> weaker than a floor — was published as **RAILS** (*Verification-Native Clearing
+> For Agentic Commerce*, arXiv 2606.08790, 7 June 2026) two months before we
+> built it, as a formal soundness property. We reached it independently, which
+> makes it convergence rather than invention. What is ours is the step after it:
+> evidence deciding whether **collateral is enforceable**, and therefore whether
+> a financing arrangement may be admitted at all. RAILS governs a payment; this
+> governs whether the deal may exist.
+
 ### Evidence bounds authority, it does not merely describe events
 
 `lib/evidence-assurance.ts` scores every ground for moving money on five

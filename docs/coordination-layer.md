@@ -300,6 +300,53 @@ because it is then a claim about something the issuer could not have seen.
 |---|---|
 | session policy hash, participant identity, locked bond, evidence Merkle root, verdict, settlement | shell logs, diffs, network logs, full execution trace |
 
+## Prior art: RAILS (added 2026-08-19, after the fact)
+
+The central rule of increment 1 below was published two months before we built
+it, and this document should not read as if it were ours.
+
+**RAILS — *Verification-Native Clearing For Agentic Commerce*, arXiv 2606.08790,
+7 June 2026.** Seven primitives (Obligation Object, Evidence Envelope,
+Verification Mesh, Clearing Decision, Settlement Instruction, Clearing Passport,
+Finality Rules) and one soundness property:
+
+> "no financially material settlement is supported by evidence below the
+> obligation's admissibility floor"
+
+That is `MIN_CLASS_FOR_MONEY = 'E3'`, stated first and stated better. The paper
+also claims the novelty explicitly — *"We are not aware of a prior agent-commerce
+verification mechanism that states a property of this kind"* — and its framing
+of what clearing is **not** ("Payment is not clearing. Authorization is not
+clearing. LLM-as-judge evaluation is not clearing. Settlement-risk escrow is not
+clearing: it consumes clearing decisions") is the argument this document spends
+several sections reaching.
+
+We arrived independently. That makes it convergent evidence that the problem is
+real, and it makes any unqualified novelty claim on our side false.
+
+### Where the two actually diverge
+
+Narrow, but real, and worth stating precisely instead of manufacturing a gap.
+
+RAILS decides **whether a settlement may execute**. Collateral appears in it as
+an obligation *parameter* — "hold the $500 collateral pending the 24h appeal
+window" — and credit is out of scope; the Clearing Passport is noted as feeding
+"future obligation underwriting". The spec has no slashing rule, no secured
+priority, no lien, and no notion of refusing a capital structure.
+
+Handsel asks the next question down the stack: **given this evidence, may the
+collateral be charged at all?** A bond that cannot be taken for a loss that
+cannot be proven is not security, so `MIN_CLASS_FOR_CHARGING_COLLATERAL` gates
+enforceability rather than payment — and `lib/enterprise-graph.ts` follows it
+through to refusing an arrangement outright (`THIRD_PARTY_CAPITAL_UNSECURED`
+when someone else's principal is at risk under weak evidence,
+`SENIOR_BUT_UNRECOVERABLE` when a perfected claim would rank first over a pool
+we may not touch).
+
+One sentence: **their floor governs a payment; ours governs whether a financing
+arrangement may exist.** That is the only part worth claiming, and it is smaller
+and sharper than what this document previously implied.
+
 ## Evidence assurance → remedy ceiling — **SHIPPED (increment 1)**
 
 The strongest idea in this design, and the one that generalises furthest. It is

@@ -15,6 +15,35 @@
  * — while the platform is itself a market participant (`/participation`
  * discloses operator-posted jobs). Both currently move the same money.
  *
+ * ## Prior art: RAILS got here first, and we should say so
+ *
+ * RAILS — *Verification-Native Clearing For Agentic Commerce*, arXiv 2606.08790,
+ * 7 June 2026 — states the rule this module enforces, two months before this
+ * file existed:
+ *
+ *   "no financially material settlement is supported by evidence below the
+ *    obligation's admissibility floor"
+ *
+ * That is `MIN_CLASS_FOR_MONEY` in one sentence, and the paper claims the
+ * novelty explicitly ("We are not aware of a prior agent-commerce verification
+ * mechanism that states a property of this kind"). This module was built
+ * without knowledge of it; that makes it convergent, not original, and the
+ * honest word for the overlap is prior art.
+ *
+ * Where the two diverge is narrow and real, and it is worth stating precisely
+ * rather than claiming a gap that is not there. RAILS decides **whether this
+ * settlement may execute**. It treats collateral as an obligation parameter —
+ * "hold the $500 collateral pending the 24h appeal window" — and scopes credit
+ * out entirely; the Clearing Passport is noted as feeding "future obligation
+ * underwriting". It specifies no slashing, no secured priority, no lien.
+ *
+ * Handsel asks the next question down: given this evidence, **may the
+ * collateral be charged at all?** A bond you cannot take for a loss you cannot
+ * prove is not security, and `lib/enterprise-graph.ts` follows that through to
+ * refusing a capital structure outright (`THIRD_PARTY_CAPITAL_UNSECURED`,
+ * `SENIOR_BUT_UNRECOVERABLE`). Their floor governs a payment. Ours governs
+ * whether a financing arrangement may exist.
+ *
  * ## Why a vector and not a rank
  *
  * The obvious model is a single ladder — supervisor log beats CI beats LLM.

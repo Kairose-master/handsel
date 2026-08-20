@@ -218,6 +218,14 @@ This measures the risk; it does not yet lend against it.
 
 ### Added since: what evidence is allowed to move money (2026-08-17)
 
+> **Prior art, added 2026-08-19.** The rule below — no money on evidence weaker
+> than a floor — was published as RAILS (arXiv 2606.08790, 7 June 2026) two
+> months before we built it, and states it as a formal soundness property. We
+> reached it independently; that is convergence, not originality. What is ours
+> is the step after: evidence deciding whether *collateral is chargeable*, and
+> therefore whether a financing arrangement may be admitted at all. See
+> `docs/coordination-layer.md` → *Prior art: RAILS*.
+
 A third thing the narrow claim needs, which this document did not name in July:
 the claim is that a *verifiable* fact settles money. Until this month nothing in
 the code enforced the converse — that an **unverifiable** fact must not.
