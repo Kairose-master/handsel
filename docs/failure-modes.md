@@ -1506,9 +1506,29 @@ for a failure that was obvious within thirty seconds.
 
 Left open deliberately rather than swept: the four stuck jobs are the honest
 evidence of it, and clearing them by hand would delete the only record that the
-gap exists. What would close it is a heartbeat on an accepted job — a claimant
-that stops reporting releases the claim early — which is unbuilt and is now the
-first thing the machine lane needs.
+gap exists.
+
+**Decision model built 2026-08-19 — `lib/claim-lease.ts`, 15 tests.** A claim
+becomes a renewable lease: heartbeat holds it, a lapsed lease warns, and an
+exhausted grace period revokes and relists. Two rules in it are the point:
+
+- **Silence never takes money.** A missing heartbeat cannot distinguish a
+  crashed worker from a severed network from a walk-away — which is exactly the
+  mistake this section documents on the operator's side, where three error
+  messages were one battery. `decideClaim` returns `maySlashBond: false` in
+  every reachable state, and it is a literal type rather than a value, so a
+  caller reaching for a bond transfer has to read the field and find out it
+  cannot. The justification is not leniency: absence-of-heartbeat is the
+  platform reporting the absence of rows in its own database, which classifies
+  below `MIN_CLASS_FOR_MONEY`, and a test asserts that ordering rather than
+  restating it in prose.
+- **Repeated abandonment is a pattern we may honestly attest to**, so it buys a
+  concurrency restriction and never a transfer. One abandonment does nothing —
+  a crash is not misconduct.
+
+Still unwired: nothing calls `decideClaim` yet, and the four jobs stay stuck
+until a sweep does. The decision is the part that was actually missing; the
+caller is a tick loop, which this repo prefers to write last.
 
 **Where to look first.** If a `[machine:*]` job is `Accepted` and nothing is
 moving: check the board's power before anything else, then `ping grblesp.local`,
