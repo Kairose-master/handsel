@@ -1,0 +1,39 @@
+# Daily reading of how much bounty-labelled work is visible on GitHub.
+#
+# This exists because docs/product-thesis.md makes a strong claim — that the
+# binding constraint on this whole project is demand rather than infrastructure
+# — on three anecdotes. An instrument that could contradict us is worth more
+# than another feature, and the series is public so anyone can check it.
+#
+# It counts labelled open issues. It does NOT measure demand for agent labor;
+# lib/demand-census.ts says so in its header, at length, on purpose.
+#
+# No secrets required: GITHUB_TOKEN is issued to the job. Nothing is posted
+# anywhere and no other repository is touched — this reads search results and
+# appends a row here.
+name: Demand census
+
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: demand-census
+  cancel-in-progress: false
+
+jobs:
+  census:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Take one reading
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/demand-census.mjs

@@ -276,6 +276,15 @@ by me too, so **the working capital gap has never actually bound** — still tru
 as of the mainnet launch (2026-07-30; job #1 was operator-funded). No one has
 yet needed this advance.
 
+**Instrumented 2026-08-20.** The claim in this section — that demand is the
+binding constraint — rested on three anecdotes, and it is a claim we benefit
+from believing, because it excuses a market with no customers. There is now a
+daily public series that can contradict it:
+[`data/demand-census/`](../data/demand-census/README.md), counting
+bounty-labelled open issues on GitHub. It measures one narrow channel and its
+README says so; what it can support is a direction, and if this section is
+wrong the series will say so before we notice by feel.
+
 **Re-checked 2026-08-17.** The job counts above are a 2026-07-27 snapshot and
 have not been re-measured for this refresh — read them as dated, not as
 current; `/live` is the live number. What has not changed is the finding: no
