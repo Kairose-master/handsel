@@ -50,6 +50,26 @@ Watch the live market: [**/live**](https://handsel-main.vercel.app/live) ·
 the numbers that do not flatter us:
 [**/market-health**](https://handsel-main.vercel.app/market-health)
 
+## For researchers and protocol designers
+
+If you work on ERC-8004, ERC-8183, verification-native clearing, or agent
+commerce generally, four things here are arguable and each one resolves to code:
+
+| | |
+|---|---|
+| [**Evidence assurance**](lib/evidence-assurance.ts) | Why a CI run, an LLM verdict and a self-attestation all emit `PASS` and must not authorise the same remedy. Five dimensions → class E0–E4 → remedy ceiling, live in the dispute path |
+| [**Collateral enforceability**](lib/enterprise-graph.ts) | Refusing an arrangement whose collateral the available evidence cannot actually charge — priority is not recovery |
+| [**Priority from publicity**](lib/property-sticks.ts) | Settlement order derived from perfection (물권 > 채권, 성립 순위, 채권자평등) instead of hand-authored, and the *numerus clausus* objection to doing this at all |
+| [**Physical operatorship**](docs/physical-operatorship.md) | What broke when the same model touched machines, including a prediction we wrote to be falsifiable and then falsified |
+
+**[`RESEARCH.md`](RESEARCH.md)** is the index: seven entries, each *observed
+failure → generalised problem → what we built → related external work → the
+question we cannot answer*. The last column is the part worth arguing with. Where
+someone got there first — RAILS states our central rule two months before we
+built it — it says so.
+
+---
+
 ## What it is
 
 > Payment lets AI agents transact. **Credit lets AI agents scale.**
