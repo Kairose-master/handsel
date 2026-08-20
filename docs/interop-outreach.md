@@ -104,6 +104,76 @@ absence, the same distinction `lib/evidence-assurance.ts` enforces when coverage
 is 0. Reading these properly needs an authenticated API path, which this session
 does not have for repositories outside its scope.
 
+## Inbound, for the first time (2026-08-18)
+
+Everything above is outbound — us contacting other projects. This is the first
+entry in the other direction, and it arrived without us doing anything.
+
+**An aggregator indexed us.** `vansh-09/BountyScout` runs a bot that scans
+GitHub for bounty-labelled work and files a digest issue; its 2026-08-18 scan
+([#829](https://github.com/vansh-09/BountyScout/issues/829)) lists
+`Kairose-master/handsel` among eight opportunities. We are in a feed that other
+agents read.
+
+What it surfaced is the problem: our entry is **"Label-bot smoke test"**. The
+one public bounty surface an outside crawler can see is advertising a test.
+
+### The market-structure finding, from someone else's data
+
+Of the eight entries in that scan, seven are **supply side** — agents, runtimes
+and platforms looking for paid work, or infrastructure for paying:
+`relayhop/ClaudeEarnSelf-runtime` (×2), `relayhop/sn-monetization-runtime`,
+`Doris-sudo/monee-pay` (escrow contracts), `Scottcjn/Rustchain`, and us. One
+(`snowdensb/litellm`, a vulnerability scan) is arguably real demand.
+
+That is the same finding `docs/product-thesis.md` reaches from our own numbers —
+*the constraint is demand, not infrastructure* — reached independently, from a
+third party's crawl, on a population we did not select. Until now that claim
+rested on our own market being a star centred on the operator. It no longer
+does.
+
+### The two worth reading
+
+**`relayhop/ClaudeEarnSelf-runtime`** — an agent trying to earn its own money,
+running since at least 2026-05-01. Its `scripts/demand_radar.mjs` inverts the
+usual direction: instead of watching bounty platforms it searches for people
+*saying* they will pay — Stacker News GraphQL, GitHub issue search for bodies
+containing `tip|bounty|paid|sats|usdc`, Reddit `/r/forhire`, Nostr full-text.
+Collected feeds from Algora, Bountycaster and Layer3 sit in `data/opportunities`.
+The runtime repo is public deliberately (free unlimited Actions minutes on public
+repos) with the strategy repo private, and it polls a **Base** USDC balance —
+our chain.
+
+It is not a competing market. It is a *worker*, hunting the same scarce thing we
+are: someone who will actually pay. Two consequences, and they point opposite
+ways — it competes with our workers for outside demand, and it is the first
+realistic candidate for an outside worker on our board, because its radar would
+find a Handsel repo job on its own if the issue body carries the tokens it greps
+for.
+
+**`Doris-sudo/monee-pay`** — the closest technical neighbour: milestone escrow,
+product escrow and batch payroll on Quai Network, with a Farcaster mini-app as
+distribution. Worth reading `contracts/src/MilestoneEscrow.sol` because the
+release model is the one we argue against: `approveMilestone` is the *creator*
+approving, and disputes go to `resolveDispute(...) onlyArbitrator`. No
+independent grading, no pay-on-pass verdict, no record that survives the
+platform. Their arbitrator is a single key that can transfer itself — the same
+weakness we disclose in `docs/security-audit.md`, so this is a shared gap rather
+than a point scored.
+
+Where they are ahead of us: they have a distribution surface (Farcaster frames,
+in-feed transactions) and we have none.
+
+### What this does and does not change
+
+It does **not** solve the demand problem. Posting a real bounty so the crawler
+points at real work would still be operator-funded demand, which
+`product-thesis.md` already refuses to count.
+
+What it could produce is an outside **worker** — which would also be a first,
+since both sides of this market are currently the operator. Worth saying out
+loud so the two are not conflated when one of them happens.
+
 ## Standing rules for new threads
 
 1. **Verify before posting.** Clone, build, run — a claim in an outbound comment
