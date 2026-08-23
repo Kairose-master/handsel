@@ -105,6 +105,50 @@ export function hasLapsed(job: DeadlineJob, nowSec: number): boolean {
 }
 
 /**
+ * Disputed jobs whose `disputeDeadline` is close enough to worry about, oldest
+ * first — a heads-up, not a settlement decision.
+ *
+ * `expireDispute` is a correct backstop and a one-sided one: once a job is
+ * `Disputed`, letting the 14-day window lapse ALWAYS pays the worker the full
+ * bounty and bond, whether or not the work was any good. `sweepDeadlines` will
+ * call it the moment it is due — reliably, but that reliability is exactly the
+ * problem: it guarantees the payout happens, not that it happens for the right
+ * reason. Nothing between here and there checks whether the arbiter meant to
+ * let it go.
+ *
+ * The realistic failure mode is not a sophisticated attacker pricing the
+ * asymmetry (H-03, github.com/Kairose-master/handsel/issues/7) — it's a single
+ * human arbiter with no backup missing a ruling because two weeks passed and
+ * nobody was looking. That is an attention problem, not a contract bug, and it
+ * does not need a redeploy to fix: it needs the same thing an approaching
+ * deadline always needs, which is someone told before it is too late to matter.
+ *
+ * @param warnWithinSec how close to the deadline counts as "worth a heads-up".
+ *                       Deliberately a parameter, not a constant: how much
+ *                       warning is useful depends on how often whoever reads
+ *                       this actually checks, which this module has no way to
+ *                       know.
+ */
+export function disputesNearingDeadline(
+  jobs: readonly DeadlineJob[],
+  nowSec: number,
+  warnWithinSec: number,
+): DueExit[] {
+  const warning: DueExit[] = []
+  for (const job of jobs) {
+    if (job.status !== 'Disputed') continue
+    const at = job.disputeDeadline
+    if (at <= 0) continue
+    // Already due is dueDeadlines' job to report, not a fresh warning — this
+    // is specifically the window BEFORE that, where a ruling still matters.
+    if (nowSec >= at) continue
+    if (at - nowSec > warnWithinSec) continue
+    warning.push({ jobId: job.id, fn: 'expireDispute', dueAt: at })
+  }
+  return warning.sort((a, b) => a.dueAt - b.dueAt)
+}
+
+/**
  * The calls that are due right now, oldest deadline first.
  *
  * Oldest-first because a capped pass must not starve the job that has been

@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
+  disputesNearingDeadline,
   dueDeadlines,
   MAX_EXITS_PER_PASS,
   V2_JOB_STATUS,
@@ -147,5 +148,57 @@ describe('ordering', () => {
     expect(MAX_EXITS_PER_PASS).toBeLessThanOrEqual(3)
     const many = Array.from({ length: 50 }, (_, i) => job({ id: i + 1, status: 'Open', openDeadline: T - i }))
     expect(dueDeadlines(many, T)).toHaveLength(50)
+  })
+})
+
+describe('disputesNearingDeadline — H-03\'s realistic version, not its theoretical one', () => {
+  const DAY = 86_400
+
+  it('warns on a Disputed job inside the window and not yet due', () => {
+    const jobs: DeadlineJob[] = [job({ id: 1, status: 'Disputed', disputeDeadline: T + 2 * DAY })]
+    expect(disputesNearingDeadline(jobs, T, 3 * DAY).map((d) => d.jobId)).toEqual([1])
+  })
+
+  it('stays silent outside the window — this is a heads-up, not a smoke alarm', () => {
+    const jobs: DeadlineJob[] = [job({ id: 1, status: 'Disputed', disputeDeadline: T + 10 * DAY })]
+    expect(disputesNearingDeadline(jobs, T, 3 * DAY)).toEqual([])
+  })
+
+  it('stops warning once the deadline is already due — that is dueDeadlines\' job now', () => {
+    const jobs: DeadlineJob[] = [job({ id: 1, status: 'Disputed', disputeDeadline: T - 1 })]
+    expect(disputesNearingDeadline(jobs, T, 3 * DAY)).toEqual([])
+    // And the handoff is real: the same job IS due for the sweep.
+    expect(dueDeadlines(jobs, T).map((d) => d.jobId)).toEqual([1])
+  })
+
+  it('ignores every other status — an approaching openDeadline is not this problem', () => {
+    const jobs: DeadlineJob[] = [
+      job({ id: 1, status: 'Open', openDeadline: T + DAY }),
+      job({ id: 2, status: 'Accepted', deliveryDeadline: T + DAY }),
+      job({ id: 3, status: 'Submitted', reviewDeadline: T + DAY }),
+      job({ id: 4, status: 'Completed' }),
+    ]
+    expect(disputesNearingDeadline(jobs, T, 3 * DAY)).toEqual([])
+  })
+
+  it('orders soonest-first, so the most urgent ruling is read first', () => {
+    const jobs: DeadlineJob[] = [
+      job({ id: 5, status: 'Disputed', disputeDeadline: T + 2 * DAY }),
+      job({ id: 6, status: 'Disputed', disputeDeadline: T + DAY / 2 }),
+    ]
+    expect(disputesNearingDeadline(jobs, T, 3 * DAY).map((d) => d.jobId)).toEqual([6, 5])
+  })
+
+  it('never fires on a zero (unset) deadline', () => {
+    const jobs: DeadlineJob[] = [job({ id: 1, status: 'Disputed', disputeDeadline: 0 })]
+    expect(disputesNearingDeadline(jobs, T, 3 * DAY)).toEqual([])
+  })
+
+  it('is a pure read — it never appears as an ExitFn dueDeadlines would actually call', () => {
+    // The whole point: this informs a human, it does not settle anything.
+    const jobs: DeadlineJob[] = [job({ id: 1, status: 'Disputed', disputeDeadline: T + DAY })]
+    const [warned] = disputesNearingDeadline(jobs, T, 3 * DAY)
+    expect(warned.fn).toBe('expireDispute')
+    expect(dueDeadlines(jobs, T)).toEqual([]) // not due — sweep would not touch it yet
   })
 })
