@@ -7,7 +7,8 @@
  */
 import { getSession } from '@/lib/get-session'
 import { officeCodeFor, regenerateOfficeCode, redeemOfficeCode, connectedOfficesOf } from '@/lib/office'
-import { buildOfficeSnapshot, type OfficeSnapshot } from '@/lib/office-world-data'
+import { buildOfficeSnapshot } from '@/lib/office-world-server'
+import type { OfficeSnapshot } from '@/lib/office-world-data'
 import { db } from '@/lib/db'
 import { user } from '@/lib/db/schema'
 import { inArray } from 'drizzle-orm'
