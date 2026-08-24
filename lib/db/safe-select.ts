@@ -52,4 +52,5 @@ export const SAFE_JOB_SPEC_COLUMNS = {
   baseBranch: jobSpec.baseBranch,
   deliverableKind: jobSpec.deliverableKind,
   requiredCapabilities: jobSpec.requiredCapabilities,
+  officeOwnerId: jobSpec.officeOwnerId,
 } as const

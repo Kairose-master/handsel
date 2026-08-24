@@ -85,6 +85,13 @@ export interface DelegationSubtask {
    *  see `reviewTierGate`. Tiers for one target must be exactly 1..N, no
    *  gaps or duplicates (validated in parsePlannerOutput). */
   reviewTier?: number
+  /** Office-scoped review (lib/office.ts): when true, this review job is
+   *  curated toward the delegation owner's connected offices instead of the
+   *  public board — a discovery restriction, not an access-control one
+   *  (acceptJob has no on-chain allowlist, so this only affects who is SHOWN
+   *  the job, not who technically could still claim it by id). Only
+   *  meaningful on a subtask that sets reviewOf; ignored otherwise. */
+  officeOnly?: boolean
   /** On a REVIEWED target: its delivered output, held here while a peer review
    *  is pending (escrow stays locked). Released to `output` on approval. */
   submittedOutput?: string
@@ -262,11 +269,12 @@ Rules:
 - HANDOFF (dependsOn): when subtask B genuinely needs subtask A's FINISHED output to do its own work — it refines, extends, reviews, translates, or assembles what A produced — set B's "dependsOn": ["A's exact title"]. The platform holds B back until A completes, then injects A's REAL delivered output into B's brief, so B builds on the actual work instead of guessing. Prefer this over restating A's spec. Keep the graph acyclic and only add a dependency when the handoff is real — most subtasks are independent and parallel, so do NOT invent dependencies (they serialize the work and slow it down). A subtask may list up to 2 dependencies.
 - PEER REVIEW (reviewOf): for a high-value or quality-critical subtask, you MAY add a review subtask with "reviewOf": "<that subtask's exact title>" and its own small bounty. A DIFFERENT worker agent then reviews the delivered work and returns APPROVE or REVISE — and the reviewed subtask's escrow does NOT release until the peer approves. Use it sparingly (it costs a bounty and adds a round-trip), only where an independent second opinion is worth it. A review's acceptanceCriteria should tell the reviewer what to check. Do not review trivial subtasks, and never review a review — every reviewer's reviewOf names the SAME original subtask, never another reviewer.
 - APPROVAL CHAIN (reviewTier): for a subtask that genuinely needs more than one sign-off, add MORE THAN ONE review subtask with the SAME "reviewOf" target, each tagged "reviewTier": 1, 2, 3… in order (max ${MAX_REVIEW_TIERS}). Tier 2 is not even posted until tier 1 approves, and any tier's REVISE halts the whole chain — the target's escrow releases only once every tier has signed off. Rare and expensive (one bounty per tier); reserve it for genuinely high-stakes work, not routine review.
+- OFFICE-SCOPED REVIEW (officeOnly): a review subtask may set "officeOnly": true to curate that review job toward the requester's connected offices (see lib/office.ts) instead of the public board. Discovery only, not enforcement — use it when the client asked for a trusted/known reviewer rather than an anonymous stranger. Only meaningful together with reviewOf; ignored otherwise.
 - SYNTHESIS (synthesizes): when the pieces must be woven into ONE coherent deliverable (a report from sections, an article from parts), add a final subtask with "synthesizes": ["title of each piece it integrates"] and a small bounty. A worker reads the actual delivered pieces and produces the unified result — this becomes the final deliverable instead of mechanical concatenation. Use it only when integration genuinely needs judgment.
 - SUBCONTRACT (subcontract): if one piece is itself large enough to be its own mini-project, set "subcontract": true on it. The platform decomposes THAT piece again into its own sub-jobs and a synthesis that reassembles them, funded from its bounty. Use rarely — only for a piece that clearly needs its own breakdown.
 - SHARED INTERFACES: when independent (non-dependent) subtasks must still fit together (they call each other's functions, share a type, or agree on a data shape), define the interface ONCE — exact function signatures, types, field names — and repeat that identical interface block VERBATIM in every subtask description that shares it. Workers without a dependency have no shared context, so a drifted signature means the pieces won't integrate.
 - INTEGRATION CHECK: if and only if the subtasks are code that must work together as one whole, add ONE FINAL subtask with "integration": true, "bountyUsd": 0, and "testCode": Python that imports/exercises the COMBINED pieces (assume every prior subtask's code is concatenated above your tests). This subtask is NOT sent to a worker — the platform auto-runs its tests against the assembled result, and the delegation only completes cleanly if they pass. Omit it entirely for non-code or independent work.
-- Output ONLY a JSON array: [{"title", "description", "acceptanceCriteria", "bountyUsd", "deliverableKind", "dependsOn"?, "reviewOf"?, "reviewTier"?, "synthesizes"?, "subcontract"?, "testCode"?, "integration"?}] — no commentary, no code fences.`
+- Output ONLY a JSON array: [{"title", "description", "acceptanceCriteria", "bountyUsd", "deliverableKind", "dependsOn"?, "reviewOf"?, "reviewTier"?, "officeOnly"?, "synthesizes"?, "subcontract"?, "testCode"?, "integration"?}] — no commentary, no code fences.`
 
 /** Parse + validate raw planner output into subtasks. Pure — separated
  *  from the LLM call so the guardrails (count bounds, bounty bounds,
@@ -309,6 +317,7 @@ export function parsePlannerOutput(rawText: string, budgetUsd: number): Delegati
     const reviewOf = typeof raw?.reviewOf === 'string' && raw.reviewOf.trim() ? raw.reviewOf.trim() : undefined
     const reviewTierRaw = Number(raw?.reviewTier)
     const reviewTier = reviewOf && Number.isInteger(reviewTierRaw) && reviewTierRaw >= 1 ? reviewTierRaw : undefined
+    const officeOnly = reviewOf && raw?.officeOnly === true ? true : undefined
     const synthesizes: string[] | undefined = Array.isArray(raw?.synthesizes)
       ? Array.from(new Set(raw.synthesizes.map((d: any) => String(d).trim()).filter((d: string) => d.length > 0)))
       : undefined
@@ -338,6 +347,7 @@ export function parsePlannerOutput(rawText: string, budgetUsd: number): Delegati
       testCode,
       ...(reviewOf ? { reviewOf } : {}),
       ...(reviewTier ? { reviewTier } : {}),
+      ...(officeOnly ? { officeOnly } : {}),
       ...(synthesizes && synthesizes.length ? { synthesizes } : {}),
       ...(subcontract ? { subcontract } : {}),
       ...(dependsOn.length ? { dependsOn } : {}),
@@ -515,6 +525,7 @@ export async function expandSubcontracts(
 async function postOneSubtask(
   primeAgentId: string,
   primeName: string,
+  ownerId: string,
   st: DelegationSubtask,
   autoVerify: boolean,
   spaceOut: boolean,
@@ -551,10 +562,16 @@ async function postOneSubtask(
     nanoid(),
   )
   const specHash = sealed.specHash
+  // Office-scoped review (lib/office.ts): only a reviewOf subtask the planner
+  // marked officeOnly gets curated off the public board — every other job
+  // (including an ordinary review) keeps today's unrestricted behavior.
+  const { ensureJobSpecColumns } = await import('@/lib/db/ensure-columns')
+  await ensureJobSpecColumns()
   await db.insert(jobSpec).values({
     ...sealed,
     requesterAgentId: primeAgentId,
     autoApprove: autoVerify || Boolean(st.testCode),
+    officeOwnerId: st.reviewOf && st.officeOnly ? ownerId : null,
   })
   // Bundler rate-limits back-to-back userops (free tier) — space them.
   if (spaceOut) await new Promise((r) => setTimeout(r, 2000))
@@ -624,7 +641,7 @@ export async function postDelegationJobs(
     if (st.isIntegration) continue // platform-verified after work completes — never posted/escrowed
     if (st.onchainJobId !== undefined) continue // already posted (confirm retried)
     if (st.dependsOn?.length) continue // waits on upstream — the wave scheduler posts it later
-    await postOneSubtask(primeAgentId, prime.name, st, autoVerify, postedCount > 0, planDsl)
+    await postOneSubtask(primeAgentId, prime.name, prime.userId, st, autoVerify, postedCount > 0, planDsl)
     postedCount++
   }
   return subtasks
@@ -1050,7 +1067,7 @@ export async function tickDelegation(
         st.dependencyInjected = true
       }
       try {
-        if (prime) await postOneSubtask(row.primeAgentId, prime.name, st, row.autoVerify, false, planDsl)
+        if (prime) await postOneSubtask(row.primeAgentId, prime.name, prime.userId, st, row.autoVerify, false, planDsl)
         changed = true
       } catch (error) {
         console.error('[delegation] failed to post dependent subtask (will retry):', error)

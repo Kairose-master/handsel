@@ -27,7 +27,17 @@ export async function handleJobs(
       const { jobSpec } = await import('@/lib/db/schema')
       const specs = await db.select().from(jobSpec)
       const byHash = new Map(specs.map((s) => [s.specHash, s]))
-      const lines = jobs.map((j) => {
+      // Office-scoped review jobs (lib/office.ts) are curated toward the
+      // delegation owner's connected offices — this is the real claim-
+      // discovery path (claim_job has no allowlist on-chain), so it's the
+      // one that actually has to keep them out of a stranger's listing.
+      const { canSeeOfficeOnlyJob } = await import('@/lib/office')
+      const visibility = await Promise.all(
+        jobs.map((j) => canSeeOfficeOnlyJob(byHash.get(j.specHash)?.officeOwnerId ?? null, auth.userId)),
+      )
+      const visibleJobs = jobs.filter((_, i) => visibility[i])
+      if (visibleJobs.length === 0) return toolText(id, 'No open jobs right now.')
+      const lines = visibleJobs.map((j) => {
         const spec = byHash.get(j.specHash)
         const kind = spec?.deliverableKind && spec.deliverableKind !== 'text' ? ` [${spec.deliverableKind}]` : ''
         return `#${j.id} · $${j.bounty} · ${spec?.title ?? 'Untitled'}${kind} (min score ${j.minScore})`

@@ -132,7 +132,16 @@ export async function getJobs() {
     artifactsByTask.set(a.taskId, list)
   }
 
-  const jobs = onchainJobs.map((j) => {
+  // Office-scoped review jobs (lib/office.ts): shown only to their owner or
+  // an account connected to that owner — every other job is unaffected
+  // (officeOwnerId null short-circuits without a query).
+  const { canSeeOfficeOnlyJob } = await import('@/lib/office')
+  const visibility = await Promise.all(
+    onchainJobs.map((j) => canSeeOfficeOnlyJob(specByHash.get(j.specHash)?.officeOwnerId ?? null, userId)),
+  )
+  const visibleOnchainJobs = onchainJobs.filter((_, i) => visibility[i])
+
+  const jobs = visibleOnchainJobs.map((j) => {
     const spec = specByHash.get(j.specHash)
     const task = spec?.agentTaskId ? taskById.get(spec.agentTaskId) : undefined
     return {

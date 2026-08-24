@@ -44,6 +44,8 @@ const JOB_SPEC_ADDITIONS = [
   'ALTER TABLE job_specs ADD COLUMN IF NOT EXISTS brief_nonce text',
   // Multi-party settlement splits (docs/physical-operatorship.md inc. 3).
   'ALTER TABLE job_specs ADD COLUMN IF NOT EXISTS split_spec jsonb',
+  // Office-scoped review visibility (lib/office.ts).
+  'ALTER TABLE job_specs ADD COLUMN IF NOT EXISTS office_owner_id text',
 ]
 
 const CREDIT_TX_ADDITIONS = [

@@ -645,6 +645,13 @@ export const jobSpec = pgTable('job_specs', {
     pendingUsd?: number
     pendingMinScore?: number
   }>(),
+  // Office-scoped review (lib/office.ts, DelegationSubtask.officeOnly): set
+  // to the delegation owner's user id when a peer-review job should be
+  // curated toward their connected offices instead of the public board. Null
+  // (the default, every other job) means unrestricted — unchanged behavior.
+  // This is discovery-layer only: acceptJob has no allowlist on-chain, so a
+  // stranger who already knows the job id can still claim it. See lib/office.ts.
+  officeOwnerId: text('office_owner_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 

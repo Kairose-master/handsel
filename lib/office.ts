@@ -151,3 +151,25 @@ export async function connectedOfficesOf(userId: string): Promise<string[]> {
   )
   return rows.map((r) => r.other)
 }
+
+/**
+ * Whether a job scoped to `officeOwnerId` (null = public, unrestricted)
+ * should be shown to `viewerUserId` (null = anonymous caller, e.g. GET
+ * /api/tasks — which can never be "connected" to anyone). Pure: takes the
+ * connection fact as an argument so the decision table is testable without a
+ * database. `canSeeOfficeOnlyJob` below is the thin DB-backed wrapper.
+ */
+export function officeJobVisible(officeOwnerId: string | null, viewerUserId: string | null, connected: boolean): boolean {
+  if (!officeOwnerId) return true // not office-scoped — unchanged public behavior
+  if (!viewerUserId) return false // anonymous can never see a scoped job
+  if (viewerUserId === officeOwnerId) return true // owners always see their own
+  return connected
+}
+
+/** DB-backed: resolves the connection fact and applies `officeJobVisible`. */
+export async function canSeeOfficeOnlyJob(officeOwnerId: string | null, viewerUserId: string | null): Promise<boolean> {
+  if (!officeOwnerId || !viewerUserId || viewerUserId === officeOwnerId) {
+    return officeJobVisible(officeOwnerId, viewerUserId, false)
+  }
+  return officeJobVisible(officeOwnerId, viewerUserId, await isOfficeConnected(officeOwnerId, viewerUserId))
+}

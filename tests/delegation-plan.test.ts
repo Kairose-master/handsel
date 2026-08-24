@@ -168,6 +168,29 @@ describe('parsePlannerOutput', () => {
     )
     expect(() => parsePlannerOutput(JSON.stringify([A, ...reviews]), 15)).toThrow(/at most \d+ approval tiers/)
   })
+
+  // --- office-scoped review (officeOnly) ---
+
+  it('carries officeOnly through when set true on a review subtask', () => {
+    const out = parsePlannerOutput(
+      JSON.stringify([A, B({ title: 'Review the copy', reviewOf: 'Draft the copy', officeOnly: true })]),
+      15,
+    )
+    expect(out.find((s) => s.reviewOf)!.officeOnly).toBe(true)
+  })
+
+  it('drops officeOnly when absent or false — no field, not a stored false', () => {
+    const out = parsePlannerOutput(
+      JSON.stringify([A, B({ title: 'Review the copy', reviewOf: 'Draft the copy', officeOnly: false })]),
+      15,
+    )
+    expect(out.find((s) => s.reviewOf)!.officeOnly).toBeUndefined()
+  })
+
+  it('ignores officeOnly on a non-review subtask — it only means something paired with reviewOf', () => {
+    const out = parsePlannerOutput(JSON.stringify([{ ...A, officeOnly: true }]), 15)
+    expect(out[0].officeOnly).toBeUndefined()
+  })
 })
 
 describe('parseReviewVerdict', () => {

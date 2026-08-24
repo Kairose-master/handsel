@@ -106,6 +106,17 @@ async function readPublicJobs(limit: number) {
     : []
   const specByHash = new Map(specs.map((s) => [s.specHash.toLowerCase(), s]))
 
+  // Office-scoped review jobs (lib/office.ts) never reach this feed: it is
+  // the session-less, unauthenticated read (see the header comment) — an
+  // anonymous caller has no identity to be "connected" as, so officeJobVisible
+  // would reject every one of them anyway. Filtering here, rather than
+  // relying on that, keeps a scoped job's title/description out of the
+  // response entirely instead of merely unclaimable.
+  const { officeJobVisible } = await import('@/lib/office')
+  const visibleFiltered = visible.filter((j) =>
+    officeJobVisible(specByHash.get(j.specHash.toLowerCase())?.officeOwnerId ?? null, null, false),
+  )
+
   const taskIds = [...new Set(specs.map((s) => s.agentTaskId).filter((id): id is string => Boolean(id)))]
   const tasks = taskIds.length > 0
     ? await db
@@ -133,7 +144,7 @@ async function readPublicJobs(limit: number) {
     : []
   const nameByAgentId = new Map(parties.map((p) => [p.id, p.name]))
 
-  const jobs = visible
+  const jobs = visibleFiltered
     .map((j) => {
       const spec = specByHash.get(j.specHash.toLowerCase())
       const task = spec?.agentTaskId ? taskById.get(spec.agentTaskId) : undefined

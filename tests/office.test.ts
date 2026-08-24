@@ -4,7 +4,7 @@
  * thin self-migrating-table wrapper around exactly this state machine.
  */
 import { describe, it, expect } from 'vitest'
-import { OfficeBook } from '@/lib/office'
+import { OfficeBook, officeJobVisible } from '@/lib/office'
 
 describe('OfficeBook', () => {
   it('has no code until one is set', () => {
@@ -71,5 +71,27 @@ describe('OfficeBook', () => {
     book.setCode('alice', 'SHARED')
     book.setCode('bob', 'SHARED') // bob claims the same code string later
     expect(book.connect('SHARED', 'carol')).toEqual({ connected: true, ownerId: 'bob' })
+  })
+})
+
+describe('officeJobVisible — the decision behind /api/tasks and browse_open_jobs', () => {
+  it('a job with no officeOwnerId is public, regardless of viewer or connection', () => {
+    expect(officeJobVisible(null, null, false)).toBe(true)
+    expect(officeJobVisible(null, 'stranger', false)).toBe(true)
+  })
+
+  it('an anonymous caller (GET /api/tasks) never sees an office-scoped job', () => {
+    expect(officeJobVisible('alice', null, false)).toBe(false)
+    // Even if the "connected" fact were somehow true — anonymous has no identity to be connected AS.
+    expect(officeJobVisible('alice', null, true)).toBe(false)
+  })
+
+  it('the owner always sees their own scoped job, connection fact aside', () => {
+    expect(officeJobVisible('alice', 'alice', false)).toBe(true)
+  })
+
+  it('a connected visitor sees it; an unconnected one does not', () => {
+    expect(officeJobVisible('alice', 'bob', true)).toBe(true)
+    expect(officeJobVisible('alice', 'bob', false)).toBe(false)
   })
 })
