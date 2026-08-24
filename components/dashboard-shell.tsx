@@ -27,6 +27,7 @@ import {
   Vote,
   Gamepad2,
   Boxes,
+  Building2,
   ChevronDown,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -82,6 +83,7 @@ const coreNav = [
   { labelKey: "nav.dashboard", href: "/", icon: LayoutDashboard },
   { labelKey: "nav.guide", href: "/guide", icon: BookOpen },
   { labelKey: "nav.agents", href: "/agents", icon: Bot },
+  { labelKey: "nav.office", href: "/office", icon: Building2 },
   { labelKey: "nav.laborMarket", href: "/jobs", icon: Briefcase },
   { labelKey: "nav.delegate", href: "/delegate", icon: GitBranch },
   { labelKey: "nav.workerConsole", href: "/mine", icon: Pickaxe },
