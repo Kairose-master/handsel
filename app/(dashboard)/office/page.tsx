@@ -17,22 +17,138 @@
  * lib/office.ts), so this page does not gate who can claim what.
  */
 import { useEffect, useRef, useState } from 'react'
-import { Copy, RefreshCw, Loader2 } from 'lucide-react'
+import { Copy, RefreshCw, Loader2, UserPlus, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { myOfficeCode, newOfficeCode, visitOffice, myConnectedOffices, myOfficeWorld, type ConnectedOffice } from '@/app/actions/office'
+import {
+  myOfficeCode,
+  newOfficeCode,
+  visitOffice,
+  myConnectedOffices,
+  myOfficeWorld,
+  hireStaff,
+  type ConnectedOffice,
+} from '@/app/actions/office'
 import OfficeWorld from './game/OfficeWorld'
 import { LiveOffice, type Agent } from './game/live-engine'
 import './game/office.css'
 
 const POLL_MS = 12_000
 
+function HireStaffDialog({ open, onClose, onHired }: { open: boolean; onClose: () => void; onHired: () => void }) {
+  const [name, setName] = useState('')
+  const [mode, setMode] = useState<'platform' | 'mcp'>('platform')
+  const [serverUrl, setServerUrl] = useState('')
+  const [toolName, setToolName] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  if (!open) return null
+
+  const reset = () => {
+    setName('')
+    setMode('platform')
+    setServerUrl('')
+    setToolName('')
+    setError(null)
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!name.trim()) return
+    setBusy(true)
+    setError(null)
+    try {
+      await hireStaff({
+        name,
+        mcp: mode === 'mcp' ? { serverUrl, toolName } : undefined,
+      })
+      reset()
+      onHired()
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not hire — try again')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div
+        className="w-full max-w-md rounded-lg border border-border bg-background p-5 shadow-lg"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Hire staff</h2>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground" aria-label="Close">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <Label htmlFor="hire-name">Name</Label>
+            <Input id="hire-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Kai" autoFocus />
+          </div>
+
+          <div className="flex gap-2">
+            <Button type="button" variant={mode === 'platform' ? 'default' : 'outline'} size="sm" onClick={() => setMode('platform')}>
+              Quick hire
+            </Button>
+            <Button type="button" variant={mode === 'mcp' ? 'default' : 'outline'} size="sm" onClick={() => setMode('mcp')}>
+              Connect external MCP agent
+            </Button>
+          </div>
+
+          {mode === 'platform' ? (
+            <p className="text-sm text-muted-foreground">
+              Creates a platform agent, ready to claim jobs right away — no further setup.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Handsel calls this server only at claim/submit time — no standing connection, no polling from here.
+              </p>
+              <div>
+                <Label htmlFor="hire-url">MCP server URL</Label>
+                <Input
+                  id="hire-url"
+                  value={serverUrl}
+                  onChange={(e) => setServerUrl(e.target.value)}
+                  placeholder="https://…"
+                />
+              </div>
+              <div>
+                <Label htmlFor="hire-tool">Tool name</Label>
+                <Input id="hire-tool" value={toolName} onChange={(e) => setToolName(e.target.value)} placeholder="do_the_work" />
+              </div>
+            </div>
+          )}
+
+          {error && <p className="text-sm text-destructive">{error}</p>}
+
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={busy || !name.trim() || (mode === 'mcp' && (!serverUrl.trim() || !toolName.trim()))}
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Hire'}
+          </Button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 function OfficeWorldPanel() {
   const engineRef = useRef(new LiveOffice())
   const [agents, setAgents] = useState<Agent[]>([])
   const [selected, setSelected] = useState<Agent | null>(null)
   const [ceoLine, setCeoLine] = useState('')
+  const [hiring, setHiring] = useState(false)
+  const [pollTrigger, setPollTrigger] = useState(0)
 
   useEffect(() => {
     let dead = false
@@ -53,7 +169,7 @@ function OfficeWorldPanel() {
       dead = true
       clearInterval(interval)
     }
-  }, [])
+  }, [pollTrigger])
 
   useEffect(() => {
     let raf = 0
@@ -70,9 +186,15 @@ function OfficeWorldPanel() {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Your office — live</CardTitle>
-        <p className="text-xs text-muted-foreground">{ceoLine || 'Loading your agents…'}</p>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0">
+        <div>
+          <CardTitle className="text-base">Your office — live</CardTitle>
+          <p className="text-xs text-muted-foreground">{ceoLine || 'Loading your agents…'}</p>
+        </div>
+        <Button size="sm" onClick={() => setHiring(true)}>
+          <UserPlus className="mr-1.5 h-4 w-4" />
+          Hire staff
+        </Button>
       </CardHeader>
       <CardContent>
         <div style={{ height: 480 }} className="overflow-hidden rounded-lg border border-border">
@@ -85,6 +207,7 @@ function OfficeWorldPanel() {
           </div>
         )}
       </CardContent>
+      <HireStaffDialog open={hiring} onClose={() => setHiring(false)} onHired={() => setPollTrigger((n) => n + 1)} />
     </Card>
   )
 }

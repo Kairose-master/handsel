@@ -66,3 +66,34 @@ export async function myOfficeWorld(): Promise<OfficeSnapshot> {
   const session = await requireUser()
   return buildOfficeSnapshot(session.user.id, session.user.name ?? 'Owner')
 }
+
+export type HireStaffInput = {
+  name: string
+  mcp?: { serverUrl: string; toolName: string; authHeader?: string }
+}
+
+/**
+ * "Hire staff" — one call for the two-step create-then-wire flow the
+ * profile page's Runtime card otherwise makes you do by hand: createAgent,
+ * then (only if an external MCP server was given) setMcpWorker to point it
+ * there. Handsel is called by that server exactly at claim/submit time —
+ * this action only ever registers the address, never polls it.
+ *
+ * If the MCP step fails (bad URL, server unreachable) the agent still
+ * exists as an ordinary platform agent rather than disappearing — a half
+ * "hire" should degrade to the safe default, not vanish.
+ */
+export async function hireStaff(input: HireStaffInput): Promise<{ id: string; mcpConnected: boolean }> {
+  const { createAgent } = await import('@/app/actions/agents')
+  const created = await createAgent({ name: input.name })
+  if (!input.mcp) return { id: created.id, mcpConnected: false }
+
+  try {
+    const { setMcpWorker } = await import('@/app/actions/webhook')
+    await setMcpWorker(created.id, input.mcp)
+    return { id: created.id, mcpConnected: true }
+  } catch (error) {
+    console.error('[office] hireStaff: MCP connect failed, agent kept as a platform agent:', error)
+    return { id: created.id, mcpConnected: false }
+  }
+}
