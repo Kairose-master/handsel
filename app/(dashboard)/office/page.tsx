@@ -1,21 +1,93 @@
 'use client'
 
 /**
- * /office — connect to other accounts with a shareable code.
+ * /office — a live pixel-office of your own agents, plus connecting to
+ * other accounts with a shareable code.
  *
- * A connection is a discovery relationship, not a permission grant: the
- * market is already permissionless on-chain (see lib/office.ts), so this
- * page does not gate who can claim what — it's the visit list a future
- * "office" visualization and a curated review-invite flow will build on.
- * Deliberately plain for now: the pixel-office visual is a separate pass,
- * layered on top once this connection mechanic is real.
+ * The visual is a real-data-driven descendant of a reference pixel-office
+ * toy — see app/(dashboard)/office/game/live-engine.ts's header for why its
+ * original scripted-day engine was NOT reused as-is (it would have put real
+ * agent names on entirely invented activity). Every room an agent stands in
+ * and every line above its head comes from lib/office-world-data.ts's real
+ * query of that agent's actual state, polled here on an interval — not a
+ * script.
+ *
+ * A connection (the code below) is a discovery relationship, not a
+ * permission grant: the market is already permissionless on-chain (see
+ * lib/office.ts), so this page does not gate who can claim what.
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Copy, RefreshCw, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { myOfficeCode, newOfficeCode, visitOffice, myConnectedOffices, type ConnectedOffice } from '@/app/actions/office'
+import { myOfficeCode, newOfficeCode, visitOffice, myConnectedOffices, myOfficeWorld, type ConnectedOffice } from '@/app/actions/office'
+import OfficeWorld from './game/OfficeWorld'
+import { LiveOffice, type Agent } from './game/live-engine'
+import './game/office.css'
+
+const POLL_MS = 12_000
+
+function OfficeWorldPanel() {
+  const engineRef = useRef(new LiveOffice())
+  const [agents, setAgents] = useState<Agent[]>([])
+  const [selected, setSelected] = useState<Agent | null>(null)
+  const [ceoLine, setCeoLine] = useState('')
+
+  useEffect(() => {
+    let dead = false
+    const poll = async () => {
+      try {
+        const snap = await myOfficeWorld()
+        if (dead) return
+        engineRef.current.applySnapshot(snap)
+        setAgents([...engineRef.current.agents])
+        setCeoLine(snap.ceoLine)
+      } catch (error) {
+        console.error('[office] snapshot poll failed:', error)
+      }
+    }
+    poll()
+    const interval = setInterval(poll, POLL_MS)
+    return () => {
+      dead = true
+      clearInterval(interval)
+    }
+  }, [])
+
+  useEffect(() => {
+    let raf = 0
+    let last = performance.now()
+    const loop = (now: number) => {
+      const dt = Math.min(0.25, (now - last) / 1000)
+      last = now
+      engineRef.current.tick(dt)
+      raf = requestAnimationFrame(loop)
+    }
+    raf = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(raf)
+  }, [])
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Your office — live</CardTitle>
+        <p className="text-xs text-muted-foreground">{ceoLine || 'Loading your agents…'}</p>
+      </CardHeader>
+      <CardContent>
+        <div style={{ height: 480 }} className="overflow-hidden rounded-lg border border-border">
+          <OfficeWorld agents={agents} selectedId={selected?.id ?? null} follow={false} onSelect={setSelected} />
+        </div>
+        {selected && (
+          <div className="mt-3 rounded-md border border-border bg-muted/50 p-3 text-sm">
+            <div className="font-semibold">{selected.name}</div>
+            <div className="text-muted-foreground">{selected.status}</div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
 
 export default function OfficePage() {
   const [code, setCode] = useState<string | null>(null)
@@ -79,13 +151,15 @@ export default function OfficePage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6 px-6 py-10">
+    <div className="mx-auto max-w-4xl space-y-6 px-6 py-10">
       <div>
         <h1 className="text-2xl font-bold">Office</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Share your code so another account can connect to your office, or use theirs to connect to yours.
         </p>
       </div>
+
+      <OfficeWorldPanel />
 
       <Card>
         <CardHeader>

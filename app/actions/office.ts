@@ -7,6 +7,7 @@
  */
 import { getSession } from '@/lib/get-session'
 import { officeCodeFor, regenerateOfficeCode, redeemOfficeCode, connectedOfficesOf } from '@/lib/office'
+import { buildOfficeSnapshot, type OfficeSnapshot } from '@/lib/office-world-data'
 import { db } from '@/lib/db'
 import { user } from '@/lib/db/schema'
 import { inArray } from 'drizzle-orm'
@@ -56,4 +57,11 @@ export async function myConnectedOffices(): Promise<ConnectedOffice[]> {
   // Preserve connectedOfficesOf's most-recent-first order even though the
   // IN-clause read doesn't.
   return ids.map((id) => ({ userId: id, name: byId.get(id) ?? 'Unnamed office' }))
+}
+
+/** The live pixel-office snapshot for my own account — real agent roster,
+ *  real state (lib/office-world-data.ts). Polled by the /office page. */
+export async function myOfficeWorld(): Promise<OfficeSnapshot> {
+  const session = await requireUser()
+  return buildOfficeSnapshot(session.user.id, session.user.name ?? 'Owner')
 }
