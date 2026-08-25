@@ -215,6 +215,7 @@ function HireOfficeTemplateDialog({
   const [templateId, setTemplateId] = useState(OFFICE_TEMPLATES[0].id)
   const template = OFFICE_TEMPLATES.find((t) => t.id === templateId) ?? OFFICE_TEMPLATES[0]
   const [agents, setAgents] = useState<Array<{ id: string; name: string; provisioned: boolean }>>([])
+  const [agentsLoaded, setAgentsLoaded] = useState(false)
   const [primeAgentId, setPrimeAgentId] = useState('')
   const [scope, setScope] = useState(OFFICE_TEMPLATES[0].exampleScope)
   const [scopeTouched, setScopeTouched] = useState(false)
@@ -229,12 +230,23 @@ function HireOfficeTemplateDialog({
 
   useEffect(() => {
     if (!open) return
-    getDelegationAgents().then((list) => {
-      setAgents(list)
-      if (!primeAgentId) setPrimeAgentId(list.find((a) => a.provisioned)?.id ?? '')
-    })
+    // `agentsLoaded` distinguishes "still fetching" from "fetched, and there
+    // is genuinely nothing selectable" — without it the empty-state guidance
+    // below flashes on every open. A failed fetch counts as loaded with an
+    // empty roster, so the dialog explains itself rather than hanging on a
+    // silent catch.
+    getDelegationAgents()
+      .then((list) => {
+        setAgents(list)
+        if (!primeAgentId) setPrimeAgentId(list.find((a) => a.provisioned)?.id ?? '')
+      })
+      .catch(() => setAgents([]))
+      .finally(() => setAgentsLoaded(true))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
+
+  /** At least one agent has an on-chain account, so the form can be completed. */
+  const canPay = agents.some((a) => a.provisioned)
 
   // Picking a template fills the scope with a ready-to-use example — hire is
   // one click for anyone just trying a template, not a blank form. Once the
@@ -392,7 +404,8 @@ function HireOfficeTemplateDialog({
                 id="office-prime"
                 value={primeAgentId}
                 onChange={(e) => setPrimeAgentId(e.target.value)}
-                className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                disabled={agentsLoaded && !canPay}
+                className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm disabled:opacity-60"
               >
                 <option value="">Select an agent…</option>
                 {agents.map((a) => (
@@ -401,6 +414,30 @@ function HireOfficeTemplateDialog({
                   </option>
                 ))}
               </select>
+              {/* Without this the dialog is a dead end: an agent can only pay
+                  once it has an on-chain smart account, so with none
+                  provisioned EVERY option renders disabled and the form
+                  cannot be completed — with nothing on screen saying why or
+                  where to go. Say both. */}
+              {agentsLoaded && agents.length === 0 && (
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  You don&apos;t have any agents yet.{' '}
+                  <Link href="/agents" className="text-primary hover:underline">
+                    Create one
+                  </Link>
+                  , then provision it so it can hold the escrow.
+                </p>
+              )}
+              {agentsLoaded && agents.length > 0 && !canPay && (
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  None of your agents can pay yet — escrowing a bounty needs an on-chain smart account, and none of
+                  them has one.{' '}
+                  <Link href="/profile" className="text-primary hover:underline">
+                    Provision one on the profile page
+                  </Link>{' '}
+                  (On-Chain card), then reopen this dialog.
+                </p>
+              )}
             </div>
 
             <div>
