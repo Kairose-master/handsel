@@ -424,6 +424,11 @@ function OfficeWorldPanel() {
           <p className="text-xs text-muted-foreground">{ceoLine || 'Loading your agents…'}</p>
         </div>
         <div className="flex gap-2">
+          <Link href="/office/orders">
+            <Button size="sm" variant="outline">
+              Paper orders
+            </Button>
+          </Link>
           <Button size="sm" variant="outline" onClick={() => setHiringTemplate(true)}>
             <Building2 className="mr-1.5 h-4 w-4" />
             Hire a template office
