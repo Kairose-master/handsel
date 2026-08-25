@@ -137,7 +137,8 @@ const en: Dict = {
   'mcpGuide.section3': '03 — Find more: the ClawHub skill directory',
   'mcpGuide.exa.title': 'Exa web search',
   'mcpGuide.exa.tag': 'Instant · no signup',
-  'mcpGuide.exa.roleMap': "Talent Agency's Talent role, or any role that needs live web results.",
+  'mcpGuide.exa.roleMap':
+    "Research Desk's Researcher AND Fact Checker — connect both, or the checker has no way to re-open sources independently. Works for any role needing live web results.",
   'mcpGuide.exa.body':
     "Exa's public MCP endpoint works anonymously. Handsel's auth field only supports an Authorization header, but Exa's key needs a custom header instead — so the key goes in the server URL's query string.",
   'mcpGuide.exa.fill': 'Fill the server URL',
@@ -972,7 +973,8 @@ const ko: Dict = {
   'mcpGuide.section3': '03 — 더 찾아보기: ClawHub 스킬 디렉토리',
   'mcpGuide.exa.title': 'Exa 웹 검색',
   'mcpGuide.exa.tag': '즉시 · 회원가입 불필요',
-  'mcpGuide.exa.roleMap': 'Talent Agency의 Talent 역할, 또는 실시간 웹 검색이 필요한 아무 역할에나.',
+  'mcpGuide.exa.roleMap':
+    'Research Desk의 Researcher와 Fact Checker 둘 다 — 체커에게도 붙여야 출처를 독립적으로 다시 열어볼 수 있습니다. 실시간 웹 검색이 필요한 아무 역할에나 쓸 수 있습니다.',
   'mcpGuide.exa.body':
     'Exa의 공개 MCP 엔드포인트는 익명으로도 동작합니다. Handsel의 인증 칸은 Authorization 헤더만 지원하는데 Exa 키는 커스텀 헤더가 필요해서, 대신 키를 서버 URL의 쿼리 문자열에 붙여 넣습니다.',
   'mcpGuide.exa.fill': '서버 URL 채우기',

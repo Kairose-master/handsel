@@ -432,4 +432,106 @@ export const OFFICE_TEMPLATES: OfficeTemplate[] = [
       },
     ],
   },
+  {
+    id: 'research-desk',
+    name: 'Research Desk',
+    blurb:
+      'One agent searches the real web, a SECOND agent independently re-checks every citation it produced, and a ' +
+      'third writes the result — with anything the checker could not verify struck out rather than quietly kept. ' +
+      'The shape most real research work actually needs: not one model asserting, but one asserting and another ' +
+      'holding it to its sources.',
+    flowSummary: 'Researcher (searches, cites) → Fact Checker (re-opens every source) → Editor (writes, keeps only what survived).',
+    exampleScope:
+      'Papers, specs, or standards published since July 2026 that already claim: "credit for AI agents only works ' +
+      'when independently verified work history is combined with escrow collateral to set a borrowing limit."',
+    scopeLabel: 'What should the desk find out? (a question to research, stated as specifically as you can)',
+    roles: [
+      {
+        id: 'researcher',
+        name: 'Researcher',
+        blurb: 'Searches the real web and brings back findings, every one with a source.',
+        colorIndex: 1,
+        customInstructions:
+          'You are a researcher. Answer only from what you actually retrieved with your search tool — never from ' +
+          'general knowledge, and never fill a gap with something that sounds right. Every single claim you make ' +
+          'carries its source URL and publication date inline. If the search turns up nothing for part of the ' +
+          'question, write "not found" for that part and say which queries you ran — a documented empty result is ' +
+          'a correct answer here and is worth more than a plausible invented one. Your work goes to an independent ' +
+          'fact checker who will re-open your sources, so a citation that does not say what you claim it says will ' +
+          'be caught.',
+        mcpHint: 'A web-search MCP tool — Exa works with no signup: server https://mcp.exa.ai/mcp, tool "web_search_exa" (see /office/mcp-guide).',
+      },
+      {
+        id: 'fact-checker',
+        name: 'Fact Checker',
+        blurb: 'Independently re-opens every source and rules on whether it actually says what was claimed.',
+        colorIndex: 2,
+        customInstructions:
+          "You independently verify another agent's research. Go through its claims one at a time and rule on each: " +
+          'VERIFIED (the cited source is real and genuinely says this), MISREAD (the source is real but does not ' +
+          'support the claim as written), or UNVERIFIABLE (the source cannot be reached, or no source was given). ' +
+          'Use your own search tool to check rather than trusting the citation as written. You are not here to ' +
+          'approve the work — a ruling of MISREAD or UNVERIFIABLE is a successful outcome for your job, and finding ' +
+          'nothing wrong at all is rare enough that you should be sure before you say it. Do not add new findings ' +
+          'of your own; your output is the verdict list.',
+        mcpHint: 'The same web-search tool as the Researcher — it must be able to re-open sources independently, or it cannot check anything.',
+      },
+      {
+        id: 'editor',
+        name: 'Editor',
+        blurb: 'Writes the final answer using only the findings that survived checking.',
+        colorIndex: 5,
+        customInstructions:
+          "You write the final deliverable from a researcher's findings and a fact checker's verdict on each one. " +
+          'The verdicts are binding: a claim ruled MISREAD or UNVERIFIABLE does not go into your answer as though ' +
+          'it were established. You may mention it explicitly as unconfirmed, but you may never restore it as a ' +
+          'fact — restoring it silently would undo the entire point of the check. If most findings failed ' +
+          'verification, say so plainly at the top; a short honest answer beats a long one padded with claims that ' +
+          'did not hold up. Keep every surviving claim attached to its source URL.',
+        mcpHint: 'None needed — this role works from the two upstream deliverables, not live data of its own.',
+      },
+    ],
+    pipeline: [
+      {
+        roleId: 'researcher',
+        title: 'Research — {scope}',
+        brief:
+          'Research this question using your search tool and report what you actually find:\n\n{scope}\n\nEvery ' +
+          'finding carries its source URL and publication date. Where you find nothing, say "not found" and list ' +
+          'the queries you tried. Do not answer any part of this from memory.',
+        acceptanceCriteria:
+          'Every claim carries a source URL and a date, or is explicitly marked "not found" with the attempted ' +
+          'queries listed. No claim is stated without one or the other.',
+        dependsOnRoleIds: [],
+        bountyWeight: 2,
+      },
+      {
+        roleId: 'fact-checker',
+        title: 'Verification — every source re-opened',
+        brief:
+          "Take the researcher's findings above and rule on each claim independently: VERIFIED, MISREAD, or " +
+          'UNVERIFIABLE. Re-open the cited sources yourself with your own search tool rather than trusting the ' +
+          'citation text. Give a one-line reason for every ruling. Add no new findings of your own.',
+        acceptanceCriteria:
+          'Every claim from the upstream research gets exactly one ruling (VERIFIED / MISREAD / UNVERIFIABLE) with ' +
+          'a one-line reason. Nothing is left unruled.',
+        dependsOnRoleIds: ['researcher'],
+        bountyWeight: 2,
+      },
+      {
+        roleId: 'editor',
+        title: 'Final answer — verified findings only',
+        brief:
+          "Write the final answer to the original question using the researcher's findings and the fact checker's " +
+          'rulings above. Claims ruled MISREAD or UNVERIFIABLE must not appear as established facts — drop them, ' +
+          'or name them explicitly as unconfirmed. Lead with an honest one-line summary of how much survived ' +
+          'verification. Keep every surviving claim attached to its source URL.',
+        acceptanceCriteria:
+          'Contains no claim the fact checker ruled MISREAD or UNVERIFIABLE presented as fact, states up front how ' +
+          'much of the research survived verification, and keeps a source URL on every claim it does assert.',
+        dependsOnRoleIds: ['researcher', 'fact-checker'],
+        bountyWeight: 1,
+      },
+    ],
+  },
 ]

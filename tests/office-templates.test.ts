@@ -110,3 +110,39 @@ describe('OFFICE_TEMPLATES', () => {
     })
   }
 })
+
+/**
+ * research-desk's whole claim is the verification chain: the checker must see
+ * the researcher's output, and the editor must see BOTH — the findings and the
+ * rulings on them. Drop either edge and the template still hires, still runs,
+ * and still produces a confident-looking answer, but the editor is now writing
+ * from unchecked research with nothing to flag it. That is a silent failure,
+ * so it gets an explicit guard rather than relying on the generic DAG checks.
+ */
+describe('research-desk verification chain', () => {
+  const template = OFFICE_TEMPLATES.find((t) => t.id === 'research-desk')
+
+  it('exists', () => {
+    expect(template).toBeDefined()
+  })
+
+  it('the fact checker consumes the researcher, and the editor consumes both', () => {
+    const byRoleId = new Map(template!.pipeline.map((s) => [s.roleId, s]))
+    expect(byRoleId.get('fact-checker')?.dependsOnRoleIds).toContain('researcher')
+    expect(byRoleId.get('editor')?.dependsOnRoleIds).toContain('researcher')
+    expect(byRoleId.get('editor')?.dependsOnRoleIds).toContain('fact-checker')
+  })
+
+  it('the editor is bound to the rulings rather than free to re-assert', () => {
+    const editor = template!.roles.find((r) => r.id === 'editor')!
+    expect(editor.customInstructions).toMatch(/MISREAD/)
+    expect(editor.customInstructions).toMatch(/UNVERIFIABLE/)
+  })
+
+  it('both searching roles are pointed at a real search tool, not left blank', () => {
+    for (const roleId of ['researcher', 'fact-checker']) {
+      const role = template!.roles.find((r) => r.id === roleId)!
+      expect(role.mcpHint.toLowerCase()).toMatch(/search/)
+    }
+  })
+})
