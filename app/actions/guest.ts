@@ -275,6 +275,35 @@ export async function getGuestOverview() {
     // numbers above live on. Null when no chain is configured — the footer
     // then says nothing rather than guessing.
     realMoney: await marketRealMoney(),
+    // The contracts THIS deployment actually runs, with the explorer for the
+    // chain it is actually on. Read from config, never hardcoded: the same
+    // page serves the mainnet and the Base Sepolia rehearsal, so a constant
+    // address list would show mainnet contracts to a testnet reader — the
+    // exact defect class lib/money-label.ts exists to stop.
+    deployment: await marketDeployment(),
+  }
+}
+
+export type GuestDeployment = {
+  explorerUrl: string
+  contracts: { name: string; address: string }[]
+}
+
+/** The running deployment's verifiable contracts, or null when none is
+ *  configured — the verification section then omits that card rather than
+ *  naming an address the reader cannot open. */
+async function marketDeployment(): Promise<GuestDeployment | null> {
+  try {
+    const { onchainEnv, EXPLORER_URL, isLaborMarketConfigured } = await import('@/lib/onchain/config')
+    if (!isLaborMarketConfigured()) return null
+    const contracts = [
+      { name: 'LaborMarketV2', address: onchainEnv.laborMarketAddress as string },
+      { name: 'AgentCreditRegistry', address: onchainEnv.registryAddress as string },
+    ].filter((c) => c.address.length > 0)
+    return contracts.length > 0 ? { explorerUrl: EXPLORER_URL, contracts } : null
+  } catch (error) {
+    console.error('[guest] deployment read failed:', error)
+    return null
   }
 }
 
