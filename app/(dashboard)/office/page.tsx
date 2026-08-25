@@ -416,11 +416,22 @@ function HireOfficeTemplateDialog({
                 <div className="mt-3 space-y-3 rounded-md border border-border p-3">
                   <p className="text-xs text-muted-foreground">
                     Leave a role's tool name blank to keep it a plain platform agent — nothing here is pre-filled with
-                    a guessed tool name.
+                    a guessed tool name. Not sure what to connect?{' '}
+                    <a href="/directory" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                      Browse ClawHub skills
+                    </a>{' '}
+                    for capability ideas — any of them that speaks MCP can be wired in below the same way.
                   </p>
                   <div>
                     <Label htmlFor="office-mcp-url">MCP server URL (shared by every role below)</Label>
                     <Input id="office-mcp-url" value={mcpServerUrl} onChange={(e) => setMcpServerUrl(e.target.value)} placeholder="https://…" />
+                    <button
+                      type="button"
+                      className="mt-1 text-xs text-primary hover:underline"
+                      onClick={() => setMcpServerUrl('https://mcp.exa.ai/mcp')}
+                    >
+                      Use Exa web search (real, no signup — tool name <code>web_search_exa</code>; add <code>?exaApiKey=…</code> for reliability)
+                    </button>
                   </div>
                   <div>
                     <Label htmlFor="office-mcp-auth">Auth header (optional)</Label>
