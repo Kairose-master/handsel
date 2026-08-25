@@ -8,8 +8,6 @@ import {
   Store,
   ShoppingCart,
   Radio,
-  Gauge,
-  Wallet,
   Bot,
   Workflow,
   ChevronDown,
@@ -188,6 +186,31 @@ export default function GuestPage() {
               {t(heroDisclaimerKey(data?.realMoney ?? null))}
             </p>
           </div>
+
+          {/* Live protocol readout, in the hero — the Morpho pattern (its own
+              hero carries Deposits/Loans as live figures and shows $0 without
+              flinching). Handsel already forbids seeded numbers, so putting
+              the real ones this far up turns that rule into the credibility
+              device it should be: whatever these say is what the network is.
+              Rendered at every state so the hero never reflows — dashes while
+              reading, an explicit failure note if the query dies. */}
+          <dl className="relative mt-10 grid max-w-3xl grid-cols-1 gap-px border-y border-border bg-border sm:grid-cols-3">
+            <HeroMetric
+              label={t('guest.stat.agents')}
+              value={data ? data.stats.agentCount.toLocaleString() : null}
+              failed={!loading && !data}
+            />
+            <HeroMetric
+              label={t('guest.stat.avgScore')}
+              value={data ? (data.stats.avgScore !== null ? String(data.stats.avgScore) : '—') : null}
+              failed={!loading && !data}
+            />
+            <HeroMetric
+              label={t('guest.stat.creditLine')}
+              value={data ? `$${data.stats.totalCreditLine.toLocaleString()}` : null}
+              failed={!loading && !data}
+            />
+          </dl>
         </section>
 
         {/* One-click, no-login pipeline demo — the first-timer "aha" */}
@@ -245,20 +268,9 @@ export default function GuestPage() {
           <p className="text-sm text-destructive">{t('guest.live.error')}</p>
         ) : (
           <>
-            <div className="grid gap-4 sm:grid-cols-3">
-              <StatCard icon={Bot} label={t('guest.stat.agents')} value={data.stats.agentCount.toLocaleString()} />
-              <StatCard
-                icon={Gauge}
-                label={t('guest.stat.avgScore')}
-                value={data.stats.avgScore !== null ? data.stats.avgScore.toString() : '—'}
-              />
-              <StatCard
-                icon={Wallet}
-                label={t('guest.stat.creditLine')}
-                value={`$${data.stats.totalCreditLine.toLocaleString()}`}
-              />
-            </div>
-
+            {/* The three figures that used to sit here now lead the hero —
+                repeating them mid-page said them twice and neither time
+                loudly. */}
             {data.topWorkers.length > 0 && (
               <div className="glass-card rounded-lg border border-border p-4">
                 <h2 className="mb-1 flex items-center gap-2 text-sm font-bold">
@@ -545,13 +557,25 @@ function HowStep({
   )
 }
 
-function StatCard({ icon: Icon, label, value }: { icon: typeof Bot; label: string; value: string }) {
+/** One live figure in the hero readout. `value === null` means still reading;
+ *  `failed` means the query died — neither ever renders a stand-in number. */
+function HeroMetric({ label, value, failed }: { label: string; value: string | null; failed: boolean }) {
   return (
-    <div className="glass-card rounded-lg border border-border p-4 transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md">
-      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <Icon className="size-3.5" /> {label}
-      </div>
-      <p className="mt-1 text-2xl font-bold font-mono">{value}</p>
+    <div className="bg-background px-4 py-3.5 first:pl-0 sm:px-5">
+      <dt className="text-[11px] font-medium uppercase tracking-[0.07em] text-muted-foreground">{label}</dt>
+      {/* `failed` is tested BEFORE `value === null`, because on a dead query
+          both are true — ordering them the other way made a failed read style
+          itself as a still-loading one while the text already said n/a. Not
+          destructive-red: three red figures read as an outage, and a hero
+          shouldn't shout. Muted-but-legible plus the literal n/a is enough to
+          tell "we couldn't read this" apart from a real zero. */}
+      <dd
+        className={`mt-1 font-mono text-2xl tabular-nums ${
+          failed ? 'text-muted-foreground' : value === null ? 'text-muted-foreground/40' : ''
+        }`}
+      >
+        {failed ? 'n/a' : (value ?? '––––')}
+      </dd>
     </div>
   )
 }
