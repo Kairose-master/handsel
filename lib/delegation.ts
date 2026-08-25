@@ -28,6 +28,7 @@ import { logPlatformEvent } from '@/lib/platform-feed'
 import { graphToDsl } from '@/lib/collab-dsl'
 import { fenceUntrusted, untrustedNonce } from '@/lib/untrusted-input'
 import { sealForInsert } from '@/lib/spec-hash'
+import type { SplitSpec } from '@/lib/settlement-split'
 
 export const MAX_SUBTASKS = 5
 export const MIN_SUBTASK_BOUNTY_USD = 1
@@ -112,6 +113,14 @@ export interface DelegationSubtask {
   /** Set on child subtasks produced by expanding a subcontract, naming the
    *  parent piece — for display and lineage. */
   parentTitle?: string
+  /** Multi-party settlement split (lib/settlement-split.ts): when this
+   *  subtask's job settles, the stated share of the WORKER's own bounty is
+   *  transferred on-chain to the named recipients — real agent-to-agent
+   *  money, not the prime's escrow. Never planner-authored (no LLM path
+   *  sets this); office templates (lib/office-world-data.ts) are the only
+   *  producer today, with recipients resolved to real hired agents at hire
+   *  time. See lib/settlement-split-apply.ts for where this actually fires. */
+  splitSpec?: SplitSpec
 }
 
 /** Parse a peer reviewer's free-text verdict into a decision. Pure. Defaults
@@ -572,6 +581,7 @@ async function postOneSubtask(
     requesterAgentId: primeAgentId,
     autoApprove: autoVerify || Boolean(st.testCode),
     officeOwnerId: st.reviewOf && st.officeOnly ? ownerId : null,
+    splitSpec: st.splitSpec ?? null,
   })
   // Bundler rate-limits back-to-back userops (free tier) — space them.
   if (spaceOut) await new Promise((r) => setTimeout(r, 2000))

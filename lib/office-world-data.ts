@@ -158,13 +158,25 @@ export type OfficeTemplateStep = {
   brief: string
   acceptanceCriteria: string
   dependsOnRoleIds: string[]
+  /** Multi-party settlement split (lib/settlement-split.ts), keyed by the
+   *  OTHER roles that get a cut when this step's job settles — resolved to
+   *  their real hired agentId at hire time (app/actions/office.ts). This is
+   *  what makes an office template a genuine agent-to-agent economy rather
+   *  than one owner funding a roster: the money that moves is the worker's
+   *  OWN just-settled bounty, split out on-chain to office-mates, not a
+   *  separate payment from the prime's escrow. bps values must sum ≤ 10000. */
+  splitBpsByRoleId?: Record<string, number>
 }
 
 export type OfficeTemplate = {
   id: string
   name: string
   blurb: string
-  symbolsLabel: string
+  scopeLabel: string
+  /** Whether hiring this template fetches a live market-data snapshot
+   *  (lib/market-data.ts) into the chart-analyst/news-analyst roles' briefs
+   *  — securities-desk only; irrelevant data for a non-trading template. */
+  usesMarketData?: boolean
   roles: OfficeTemplateRole[]
   pipeline: OfficeTemplateStep[]
 }
@@ -174,7 +186,8 @@ export const OFFICE_TEMPLATES: OfficeTemplate[] = [
     id: 'securities-desk',
     name: 'Securities Office',
     blurb: 'Chart + news analysts feed a quant model, which drafts a rebalance proposal — never an executed trade.',
-    symbolsLabel: 'Tickers in scope (e.g. 005930.KS, AAPL, TSLA)',
+    scopeLabel: 'Tickers in scope (e.g. 005930.KS, AAPL, TSLA)',
+    usesMarketData: true,
     roles: [
       {
         id: 'chart-analyst',
@@ -232,50 +245,104 @@ export const OFFICE_TEMPLATES: OfficeTemplate[] = [
     pipeline: [
       {
         roleId: 'chart-analyst',
-        title: 'Chart analysis — {symbols}',
+        title: 'Chart analysis — {scope}',
         brief:
-          'Pull recent price/volume history for {symbols} and summarize, per ticker: trend direction, at least ' +
+          'Pull recent price/volume history for {scope} and summarize, per ticker: trend direction, at least ' +
           'one support and one resistance level, and a momentum call. Ground every claim in the actual data you ' +
           'retrieved (specific prices and dates) — never a number from general knowledge.',
         acceptanceCriteria:
-          'Every ticker in {symbols} gets a trend read, a support level, a resistance level, and a momentum call, ' +
+          'Every ticker in {scope} gets a trend read, a support level, a resistance level, and a momentum call, ' +
           'each citing a specific price and date.',
         dependsOnRoleIds: [],
       },
       {
         roleId: 'news-analyst',
-        title: 'News & filings analysis — {symbols}',
+        title: 'News & filings analysis — {scope}',
         brief:
-          'Review recent news, disclosures, and filings for {symbols} and summarize what is actually relevant to ' +
+          'Review recent news, disclosures, and filings for {scope} and summarize what is actually relevant to ' +
           'the price — earnings, guidance, ownership/management moves, regulatory items. Cite headline, date, and ' +
           'source for each item.',
         acceptanceCriteria:
-          'Every ticker in {symbols} gets at least one cited news/filing item (headline, date, source), or an ' +
+          'Every ticker in {scope} gets at least one cited news/filing item (headline, date, source), or an ' +
           'explicit "nothing material found" if a genuine search turned up nothing.',
         dependsOnRoleIds: [],
       },
       {
         roleId: 'quant-modeler',
-        title: 'Quant model — weight synthesis for {symbols}',
+        title: 'Quant model — weight synthesis for {scope}',
         brief:
-          'Read the chart analysis and news analysis deliverables for {symbols} and synthesize a suggested ' +
+          'Read the chart analysis and news analysis deliverables for {scope} and synthesize a suggested ' +
           'weight or directional tilt per ticker, explaining which upstream analysis drove which call.',
         acceptanceCriteria:
-          'Every ticker in {symbols} gets an explicit weight/tilt call that cites which upstream analysis (chart, ' +
+          'Every ticker in {scope} gets an explicit weight/tilt call that cites which upstream analysis (chart, ' +
           'news, or both) it is based on.',
         dependsOnRoleIds: ['chart-analyst', 'news-analyst'],
       },
       {
         roleId: 'rebalance-planner',
-        title: 'Rebalance proposal (draft — not executed) — {symbols}',
+        title: 'Rebalance proposal (draft — not executed) — {scope}',
         brief:
-          "Read the quant model's weights for {symbols} and produce a concrete proposed order list (ticker, " +
+          "Read the quant model's weights for {scope} and produce a concrete proposed order list (ticker, " +
           'buy/sell, quantity or notional) to move toward those targets. State explicitly that this is a draft ' +
           'for human review, not an executed trade.',
         acceptanceCriteria:
           'Every ticker with a nonzero weight change gets a concrete buy/sell line, and the deliverable states ' +
           'explicitly that it is a draft, not an executed order.',
         dependsOnRoleIds: ['quant-modeler'],
+      },
+    ],
+  },
+  {
+    id: 'talent-agency',
+    name: 'Talent Agency',
+    blurb:
+      'Every real job the Talent completes automatically pays the Agency Head and Scout a cut — real on-chain ' +
+      'revenue share between three independently hired agents, not one owner funding a roster.',
+    scopeLabel: 'What should the Talent deliver? (a task description, same as /delegate)',
+    roles: [
+      {
+        id: 'agency-head',
+        name: 'Agency Head',
+        blurb: 'Posts and funds the job; takes an automatic cut of every payout.',
+        colorIndex: 8,
+        customInstructions:
+          'You run this agency. You post and fund real work for your Talent, and you are paid automatically out ' +
+          "of the Talent's settled earnings the moment a job completes — no separate invoice, no manual transfer. " +
+          'You do not do the delivery work yourself.',
+        mcpHint: 'Not applicable — this role never claims jobs itself.',
+      },
+      {
+        id: 'scout',
+        name: 'Talent Scout',
+        blurb: 'Sourced this job; takes an automatic smaller cut when it settles.',
+        colorIndex: 5,
+        customInstructions:
+          'You sourced this work for the agency. Like the Agency Head, you are paid automatically out of the ' +
+          "Talent's settled earnings when the job completes — a real, independent cut of another agent's own " +
+          'payout, not a fee taken before they are paid. You do not do the delivery work yourself.',
+        mcpHint: 'Not applicable — this role never claims jobs itself.',
+      },
+      {
+        id: 'talent',
+        name: 'Talent',
+        blurb: 'Does the actual work — keeps what is left after the agency and scout cuts.',
+        colorIndex: 2,
+        customInstructions:
+          'You are the Talent at a small agency. Deliver exactly what the brief below asks for, complete and ' +
+          'ready to use — no partial or placeholder output. The moment this job settles, a share of YOUR payout ' +
+          'automatically goes to your Agency Head and Scout, on-chain, out of your own wallet — that is the deal ' +
+          'that gets you real work in the first place.',
+        mcpHint: 'Optional — connect this role to whatever tool the brief actually needs.',
+      },
+    ],
+    pipeline: [
+      {
+        roleId: 'talent',
+        title: 'Agency delivery',
+        brief: '{scope}',
+        acceptanceCriteria: 'Delivers exactly what the brief above asks for, complete and ready to use — no partial or placeholder output.',
+        dependsOnRoleIds: [],
+        splitBpsByRoleId: { 'agency-head': 2000, scout: 500 },
       },
     ],
   },

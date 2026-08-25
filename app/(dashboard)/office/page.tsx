@@ -188,10 +188,11 @@ function HireStaffDialog({ open, onClose, onHired }: { open: boolean; onClose: (
 }
 
 function HireOfficeTemplateDialog({ open, onClose, onHired }: { open: boolean; onClose: () => void; onHired: () => void }) {
-  const template = OFFICE_TEMPLATES[0]
+  const [templateId, setTemplateId] = useState(OFFICE_TEMPLATES[0].id)
+  const template = OFFICE_TEMPLATES.find((t) => t.id === templateId) ?? OFFICE_TEMPLATES[0]
   const [agents, setAgents] = useState<Array<{ id: string; name: string; provisioned: boolean }>>([])
   const [primeAgentId, setPrimeAgentId] = useState('')
-  const [symbols, setSymbols] = useState('')
+  const [scope, setScope] = useState('')
   const [budgetUsd, setBudgetUsd] = useState(String(template.pipeline.length * 2))
   const [mcpOpen, setMcpOpen] = useState(false)
   const [mcpServerUrl, setMcpServerUrl] = useState('')
@@ -213,7 +214,7 @@ function HireOfficeTemplateDialog({ open, onClose, onHired }: { open: boolean; o
   if (!open) return null
 
   const reset = () => {
-    setSymbols('')
+    setScope('')
     setBudgetUsd(String(template.pipeline.length * 2))
     setMcpOpen(false)
     setMcpServerUrl('')
@@ -236,7 +237,7 @@ function HireOfficeTemplateDialog({ open, onClose, onHired }: { open: boolean; o
       const res = await hireOfficeTemplate({
         templateId: template.id,
         primeAgentId,
-        symbols,
+        scope,
         budgetUsd: Number(budgetUsd),
         mcpServerUrl: mcpOpen ? mcpServerUrl : undefined,
         mcpAuthHeader: mcpOpen ? mcpAuthHeader : undefined,
@@ -255,6 +256,13 @@ function HireOfficeTemplateDialog({ open, onClose, onHired }: { open: boolean; o
     }
   }
 
+  const roleNameById = new Map(template.roles.map((r) => [r.id, r.name]))
+  const splitLines = template.pipeline.flatMap((step) =>
+    step.splitBpsByRoleId
+      ? Object.entries(step.splitBpsByRoleId).map(([roleId, bps]) => `${roleNameById.get(roleId) ?? roleId} gets ${(bps / 100).toFixed(1)}%`)
+      : [],
+  )
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={handleClose}>
       <div
@@ -262,7 +270,7 @@ function HireOfficeTemplateDialog({ open, onClose, onHired }: { open: boolean; o
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">{template.name}</h2>
+          <h2 className="text-lg font-semibold">{result ? template.name : 'Hire a template office'}</h2>
           <button onClick={handleClose} className="text-muted-foreground hover:text-foreground" aria-label="Close">
             <X className="h-4 w-4" />
           </button>
@@ -299,11 +307,35 @@ function HireOfficeTemplateDialog({ open, onClose, onHired }: { open: boolean; o
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
-            <p className="text-sm text-muted-foreground">{template.blurb}</p>
+            <div>
+              <Label>Template</Label>
+              <div className="mt-2 space-y-2">
+                {OFFICE_TEMPLATES.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setTemplateId(t.id)}
+                    className={`w-full rounded-md border p-3 text-left transition-colors ${
+                      t.id === templateId ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted/50'
+                    }`}
+                  >
+                    <div className="text-sm font-medium">{t.name}</div>
+                    <div className="text-xs text-muted-foreground">{t.blurb}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {splitLines.length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                Real on-chain revenue share on every settled job: {splitLines.join(', ')} — paid automatically out of
+                the worker's own bounty, not a separate budget line.
+              </p>
+            )}
 
             <div>
-              <Label htmlFor="office-symbols">{template.symbolsLabel}</Label>
-              <Input id="office-symbols" value={symbols} onChange={(e) => setSymbols(e.target.value)} placeholder="005930.KS, AAPL, TSLA" autoFocus />
+              <Label htmlFor="office-scope">{template.scopeLabel}</Label>
+              <Input id="office-scope" value={scope} onChange={(e) => setScope(e.target.value)} autoFocus />
             </div>
 
             <div>
@@ -324,13 +356,13 @@ function HireOfficeTemplateDialog({ open, onClose, onHired }: { open: boolean; o
             </div>
 
             <div>
-              <Label htmlFor="office-budget">Total budget (USD, split across {template.pipeline.length} steps)</Label>
+              <Label htmlFor="office-budget">Total budget (USD, split across {template.pipeline.length} step{template.pipeline.length === 1 ? '' : 's'})</Label>
               <Input id="office-budget" type="number" min={template.pipeline.length} step="1" value={budgetUsd} onChange={(e) => setBudgetUsd(e.target.value)} />
             </div>
 
             <div>
               <Button type="button" variant="outline" size="sm" onClick={() => setMcpOpen((v) => !v)}>
-                {mcpOpen ? 'Hide' : 'Connect real market data (optional)'}
+                {mcpOpen ? 'Hide' : template.usesMarketData ? 'Connect real market data (optional)' : 'Connect external tools (optional)'}
               </Button>
               {mcpOpen && (
                 <div className="mt-3 space-y-3 rounded-md border border-border p-3">
@@ -363,7 +395,7 @@ function HireOfficeTemplateDialog({ open, onClose, onHired }: { open: boolean; o
 
             {error && <p className="text-sm text-destructive">{error}</p>}
 
-            <Button type="submit" className="w-full" disabled={busy || !primeAgentId || symbols.trim().length < 2}>
+            <Button type="submit" className="w-full" disabled={busy || !primeAgentId || scope.trim().length < 2}>
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Hire the office'}
             </Button>
           </form>

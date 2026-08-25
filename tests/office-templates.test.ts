@@ -50,16 +50,31 @@ describe('OFFICE_TEMPLATES', () => {
         for (const step of template.pipeline) visit(step.roleId)
       })
 
-      it('every title/brief/acceptanceCriteria placeholder resolves with a real symbols string', () => {
-        const symbols = 'AAPL, 005930.KS'
+      it('every title/brief/acceptanceCriteria placeholder resolves with a real scope string', () => {
+        const scope = 'AAPL, 005930.KS'
         for (const step of template.pipeline) {
-          const title = step.title.replaceAll('{symbols}', symbols)
-          const brief = step.brief.replaceAll('{symbols}', symbols)
-          const criteria = step.acceptanceCriteria.replaceAll('{symbols}', symbols)
-          expect(title).not.toContain('{symbols}')
-          expect(brief).not.toContain('{symbols}')
-          expect(criteria).not.toContain('{symbols}')
-          expect(title).toContain(symbols)
+          const title = step.title.replaceAll('{scope}', scope)
+          const brief = step.brief.replaceAll('{scope}', scope)
+          const criteria = step.acceptanceCriteria.replaceAll('{scope}', scope)
+          expect(title).not.toContain('{scope}')
+          expect(brief).not.toContain('{scope}')
+          expect(criteria).not.toContain('{scope}')
+          expect(brief).toContain(scope) // the brief always carries the actual scope, even if the title doesn't
+        }
+      })
+
+      it('every splitBpsByRoleId references a real, DIFFERENT role id and sums to at most 10000', () => {
+        const roleIds = new Set(template.roles.map((r) => r.id))
+        for (const step of template.pipeline) {
+          if (!step.splitBpsByRoleId) continue
+          let total = 0
+          for (const [roleId, bps] of Object.entries(step.splitBpsByRoleId)) {
+            expect(roleIds.has(roleId)).toBe(true)
+            expect(roleId).not.toBe(step.roleId) // a role can't take a cut of its own payout
+            expect(bps).toBeGreaterThan(0)
+            total += bps
+          }
+          expect(total).toBeLessThanOrEqual(10_000)
         }
       })
 

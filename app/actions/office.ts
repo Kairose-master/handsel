@@ -154,7 +154,7 @@ async function buildDataSnapshots(symbols: string[]): Promise<Map<string, string
 export type HireOfficeTemplateInput = {
   templateId: string
   primeAgentId: string
-  symbols: string
+  scope: string
   budgetUsd: number
   /** Optional shared MCP server all opted-in roles connect through. */
   mcpServerUrl?: string
@@ -188,8 +188,8 @@ export async function hireOfficeTemplate(
   const template = OFFICE_TEMPLATES.find((t) => t.id === input.templateId)
   if (!template) return { error: 'Unknown office template' }
 
-  const symbols = input.symbols.trim()
-  if (symbols.length < 2) return { error: 'List at least one ticker/symbol' }
+  const scope = input.scope.trim()
+  if (scope.length < 2) return { error: 'Describe what this office should deliver' }
 
   const [prime] = await db.select().from(agent).where(eq(agent.id, input.primeAgentId))
   if (!prime || prime.userId !== userId) return { error: 'Agent not found' }
@@ -201,6 +201,7 @@ export async function hireOfficeTemplate(
   }
 
   const hired: HireOfficeTemplateResult['hired'] = []
+  const agentIdByRoleId = new Map<string, string>()
   for (const role of template.roles) {
     const name = await uniqueAgentName(userId, role.name)
     const agentId = nanoid()
@@ -237,6 +238,7 @@ export async function hireOfficeTemplate(
         console.error(`[office] hireOfficeTemplate: MCP connect failed for role ${role.id}:`, error)
       }
     }
+    agentIdByRoleId.set(role.id, agentId)
     hired.push({ roleId: role.id, agentId, name, mcpConnected })
   }
 
@@ -244,22 +246,39 @@ export async function hireOfficeTemplate(
   // actually runs without anyone connecting an MCP server first — see
   // lib/market-data.ts's header. Best-effort per symbol: one bad ticker or
   // a flaky upstream degrades to a note in the brief, never blocks the hire.
-  const symbolList = symbols.split(',').map((s) => s.trim()).filter(Boolean)
-  const snapshotByRoleId = await buildDataSnapshots(symbolList)
+  // Only meaningful for a market-data template (securities-desk) — a plain
+  // task description elsewhere isn't a ticker list to look up.
+  const snapshotByRoleId = template.usesMarketData
+    ? await buildDataSnapshots(scope.split(',').map((s) => s.trim()).filter(Boolean))
+    : new Map<string, string>()
 
   const perStep = Math.max(MIN_SUBTASK_BOUNTY_USD, Math.round((input.budgetUsd / template.pipeline.length) * 100) / 100)
-  const titleByRoleId = new Map(template.pipeline.map((s) => [s.roleId, s.title.replaceAll('{symbols}', symbols)]))
+  const titleByRoleId = new Map(template.pipeline.map((s) => [s.roleId, s.title.replaceAll('{scope}', scope)]))
   const subtasks: DelegationSubtask[] = template.pipeline.map((step) => {
     const snapshot = snapshotByRoleId.get(step.roleId)
+    // Settlement split (lib/settlement-split.ts): the OTHER hired roles named
+    // in this step get a real on-chain cut of THIS step's worker's own
+    // settled bounty — resolved to their real agentId now that every role is
+    // hired. A role with no smart account yet still gets named (it'll just
+    // provision before it can be paid) rather than silently dropped.
+    const splitRecipients = step.splitBpsByRoleId
+      ? Object.entries(step.splitBpsByRoleId)
+          .map(([roleId, bps]) => {
+            const recipientAgentId = agentIdByRoleId.get(roleId)
+            return recipientAgentId ? { role: roleId, agentId: recipientAgentId, bps } : null
+          })
+          .filter((r): r is { role: string; agentId: string; bps: number } => r !== null)
+      : []
     return {
       title: titleByRoleId.get(step.roleId)!,
-      description: step.brief.replaceAll('{symbols}', symbols) + (snapshot ? `\n\n${snapshot}` : ''),
-      acceptanceCriteria: step.acceptanceCriteria.replaceAll('{symbols}', symbols),
+      description: step.brief.replaceAll('{scope}', scope) + (snapshot ? `\n\n${snapshot}` : ''),
+      acceptanceCriteria: step.acceptanceCriteria.replaceAll('{scope}', scope),
       bountyUsd: perStep,
       deliverableKind: 'text' as const,
       ...(step.dependsOnRoleIds.length
         ? { dependsOn: step.dependsOnRoleIds.map((rid) => titleByRoleId.get(rid)!) }
         : {}),
+      ...(splitRecipients.length ? { splitSpec: { recipients: splitRecipients } } : {}),
     }
   })
 
@@ -269,7 +288,7 @@ export async function hireOfficeTemplate(
     id: delegationId,
     userId,
     primeAgentId: input.primeAgentId,
-    task: `${template.name}: ${symbols}`,
+    task: `${template.name}: ${scope}`,
     budgetUsd: totalBounty.toFixed(2),
     status: 'planned',
     subtasks,
