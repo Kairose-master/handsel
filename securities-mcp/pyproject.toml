@@ -1,0 +1,16 @@
+[project]
+name = "securities-mcp"
+version = "0.1.0"
+description = "Paper-trading-only KIS market data MCP server for Handsel's Securities Office template"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastmcp>=2.11.2",
+    "requests>=2.32.4",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0.0"]
+
+[tool.setuptools]
+py-modules = ["kis_client", "server"]
