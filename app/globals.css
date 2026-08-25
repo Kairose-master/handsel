@@ -5,7 +5,9 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --font-sans: 'Inter', 'Inter Fallback', ui-sans-serif, system-ui, sans-serif;
+  /* next/font already appends its own "Geist Fallback" metric-matched face to
+     this variable — don't repeat it here or it lands in the stack twice. */
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'Geist Mono', 'Geist Mono Fallback';
 
   --color-sidebar-ring: var(--sidebar-ring);

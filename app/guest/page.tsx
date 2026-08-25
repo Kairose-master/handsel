@@ -132,34 +132,45 @@ export default function GuestPage() {
       <RiskBanner realMoney={data?.realMoney ?? null} />
 
       <main className="mx-auto max-w-[1100px] space-y-6 p-4 md:p-6">
-        {/* Hero */}
-        <section className="relative overflow-hidden rounded-2xl border border-border bg-gradient-to-b from-primary/[0.08] via-primary/[0.02] to-transparent px-6 py-12 md:px-10 md:py-16">
-          <div className="max-w-2xl">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+        {/* Hero — deliberately NOT a card. Every other section on this page
+            was boxed identically, so elevation communicated nothing and the
+            most important element on the site read as one more tile. It sits
+            on the ground now, and the ambient wash carries it instead. */}
+        <section className="relative overflow-hidden px-1 pb-10 pt-10 md:pb-14 md:pt-16">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute -left-32 -top-40 h-[420px] w-[620px] rounded-full bg-primary/[0.07] blur-3xl"
+          />
+          <div className="relative max-w-3xl">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/[0.07] px-3 py-1 text-[11px] font-medium uppercase tracking-[0.08em] text-primary">
               <ShieldCheck className="size-3.5" /> {t('guest.hero.badge')}
             </span>
-            <h1 className="mt-4 text-4xl font-bold tracking-tight md:text-5xl">
+            <h1 className="mt-5 text-[2.6rem] font-semibold leading-[1.04] tracking-[-0.03em] text-balance md:text-6xl">
               {t('guest.hero.title')}
             </h1>
-            <p className="mt-4 text-base leading-relaxed text-muted-foreground md:text-lg">
+            <p className="mt-5 max-w-[62ch] text-[1.0625rem] leading-[1.65] text-muted-foreground md:text-lg">
               {t('guest.hero.body')}
             </p>
-            <div className="mt-6 flex flex-wrap items-center gap-3">
+            {/* Three weights, not one filled + two identical ghosts: the old
+                row gave the secondary and tertiary paths the same visual
+                claim, so neither read as the lighter option. */}
+            <div className="mt-7 flex flex-wrap items-center gap-2.5">
               <a
                 href="#see-it-work"
-                className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition hover:opacity-90"
+                className="group inline-flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-all duration-200 hover:opacity-90 hover:shadow-md active:translate-y-px"
               >
-                {t('guest.hero.ctaSeeItWork')} <ArrowRight className="size-4" />
+                {t('guest.hero.ctaSeeItWork')}
+                <ArrowRight className="size-4 transition-transform duration-200 group-hover:translate-x-0.5" />
               </a>
               <Link
                 href="/start"
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-5 py-2.5 text-sm font-semibold transition hover:bg-secondary"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-5 py-2.5 text-sm font-semibold transition-all duration-200 hover:border-primary/40 hover:bg-secondary active:translate-y-px"
               >
                 {t('guest.hero.ctaStart')}
               </Link>
               <Link
                 href="/connect"
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-5 py-2.5 text-sm font-semibold transition hover:bg-secondary"
+                className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-medium text-muted-foreground transition-all duration-200 hover:bg-secondary hover:text-foreground active:translate-y-px"
               >
                 {t('guest.hero.ctaConnect')}
               </Link>
@@ -184,8 +195,11 @@ export default function GuestPage() {
           <PipelineDemo />
         </div>
 
-        {/* How it works — three confident steps */}
-        <section className="grid gap-4 sm:grid-cols-3">
+        {/* How it works — ONE sequence, rendered as one. Three equally-weighted
+            cards read as three separate products; these are three stages of a
+            single flow, so they share a container and are divided rather than
+            boxed, with the numeral carrying the order. */}
+        <section className="grid gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-3">
           <HowStep
             n={1}
             icon={Briefcase}
@@ -518,15 +532,15 @@ function HowStep({
   body: string
 }) {
   return (
-    <div className="glass-card relative rounded-xl border border-border bg-card p-5">
-      <div className="flex items-center gap-2.5">
-        <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+    <div className="relative bg-card p-5 transition-colors duration-200 hover:bg-secondary/40 md:p-6">
+      <div className="flex items-baseline gap-2.5">
+        <span className="font-mono text-[1.75rem] font-medium leading-none text-primary/35 tabular-nums">
           {n}
         </span>
-        <Icon className="size-4 text-muted-foreground" />
-        <h3 className="text-sm font-semibold">{title}</h3>
+        <Icon className="size-4 shrink-0 self-center text-muted-foreground" />
+        <h3 className="text-sm font-semibold text-balance">{title}</h3>
       </div>
-      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{body}</p>
+      <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">{body}</p>
     </div>
   )
 }
