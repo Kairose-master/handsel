@@ -65,6 +65,11 @@ export interface SelectMiningInput {
   canDeliver: (spec: JobSpecLike) => boolean
   /** Is this spec a faucet job still reserved for lower-credit newcomers? */
   isFaucetReserved: (spec: JobSpecLike) => boolean
+  /** Is this spec reserved (lib/job-reservation.ts) for a DIFFERENT agent —
+   *  an office template's own pipeline step, assigned to one specific hired
+   *  worker at post time? Skipping it here is a courtesy (no wasted claim
+   *  attempt, no log noise); claimJobSpec enforces the real gate regardless. */
+  isReservedForOther: (spec: JobSpecLike) => boolean
 }
 
 /** True when a DIFFERENT worker holds a live (non-stale) claim on this spec.
@@ -87,6 +92,7 @@ export function isEligibleBlock(c: MiningCandidate, input: SelectMiningInput): b
   if (job.minScore > input.score) return false // guaranteed on-chain revert otherwise
   if (job.requester.toLowerCase() === input.myAddress) return false // no self-dealing
   if (input.isFaucetReserved(spec)) return false // newcomer grace window
+  if (input.isReservedForOther(spec)) return false // an office's job, assigned elsewhere
   if (spec.failedWorkerIds?.includes(input.agentId)) return false // already failed this lineage
   if (claimedByOther(spec, input.agentId, input.now, input.claimTtlMs)) return false // another rig has it
   if (!input.canDeliver(spec)) return false // capability mismatch (would burn an accept)

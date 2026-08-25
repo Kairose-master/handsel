@@ -223,6 +223,11 @@ ALTER TABLE "agent" ADD COLUMN IF NOT EXISTS "votePolicy" text;
 -- so adding one here without this file having run everywhere first would
 -- break every one of them — which is exactly why office slot membership
 -- lives in its own table instead of a column on agent.
+--
+-- job_reservation (lib/job-reservation.ts) is the same pattern for the
+-- same reason: job_specs is likewise selected via an implicit full column
+-- list at many call sites, so which agent a job is reserved for lives in
+-- its own table, self-migrated, rather than a new job_specs column.
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.columns

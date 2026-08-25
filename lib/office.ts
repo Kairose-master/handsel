@@ -9,6 +9,13 @@
  * offices show up in each other's "visit" view, and later, which review
  * subtasks get curated toward each other instead of the flat public board.
  *
+ * That on-chain openness is separate from whether an office's OWN pipeline
+ * work actually goes to the staff hired for it — see lib/job-reservation.ts,
+ * which reserves a specific hired agent's job off-chain and is enforced by
+ * every dispatch path this platform controls (claimJobSpec). It's a real
+ * guarantee for normal use, just not a cryptographic one against a caller
+ * who talks to the contract directly.
+ *
  * Deliberately NOT a new collusion-discount mechanism. Two connected offices
  * that only ever review each other are exactly the star topology
  * `lib/credit-engine/counterparty-graph.ts` already prices down — that graph

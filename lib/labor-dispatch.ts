@@ -9,6 +9,7 @@ import { jobSpec, agent as agentTable } from '@/lib/db/schema'
 import { and, eq, isNull, lt, or } from 'drizzle-orm'
 import { runAgentTask } from '@/lib/agent-tasks'
 import { fenceUntrusted, untrustedNonce, workerBriefClause } from '@/lib/untrusted-input'
+import { reservedAgentFor } from '@/lib/job-reservation'
 
 type AgentRow = typeof agentTable.$inferSelect
 type SpecRow = typeof jobSpec.$inferSelect
@@ -23,6 +24,12 @@ export const JOB_CLAIM_TTL_MS = 90_000
  *  (single UPDATE ... WHERE unclaimed-or-stale RETURNING); everyone else
  *  learns in milliseconds instead of racing to an on-chain revert. */
 export async function claimJobSpec(specHash: string, agentId: string): Promise<boolean> {
+  // An office template's own pipeline step (lib/job-reservation.ts) is
+  // reserved for one specific hired agent — every dispatch path funds a
+  // claim through here, so this is the one place that reservation is real.
+  const reservedFor = await reservedAgentFor(specHash)
+  if (reservedFor && reservedFor !== agentId) return false
+
   const staleBefore = new Date(Date.now() - JOB_CLAIM_TTL_MS)
   const won = await db
     .update(jobSpec)
@@ -207,7 +214,12 @@ export async function acceptAndDispatchJob(
   // the normal contention path — cheap and instant, like a mining pool
   // handing each work unit to exactly one rig.
   if (spec && !(await claimJobSpec(spec.specHash, worker.id))) {
-    throw new Error('Another worker is already claiming this job — try a different one.')
+    const reservedFor = await reservedAgentFor(spec.specHash)
+    throw new Error(
+      reservedFor
+        ? 'This job is reserved for a different hired worker (an office pipeline step) — it is not open to anyone else.'
+        : 'Another worker is already claiming this job — try a different one.',
+    )
   }
 
   let txHash: string
@@ -285,7 +297,12 @@ export async function acceptJobForExternalWorker(
     throw new Error(`Job requires credit score ≥ ${job.minScore}; ${worker.name} has ${Math.round(parseFloat(worker.creditScore))}.`)
   }
   if (!(await claimJobSpec(spec.specHash, worker.id))) {
-    throw new Error('Another worker is already claiming this job — try a different one.')
+    const reservedFor = await reservedAgentFor(spec.specHash)
+    throw new Error(
+      reservedFor
+        ? 'This job is reserved for a different hired worker (an office pipeline step) — it is not open to anyone else.'
+        : 'Another worker is already claiming this job — try a different one.',
+    )
   }
 
   try {

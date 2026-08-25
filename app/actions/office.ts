@@ -325,6 +325,10 @@ export async function hireOfficeTemplate(
       acceptanceCriteria: step.acceptanceCriteria.replaceAll('{scope}', scope),
       bountyUsd: bountyForStep(step),
       deliverableKind: 'text' as const,
+      // Reserve this step for the role it was written for — an office's own
+      // hired worker does the office's own work, instead of racing whoever
+      // else is watching the public board when the job posts.
+      assignedAgentId: agentIdByRoleId.get(step.roleId),
       ...(step.dependsOnRoleIds.length
         ? { dependsOn: step.dependsOnRoleIds.map((rid) => titleByRoleId.get(rid)!) }
         : {}),

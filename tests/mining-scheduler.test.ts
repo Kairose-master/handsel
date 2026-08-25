@@ -62,6 +62,7 @@ function input(candidates: MiningCandidate[], over: Partial<SelectMiningInput> =
     claimTtlMs: TTL,
     canDeliver: () => true,
     isFaucetReserved: () => false,
+    isReservedForOther: () => false,
     ...over,
   }
 }
@@ -139,6 +140,14 @@ describe('isEligibleBlock', () => {
 
   it('rejects a faucet job still reserved for newcomers', () => {
     expect(isEligibleBlock(candidate(), input([], { isFaucetReserved: () => true }))).toBe(false)
+  })
+
+  it('rejects a job reserved (lib/job-reservation.ts) for a different agent', () => {
+    expect(isEligibleBlock(candidate(), input([], { isReservedForOther: () => true }))).toBe(false)
+  })
+
+  it('allows a job reserved for THIS agent (isReservedForOther only flags others)', () => {
+    expect(isEligibleBlock(candidate(), input([], { isReservedForOther: () => false }))).toBe(true)
   })
 })
 

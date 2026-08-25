@@ -106,6 +106,8 @@ export async function autoMineTick(
   const faucetId = await faucetAgentId().catch(() => null)
   const now = Date.now()
   const { workerCanDeliver } = await import('@/lib/artifacts')
+  const { reservationsByHash } = await import('@/lib/job-reservation')
+  const reservedBy = await reservationsByHash(specHashes).catch(() => new Map<string, string>())
 
   const selected = selectMiningBlocks({
     candidates,
@@ -122,6 +124,10 @@ export async function autoMineTick(
     // them and takes non-faucet (or post-grace) work instead.
     isFaucetReserved: (spec) =>
       Boolean(faucetId && spec.requesterAgentId === faucetId && faucetReservedFor(score, spec.createdAt, now)),
+    isReservedForOther: (spec) => {
+      const reservedFor = reservedBy.get(spec.specHash)
+      return Boolean(reservedFor && reservedFor !== agent.id)
+    },
   })
 
   // Serial within the agent (shared account nonce). The off-chain claim

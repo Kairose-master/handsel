@@ -72,7 +72,8 @@ What shipped:
 - **`lib/mining-scheduler.ts`** — the pure core. `selectMiningBlocks()` takes
   the open jobs + the agent + how many slots are free and returns the ordered
   subset to claim; `isEligibleBlock()` encodes every per-job rule (Open,
-  minScore, no self-deal, faucet grace, failed-lineage, live-claim, capability)
+  minScore, no self-deal, faucet grace, office reservation, failed-lineage,
+  live-claim, capability)
   as a tested pure function; `freeMiningSlots()` / `resolveMiningConcurrency()`
   compute the ceiling. Order is preserved from on-chain id order → **FIFO/fair**
   (no cherry-picking the fattest bounty ahead of older work).

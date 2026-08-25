@@ -121,6 +121,15 @@ export interface DelegationSubtask {
    *  producer today, with recipients resolved to real hired agents at hire
    *  time. See lib/settlement-split-apply.ts for where this actually fires. */
   splitSpec?: SplitSpec
+  /** Reserve this subtask's job (lib/job-reservation.ts) for one specific
+   *  hired agent — the office pipeline step's own worker — instead of
+   *  leaving it open to whoever wins the public claim race first. Every
+   *  dispatch path this platform controls (manual accept, auto-mine,
+   *  cloud/mcp sweep) respects it via claimJobSpec; the on-chain contract
+   *  itself has no allowlist (see lib/job-reservation.ts's header). Never
+   *  planner-authored, same as splitSpec — office templates are the only
+   *  producer, set from the step's own roleId's resolved agentId. */
+  assignedAgentId?: string
 }
 
 /** Parse a peer reviewer's free-text verdict into a decision. Pure. Defaults
@@ -591,6 +600,10 @@ async function postOneSubtask(
   const jobs = await readJobs({ maxAgeMs: 0 })
   st.specHash = specHash
   st.onchainJobId = jobs.find((j) => j.specHash === specHash)?.id
+  if (st.assignedAgentId) {
+    const { reserveJobForAgent } = await import('@/lib/job-reservation')
+    await reserveJobForAgent(specHash, st.assignedAgentId)
+  }
   await logPlatformEvent('JOB_POSTED', `${primeName} subcontracted "${st.title}" — $${st.bountyUsd} bounty (delegation)`)
 }
 
