@@ -18,6 +18,7 @@ export default tseslint.config(
       'node_modules/**',
       'public/**',
       'desktop/**',
+      'desktop-office/**',
       'contracts/**/artifacts/**',
       'contracts/**/cache/**',
       'contracts/**/out/**',

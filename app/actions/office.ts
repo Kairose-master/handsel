@@ -8,10 +8,14 @@
 import { getSession } from '@/lib/get-session'
 import { officeCodeFor, regenerateOfficeCode, redeemOfficeCode, connectedOfficesOf } from '@/lib/office'
 import { buildOfficeSnapshot } from '@/lib/office-world-server'
-import type { OfficeSnapshot } from '@/lib/office-world-data'
+import { OFFICE_TEMPLATES, type OfficeSnapshot } from '@/lib/office-world-data'
 import { db } from '@/lib/db'
-import { user } from '@/lib/db/schema'
-import { inArray } from 'drizzle-orm'
+import { user, agent, delegation } from '@/lib/db/schema'
+import { inArray, eq } from 'drizzle-orm'
+import { nanoid } from 'nanoid'
+import { randomBytes } from 'crypto'
+import { revalidatePath } from 'next/cache'
+import { MIN_SUBTASK_BOUNTY_USD, type DelegationSubtask } from '@/lib/delegation'
 
 async function requireUser() {
   const session = await getSession()
@@ -97,4 +101,133 @@ export async function hireStaff(input: HireStaffInput): Promise<{ id: string; mc
     console.error('[office] hireStaff: MCP connect failed, agent kept as a platform agent:', error)
     return { id: created.id, mcpConnected: false }
   }
+}
+
+async function uniqueAgentName(userId: string, base: string): Promise<string> {
+  const existing = await db.select({ name: agent.name }).from(agent).where(eq(agent.userId, userId))
+  const taken = new Set(existing.map((r) => r.name))
+  if (!taken.has(base)) return base
+  let n = 2
+  while (taken.has(`${base} ${n}`)) n++
+  return `${base} ${n}`
+}
+
+export type HireOfficeTemplateInput = {
+  templateId: string
+  primeAgentId: string
+  symbols: string
+  budgetUsd: number
+  /** Optional shared MCP server all opted-in roles connect through. */
+  mcpServerUrl?: string
+  mcpAuthHeader?: string
+  /** roleId -> tool name, only for the roles the owner wants MCP-wired. Any
+   *  role left out stays a plain platform agent — never a fabricated tool. */
+  mcpToolNames?: Record<string, string>
+}
+
+export type HireOfficeTemplateResult = {
+  delegationId: string
+  hired: Array<{ roleId: string; agentId: string; name: string; mcpConnected: boolean }>
+}
+
+/**
+ * Hire an entire office template — several role agents at once, plus the
+ * delegation pipeline that wires them together. See lib/office-world-data.ts's
+ * OFFICE_TEMPLATES header for the two things this deliberately does not do:
+ * escrow real money without a review step, and execute real trades.
+ *
+ * The delegation is saved 'planned' only — the same safe two-step pattern
+ * every hand-authored plan on /delegate goes through. Confirming it (which
+ * escrows the bounties for real) is a separate, explicit action on that page.
+ */
+export async function hireOfficeTemplate(
+  input: HireOfficeTemplateInput,
+): Promise<HireOfficeTemplateResult | { error: string }> {
+  const session = await requireUser()
+  const userId = session.user.id
+
+  const template = OFFICE_TEMPLATES.find((t) => t.id === input.templateId)
+  if (!template) return { error: 'Unknown office template' }
+
+  const symbols = input.symbols.trim()
+  if (symbols.length < 2) return { error: 'List at least one ticker/symbol' }
+
+  const [prime] = await db.select().from(agent).where(eq(agent.id, input.primeAgentId))
+  if (!prime || prime.userId !== userId) return { error: 'Agent not found' }
+  if (!prime.smartAccountAddress) return { error: 'Provision the prime agent first — it escrows the bounties' }
+
+  const minBudget = template.pipeline.length * MIN_SUBTASK_BOUNTY_USD
+  if (!Number.isFinite(input.budgetUsd) || input.budgetUsd < minBudget) {
+    return { error: `Budget must be at least $${minBudget} (roughly $${MIN_SUBTASK_BOUNTY_USD} per pipeline step)` }
+  }
+
+  const hired: HireOfficeTemplateResult['hired'] = []
+  for (const role of template.roles) {
+    const name = await uniqueAgentName(userId, role.name)
+    const agentId = nanoid()
+    await db.insert(agent).values({
+      id: agentId,
+      userId,
+      name,
+      walletAddress: `0x${randomBytes(20).toString('hex')}`,
+      description: role.blurb,
+      customInstructions: role.customInstructions,
+      modelVersion: 'claude-sonnet-5',
+      creditScore: '0',
+      creditRating: 'unrated',
+      riskLevel: 'UNKNOWN',
+      riskRating: 'unrated',
+      totalCreditLine: '0',
+      availableCredit: '0',
+      autoMine: true,
+    })
+    await (await import('@/lib/agent-keys')).ensureAgentKey(agentId)
+
+    let mcpConnected = false
+    const toolName = input.mcpToolNames?.[role.id]?.trim()
+    if (input.mcpServerUrl?.trim() && toolName) {
+      try {
+        const { setMcpWorker } = await import('@/app/actions/webhook')
+        await setMcpWorker(agentId, {
+          serverUrl: input.mcpServerUrl.trim(),
+          toolName,
+          authHeader: input.mcpAuthHeader?.trim() || undefined,
+        })
+        mcpConnected = true
+      } catch (error) {
+        console.error(`[office] hireOfficeTemplate: MCP connect failed for role ${role.id}:`, error)
+      }
+    }
+    hired.push({ roleId: role.id, agentId, name, mcpConnected })
+  }
+
+  const perStep = Math.max(MIN_SUBTASK_BOUNTY_USD, Math.round((input.budgetUsd / template.pipeline.length) * 100) / 100)
+  const titleByRoleId = new Map(template.pipeline.map((s) => [s.roleId, s.title.replaceAll('{symbols}', symbols)]))
+  const subtasks: DelegationSubtask[] = template.pipeline.map((step) => ({
+    title: titleByRoleId.get(step.roleId)!,
+    description: step.brief.replaceAll('{symbols}', symbols),
+    acceptanceCriteria: step.acceptanceCriteria.replaceAll('{symbols}', symbols),
+    bountyUsd: perStep,
+    deliverableKind: 'text' as const,
+    ...(step.dependsOnRoleIds.length
+      ? { dependsOn: step.dependsOnRoleIds.map((rid) => titleByRoleId.get(rid)!) }
+      : {}),
+  }))
+
+  const totalBounty = Math.round(subtasks.reduce((s, x) => s + x.bountyUsd, 0) * 100) / 100
+  const delegationId = `dlg-${nanoid(10)}`
+  await db.insert(delegation).values({
+    id: delegationId,
+    userId,
+    primeAgentId: input.primeAgentId,
+    task: `${template.name}: ${symbols}`,
+    budgetUsd: totalBounty.toFixed(2),
+    status: 'planned',
+    subtasks,
+    autoVerify: true,
+  })
+
+  revalidatePath('/office')
+  revalidatePath('/delegate')
+  return { delegationId, hired }
 }

@@ -17,7 +17,8 @@
  * lib/office.ts), so this page does not gate who can claim what.
  */
 import { useEffect, useRef, useState } from 'react'
-import { Copy, RefreshCw, Loader2, UserPlus, X } from 'lucide-react'
+import Link from 'next/link'
+import { Copy, RefreshCw, Loader2, UserPlus, Building2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -29,11 +30,14 @@ import {
   myConnectedOffices,
   myOfficeWorld,
   hireStaff,
+  hireOfficeTemplate,
   type ConnectedOffice,
+  type HireOfficeTemplateResult,
 } from '@/app/actions/office'
+import { getDelegationAgents } from '@/app/actions/delegate'
 import OfficeWorld from './game/OfficeWorld'
 import { LiveOffice, type Agent } from './game/live-engine'
-import { AGENT_TEMPLATES, colorsFor } from '@/lib/office-world-data'
+import { AGENT_TEMPLATES, OFFICE_TEMPLATES, colorsFor } from '@/lib/office-world-data'
 import './game/office.css'
 
 const POLL_MS = 12_000
@@ -183,12 +187,199 @@ function HireStaffDialog({ open, onClose, onHired }: { open: boolean; onClose: (
   )
 }
 
+function HireOfficeTemplateDialog({ open, onClose, onHired }: { open: boolean; onClose: () => void; onHired: () => void }) {
+  const template = OFFICE_TEMPLATES[0]
+  const [agents, setAgents] = useState<Array<{ id: string; name: string; provisioned: boolean }>>([])
+  const [primeAgentId, setPrimeAgentId] = useState('')
+  const [symbols, setSymbols] = useState('')
+  const [budgetUsd, setBudgetUsd] = useState(String(template.pipeline.length * 2))
+  const [mcpOpen, setMcpOpen] = useState(false)
+  const [mcpServerUrl, setMcpServerUrl] = useState('')
+  const [mcpAuthHeader, setMcpAuthHeader] = useState('')
+  const [mcpToolNames, setMcpToolNames] = useState<Record<string, string>>({})
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [result, setResult] = useState<HireOfficeTemplateResult | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    getDelegationAgents().then((list) => {
+      setAgents(list)
+      if (!primeAgentId) setPrimeAgentId(list.find((a) => a.provisioned)?.id ?? '')
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
+  if (!open) return null
+
+  const reset = () => {
+    setSymbols('')
+    setBudgetUsd(String(template.pipeline.length * 2))
+    setMcpOpen(false)
+    setMcpServerUrl('')
+    setMcpAuthHeader('')
+    setMcpToolNames({})
+    setError(null)
+    setResult(null)
+  }
+
+  const handleClose = () => {
+    reset()
+    onClose()
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await hireOfficeTemplate({
+        templateId: template.id,
+        primeAgentId,
+        symbols,
+        budgetUsd: Number(budgetUsd),
+        mcpServerUrl: mcpOpen ? mcpServerUrl : undefined,
+        mcpAuthHeader: mcpOpen ? mcpAuthHeader : undefined,
+        mcpToolNames: mcpOpen ? mcpToolNames : undefined,
+      })
+      if ('error' in res) {
+        setError(res.error)
+        return
+      }
+      setResult(res)
+      onHired()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not hire the office — try again')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={handleClose}>
+      <div
+        className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-lg border border-border bg-background p-5 shadow-lg"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-semibold">{template.name}</h2>
+          <button onClick={handleClose} className="text-muted-foreground hover:text-foreground" aria-label="Close">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {result ? (
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Hired {result.hired.length} agents and drafted the pipeline between them. Nothing is escrowed yet —
+              review the exact subtasks and bounties on the delegate page before confirming.
+            </p>
+            <ul className="space-y-1 text-sm">
+              {result.hired.map((h) => (
+                <li key={h.agentId} className="flex items-center justify-between rounded-md border border-border px-3 py-1.5">
+                  <span>{h.name}</span>
+                  {h.mcpConnected && <span className="text-xs text-muted-foreground">MCP connected</span>}
+                </li>
+              ))}
+            </ul>
+            <div className="flex gap-2">
+              <Link href="/delegate" className="flex-1">
+                <Button className="w-full">Review & confirm on /delegate</Button>
+              </Link>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  reset()
+                  onClose()
+                }}
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <p className="text-sm text-muted-foreground">{template.blurb}</p>
+
+            <div>
+              <Label htmlFor="office-symbols">{template.symbolsLabel}</Label>
+              <Input id="office-symbols" value={symbols} onChange={(e) => setSymbols(e.target.value)} placeholder="005930.KS, AAPL, TSLA" autoFocus />
+            </div>
+
+            <div>
+              <Label htmlFor="office-prime">Paying agent (escrows the bounties once you confirm)</Label>
+              <select
+                id="office-prime"
+                value={primeAgentId}
+                onChange={(e) => setPrimeAgentId(e.target.value)}
+                className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+              >
+                <option value="">Select an agent…</option>
+                {agents.map((a) => (
+                  <option key={a.id} value={a.id} disabled={!a.provisioned}>
+                    {a.name}{a.provisioned ? '' : ' (not provisioned)'}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <Label htmlFor="office-budget">Total budget (USD, split across {template.pipeline.length} steps)</Label>
+              <Input id="office-budget" type="number" min={template.pipeline.length} step="1" value={budgetUsd} onChange={(e) => setBudgetUsd(e.target.value)} />
+            </div>
+
+            <div>
+              <Button type="button" variant="outline" size="sm" onClick={() => setMcpOpen((v) => !v)}>
+                {mcpOpen ? 'Hide' : 'Connect real market data (optional)'}
+              </Button>
+              {mcpOpen && (
+                <div className="mt-3 space-y-3 rounded-md border border-border p-3">
+                  <p className="text-xs text-muted-foreground">
+                    Leave a role's tool name blank to keep it a plain platform agent — nothing here is pre-filled with
+                    a guessed tool name.
+                  </p>
+                  <div>
+                    <Label htmlFor="office-mcp-url">MCP server URL (shared by every role below)</Label>
+                    <Input id="office-mcp-url" value={mcpServerUrl} onChange={(e) => setMcpServerUrl(e.target.value)} placeholder="https://…" />
+                  </div>
+                  <div>
+                    <Label htmlFor="office-mcp-auth">Auth header (optional)</Label>
+                    <Input id="office-mcp-auth" value={mcpAuthHeader} onChange={(e) => setMcpAuthHeader(e.target.value)} placeholder="Bearer …" />
+                  </div>
+                  {template.roles.map((r) => (
+                    <div key={r.id}>
+                      <Label htmlFor={`office-tool-${r.id}`}>{r.name} tool name</Label>
+                      <Input
+                        id={`office-tool-${r.id}`}
+                        value={mcpToolNames[r.id] ?? ''}
+                        onChange={(e) => setMcpToolNames((prev) => ({ ...prev, [r.id]: e.target.value }))}
+                        placeholder={r.mcpHint}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {error && <p className="text-sm text-destructive">{error}</p>}
+
+            <Button type="submit" className="w-full" disabled={busy || !primeAgentId || symbols.trim().length < 2}>
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Hire the office'}
+            </Button>
+          </form>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function OfficeWorldPanel() {
   const engineRef = useRef(new LiveOffice())
   const [agents, setAgents] = useState<Agent[]>([])
   const [selected, setSelected] = useState<Agent | null>(null)
   const [ceoLine, setCeoLine] = useState('')
   const [hiring, setHiring] = useState(false)
+  const [hiringTemplate, setHiringTemplate] = useState(false)
   const [pollTrigger, setPollTrigger] = useState(0)
 
   useEffect(() => {
@@ -232,10 +423,16 @@ function OfficeWorldPanel() {
           <CardTitle className="text-base">Your office — live</CardTitle>
           <p className="text-xs text-muted-foreground">{ceoLine || 'Loading your agents…'}</p>
         </div>
-        <Button size="sm" onClick={() => setHiring(true)}>
-          <UserPlus className="mr-1.5 h-4 w-4" />
-          Hire staff
-        </Button>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => setHiringTemplate(true)}>
+            <Building2 className="mr-1.5 h-4 w-4" />
+            Hire a template office
+          </Button>
+          <Button size="sm" onClick={() => setHiring(true)}>
+            <UserPlus className="mr-1.5 h-4 w-4" />
+            Hire staff
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         <div style={{ height: 480 }} className="overflow-hidden rounded-lg border border-border">
@@ -249,6 +446,11 @@ function OfficeWorldPanel() {
         )}
       </CardContent>
       <HireStaffDialog open={hiring} onClose={() => setHiring(false)} onHired={() => setPollTrigger((n) => n + 1)} />
+      <HireOfficeTemplateDialog
+        open={hiringTemplate}
+        onClose={() => setHiringTemplate(false)}
+        onHired={() => setPollTrigger((n) => n + 1)}
+      />
     </Card>
   )
 }

@@ -121,3 +121,160 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
   { id: 'broker', name: 'Broker', blurb: 'Manages credit draws and repayments.', colorIndex: 8 },
   { id: 'delegate', name: 'Delegate', blurb: "Votes on governance on the owner's behalf.", colorIndex: 9 },
 ]
+
+/**
+ * Office templates — a hire-and-wire BUNDLE: several role agents, hired
+ * together, plus a matching delegation pipeline between them. Two things
+ * this deliberately does NOT do:
+ *
+ * 1. Auto-escrow real money. The pipeline is built as a 'planned' delegation
+ *    (see app/actions/office.ts's hireOfficeTemplate) — same as any
+ *    hand-authored plan on /delegate, the owner still reviews the exact
+ *    subtask briefs and bounties and picks a funded prime agent before a
+ *    single cent moves.
+ * 2. Claim to auto-execute real trades. A "rebalance" step's deliverable is
+ *    a proposed order list for a human to review — never an order placed.
+ *    Nothing in this file or its wiring calls a live order-entry tool.
+ *
+ * `mcpHint` names real API *categories* from the referenced provider's docs
+ * (verified before writing this file), never a specific tool identifier —
+ * this project doesn't fabricate config values it hasn't confirmed exist.
+ * Wiring a role to a real MCP server, if the owner chooses to, is manual:
+ * they supply their own serverUrl/toolName/authHeader, same as any other
+ * external MCP hire.
+ */
+export type OfficeTemplateRole = {
+  id: string
+  name: string
+  blurb: string
+  colorIndex: number
+  customInstructions: string
+  mcpHint: string
+}
+
+export type OfficeTemplateStep = {
+  roleId: string
+  title: string
+  brief: string
+  acceptanceCriteria: string
+  dependsOnRoleIds: string[]
+}
+
+export type OfficeTemplate = {
+  id: string
+  name: string
+  blurb: string
+  symbolsLabel: string
+  roles: OfficeTemplateRole[]
+  pipeline: OfficeTemplateStep[]
+}
+
+export const OFFICE_TEMPLATES: OfficeTemplate[] = [
+  {
+    id: 'securities-desk',
+    name: 'Securities Office',
+    blurb: 'Chart + news analysts feed a quant model, which drafts a rebalance proposal — never an executed trade.',
+    symbolsLabel: 'Tickers in scope (e.g. 005930.KS, AAPL, TSLA)',
+    roles: [
+      {
+        id: 'chart-analyst',
+        name: 'Chart Analyst',
+        blurb: 'Reads price/volume data for trend, support/resistance, momentum.',
+        colorIndex: 4,
+        customInstructions:
+          'You are a chart/technical analyst on a small securities desk. Given a list of tickers, pull recent ' +
+          'price and volume history — via your connected market-data tool if one is wired — and summarize the ' +
+          'technical picture for each: trend direction, key support/resistance levels, and a momentum read. Cite ' +
+          'the actual prices and dates you looked up. If no live data tool is connected, say so plainly instead of ' +
+          'guessing a number.',
+        mcpHint: 'KIS Trading MCP (koreainvestment/open-trading-api → MCP/Kis Trading MCP): a 시세조회 (market data) capable tool.',
+      },
+      {
+        id: 'news-analyst',
+        name: 'News Analyst',
+        blurb: 'Reads news and filings, flags what actually moves the names in scope.',
+        colorIndex: 1,
+        customInstructions:
+          'You are a news/filings analyst on a small securities desk. Given a list of tickers, review recent news, ' +
+          'disclosures, and filings and summarize what is actually relevant — earnings surprises, guidance changes, ' +
+          'ownership/management moves, regulatory items. Cite what you found (headline, date, source) rather than ' +
+          'paraphrasing from memory. If no live news/filings tool is connected, say so plainly instead of guessing.',
+        mcpHint: 'A news/filings-capable MCP tool — the KIS server does not expose one; any general news MCP works here.',
+      },
+      {
+        id: 'quant-modeler',
+        name: 'Quant Modeler',
+        blurb: 'Synthesizes the chart + news reads into a suggested weight per ticker.',
+        colorIndex: 3,
+        customInstructions:
+          "You are a quant/portfolio modeler. You'll receive a chart analysis and a news analysis for the same " +
+          'tickers. Synthesize both into a suggested weight or directional tilt per ticker, and explain the ' +
+          'reasoning — which analysis drove which call, and where they agreed or conflicted. This is a model ' +
+          'output for review, not an order.',
+        mcpHint: 'None needed — this role synthesizes the two upstream deliverables, not live data of its own.',
+      },
+      {
+        id: 'rebalance-planner',
+        name: 'Rebalance Planner',
+        blurb: 'Turns the model weights into a draft order list — proposal only, never auto-executed.',
+        colorIndex: 6,
+        customInstructions:
+          "You are a rebalance planner. Given the quant model's target weights and (if available) current " +
+          'holdings, produce a concrete proposed order list: ticker, buy/sell, and quantity or notional to move ' +
+          'from current toward target. This is a DRAFT for a human to review and place manually — you have no ' +
+          'authority to submit real orders and nothing about this task asks you to. State plainly that it is a ' +
+          'draft, not an executed trade.',
+        mcpHint: 'If wiring an account/balance tool here, use a READ-ONLY one (계좌잔고 조회) — never an order-placement tool.',
+      },
+    ],
+    pipeline: [
+      {
+        roleId: 'chart-analyst',
+        title: 'Chart analysis — {symbols}',
+        brief:
+          'Pull recent price/volume history for {symbols} and summarize, per ticker: trend direction, at least ' +
+          'one support and one resistance level, and a momentum call. Ground every claim in the actual data you ' +
+          'retrieved (specific prices and dates) — never a number from general knowledge.',
+        acceptanceCriteria:
+          'Every ticker in {symbols} gets a trend read, a support level, a resistance level, and a momentum call, ' +
+          'each citing a specific price and date.',
+        dependsOnRoleIds: [],
+      },
+      {
+        roleId: 'news-analyst',
+        title: 'News & filings analysis — {symbols}',
+        brief:
+          'Review recent news, disclosures, and filings for {symbols} and summarize what is actually relevant to ' +
+          'the price — earnings, guidance, ownership/management moves, regulatory items. Cite headline, date, and ' +
+          'source for each item.',
+        acceptanceCriteria:
+          'Every ticker in {symbols} gets at least one cited news/filing item (headline, date, source), or an ' +
+          'explicit "nothing material found" if a genuine search turned up nothing.',
+        dependsOnRoleIds: [],
+      },
+      {
+        roleId: 'quant-modeler',
+        title: 'Quant model — weight synthesis for {symbols}',
+        brief:
+          'Read the chart analysis and news analysis deliverables for {symbols} and synthesize a suggested ' +
+          'weight or directional tilt per ticker, explaining which upstream analysis drove which call.',
+        acceptanceCriteria:
+          'Every ticker in {symbols} gets an explicit weight/tilt call that cites which upstream analysis (chart, ' +
+          'news, or both) it is based on.',
+        dependsOnRoleIds: ['chart-analyst', 'news-analyst'],
+      },
+      {
+        roleId: 'rebalance-planner',
+        title: 'Rebalance proposal (draft — not executed) — {symbols}',
+        brief:
+          "Read the quant model's weights for {symbols} and produce a concrete proposed order list (ticker, " +
+          'buy/sell, quantity or notional) to move toward those targets. State explicitly that this is a draft ' +
+          'for human review, not an executed trade.',
+        acceptanceCriteria:
+          'Every ticker with a nonzero weight change gets a concrete buy/sell line, and the deliverable states ' +
+          'explicitly that it is a draft, not an executed order.',
+        dependsOnRoleIds: ['quant-modeler'],
+      },
+    ],
+  },
+]
