@@ -10,6 +10,11 @@ import { OFFICE_TEMPLATES } from '@/lib/office-world-data'
 describe('OFFICE_TEMPLATES', () => {
   for (const template of OFFICE_TEMPLATES) {
     describe(template.id, () => {
+      it('has a non-empty flowSummary and exampleScope for the one-touch hire flow', () => {
+        expect(template.flowSummary.trim().length).toBeGreaterThan(0)
+        expect(template.exampleScope.trim().length).toBeGreaterThanOrEqual(2)
+      })
+
       it('has at least one role and one pipeline step', () => {
         expect(template.roles.length).toBeGreaterThan(0)
         expect(template.pipeline.length).toBeGreaterThan(0)

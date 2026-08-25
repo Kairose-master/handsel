@@ -192,7 +192,8 @@ function HireOfficeTemplateDialog({ open, onClose, onHired }: { open: boolean; o
   const template = OFFICE_TEMPLATES.find((t) => t.id === templateId) ?? OFFICE_TEMPLATES[0]
   const [agents, setAgents] = useState<Array<{ id: string; name: string; provisioned: boolean }>>([])
   const [primeAgentId, setPrimeAgentId] = useState('')
-  const [scope, setScope] = useState('')
+  const [scope, setScope] = useState(OFFICE_TEMPLATES[0].exampleScope)
+  const [scopeTouched, setScopeTouched] = useState(false)
   const [budgetUsd, setBudgetUsd] = useState(String(template.pipeline.length * 2))
   const [mcpOpen, setMcpOpen] = useState(false)
   const [mcpServerUrl, setMcpServerUrl] = useState('')
@@ -211,10 +212,22 @@ function HireOfficeTemplateDialog({ open, onClose, onHired }: { open: boolean; o
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
+  // Picking a template fills the scope with a ready-to-use example — hire is
+  // one click for anyone just trying a template, not a blank form. Once the
+  // owner types their own scope, switching templates stops overwriting it.
+  const selectTemplate = (id: string) => {
+    setTemplateId(id)
+    if (!scopeTouched) {
+      const next = OFFICE_TEMPLATES.find((t) => t.id === id)
+      setScope(next?.exampleScope ?? '')
+    }
+  }
+
   if (!open) return null
 
   const reset = () => {
-    setScope('')
+    setScope(template.exampleScope)
+    setScopeTouched(false)
     setBudgetUsd(String(template.pipeline.length * 2))
     setMcpOpen(false)
     setMcpServerUrl('')
@@ -255,13 +268,6 @@ function HireOfficeTemplateDialog({ open, onClose, onHired }: { open: boolean; o
       setBusy(false)
     }
   }
-
-  const roleNameById = new Map(template.roles.map((r) => [r.id, r.name]))
-  const splitLines = template.pipeline.flatMap((step) =>
-    step.splitBpsByRoleId
-      ? Object.entries(step.splitBpsByRoleId).map(([roleId, bps]) => `${roleNameById.get(roleId) ?? roleId} gets ${(bps / 100).toFixed(1)}%`)
-      : [],
-  )
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={handleClose}>
@@ -314,28 +320,45 @@ function HireOfficeTemplateDialog({ open, onClose, onHired }: { open: boolean; o
                   <button
                     key={t.id}
                     type="button"
-                    onClick={() => setTemplateId(t.id)}
+                    onClick={() => selectTemplate(t.id)}
                     className={`w-full rounded-md border p-3 text-left transition-colors ${
                       t.id === templateId ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted/50'
                     }`}
                   >
                     <div className="text-sm font-medium">{t.name}</div>
-                    <div className="text-xs text-muted-foreground">{t.blurb}</div>
+                    <div className="mt-0.5 text-xs text-muted-foreground">{t.blurb}</div>
+                    <div className="mt-1.5 text-xs font-medium text-foreground/80">→ {t.flowSummary}</div>
                   </button>
                 ))}
               </div>
             </div>
 
-            {splitLines.length > 0 && (
-              <p className="text-xs text-muted-foreground">
-                Real on-chain revenue share on every settled job: {splitLines.join(', ')} — paid automatically out of
-                the worker's own bounty, not a separate budget line.
-              </p>
-            )}
-
             <div>
-              <Label htmlFor="office-scope">{template.scopeLabel}</Label>
-              <Input id="office-scope" value={scope} onChange={(e) => setScope(e.target.value)} autoFocus />
+              <div className="flex items-center justify-between">
+                <Label htmlFor="office-scope">{template.scopeLabel}</Label>
+                {scopeTouched && (
+                  <button
+                    type="button"
+                    className="text-xs text-muted-foreground underline hover:text-foreground"
+                    onClick={() => {
+                      setScope(template.exampleScope)
+                      setScopeTouched(false)
+                    }}
+                  >
+                    Use example
+                  </button>
+                )}
+              </div>
+              <Input
+                id="office-scope"
+                value={scope}
+                onChange={(e) => {
+                  setScope(e.target.value)
+                  setScopeTouched(true)
+                }}
+                autoFocus
+              />
+              {!scopeTouched && <p className="mt-1 text-xs text-muted-foreground">Pre-filled with an example — edit it, or hire as-is.</p>}
             </div>
 
             <div>

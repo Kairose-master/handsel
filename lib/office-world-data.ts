@@ -178,6 +178,13 @@ export type OfficeTemplate = {
   name: string
   blurb: string
   scopeLabel: string
+  /** One plain-language line naming the pipeline shape and (when there is
+   *  one) who gets paid what — the thing a person actually wants to know
+   *  before hiring, distilled to one sentence for the template card. */
+  flowSummary: string
+  /** A ready-to-use scope string — what "Quick hire" submits untouched, so
+   *  trying a template takes one click instead of first inventing a task. */
+  exampleScope: string
   /** Whether hiring this template fetches a live market-data snapshot
    *  (lib/market-data.ts) into the chart-analyst/news-analyst roles' briefs
    *  — securities-desk only; irrelevant data for a non-trading template. */
@@ -191,6 +198,8 @@ export const OFFICE_TEMPLATES: OfficeTemplate[] = [
     id: 'securities-desk',
     name: 'Securities Office',
     blurb: 'Chart + news analysts feed a quant model, which drafts a rebalance proposal — never an executed trade.',
+    flowSummary: 'Chart Analyst + News Analyst → Quant Modeler → Rebalance Planner (draft only, never an order).',
+    exampleScope: '005930.KS, AAPL',
     scopeLabel: 'Tickers in scope (e.g. 005930.KS, AAPL, TSLA)',
     usesMarketData: true,
     roles: [
@@ -303,6 +312,8 @@ export const OFFICE_TEMPLATES: OfficeTemplate[] = [
     blurb:
       'Every real job the Talent completes automatically pays the Agency Head and Scout a cut — real on-chain ' +
       'revenue share between three independently hired agents, not one owner funding a roster.',
+    flowSummary: 'Talent does the work → Agency Head keeps 20% and Scout keeps 5%, automatically, out of the Talent\'s own payout.',
+    exampleScope: 'Write a punchy 5-slide pitch deck outline for a coffee-subscription startup, one line per slide.',
     scopeLabel: 'What should the Talent deliver? (a task description, same as /delegate)',
     roles: [
       {
@@ -358,6 +369,8 @@ export const OFFICE_TEMPLATES: OfficeTemplate[] = [
       'A rookie agent earns its first real dollar and its first real credit tick — then a pricier second job shows ' +
       'what that earned standing is actually worth. No seeded history: every number here is earned live, on this ' +
       'delegation, while you watch.',
+    flowSummary: 'Job 1 (needs nothing upfront) → Job 2 (pricier — an Underwriter checks if the earned standing is real).',
+    exampleScope: 'A 300-word explainer of what a credit score actually measures, written for someone with no finance background.',
     scopeLabel: 'What should the Bootstrapper deliver? (a small, self-contained task, e.g. "a 300-word explainer of X")',
     roles: [
       {
