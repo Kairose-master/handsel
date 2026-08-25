@@ -16,6 +16,7 @@ import { nanoid } from 'nanoid'
 import { randomBytes } from 'crypto'
 import { revalidatePath } from 'next/cache'
 import { MIN_SUBTASK_BOUNTY_USD, type DelegationSubtask } from '@/lib/delegation'
+import { fetchQuote, fetchHeadlines } from '@/lib/market-data'
 
 async function requireUser() {
   const session = await getSession()
@@ -112,6 +113,44 @@ async function uniqueAgentName(userId: string, base: string): Promise<string> {
   return `${base} ${n}`
 }
 
+/** Real quote + headline snapshots, keyed by the role that consumes each —
+ *  the zero-setup default for the Securities Office template's read-only
+ *  roles. Never throws: a failed fetch becomes a plain-text note in the
+ *  brief instead of blocking the hire. */
+async function buildDataSnapshots(symbols: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>()
+  if (symbols.length === 0) return out
+
+  const quoteLines: string[] = []
+  for (const symbol of symbols) {
+    try {
+      const q = await fetchQuote(symbol)
+      quoteLines.push(`${q.symbol}: ${q.price} ${q.currency} (prev close ${q.prevClose}, high ${q.dayHigh}, low ${q.dayLow}, volume ${q.volume}) as of ${q.asOf}`)
+    } catch (error) {
+      quoteLines.push(`${symbol}: live quote unavailable (${error instanceof Error ? error.message : String(error)})`)
+    }
+  }
+  out.set('chart-analyst', `Live data snapshot (fetched at hire time):\n${quoteLines.join('\n')}`)
+
+  const newsLines: string[] = []
+  for (const symbol of symbols) {
+    try {
+      const headlines = await fetchHeadlines(symbol, 3)
+      if (headlines.length === 0) {
+        newsLines.push(`${symbol}: no recent headlines found`)
+      } else {
+        newsLines.push(`${symbol}:`)
+        for (const h of headlines) newsLines.push(`  - "${h.title}" — ${h.source}, ${h.pubDate} (${h.link})`)
+      }
+    } catch (error) {
+      newsLines.push(`${symbol}: headline lookup unavailable (${error instanceof Error ? error.message : String(error)})`)
+    }
+  }
+  out.set('news-analyst', `Recent headlines (fetched at hire time):\n${newsLines.join('\n')}`)
+
+  return out
+}
+
 export type HireOfficeTemplateInput = {
   templateId: string
   primeAgentId: string
@@ -201,18 +240,28 @@ export async function hireOfficeTemplate(
     hired.push({ roleId: role.id, agentId, name, mcpConnected })
   }
 
+  // Real, no-signup snapshots baked into the brief text so the pipeline
+  // actually runs without anyone connecting an MCP server first — see
+  // lib/market-data.ts's header. Best-effort per symbol: one bad ticker or
+  // a flaky upstream degrades to a note in the brief, never blocks the hire.
+  const symbolList = symbols.split(',').map((s) => s.trim()).filter(Boolean)
+  const snapshotByRoleId = await buildDataSnapshots(symbolList)
+
   const perStep = Math.max(MIN_SUBTASK_BOUNTY_USD, Math.round((input.budgetUsd / template.pipeline.length) * 100) / 100)
   const titleByRoleId = new Map(template.pipeline.map((s) => [s.roleId, s.title.replaceAll('{symbols}', symbols)]))
-  const subtasks: DelegationSubtask[] = template.pipeline.map((step) => ({
-    title: titleByRoleId.get(step.roleId)!,
-    description: step.brief.replaceAll('{symbols}', symbols),
-    acceptanceCriteria: step.acceptanceCriteria.replaceAll('{symbols}', symbols),
-    bountyUsd: perStep,
-    deliverableKind: 'text' as const,
-    ...(step.dependsOnRoleIds.length
-      ? { dependsOn: step.dependsOnRoleIds.map((rid) => titleByRoleId.get(rid)!) }
-      : {}),
-  }))
+  const subtasks: DelegationSubtask[] = template.pipeline.map((step) => {
+    const snapshot = snapshotByRoleId.get(step.roleId)
+    return {
+      title: titleByRoleId.get(step.roleId)!,
+      description: step.brief.replaceAll('{symbols}', symbols) + (snapshot ? `\n\n${snapshot}` : ''),
+      acceptanceCriteria: step.acceptanceCriteria.replaceAll('{symbols}', symbols),
+      bountyUsd: perStep,
+      deliverableKind: 'text' as const,
+      ...(step.dependsOnRoleIds.length
+        ? { dependsOn: step.dependsOnRoleIds.map((rid) => titleByRoleId.get(rid)!) }
+        : {}),
+    }
+  })
 
   const totalBounty = Math.round(subtasks.reduce((s, x) => s + x.bountyUsd, 0) * 100) / 100
   const delegationId = `dlg-${nanoid(10)}`
