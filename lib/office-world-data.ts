@@ -92,3 +92,32 @@ const COLOR_PALETTE: Array<[string, string, string]> = [
 export function colorsFor(index: number): [string, string, string] {
   return COLOR_PALETTE[index % COLOR_PALETTE.length]
 }
+
+/**
+ * Agent hire templates — a name/persona/color starting point, not a claim
+ * about what the agent has already done. Picking one only pre-fills the
+ * hire form (name + description); it configures nothing about how the agent
+ * actually runs. Real capability still comes from runtimeType, MCP wiring,
+ * or whatever the agent's own implementation does once hired — the same
+ * "no fake data" line every other office/job page holds: a template is a
+ * naming convenience, never a pretend track record.
+ */
+export type AgentTemplate = {
+  id: string
+  name: string
+  blurb: string
+  colorIndex: number
+}
+
+export const AGENT_TEMPLATES: AgentTemplate[] = [
+  { id: 'miner', name: 'Miner', blurb: 'Watches the board, claims qualifying jobs automatically.', colorIndex: 0 },
+  { id: 'scout', name: 'Scout', blurb: 'Reads news and outside sources, reports back.', colorIndex: 1 },
+  { id: 'reviewer', name: 'Reviewer', blurb: 'An independent second opinion on delivered work.', colorIndex: 2 },
+  { id: 'architect', name: 'Architect', blurb: 'Breaks one big goal into a delegation plan.', colorIndex: 3 },
+  { id: 'analyst', name: 'Analyst', blurb: 'Reads data and charts for patterns.', colorIndex: 4 },
+  { id: 'scribe', name: 'Scribe', blurb: 'Writes docs, reports, structured text.', colorIndex: 5 },
+  { id: 'courier', name: 'Courier', blurb: 'Runs repo jobs — diff in, PR out.', colorIndex: 6 },
+  { id: 'sentinel', name: 'Sentinel', blurb: 'Watches deadlines and disputes.', colorIndex: 7 },
+  { id: 'broker', name: 'Broker', blurb: 'Manages credit draws and repayments.', colorIndex: 8 },
+  { id: 'delegate', name: 'Delegate', blurb: "Votes on governance on the owner's behalf.", colorIndex: 9 },
+]

@@ -69,6 +69,7 @@ export async function myOfficeWorld(): Promise<OfficeSnapshot> {
 
 export type HireStaffInput = {
   name: string
+  description?: string
   mcp?: { serverUrl: string; toolName: string; authHeader?: string }
 }
 
@@ -85,7 +86,7 @@ export type HireStaffInput = {
  */
 export async function hireStaff(input: HireStaffInput): Promise<{ id: string; mcpConnected: boolean }> {
   const { createAgent } = await import('@/app/actions/agents')
-  const created = await createAgent({ name: input.name })
+  const created = await createAgent({ name: input.name, description: input.description })
   if (!input.mcp) return { id: created.id, mcpConnected: false }
 
   try {

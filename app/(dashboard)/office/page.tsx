@@ -33,12 +33,14 @@ import {
 } from '@/app/actions/office'
 import OfficeWorld from './game/OfficeWorld'
 import { LiveOffice, type Agent } from './game/live-engine'
+import { AGENT_TEMPLATES, colorsFor } from '@/lib/office-world-data'
 import './game/office.css'
 
 const POLL_MS = 12_000
 
 function HireStaffDialog({ open, onClose, onHired }: { open: boolean; onClose: () => void; onHired: () => void }) {
   const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
   const [mode, setMode] = useState<'platform' | 'mcp'>('platform')
   const [serverUrl, setServerUrl] = useState('')
   const [toolName, setToolName] = useState('')
@@ -49,10 +51,16 @@ function HireStaffDialog({ open, onClose, onHired }: { open: boolean; onClose: (
 
   const reset = () => {
     setName('')
+    setDescription('')
     setMode('platform')
     setServerUrl('')
     setToolName('')
     setError(null)
+  }
+
+  const applyTemplate = (t: (typeof AGENT_TEMPLATES)[number]) => {
+    setName(t.name)
+    setDescription(t.blurb)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -63,6 +71,7 @@ function HireStaffDialog({ open, onClose, onHired }: { open: boolean; onClose: (
     try {
       await hireStaff({
         name,
+        description: description.trim() || undefined,
         mcp: mode === 'mcp' ? { serverUrl, toolName } : undefined,
       })
       reset()
@@ -78,7 +87,7 @@ function HireStaffDialog({ open, onClose, onHired }: { open: boolean; onClose: (
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
       <div
-        className="w-full max-w-md rounded-lg border border-border bg-background p-5 shadow-lg"
+        className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-lg border border-border bg-background p-5 shadow-lg"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
@@ -87,11 +96,43 @@ function HireStaffDialog({ open, onClose, onHired }: { open: boolean; onClose: (
             <X className="h-4 w-4" />
           </button>
         </div>
+
+        <div className="mb-4">
+          <Label>Start from a template (optional)</Label>
+          <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
+            {AGENT_TEMPLATES.map((t) => {
+              const [hair, shirt] = colorsFor(t.colorIndex)
+              const active = name === t.name && description === t.blurb
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => applyTemplate(t)}
+                  title={t.blurb}
+                  className={`flex flex-col items-center gap-1 rounded-md border p-2 text-center transition-colors ${
+                    active ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted/50'
+                  }`}
+                >
+                  <span
+                    className="h-6 w-6 rounded-full border border-border"
+                    style={{ background: `linear-gradient(135deg, ${hair}, ${shirt})` }}
+                  />
+                  <span className="text-xs font-medium">{t.name}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <Label htmlFor="hire-name">Name</Label>
             <Input id="hire-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Kai" autoFocus />
           </div>
+
+          {description && (
+            <p className="-mt-2 text-xs text-muted-foreground">{description}</p>
+          )}
 
           <div className="flex gap-2">
             <Button type="button" variant={mode === 'platform' ? 'default' : 'outline'} size="sm" onClick={() => setMode('platform')}>
