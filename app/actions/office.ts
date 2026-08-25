@@ -236,6 +236,13 @@ export async function hireOfficeTemplate(
     return { error: `Budget must be at least $${minBudget} (roughly $${MIN_SUBTASK_BOUNTY_USD} per pipeline step)` }
   }
 
+  // Only a role that actually appears as a pipeline step's worker should
+  // autonomously claim jobs — a role that exists purely to collect a
+  // settlement-split cut (Talent Agency's Agency Head/Scout) never delivers
+  // anything itself, and autoMine would have it out competing for OTHER
+  // people's jobs on the public board, the opposite of its whole point.
+  const workingRoleIds = new Set(template.pipeline.map((s) => s.roleId))
+
   const hired: HireOfficeTemplateResult['hired'] = []
   const agentIdByRoleId = new Map<string, string>()
   for (const role of template.roles) {
@@ -255,7 +262,7 @@ export async function hireOfficeTemplate(
       riskRating: 'unrated',
       totalCreditLine: '0',
       availableCredit: '0',
-      autoMine: true,
+      autoMine: workingRoleIds.has(role.id),
     })
     await setAgentOfficeSlot(agentId, input.officeSlot ?? 1)
     await (await import('@/lib/agent-keys')).ensureAgentKey(agentId)
