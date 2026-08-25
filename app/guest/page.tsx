@@ -430,6 +430,8 @@ export default function GuestPage() {
           </p>
         </div>
 
+        <VerifySection deployment={data?.deployment ?? null} />
+
         <div className="glass-card rounded-lg border border-border bg-secondary/30 p-6 text-center">
           <p className="font-semibold">{t('guest.cta.title')}</p>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -553,6 +555,126 @@ function HowStep({
         <h3 className="text-sm font-semibold text-balance">{title}</h3>
       </div>
       <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">{body}</p>
+    </div>
+  )
+}
+
+/**
+ * "Verify, don't trust" — modelled on the security section Morpho runs (code,
+ * audits, formal verification, all in one block), but built from what this
+ * project can actually show. There are no audit-firm logos here because there
+ * is no commissioned audit; printing a row of badges would be precisely the
+ * defect this section exists to rule out.
+ *
+ * Every claim below was checked against its primary source before being
+ * written, not taken from a doc: both addresses were opened on Basescan and
+ * report Source Code Verified / Exact Match on v0.8.24 (the repo's own
+ * pre-flight checklist still had that step unticked — the checklist was
+ * stale, not the verification). The audit counts are quoted from the first
+ * paragraph of docs/security-audit.md.
+ *
+ * The addresses are hardcoded on purpose: they are the Base-mainnet
+ * deployment recorded in docs/deployments.md, and a wrong address here is
+ * worse than none, so they should change only alongside that table.
+ */
+const REPO = 'https://github.com/Kairose-master/handsel/blob/main'
+
+function VerifySection({ deployment }: { deployment: Overview['deployment'] }) {
+  const { t } = useI18n()
+  return (
+    <section className="pt-4">
+      <p className="text-[11px] font-medium uppercase tracking-[0.09em] text-primary">
+        {t('guest.verify.eyebrow')}
+      </p>
+      <h2 className="mt-2 text-2xl font-semibold tracking-[-0.02em] text-balance md:text-3xl">
+        {t('guest.verify.title')}
+      </h2>
+      <p className="mt-2.5 max-w-[62ch] text-sm leading-relaxed text-muted-foreground">
+        {t('guest.verify.body')}
+      </p>
+
+      <div
+        className={`mt-6 grid gap-px border-y border-border bg-border ${
+          deployment ? 'md:grid-cols-3' : 'md:grid-cols-2'
+        }`}
+      >
+        {/* Omitted entirely when no chain is configured — a contracts card
+            with nothing to open is worse than no card. */}
+        {deployment && (
+          <VerifyItem label={t('guest.verify.contracts.label')} title={t('guest.verify.contracts.title')}>
+            <p className="text-sm leading-relaxed text-muted-foreground">{t('guest.verify.contracts.body')}</p>
+            <ul className="mt-3 space-y-1.5">
+              {deployment.contracts.map((c) => (
+                <li key={c.address}>
+                  <a
+                    href={`${deployment.explorerUrl}/address/${c.address}#code`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group block transition-colors hover:text-primary"
+                  >
+                    <span className="text-xs font-medium">{c.name}</span>
+                    <span className="block truncate font-mono text-[11px] text-muted-foreground group-hover:text-primary">
+                      {c.address}
+                    </span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </VerifyItem>
+        )}
+
+        <VerifyItem label={t('guest.verify.audit.label')} title={t('guest.verify.audit.title')}>
+          <p className="text-sm leading-relaxed text-muted-foreground">{t('guest.verify.audit.body')}</p>
+          <a
+            href={`${REPO}/docs/security-audit.md`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-auto inline-flex items-center gap-1 pt-3 font-mono text-[11px] text-primary hover:underline"
+          >
+            docs/security-audit.md <ArrowRight className="size-3" />
+          </a>
+        </VerifyItem>
+
+        <VerifyItem label={t('guest.verify.failures.label')} title={t('guest.verify.failures.title')}>
+          <p className="text-sm leading-relaxed text-muted-foreground">{t('guest.verify.failures.body')}</p>
+          <a
+            href={`${REPO}/docs/failure-modes.md`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-auto inline-flex items-center gap-1 pt-3 font-mono text-[11px] text-primary hover:underline"
+          >
+            docs/failure-modes.md <ArrowRight className="size-3" />
+          </a>
+        </VerifyItem>
+      </div>
+
+      <p className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        <span>{t('guest.verify.footnote')}</span>
+        <Link href="/challenge" className="text-primary hover:underline">
+          {t('guest.verify.challengeLink')}
+        </Link>
+        <a
+          href="https://github.com/Kairose-master/handsel"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-primary hover:underline"
+        >
+          {t('guest.verify.sourceLink')}
+        </a>
+      </p>
+    </section>
+  )
+}
+
+function VerifyItem({ label, title, children }: { label: string; title: string; children: React.ReactNode }) {
+  return (
+    // flex column so a trailing link can take mt-auto and sit on the same
+    // baseline across all three, instead of floating wherever its own body
+    // copy happens to end.
+    <div className="flex flex-col bg-background px-4 py-5 md:px-5">
+      <p className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{label}</p>
+      <h3 className="mt-1.5 text-sm font-semibold leading-snug text-balance">{title}</h3>
+      <div className="mt-2 flex flex-1 flex-col">{children}</div>
     </div>
   )
 }

@@ -122,6 +122,30 @@ const en: Dict = {
   'guide.trust.body':
     'The machine that does the work never grades it. Proving Ground answers are checked against hidden ground truth, job test suites run on the platform runtime, disputes go to an independent reviewer — and your credit score is computed only from those independently verified facts.',
 
+  /* Verification section on /guest. Deliberately not a row of audit-firm
+     logos — there are none, and inventing the impression of one is the exact
+     failure this section exists to rule out. What it claims instead is only
+     what a reader can open and check in a minute. */
+  'guest.verify.eyebrow': 'Verify, don’t trust',
+  'guest.verify.title': 'Every claim on this page is checkable',
+  'guest.verify.body':
+    'This is infrastructure that moves real money, so nothing here asks to be believed. Each item below is a link to the thing itself — the deployed bytecode, the defect list, the incident log.',
+  'guest.verify.contracts.label': 'Contracts',
+  'guest.verify.contracts.title': 'Source published, byte-for-byte exact match',
+  'guest.verify.contracts.body':
+    'The contracts this deployment runs are published on its block explorer and matched byte-for-byte against the committed source. Open them and read what actually runs.',
+  'guest.verify.audit.label': 'Security audit',
+  'guest.verify.audit.title': '25 defects fixed · 10 left on purpose · 4 residual',
+  'guest.verify.audit.body':
+    'A self-audit, and it says so on its first page: no commissioned review, no bounty programme, no penetration testing. The residual risks are named rather than closed.',
+  'guest.verify.failures.label': 'Incident log',
+  'guest.verify.failures.title': 'Every production defect, written down',
+  'guest.verify.failures.body':
+    'Including the disclaimer that told readers their balances were worthless while they were not. An outside auditor caught that one; we did not. It is in the log with the rest.',
+  'guest.verify.footnote': 'Source is Apache-2.0. The open challenge reads its prize state from the chain, not from this page.',
+  'guest.verify.challengeLink': 'Open challenge',
+  'guest.verify.sourceLink': 'Read the source',
+
   'mcpGuide.title': 'Wiring a real MCP tool into your office',
   'mcpGuide.subtitle':
     'A ClawHub "skill" is a discovery listing, not a hireable worker. To make an office role actually use a tool, connect a real MCP server to it — here are three that work today.',
@@ -957,6 +981,26 @@ const ko: Dict = {
   'guide.trust.title': '이 모든 것 뒤의 단 하나의 원칙',
   'guide.trust.body':
     '일한 기계는 절대 자기 일을 채점하지 않습니다. 검증장 답안은 숨겨진 정답과 대조되고, 작업 테스트는 플랫폼 런타임에서 실행되며, 분쟁은 독립 리뷰어에게 갑니다 — 신용 점수는 오직 그렇게 독립 검증된 사실로만 계산됩니다.',
+
+  'guest.verify.eyebrow': '믿지 말고, 확인하세요',
+  'guest.verify.title': '이 페이지의 모든 주장은 직접 확인할 수 있습니다',
+  'guest.verify.body':
+    '실제 돈이 오가는 인프라라서, 여기 있는 어떤 것도 믿어달라고 하지 않습니다. 아래 항목은 전부 실물로 가는 링크입니다 — 배포된 바이트코드, 결함 목록, 사고 기록.',
+  'guest.verify.contracts.label': '컨트랙트',
+  'guest.verify.contracts.title': '소스 공개 완료, 바이트 단위로 정확히 일치',
+  'guest.verify.contracts.body':
+    '이 배포가 실행하는 컨트랙트는 해당 체인의 익스플로러에 공개돼 있고, 커밋된 소스와 바이트 단위로 일치합니다. 열어서 실제로 돌아가는 코드를 읽어보세요.',
+  'guest.verify.audit.label': '보안 감사',
+  'guest.verify.audit.title': '결함 25개 수정 · 10개는 의도적으로 유지 · 4개 잔여',
+  'guest.verify.audit.body':
+    '자체 감사이고, 문서 첫 장에 그렇게 적혀 있습니다 — 외부 의뢰 감사 없음, 버그바운티 없음, 침투 테스트 없음. 잔여 위험은 덮지 않고 이름을 붙여 남겼습니다.',
+  'guest.verify.failures.label': '사고 기록',
+  'guest.verify.failures.title': '프로덕션 결함 전부를 기록해뒀습니다',
+  'guest.verify.failures.body':
+    '잔액에 가치가 없다고 안내했지만 실제로는 가치가 있었던 그 문구도 포함해서요. 외부 감사자가 먼저 찾았고 우리는 못 찾았습니다. 나머지와 같이 기록에 있습니다.',
+  'guest.verify.footnote': '소스는 Apache-2.0입니다. 오픈 챌린지의 상금 상태는 이 페이지가 아니라 체인에서 직접 읽어옵니다.',
+  'guest.verify.challengeLink': '오픈 챌린지',
+  'guest.verify.sourceLink': '소스 보기',
 
   'mcpGuide.title': '오피스에 실제 MCP 도구 연결하기',
   'mcpGuide.subtitle':
