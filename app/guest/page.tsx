@@ -66,7 +66,11 @@ export default function GuestPage() {
   }, [])
 
   return (
-    <div className="min-h-svh bg-background">
+    // `bp` re-skins this page and everything nested in it (globals.css) —
+    // including the shared footer, risk banner and theme toggle, which the
+    // dashboard keeps rendering in Sage & Linen because the override is
+    // scoped rather than global. `bp-scan` adds CRT scanlines on dark only.
+    <div className="bp bp-scan min-h-svh bg-background">
       <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur-md md:px-6">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo.svg" alt="Handsel" className="size-8 shrink-0" />
@@ -143,7 +147,7 @@ export default function GuestPage() {
             <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/[0.07] px-3 py-1 text-[11px] font-medium uppercase tracking-[0.08em] text-primary">
               <ShieldCheck className="size-3.5" /> {t('guest.hero.badge')}
             </span>
-            <h1 className="mt-5 text-[2.6rem] font-semibold leading-[1.04] tracking-[-0.03em] text-balance md:text-6xl">
+            <h1 className="bp-macro mt-5 text-[clamp(2.4rem,6vw,4.6rem)] text-balance">
               {t('guest.hero.title')}
             </h1>
             <p className="mt-5 max-w-[62ch] text-[1.0625rem] leading-[1.65] text-muted-foreground md:text-lg">
@@ -258,7 +262,7 @@ export default function GuestPage() {
 
         <div className="flex items-center gap-2 pt-2">
           <Radio className="size-4 text-muted-foreground" />
-          <h2 className="text-sm font-bold">{t('guest.live.title')}</h2>
+          <h2 className="bp-macro text-[0.95rem]">{t('guest.live.title')}</h2>
           <span className="text-xs text-muted-foreground">{t('guest.live.subtitle')}</span>
         </div>
 
@@ -273,7 +277,7 @@ export default function GuestPage() {
                 loudly. */}
             {data.topWorkers.length > 0 && (
               <div className="glass-card rounded-lg border border-border p-4">
-                <h2 className="mb-1 flex items-center gap-2 text-sm font-bold">
+                <h2 className="bp-macro mb-1 flex items-center gap-2 text-[0.95rem]">
                   <Trophy className="size-4" /> {t('guest.top.title')}
                 </h2>
                 <p className="mb-3 text-xs text-muted-foreground">
@@ -325,7 +329,7 @@ export default function GuestPage() {
             )}
 
             <div className="glass-card rounded-lg border border-border p-4">
-              <h2 className="mb-3 flex items-center gap-2 text-sm font-bold">
+              <h2 className="bp-macro mb-3 flex items-center gap-2 text-[0.95rem]">
                 <Briefcase className="size-4" /> {t('guest.jobs.title')}
               </h2>
               <p className="mb-3 text-xs text-muted-foreground">
@@ -410,7 +414,7 @@ export default function GuestPage() {
         <X402Live />
 
         <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 text-sm">
-          <p className="font-medium">{t('guest.agents.title')}</p>
+          <p className="bp-macro text-[0.95rem]">{t('guest.agents.title')}</p>
           <p className="mt-1 text-muted-foreground">{t('guest.agents.body', { token })}</p>
           <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
             <a href="https://www.x402.org/" className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
@@ -433,7 +437,7 @@ export default function GuestPage() {
         <VerifySection deployment={data?.deployment ?? null} />
 
         <div className="glass-card rounded-lg border border-border bg-secondary/30 p-6 text-center">
-          <p className="font-semibold">{t('guest.cta.title')}</p>
+          <p className="bp-macro text-[1.35rem]">{t('guest.cta.title')}</p>
           <p className="mt-1 text-sm text-muted-foreground">
             {t('guest.cta.body')}
           </p>
@@ -552,7 +556,7 @@ function HowStep({
           {n}
         </span>
         <Icon className="size-4 shrink-0 self-center text-muted-foreground" />
-        <h3 className="text-sm font-semibold text-balance">{title}</h3>
+        <h3 className="bp-macro text-[0.9rem] text-balance">{title}</h3>
       </div>
       <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">{body}</p>
     </div>
@@ -586,7 +590,7 @@ function VerifySection({ deployment }: { deployment: Overview['deployment'] }) {
       <p className="text-[11px] font-medium uppercase tracking-[0.09em] text-primary">
         {t('guest.verify.eyebrow')}
       </p>
-      <h2 className="mt-2 text-2xl font-semibold tracking-[-0.02em] text-balance md:text-3xl">
+      <h2 className="bp-macro mt-2 text-[clamp(1.6rem,3.4vw,2.6rem)] text-balance">
         {t('guest.verify.title')}
       </h2>
       <p className="mt-2.5 max-w-[62ch] text-sm leading-relaxed text-muted-foreground">
@@ -673,7 +677,7 @@ function VerifyItem({ label, title, children }: { label: string; title: string; 
     // copy happens to end.
     <div className="flex flex-col bg-background px-4 py-5 md:px-5">
       <p className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{label}</p>
-      <h3 className="mt-1.5 text-sm font-semibold leading-snug text-balance">{title}</h3>
+      <h3 className="bp-macro mt-1.5 text-[0.9rem] leading-snug text-balance">{title}</h3>
       <div className="mt-2 flex flex-1 flex-col">{children}</div>
     </div>
   )
@@ -713,7 +717,7 @@ function Section({
 }) {
   return (
     <div className="glass-card rounded-lg border border-border p-4">
-      <h2 className="mb-3 flex items-center gap-2 text-sm font-bold">
+      <h2 className="bp-macro mb-3 flex items-center gap-2 text-[0.95rem]">
         <Icon className="size-4" /> {title}
       </h2>
       {children}

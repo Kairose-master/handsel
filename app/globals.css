@@ -222,6 +222,170 @@
   from { width: 0; }
 }
 
+/* ── Brutalist substrate (public landing only) ───────────────────────────
+   The whole app styles itself through the tokens declared in :root/.dark, so
+   redefining those tokens INSIDE a scope re-skins everything nested in it —
+   including shared components (site-footer, risk-banner, theme-toggle,
+   bpmn-viewer) that the dashboard also renders — without touching a single
+   dashboard page. That is why this is a token override and not a rewrite of
+   thirty files.
+
+   Two substrates, one system, per the industrial-brutalist archetype: commit
+   to a substrate and never mix. Light is Swiss Industrial Print (unbleached
+   paper, carbon ink); dark is Tactical Telemetry (deactivated CRT, white
+   phosphor). They share the hazard red, the 90-degree geometry and the mono
+   micro-type, so the existing theme toggle moves between two states of one
+   system rather than breaking either.
+
+   `--radius: 0` is doing a lot of work here: every rounded-* utility in the
+   app derives from it, so the scope squares off all of them at once. */
+.bp {
+  --background: #f4f4f0;
+  --foreground: #0a0a0a;
+  --card: #f4f4f0;
+  --card-foreground: #0a0a0a;
+  --popover: #f4f4f0;
+  --popover-foreground: #0a0a0a;
+  --primary: #e61919;
+  --primary-foreground: #ffffff;
+  --secondary: #e7e6e0;
+  --secondary-foreground: #0a0a0a;
+  --muted: #e7e6e0;
+  --muted-foreground: #5c5c56;
+  --accent: #e7e6e0;
+  --accent-foreground: #0a0a0a;
+  --border: #0a0a0a;
+  --input: #0a0a0a;
+  --ring: #e61919;
+  --radius: 0px;
+  /* Semantic colours have to be re-mapped too, or the Sage/Nocturne greens
+     leak through every status chip in the x402 diagram and the palette stops
+     being utilitarian. The archetype allows terminal green for status
+     readouts specifically — which is what these are (200 OK, escrow settled)
+     — so success keeps a green, just a CRT one; on paper it darkens to stay
+     legible. Everything else collapses onto the hazard red or the ink. */
+  --success: #1f7a1a;
+  --success-foreground: #ffffff;
+  --warning: #8a5a00;
+  --warning-foreground: #ffffff;
+  --destructive: #e61919;
+  --destructive-foreground: #ffffff;
+  --chart-1: #e61919;
+  --chart-2: #1f7a1a;
+  --chart-3: #8a5a00;
+  --chart-4: #0a0a0a;
+  --chart-5: #5c5c56;
+  /* The glass pass is the opposite of this archetype — no sheen, no bevel,
+     no throw. Neutralised rather than removed so .glass-card stays inert
+     wherever it is already applied. */
+  --glass-sheen: transparent;
+  --glass-rim: transparent;
+  --glass-inner: transparent;
+  --glass-contact: transparent;
+  --glass-throw: transparent;
+}
+.dark .bp {
+  --background: #0a0a0a;
+  --foreground: #eaeaea;
+  --card: #0a0a0a;
+  --card-foreground: #eaeaea;
+  --popover: #0a0a0a;
+  --popover-foreground: #eaeaea;
+  --primary: #ff2a2a;
+  --primary-foreground: #ffffff;
+  --secondary: #17171a;
+  --secondary-foreground: #eaeaea;
+  --muted: #17171a;
+  --muted-foreground: #86867e;
+  --accent: #17171a;
+  --accent-foreground: #eaeaea;
+  --border: #2b2b28;
+  --input: #2b2b28;
+  --ring: #ff2a2a;
+  /* Terminal green on the CRT substrate — the one place the archetype
+     permits it, and only for status readouts. */
+  --success: #4af626;
+  --success-foreground: #0a0a0a;
+  --warning: #d9a441;
+  --warning-foreground: #0a0a0a;
+  --destructive: #ff2a2a;
+  --destructive-foreground: #ffffff;
+  --chart-1: #ff2a2a;
+  --chart-2: #4af626;
+  --chart-3: #d9a441;
+  --chart-4: #eaeaea;
+  --chart-5: #86867e;
+}
+
+@layer components {
+  .bp {
+    background: var(--background);
+    color: var(--foreground);
+  }
+  /* `--radius: 0` squares every rounded-* utility that derives from it, but
+     not rounded-full (a fixed 9999px). The archetype rejects radius outright,
+     so the pills — badges, chips, status dots — get squared here too. */
+  .bp *,
+  .bp *::before,
+  .bp *::after {
+    border-radius: 0 !important;
+  }
+  /* Headings inside the scope take the macro treatment automatically, so a
+     child component (pipeline-demo, x402-flow, …) does not need editing to
+     stay in the archetype — and anything added later inherits it too. */
+  .bp h1,
+  .bp h2,
+  .bp h3,
+  .bp-macro {
+    font-family: var(--font-archivo), var(--font-geist-sans), ui-sans-serif, sans-serif;
+    text-transform: uppercase;
+    letter-spacing: -0.035em;
+    line-height: 0.92;
+  }
+  /* Macro type: uppercase neo-grotesque, compressed and tightly tracked, so
+     glyphs form solid architectural blocks. */
+  .bp-macro {
+    font-family: var(--font-archivo), var(--font-geist-sans), ui-sans-serif, sans-serif;
+    text-transform: uppercase;
+    letter-spacing: -0.035em;
+    line-height: 0.92;
+  }
+  /* Micro type: monospace, uppercase, generously tracked — every label,
+     unit id and piece of metadata on the page. */
+  .bp-micro {
+    font-family: var(--font-geist-mono), ui-monospace, monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    font-size: 0.6875rem;
+    line-height: 1.4;
+  }
+  /* Hairline compartmentalisation: gap over a contrasting parent, rather
+     than a border on every child. */
+  .bp-hair {
+    display: grid;
+    gap: 1px;
+    background: var(--border);
+  }
+  .bp-hair > * {
+    background: var(--background);
+  }
+  /* Analog degradation, CRT substrate only. Fixed and inert. */
+  .dark .bp-scan::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 40;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0, 0, 0, 0.22) 2px,
+      rgba(0, 0, 0, 0.22) 3px
+    );
+  }
+}
+
 /* Playful layer — used on the mining/market surfaces only; the financial
    pages (profile, credit) deliberately stay sober. */
 @keyframes lm-swing {
