@@ -18,7 +18,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { Copy, RefreshCw, Loader2, UserPlus, Building2, X } from 'lucide-react'
+import { Copy, RefreshCw, Loader2, UserPlus, Building2, Plus, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -29,20 +29,33 @@ import {
   visitOffice,
   myConnectedOffices,
   myOfficeWorld,
+  myOfficeSlots,
+  newOfficeSlot,
   hireStaff,
   hireOfficeTemplate,
   type ConnectedOffice,
   type HireOfficeTemplateResult,
+  type OfficeSlot,
 } from '@/app/actions/office'
 import { getDelegationAgents } from '@/app/actions/delegate'
 import OfficeWorld from './game/OfficeWorld'
 import { LiveOffice, type Agent } from './game/live-engine'
-import { AGENT_TEMPLATES, OFFICE_TEMPLATES, colorsFor } from '@/lib/office-world-data'
+import { AGENT_TEMPLATES, OFFICE_TEMPLATES, MAX_OFFICE_SLOTS, colorsFor } from '@/lib/office-world-data'
 import './game/office.css'
 
 const POLL_MS = 12_000
 
-function HireStaffDialog({ open, onClose, onHired }: { open: boolean; onClose: () => void; onHired: () => void }) {
+function HireStaffDialog({
+  open,
+  onClose,
+  onHired,
+  officeSlot,
+}: {
+  open: boolean
+  onClose: () => void
+  onHired: () => void
+  officeSlot: number
+}) {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [mode, setMode] = useState<'platform' | 'mcp'>('platform')
@@ -77,6 +90,7 @@ function HireStaffDialog({ open, onClose, onHired }: { open: boolean; onClose: (
         name,
         description: description.trim() || undefined,
         mcp: mode === 'mcp' ? { serverUrl, toolName } : undefined,
+        officeSlot,
       })
       reset()
       onHired()
@@ -187,7 +201,17 @@ function HireStaffDialog({ open, onClose, onHired }: { open: boolean; onClose: (
   )
 }
 
-function HireOfficeTemplateDialog({ open, onClose, onHired }: { open: boolean; onClose: () => void; onHired: () => void }) {
+function HireOfficeTemplateDialog({
+  open,
+  onClose,
+  onHired,
+  officeSlot,
+}: {
+  open: boolean
+  onClose: () => void
+  onHired: () => void
+  officeSlot: number
+}) {
   const [templateId, setTemplateId] = useState(OFFICE_TEMPLATES[0].id)
   const template = OFFICE_TEMPLATES.find((t) => t.id === templateId) ?? OFFICE_TEMPLATES[0]
   const [agents, setAgents] = useState<Array<{ id: string; name: string; provisioned: boolean }>>([])
@@ -255,6 +279,7 @@ function HireOfficeTemplateDialog({ open, onClose, onHired }: { open: boolean; o
         mcpServerUrl: mcpOpen ? mcpServerUrl : undefined,
         mcpAuthHeader: mcpOpen ? mcpAuthHeader : undefined,
         mcpToolNames: mcpOpen ? mcpToolNames : undefined,
+        officeSlot,
       })
       if ('error' in res) {
         setError(res.error)
@@ -428,7 +453,7 @@ function HireOfficeTemplateDialog({ open, onClose, onHired }: { open: boolean; o
   )
 }
 
-function OfficeWorldPanel() {
+function OfficeWorldPanel({ slot }: { slot: number }) {
   const engineRef = useRef(new LiveOffice())
   const [agents, setAgents] = useState<Agent[]>([])
   const [selected, setSelected] = useState<Agent | null>(null)
@@ -439,9 +464,15 @@ function OfficeWorldPanel() {
 
   useEffect(() => {
     let dead = false
+    // Switching offices swaps the whole roster — start the new one from a
+    // blank engine rather than tweening yesterday's office's agents into
+    // today's positions.
+    engineRef.current = new LiveOffice()
+    setAgents([])
+    setSelected(null)
     const poll = async () => {
       try {
-        const snap = await myOfficeWorld()
+        const snap = await myOfficeWorld(slot)
         if (dead) return
         engineRef.current.applySnapshot(snap)
         setAgents([...engineRef.current.agents])
@@ -456,7 +487,7 @@ function OfficeWorldPanel() {
       dead = true
       clearInterval(interval)
     }
-  }, [pollTrigger])
+  }, [slot, pollTrigger])
 
   useEffect(() => {
     let raf = 0
@@ -505,13 +536,92 @@ function OfficeWorldPanel() {
           </div>
         )}
       </CardContent>
-      <HireStaffDialog open={hiring} onClose={() => setHiring(false)} onHired={() => setPollTrigger((n) => n + 1)} />
+      <HireStaffDialog
+        open={hiring}
+        onClose={() => setHiring(false)}
+        onHired={() => setPollTrigger((n) => n + 1)}
+        officeSlot={slot}
+      />
       <HireOfficeTemplateDialog
         open={hiringTemplate}
         onClose={() => setHiringTemplate(false)}
         onHired={() => setPollTrigger((n) => n + 1)}
+        officeSlot={slot}
       />
     </Card>
+  )
+}
+
+function OfficeTabs({
+  slots,
+  activeSlot,
+  onSelect,
+  onCreated,
+}: {
+  slots: OfficeSlot[]
+  activeSlot: number
+  onSelect: (slot: number) => void
+  onCreated: (slot: number) => void
+}) {
+  const [adding, setAdding] = useState(false)
+  const [name, setName] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!name.trim()) return
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await newOfficeSlot(name)
+      if ('error' in res) {
+        setError(res.error)
+        return
+      }
+      setName('')
+      setAdding(false)
+      onCreated(res.slot)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {slots.map((s) => (
+        <button
+          key={s.slot}
+          onClick={() => onSelect(s.slot)}
+          className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
+            s.slot === activeSlot ? 'border-primary bg-primary/10 font-medium' : 'border-border text-muted-foreground hover:bg-muted/50'
+          }`}
+        >
+          {s.name}
+        </button>
+      ))}
+      {slots.length < MAX_OFFICE_SLOTS &&
+        (adding ? (
+          <form onSubmit={submit} className="flex items-center gap-1.5">
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Office name" className="h-8 w-40" autoFocus />
+            <Button type="submit" size="sm" disabled={busy || !name.trim()}>
+              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Add'}
+            </Button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setAdding(false)}>
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </form>
+        ) : (
+          <button
+            onClick={() => setAdding(true)}
+            className="flex items-center gap-1 rounded-full border border-dashed border-border px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted/50"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            New office
+          </button>
+        ))}
+      {error && <p className="w-full text-xs text-destructive">{error}</p>}
+    </div>
   )
 }
 
@@ -522,12 +632,15 @@ export default function OfficePage() {
   const [visiting, setVisiting] = useState(false)
   const [visitMessage, setVisitMessage] = useState<string | null>(null)
   const [connections, setConnections] = useState<ConnectedOffice[]>([])
+  const [slots, setSlots] = useState<OfficeSlot[]>([])
+  const [activeSlot, setActiveSlot] = useState(1)
   const [loading, setLoading] = useState(true)
 
   const refresh = async () => {
-    const [c, list] = await Promise.all([myOfficeCode(), myConnectedOffices()])
+    const [c, list, officeList] = await Promise.all([myOfficeCode(), myConnectedOffices(), myOfficeSlots()])
     setCode(c)
     setConnections(list)
+    setSlots(officeList)
   }
 
   useEffect(() => {
@@ -581,11 +694,21 @@ export default function OfficePage() {
       <div>
         <h1 className="text-2xl font-bold">Office</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Share your code so another account can connect to your office, or use theirs to connect to yours.
+          Up to {MAX_OFFICE_SLOTS} offices per account — split your agents across them, or run one team.
         </p>
       </div>
 
-      <OfficeWorldPanel />
+      <OfficeTabs
+        slots={slots}
+        activeSlot={activeSlot}
+        onSelect={setActiveSlot}
+        onCreated={(slot) => {
+          refresh()
+          setActiveSlot(slot)
+        }}
+      />
+
+      <OfficeWorldPanel slot={activeSlot} />
 
       <Card>
         <CardHeader>

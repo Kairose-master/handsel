@@ -13,14 +13,19 @@ import { db } from '@/lib/db'
 import { agent, delegation, creditTransaction, agentEvent, jobSpec } from '@/lib/db/schema'
 import { eq, inArray } from 'drizzle-orm'
 import type { OfficeDeptId, OfficeSnapshot, OfficeStaffMember } from '@/lib/office-world-data'
+import { officeSlotsByAgentId } from '@/lib/office'
 
-/** Build the real office snapshot for `userId`'s own agents. Never throws —
- *  a query that fails just leaves that category empty (agents fall through
- *  to a later rule, or the lounge), rather than breaking the whole page. */
-export async function buildOfficeSnapshot(userId: string, ownerName: string): Promise<OfficeSnapshot> {
-  const myAgents = await db.select().from(agent).where(eq(agent.userId, userId))
+/** Build the real office snapshot for `userId`'s agents in one office
+ *  (`slot` — see lib/office.ts's MAX_OFFICE_SLOTS). Never throws — a query
+ *  that fails just leaves that category empty (agents fall through to a
+ *  later rule, or the lounge), rather than breaking the whole page. */
+export async function buildOfficeSnapshot(userId: string, ownerName: string, slot: number): Promise<OfficeSnapshot> {
+  const everyAgent = await db.select().from(agent).where(eq(agent.userId, userId))
+  const slotByAgentId = await officeSlotsByAgentId(everyAgent.map((a) => a.id))
+  const myAgents = everyAgent.filter((a) => slotByAgentId.get(a.id) === slot)
   if (myAgents.length === 0) {
-    return { ceoName: ownerName, ceoLine: 'No agents yet.', staff: [] }
+    const ceoLine = everyAgent.length === 0 ? 'No agents yet.' : 'No agents in this office yet.'
+    return { ceoName: ownerName, ceoLine, staff: [] }
   }
   const agentIds = myAgents.map((a) => a.id)
   const addressToAgent = new Map(

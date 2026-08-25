@@ -4,7 +4,8 @@
  * thin self-migrating-table wrapper around exactly this state machine.
  */
 import { describe, it, expect } from 'vitest'
-import { OfficeBook, officeJobVisible } from '@/lib/office'
+import { OfficeBook, officeJobVisible, canCreateOfficeSlot } from '@/lib/office'
+import { MAX_OFFICE_SLOTS } from '@/lib/office-world-data'
 
 describe('OfficeBook', () => {
   it('has no code until one is set', () => {
@@ -71,6 +72,18 @@ describe('OfficeBook', () => {
     book.setCode('alice', 'SHARED')
     book.setCode('bob', 'SHARED') // bob claims the same code string later
     expect(book.connect('SHARED', 'carol')).toEqual({ connected: true, ownerId: 'bob' })
+  })
+})
+
+describe('canCreateOfficeSlot — the cap behind "New office"', () => {
+  it('allows creating below the cap', () => {
+    expect(canCreateOfficeSlot(0)).toBe(true)
+    expect(canCreateOfficeSlot(MAX_OFFICE_SLOTS - 1)).toBe(true)
+  })
+
+  it('refuses at and beyond the cap', () => {
+    expect(canCreateOfficeSlot(MAX_OFFICE_SLOTS)).toBe(false)
+    expect(canCreateOfficeSlot(MAX_OFFICE_SLOTS + 1)).toBe(false)
   })
 })
 

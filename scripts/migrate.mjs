@@ -214,6 +214,15 @@ ALTER TABLE "agent" ADD COLUMN IF NOT EXISTS "messagingSuspended" boolean NOT NU
 ALTER TABLE "agent" ADD COLUMN IF NOT EXISTS "messagingSuspendedReason" text;
 ALTER TABLE "agent" ADD COLUMN IF NOT EXISTS "autoVote" boolean NOT NULL DEFAULT false;
 ALTER TABLE "agent" ADD COLUMN IF NOT EXISTS "votePolicy" text;
+-- Multi-office support (lib/office.ts): office_slots and agent_office_slot
+-- are both brand-new tables nothing selects from yet, so — like
+-- office_codes/office_connections above them — they rely purely on
+-- self-migration (created lazily on first use) rather than needing an
+-- entry here. A new column on agent would be different: every existing
+-- db.select().from(agent) call site expands to an explicit column list,
+-- so adding one here without this file having run everywhere first would
+-- break every one of them — which is exactly why office slot membership
+-- lives in its own table instead of a column on agent.
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.columns

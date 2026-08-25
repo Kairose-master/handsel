@@ -6,7 +6,17 @@
  * discovery relationship, not an access grant — the market stays open).
  */
 import { getSession } from '@/lib/get-session'
-import { officeCodeFor, regenerateOfficeCode, redeemOfficeCode, connectedOfficesOf } from '@/lib/office'
+import {
+  officeCodeFor,
+  regenerateOfficeCode,
+  redeemOfficeCode,
+  connectedOfficesOf,
+  listOfficeSlots,
+  createOfficeSlot,
+  renameOfficeSlot,
+  setAgentOfficeSlot,
+  type OfficeSlot,
+} from '@/lib/office'
 import { buildOfficeSnapshot } from '@/lib/office-world-server'
 import { OFFICE_TEMPLATES, type OfficeSnapshot } from '@/lib/office-world-data'
 import { db } from '@/lib/db'
@@ -17,6 +27,8 @@ import { randomBytes } from 'crypto'
 import { revalidatePath } from 'next/cache'
 import { MIN_SUBTASK_BOUNTY_USD, type DelegationSubtask } from '@/lib/delegation'
 import { fetchQuote, fetchHeadlines } from '@/lib/market-data'
+
+export type { OfficeSlot }
 
 async function requireUser() {
   const session = await getSession()
@@ -65,17 +77,39 @@ export async function myConnectedOffices(): Promise<ConnectedOffice[]> {
   return ids.map((id) => ({ userId: id, name: byId.get(id) ?? 'Unnamed office' }))
 }
 
-/** The live pixel-office snapshot for my own account — real agent roster,
- *  real state (lib/office-world-data.ts). Polled by the /office page. */
-export async function myOfficeWorld(): Promise<OfficeSnapshot> {
+/** The live pixel-office snapshot for one of my offices (see
+ *  myOfficeSlots) — real agent roster, real state (lib/office-world-data.ts).
+ *  Polled by the /office page. */
+export async function myOfficeWorld(slot: number): Promise<OfficeSnapshot> {
   const session = await requireUser()
-  return buildOfficeSnapshot(session.user.id, session.user.name ?? 'Owner')
+  return buildOfficeSnapshot(session.user.id, session.user.name ?? 'Owner', slot)
+}
+
+/** Every office on this account (at least one — slot 1 always exists), for
+ *  the office-switcher tabs. */
+export async function myOfficeSlots(): Promise<OfficeSlot[]> {
+  const session = await requireUser()
+  return listOfficeSlots(session.user.id)
+}
+
+/** Add a new office, up to lib/office.ts's MAX_OFFICE_SLOTS. */
+export async function newOfficeSlot(name: string): Promise<{ slot: number } | { error: string }> {
+  const session = await requireUser()
+  return createOfficeSlot(session.user.id, name)
+}
+
+/** Rename an existing office (slot 1's "Main Office" included — it's just
+ *  a default, not a fixed name). */
+export async function renameOffice(slot: number, name: string): Promise<{ ok: true } | { error: string }> {
+  const session = await requireUser()
+  return renameOfficeSlot(session.user.id, slot, name)
 }
 
 export type HireStaffInput = {
   name: string
   description?: string
   mcp?: { serverUrl: string; toolName: string; authHeader?: string }
+  officeSlot?: number
 }
 
 /**
@@ -92,6 +126,7 @@ export type HireStaffInput = {
 export async function hireStaff(input: HireStaffInput): Promise<{ id: string; mcpConnected: boolean }> {
   const { createAgent } = await import('@/app/actions/agents')
   const created = await createAgent({ name: input.name, description: input.description })
+  await setAgentOfficeSlot(created.id, input.officeSlot ?? 1)
   if (!input.mcp) return { id: created.id, mcpConnected: false }
 
   try {
@@ -162,6 +197,7 @@ export type HireOfficeTemplateInput = {
   /** roleId -> tool name, only for the roles the owner wants MCP-wired. Any
    *  role left out stays a plain platform agent — never a fabricated tool. */
   mcpToolNames?: Record<string, string>
+  officeSlot?: number
 }
 
 export type HireOfficeTemplateResult = {
@@ -221,6 +257,7 @@ export async function hireOfficeTemplate(
       availableCredit: '0',
       autoMine: true,
     })
+    await setAgentOfficeSlot(agentId, input.officeSlot ?? 1)
     await (await import('@/lib/agent-keys')).ensureAgentKey(agentId)
 
     let mcpConnected = false

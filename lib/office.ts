@@ -24,6 +24,7 @@
  */
 import { pool } from '@/lib/db'
 import { nanoid } from 'nanoid'
+import { MAX_OFFICE_SLOTS } from '@/lib/office-world-data'
 
 export type ConnectResult = { connected: true; ownerId: string } | { connected: false; reason: 'unknown-code' | 'self' }
 
@@ -172,4 +173,125 @@ export async function canSeeOfficeOnlyJob(officeOwnerId: string | null, viewerUs
     return officeJobVisible(officeOwnerId, viewerUserId, false)
   }
   return officeJobVisible(officeOwnerId, viewerUserId, await isOfficeConnected(officeOwnerId, viewerUserId))
+}
+
+/**
+ * Multiple offices per account, cap `MAX_OFFICE_SLOTS`. One account, one
+ * office — the only mode before this — is just the one-slot case: an
+ * account with zero office_slots rows still has a real slot 1, named
+ * lazily on first read so a fresh account never needs a migration-time
+ * backfill, and an agent with no agent_office_slot row is slot 1 too.
+ *
+ * Which slot an agent belongs to lives in its OWN table
+ * (`agent_office_slot`), not a column on `agent` — `agent` is selected via
+ * `db.select().from(agent)` (no explicit column list) at dozens of call
+ * sites across the app, and drizzle expands that to name every column
+ * schema.ts declares. A new column there breaks every one of those call
+ * sites the moment this deploys, until someone runs `pnpm db:migrate` —
+ * exactly the incident class documented at the top of
+ * lib/db/ensure-columns.ts. A brand-new table nothing selects from yet has
+ * no such window: self-migration alone (like office_codes/
+ * office_connections above) is safe.
+ *
+ * Deliberately NOT extended to `visitOffice`/connections: a connection
+ * still resolves to one owner, and viewing that owner's OTHER slots isn't
+ * wired here — see app/actions/office.ts's header for the current scope.
+ */
+const DEFAULT_SLOT_NAME = 'Main Office'
+
+async function ensureOfficeSlotsTable(): Promise<void> {
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS office_slots (
+       user_id text NOT NULL,
+       slot integer NOT NULL,
+       name text NOT NULL,
+       created_at timestamptz NOT NULL DEFAULT now(),
+       PRIMARY KEY (user_id, slot)
+     )`,
+  )
+}
+
+/** Whether a new slot can be created given how many the account already has —
+ *  pure so the cap is unit-testable without a database. */
+export function canCreateOfficeSlot(existingSlotCount: number): boolean {
+  return existingSlotCount < MAX_OFFICE_SLOTS
+}
+
+export type OfficeSlot = { slot: number; name: string }
+
+/** Every office this account has, slot-ascending. Slot 1 always exists —
+ *  created here, named DEFAULT_SLOT_NAME, the first time anyone asks. */
+export async function listOfficeSlots(userId: string): Promise<OfficeSlot[]> {
+  await ensureOfficeSlotsTable()
+  await pool.query(
+    `INSERT INTO office_slots (user_id, slot, name) VALUES ($1, 1, $2) ON CONFLICT (user_id, slot) DO NOTHING`,
+    [userId, DEFAULT_SLOT_NAME],
+  )
+  const { rows } = await pool.query<{ slot: number; name: string }>(
+    `SELECT slot, name FROM office_slots WHERE user_id = $1 ORDER BY slot ASC`,
+    [userId],
+  )
+  return rows
+}
+
+export type CreateSlotResult = { slot: number } | { error: string }
+
+/** Add a new office, up to MAX_OFFICE_SLOTS. */
+export async function createOfficeSlot(userId: string, name: string): Promise<CreateSlotResult> {
+  const trimmed = name.trim()
+  if (!trimmed) return { error: 'Name required' }
+  const existing = await listOfficeSlots(userId)
+  if (!canCreateOfficeSlot(existing.length)) return { error: `You can have at most ${MAX_OFFICE_SLOTS} offices` }
+  const nextSlot = Math.max(...existing.map((s) => s.slot)) + 1
+  await pool.query(`INSERT INTO office_slots (user_id, slot, name) VALUES ($1, $2, $3)`, [userId, nextSlot, trimmed])
+  return { slot: nextSlot }
+}
+
+/** Rename an existing office. Slot 1 can be renamed too — "Main Office" is
+ *  just its default, not a fixed identity. */
+export async function renameOfficeSlot(userId: string, slot: number, name: string): Promise<{ ok: true } | { error: string }> {
+  const trimmed = name.trim()
+  if (!trimmed) return { error: 'Name required' }
+  await ensureOfficeSlotsTable()
+  const { rowCount } = await pool.query(`UPDATE office_slots SET name = $3 WHERE user_id = $1 AND slot = $2`, [userId, slot, trimmed])
+  if (!rowCount) return { error: 'No such office' }
+  return { ok: true }
+}
+
+async function ensureAgentOfficeSlotTable(): Promise<void> {
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS agent_office_slot (
+       agent_id text PRIMARY KEY,
+       slot integer NOT NULL,
+       updated_at timestamptz NOT NULL DEFAULT now()
+     )`,
+  )
+}
+
+/** Record which office a newly hired agent belongs to. Only worth a row
+ *  when it isn't slot 1 — an agent absent from this table simply reads as
+ *  slot 1 everywhere below, so the common (one-office) case never writes
+ *  here at all. */
+export async function setAgentOfficeSlot(agentId: string, slot: number): Promise<void> {
+  if (slot === 1) return
+  await ensureAgentOfficeSlotTable()
+  await pool.query(
+    `INSERT INTO agent_office_slot (agent_id, slot) VALUES ($1, $2)
+     ON CONFLICT (agent_id) DO UPDATE SET slot = $2, updated_at = now()`,
+    [agentId, slot],
+  )
+}
+
+/** Every given agent's office slot, defaulting to 1 for any id absent from
+ *  the table (never hired into a non-default office). */
+export async function officeSlotsByAgentId(agentIds: string[]): Promise<Map<string, number>> {
+  const result = new Map(agentIds.map((id) => [id, 1]))
+  if (agentIds.length === 0) return result
+  await ensureAgentOfficeSlotTable()
+  const { rows } = await pool.query<{ agent_id: string; slot: number }>(
+    `SELECT agent_id, slot FROM agent_office_slot WHERE agent_id = ANY($1)`,
+    [agentIds],
+  )
+  for (const row of rows) result.set(row.agent_id, row.slot)
+  return result
 }

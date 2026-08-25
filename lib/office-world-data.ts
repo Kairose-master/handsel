@@ -30,6 +30,12 @@
  * somewhere real. An agent that matches nothing sits in the lounge.
  */
 
+/** Offices per account (lib/office.ts). Defined here, not there, because
+ *  that file imports @/lib/db (pg) and this one must stay importable from
+ *  client components — see this file's own header for why that split is
+ *  load-bearing. lib/office.ts imports this constant back. */
+export const MAX_OFFICE_SLOTS = 3
+
 export type OfficeDeptId =
   | 'disputed'
   | 'reviewing'
