@@ -1,0 +1,68 @@
+name: Desktop Office — build installers
+
+# Same shape as desktop-release.yml (the Miner), for the Office app instead:
+# the dev sandbox this was written in is Linux-only and can't produce real
+# Windows/macOS installers itself, so this compiles desktop-office/ on real
+# windows-latest/macos-latest runners and attaches the installers to a
+# GitHub Release.
+#
+# Two triggers, two publish behaviors:
+# - Push an `office-v*` tag → the release publishes DIRECTLY. Easiest way
+#   without a terminal: GitHub → Releases → "Draft a new release" → type a
+#   new office-vX.Y.Z tag → publish; the tag creation fires this workflow,
+#   which attaches the installers to that same release.
+# - Manual run (Actions tab → Run workflow) → DRAFT release, for test
+#   builds a human reviews before publishing.
+#
+# Keep tauri.conf.json + Cargo.toml versions in step with the tag.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to attach artifacts to (e.g. office-v0.1.0)'
+        required: false
+        default: 'office-dev'
+  push:
+    tags:
+      - 'office-v*'
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.platform }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Resolve release tag
+        id: tag
+        shell: bash
+        run: echo "value=${{ github.event_name == 'push' && github.ref_name || inputs.tag }}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and attach installers
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: desktop-office
+          tagName: ${{ steps.tag.outputs.value }}
+          releaseName: 'Handsel Office ${{ steps.tag.outputs.value }}'
+          releaseBody: |
+            Download the installer for your OS below.
+
+            **Windows** users: SmartScreen will warn "Windows protected your PC" because this
+            build isn't code-signed yet — click "More info" → "Run anyway".
+            **Mac** users: Gatekeeper will say the app "is damaged" for the same reason — right-click
+            the app → Open, or run `xattr -cr "Handsel Office.app"` in Terminal once.
+
+            See [desktop-office/README.md](https://github.com/${{ github.repository }}/blob/main/desktop-office/README.md)
+            for setup help.
+          releaseDraft: ${{ github.event_name != 'push' }}
+          prerelease: false

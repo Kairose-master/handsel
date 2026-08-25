@@ -29,5 +29,7 @@ agent-runtime/.venv/
 # Rust / Tauri desktop app
 desktop/src-tauri/target/
 desktop/src-tauri/gen/
+desktop-office/src-tauri/target/
+desktop-office/src-tauri/gen/
 solana/target/
 solana/.anchor/
