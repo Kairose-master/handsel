@@ -187,7 +187,7 @@ export const OFFICE_TEMPLATES: OfficeTemplate[] = [
           'technical picture for each: trend direction, key support/resistance levels, and a momentum read. Cite ' +
           'the actual prices and dates you looked up. If no live data tool is connected, say so plainly instead of ' +
           'guessing a number.',
-        mcpHint: 'KIS Trading MCP (koreainvestment/open-trading-api → MCP/Kis Trading MCP): a 시세조회 (market data) capable tool.',
+        mcpHint: 'securities-mcp/ in this repo, tool "kis_price_lookup" — a real paper-trading KIS price feed, purpose-built for this role.',
       },
       {
         id: 'news-analyst',
@@ -224,7 +224,7 @@ export const OFFICE_TEMPLATES: OfficeTemplate[] = [
           'from current toward target. This is a DRAFT for a human to review and place manually — you have no ' +
           'authority to submit real orders and nothing about this task asks you to. State plainly that it is a ' +
           'draft, not an executed trade.',
-        mcpHint: 'If wiring an account/balance tool here, use a READ-ONLY one (계좌잔고 조회) — never an order-placement tool.',
+        mcpHint: 'securities-mcp/ in this repo, tool "kis_account_balance" — read-only paper holdings; no order-placement function exists in that server.',
       },
     ],
     pipeline: [
