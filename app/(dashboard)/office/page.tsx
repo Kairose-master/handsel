@@ -120,7 +120,7 @@ function HireStaffDialog({
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Hire staff</h2>
+          <h2 className="bp-macro text-lg">Hire staff</h2>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground" aria-label="Close">
             <X className="h-4 w-4" />
           </button>
@@ -153,7 +153,7 @@ function HireStaffDialog({
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-5">
           <div>
             <Label htmlFor="hire-name">Name</Label>
             <Input id="hire-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Kai" autoFocus />
@@ -231,6 +231,7 @@ function HireOfficeTemplateDialog({
   const [scope, setScope] = useState(OFFICE_TEMPLATES[0].exampleScope)
   const [scopeTouched, setScopeTouched] = useState(false)
   const [budgetUsd, setBudgetUsd] = useState(String(template.pipeline.length * 2))
+  const [budgetTouched, setBudgetTouched] = useState(false)
   const [mcpOpen, setMcpOpen] = useState(false)
   const [mcpServerUrl, setMcpServerUrl] = useState('')
   const [mcpAuthHeader, setMcpAuthHeader] = useState('')
@@ -256,6 +257,16 @@ function HireOfficeTemplateDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
+  // scopeLabel is a full sentence with a parenthetical example. Uppercase
+  // mono turns that into two dense lines, so only the head becomes the label
+  // and the aside is shown under the field in normal case, where it reads.
+  const [scopeLabelHead, scopeLabelAside] = (() => {
+    const i = template.scopeLabel.indexOf('(')
+    return i === -1
+      ? [template.scopeLabel, '']
+      : [template.scopeLabel.slice(0, i).trim().replace(/[:?]$/, ''), template.scopeLabel.slice(i + 1).replace(/\)$/, '').trim()]
+  })()
+
   /** At least one agent has an on-chain account, so the form can be completed. */
   const canPay = agents.some((a) => a.provisioned)
 
@@ -264,10 +275,13 @@ function HireOfficeTemplateDialog({
   // owner types their own scope, switching templates stops overwriting it.
   const selectTemplate = (id: string) => {
     setTemplateId(id)
-    if (!scopeTouched) {
-      const next = OFFICE_TEMPLATES.find((t) => t.id === id)
-      setScope(next?.exampleScope ?? '')
-    }
+    const next = OFFICE_TEMPLATES.find((t) => t.id === id)
+    if (!scopeTouched) setScope(next?.exampleScope ?? '')
+    // The budget default is per-template (2 USD a step) and was only ever set
+    // from OFFICE_TEMPLATES[0], so switching to a template with a different
+    // step count left the first one's figure sitting in the field. Follow the
+    // selection unless the owner has typed their own number.
+    if (!budgetTouched && next) setBudgetUsd(String(next.pipeline.length * 2))
   }
 
   if (!open) return null
@@ -276,6 +290,7 @@ function HireOfficeTemplateDialog({
     setScope(template.exampleScope)
     setScopeTouched(false)
     setBudgetUsd(String(template.pipeline.length * 2))
+    setBudgetTouched(false)
     setMcpOpen(false)
     setMcpServerUrl('')
     setMcpAuthHeader('')
@@ -335,7 +350,7 @@ function HireOfficeTemplateDialog({
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">{result ? template.name : 'Hire a template office'}</h2>
+          <h2 className="bp-macro text-lg">{result ? template.name : 'Hire a template office'}</h2>
           <button onClick={handleClose} className="text-muted-foreground hover:text-foreground" aria-label="Close">
             <X className="h-4 w-4" />
           </button>
@@ -371,30 +386,48 @@ function HireOfficeTemplateDialog({
             </div>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <Label>Template</Label>
-              <div className="mt-2 space-y-2">
-                {OFFICE_TEMPLATES.map((t) => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => selectTemplate(t.id)}
-                    className={`w-full rounded-md border p-3 text-left transition-colors ${
-                      t.id === templateId ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted/50'
-                    }`}
-                  >
-                    <div className="text-sm font-medium">{t.name}</div>
-                    <div className="mt-0.5 text-xs text-muted-foreground">{t.blurb}</div>
-                    <div className="mt-1.5 text-xs font-medium text-foreground/80">→ {t.flowSummary}</div>
-                  </button>
-                ))}
+          <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Template picker as one hairline-divided register, not four
+                floating cards: they are alternatives in a single list, and
+                boxing each one gave them all equal weight and turned the
+                dialog into a wall of prose. The blurb is dropped — flowSummary
+                already says what the office does, in one line. Selection is a
+                solid red rail, not a tint wash, so it reads at a glance. */}
+            <fieldset>
+              <legend className="bp-micro text-muted-foreground">[ Template ]</legend>
+              <div className="bp-hair mt-2 border border-border">
+                {OFFICE_TEMPLATES.map((t, i) => {
+                  const active = t.id === templateId
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => selectTemplate(t.id)}
+                      className={`flex w-full items-start gap-3 px-3 py-2.5 text-left transition-colors ${
+                        active ? 'bg-secondary' : 'hover:bg-secondary/60'
+                      }`}
+                    >
+                      <span
+                        aria-hidden
+                        className={`mt-0.5 w-1 self-stretch ${active ? 'bg-primary' : 'bg-transparent'}`}
+                      />
+                      <span className={`font-mono text-xs tabular-nums ${active ? 'text-primary' : 'text-muted-foreground'}`}>
+                        {String(i + 1).padStart(2, '0')}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="bp-macro block text-[0.9rem]">{t.name}</span>
+                        <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">{t.flowSummary}</span>
+                      </span>
+                    </button>
+                  )
+                })}
               </div>
-            </div>
+            </fieldset>
 
             <div>
               <div className="flex items-center justify-between">
-                <Label htmlFor="office-scope">{template.scopeLabel}</Label>
+                <Label htmlFor="office-scope" className="bp-micro text-muted-foreground">{scopeLabelHead}</Label>
                 {scopeTouched && (
                   <button
                     type="button"
@@ -417,11 +450,14 @@ function HireOfficeTemplateDialog({
                 }}
                 autoFocus
               />
-              {!scopeTouched && <p className="mt-1 text-xs text-muted-foreground">Pre-filled with an example — edit it, or hire as-is.</p>}
+              <p className="mt-1 text-xs text-muted-foreground">
+                {scopeLabelAside && <span>{scopeLabelAside}. </span>}
+                {!scopeTouched && <span>Pre-filled with an example — edit it, or hire as-is.</span>}
+              </p>
             </div>
 
             <div>
-              <Label htmlFor="office-prime">Paying agent (escrows the bounties once you confirm)</Label>
+              <Label htmlFor="office-prime" className="bp-micro text-muted-foreground">Paying agent — escrows the bounties on confirm</Label>
               <select
                 id="office-prime"
                 value={primeAgentId}
@@ -463,8 +499,18 @@ function HireOfficeTemplateDialog({
             </div>
 
             <div>
-              <Label htmlFor="office-budget">Total budget (USD, split across {template.pipeline.length} step{template.pipeline.length === 1 ? '' : 's'})</Label>
-              <Input id="office-budget" type="number" min={template.pipeline.length} step="1" value={budgetUsd} onChange={(e) => setBudgetUsd(e.target.value)} />
+              <Label htmlFor="office-budget" className="bp-micro text-muted-foreground">Total budget · USD · split across {template.pipeline.length} step{template.pipeline.length === 1 ? '' : 's'}</Label>
+              <Input
+                id="office-budget"
+                type="number"
+                min={template.pipeline.length}
+                step="1"
+                value={budgetUsd}
+                onChange={(e) => {
+                  setBudgetUsd(e.target.value)
+                  setBudgetTouched(true)
+                }}
+              />
             </div>
 
             <div>
@@ -486,7 +532,7 @@ function HireOfficeTemplateDialog({
                     (Exa, securities-mcp, obsidian-mcp) — any MCP server can be wired in below the same way.
                   </p>
                   <div>
-                    <Label htmlFor="office-mcp-url">MCP server URL (shared by every role below)</Label>
+                    <Label htmlFor="office-mcp-url" className="bp-micro text-muted-foreground">MCP server URL — shared by every role below</Label>
                     <Input id="office-mcp-url" value={mcpServerUrl} onChange={(e) => setMcpServerUrl(e.target.value)} placeholder="https://…" />
                     <button
                       type="button"
@@ -497,12 +543,12 @@ function HireOfficeTemplateDialog({
                     </button>
                   </div>
                   <div>
-                    <Label htmlFor="office-mcp-auth">Auth header (optional)</Label>
+                    <Label htmlFor="office-mcp-auth" className="bp-micro text-muted-foreground">Auth header — optional</Label>
                     <Input id="office-mcp-auth" value={mcpAuthHeader} onChange={(e) => setMcpAuthHeader(e.target.value)} placeholder="Bearer …" />
                   </div>
                   {template.roles.map((r) => (
                     <div key={r.id}>
-                      <Label htmlFor={`office-tool-${r.id}`}>{r.name} tool name</Label>
+                      <Label htmlFor={`office-tool-${r.id}`} className="bp-micro text-muted-foreground">{r.name} tool name</Label>
                       <Input
                         id={`office-tool-${r.id}`}
                         value={mcpToolNames[r.id] ?? ''}
