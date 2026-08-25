@@ -104,6 +104,40 @@ absence, the same distinction `lib/evidence-assurance.ts` enforces when coverage
 is 0. Reading these properly needs an authenticated API path, which this session
 does not have for repositories outside its scope.
 
+**Cause pinned, 2026-08-25 — stop rediscovering this.** It is not a flaky
+fetcher. The GitHub API tools are scoped to *attached* repositories; both
+upstreams are third-party, so every call returns a hard `Access denied:
+repository "daydreamsai/taskmarket-contracts" is not configured for this
+session`. `add_repo` with `access:"read"` does **not** lift it — that grants
+anonymous *git* reads only, and says so: "GitHub API tools (issues, pull
+requests, the github MCP server) ... do not cover unattached repositories."
+The only lever is attaching with `access:"push"`, which runs full
+repository-access checks and is both likely-refused and disproportionate for
+read-only observation of someone else's repo. So comments and PR open/closed
+state are **permanently** unobservable from here, not intermittently.
+
+What git-only access *does* verify — and it covers most of what we watch:
+file content on `main` (did SWE-AF regenerate the README table? is
+`.gitmodules` present yet?) and what each `sync:` commit actually swept in.
+Those checks are reliable. Treat every "no response" line in the table above as
+a statement about *absorbed content*, never about maintainer silence.
+
+**Cadence, same date.** The 4-hourly check-in chain is retired in favour of
+daily. It had fired 12+ consecutive times with no finding, against threads whose
+documented next move is "wait" (thread 1: 0/7 outside issues ever answered;
+thread 2: do not bump; thread 7: do not re-raise unprompted) — polling every
+four hours for a signal this very section records as invisible. Nothing here
+moves on a four-hour timescale: upstream `sync:` commits land every few days at
+best (2026-08-01, -07, -10, -11, -12, -16).
+
+**Verified 2026-08-25, git-only, all unchanged.** SWE-AF: nothing has touched
+`examples/agent-comparison/` since our merge `dfd3157`; the README table still
+reads Codex/CC-Haiku `Structure 10` against the merged scorer's 20, so the
+divergence stands and they have neither regenerated nor recalibrated.
+taskmarket-contracts: still no `.gitmodules` (thread 1 unabsorbed); the only
+sync since 08-12 is `657b9f7` (08-16), which touched `docker/anvil/Dockerfile`
+alone — so PR #12's fix is unabsorbed too.
+
 ## Inbound, for the first time (2026-08-18)
 
 Everything above is outbound — us contacting other projects. This is the first
