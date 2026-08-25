@@ -1,0 +1,16 @@
+[project]
+name = "obsidian-mcp"
+version = "0.1.0"
+description = "Read-only Obsidian vault MCP server for Handsel, via the Local REST API plugin"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastmcp>=2.11.2",
+    "requests>=2.32.4",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0.0"]
+
+[tool.setuptools]
+py-modules = ["obsidian_client", "server"]

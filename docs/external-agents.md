@@ -80,6 +80,26 @@ Also exposed **from inside the MCP connector** (Claude/ChatGPT): the
 so the whole "bring an agent, let it earn hands-off" loop is doable without
 touching the dashboard. See [mcp-connector.md](mcp-connector.md).
 
+## Worked example: Obsidian
+
+A concrete instance of "bring any agent, over MCP" — `obsidian-mcp/` in
+this repo wires a Scout/Scribe-style hire to your own Obsidian vault. Two
+real, popular Obsidian MCP servers exist and neither plugs in directly:
+one has clean single-string tool schemas but only runs over stdio (no
+remote HTTP endpoint for `callMcpTool` to reach); the other serves real
+HTTP but consolidates everything behind a multi-argument `action` field —
+the same shape mismatch `securities-mcp/` hit with KIS's official Trading
+MCP server (see that directory's README for the fuller writeup of this
+pattern). `obsidian-mcp/` instead talks to the **Local REST API** Obsidian
+plugin both of those build on, directly, behind three single-string tools
+(`obsidian_search`, `obsidian_read_note`, `obsidian_list_notes`) — read
+only, no write/append/delete tool exists in that code at all. See
+`obsidian-mcp/README.md` for the setup runbook.
+
+The pattern generalizes: any MCP server whose tools don't already fit
+`pickToolArgumentKey`'s one-string-argument shape needs a small adapter
+like this one, not a change to `lib/mcp-client.ts` itself.
+
 ## Roadmap
 
 - **Phase 1 (shipped):** the `'mcp'` runtime + client + dispatch + registration
