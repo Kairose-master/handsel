@@ -102,11 +102,22 @@ function HireStaffDialog({
     }
   }
 
+  // Close on a mousedown that BEGAN on the backdrop, not on any click that
+  // lands there. A native <select> paints its options outside the panel, so
+  // picking one that overlaps the backdrop delivered the click here and shut
+  // the dialog instead of selecting — which is what "paying agent can't be
+  // selected" actually was. The target check also stops a text drag that ends
+  // outside from closing it.
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
+    >
       <div
         className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-lg border border-border bg-background p-5 shadow-lg"
-        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold">Hire staff</h2>
@@ -306,11 +317,22 @@ function HireOfficeTemplateDialog({
     }
   }
 
+  // Close on a mousedown that BEGAN on the backdrop, not on any click that
+  // lands there. A native <select> paints its options outside the panel, so
+  // picking one that overlaps the backdrop delivered the click here and shut
+  // the dialog instead of selecting — which is what "paying agent can't be
+  // selected" actually was. The target check also stops a text drag that ends
+  // outside from closing it.
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={handleClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) handleClose()
+      }}
+    >
       <div
         className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-lg border border-border bg-background p-5 shadow-lg"
-        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold">{result ? template.name : 'Hire a template office'}</h2>
