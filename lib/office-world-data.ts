@@ -166,6 +166,11 @@ export type OfficeTemplateStep = {
    *  OWN just-settled bounty, split out on-chain to office-mates, not a
    *  separate payment from the prime's escrow. bps values must sum ≤ 10000. */
   splitBpsByRoleId?: Record<string, number>
+  /** Relative share of the total budget this step's bounty gets — defaults
+   *  to 1 (equal split, the original behavior). A step worth 2 gets twice
+   *  the bounty of a step worth 1, budget split proportionally by weight
+   *  across the whole pipeline (app/actions/office.ts). */
+  bountyWeight?: number
 }
 
 export type OfficeTemplate = {
@@ -343,6 +348,68 @@ export const OFFICE_TEMPLATES: OfficeTemplate[] = [
         acceptanceCriteria: 'Delivers exactly what the brief above asks for, complete and ready to use — no partial or placeholder output.',
         dependsOnRoleIds: [],
         splitBpsByRoleId: { 'agency-head': 2000, scout: 500 },
+      },
+    ],
+  },
+  {
+    id: 'bootstrap-desk',
+    name: 'Bootstrap Desk',
+    blurb:
+      'A rookie agent earns its first real dollar and its first real credit tick — then a pricier second job shows ' +
+      'what that earned standing is actually worth. No seeded history: every number here is earned live, on this ' +
+      'delegation, while you watch.',
+    scopeLabel: 'What should the Bootstrapper deliver? (a small, self-contained task, e.g. "a 300-word explainer of X")',
+    roles: [
+      {
+        id: 'bootstrapper',
+        name: 'Bootstrapper',
+        blurb: 'Starts at a real, literal zero — no seeded score, no starter balance, same cold start as every new agent.',
+        colorIndex: 0,
+        customInstructions:
+          'You are a brand-new agent with no track record and no property yet — real $0 score, real $0 credit ' +
+          "line, same as any fresh agent on this platform. Deliver exactly what the first job's brief asks for. " +
+          "This first job needs nothing from you upfront — that's deliberate: it's the one kind of job a " +
+          'propertyless agent can always do. What you earn from it is the first real entry in your own track record.',
+        mcpHint: 'Not applicable — this role does self-contained delivery work, no external data needed.',
+      },
+      {
+        id: 'underwriter',
+        name: 'Underwriter',
+        blurb: "Reviews the Bootstrapper's real, settled track record and states plainly what it is worth so far.",
+        colorIndex: 9,
+        customInstructions:
+          "You are an underwriter reviewing one agent's track record. You will be given that agent's first " +
+          'delivered piece of real work below. You have no tool access to the live credit-scoring system yourself — ' +
+          'say so plainly, and tell the human reviewing this delegation to check the real number on /credit-scores ' +
+          "before acting on anything here. Do not invent a score, a credit limit, or a dollar figure you haven't " +
+          "actually been given — an honest 'I can't verify this number myself' is the correct answer, not a " +
+          'flaw in this exercise. What you CAN do: assess, from the one real delivered piece you have, whether it ' +
+          'reads like the kind of work that should earn trust for a bigger, pricier job next.',
+        mcpHint: 'Not applicable — deliberately has no live data tool, see customInstructions.',
+      },
+    ],
+    pipeline: [
+      {
+        roleId: 'bootstrapper',
+        title: 'Job 1 — no property required',
+        brief: '{scope}\n\nYou are paid on delivery, nothing upfront required of you — this is the one kind of job a $0-balance, $0-credit agent can always take.',
+        acceptanceCriteria: 'Delivers exactly what the brief above asks for, complete and ready to use.',
+        dependsOnRoleIds: [],
+        bountyWeight: 1,
+      },
+      {
+        roleId: 'underwriter',
+        title: 'Underwriting memo — is this worker earning real standing?',
+        brief:
+          "Read the Bootstrapper's real delivered output for Job 1 (injected above) and write a short underwriting " +
+          'memo: does this read like work that should earn trust for a bigger job next, and why. State plainly ' +
+          'that you cannot see its actual on-chain score/credit line yourself — point the human reviewing this ' +
+          'delegation to /credit-scores for the real number before they decide whether to fund a pricier Job 2.',
+        acceptanceCriteria:
+          'Gives a concrete yes/no read on the delivered work with a specific reason, and explicitly tells the ' +
+          'reader to check the real score/credit number themselves rather than stating one.',
+        dependsOnRoleIds: ['bootstrapper'],
+        bountyWeight: 2, // the "pricier second job" — needs more trust, worth more
       },
     ],
   },

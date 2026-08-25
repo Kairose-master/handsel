@@ -50,8 +50,9 @@ describe('OFFICE_TEMPLATES', () => {
         for (const step of template.pipeline) visit(step.roleId)
       })
 
-      it('every title/brief/acceptanceCriteria placeholder resolves with a real scope string', () => {
+      it('every title/brief/acceptanceCriteria placeholder resolves, and at least one step uses the real scope', () => {
         const scope = 'AAPL, 005930.KS'
+        let sawScope = false
         for (const step of template.pipeline) {
           const title = step.title.replaceAll('{scope}', scope)
           const brief = step.brief.replaceAll('{scope}', scope)
@@ -59,8 +60,13 @@ describe('OFFICE_TEMPLATES', () => {
           expect(title).not.toContain('{scope}')
           expect(brief).not.toContain('{scope}')
           expect(criteria).not.toContain('{scope}')
-          expect(brief).toContain(scope) // the brief always carries the actual scope, even if the title doesn't
+          if (title.includes(scope) || brief.includes(scope) || criteria.includes(scope)) sawScope = true
         }
+        // A dependent step is allowed to work purely off the injected upstream
+        // output instead of the original scope text (e.g. bootstrap-desk's
+        // underwriter) — but the template as a whole must use the owner's
+        // input somewhere, or the scope field would be pointless.
+        expect(sawScope).toBe(true)
       })
 
       it('every splitBpsByRoleId references a real, DIFFERENT role id and sums to at most 10000', () => {
@@ -75,6 +81,12 @@ describe('OFFICE_TEMPLATES', () => {
             total += bps
           }
           expect(total).toBeLessThanOrEqual(10_000)
+        }
+      })
+
+      it('every bountyWeight, when set, is a positive number', () => {
+        for (const step of template.pipeline) {
+          if (step.bountyWeight !== undefined) expect(step.bountyWeight).toBeGreaterThan(0)
         }
       })
 

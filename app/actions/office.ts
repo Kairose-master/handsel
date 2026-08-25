@@ -252,7 +252,13 @@ export async function hireOfficeTemplate(
     ? await buildDataSnapshots(scope.split(',').map((s) => s.trim()).filter(Boolean))
     : new Map<string, string>()
 
-  const perStep = Math.max(MIN_SUBTASK_BOUNTY_USD, Math.round((input.budgetUsd / template.pipeline.length) * 100) / 100)
+  // Budget splits by weight (default 1 — equal split, unchanged for every
+  // template that doesn't set one). A weight-2 step gets twice a weight-1
+  // step's bounty out of the same total.
+  const totalWeight = template.pipeline.reduce((s, step) => s + (step.bountyWeight ?? 1), 0)
+  const unitUsd = input.budgetUsd / totalWeight
+  const bountyForStep = (step: (typeof template.pipeline)[number]) =>
+    Math.max(MIN_SUBTASK_BOUNTY_USD, Math.round(unitUsd * (step.bountyWeight ?? 1) * 100) / 100)
   const titleByRoleId = new Map(template.pipeline.map((s) => [s.roleId, s.title.replaceAll('{scope}', scope)]))
   const subtasks: DelegationSubtask[] = template.pipeline.map((step) => {
     const snapshot = snapshotByRoleId.get(step.roleId)
@@ -273,7 +279,7 @@ export async function hireOfficeTemplate(
       title: titleByRoleId.get(step.roleId)!,
       description: step.brief.replaceAll('{scope}', scope) + (snapshot ? `\n\n${snapshot}` : ''),
       acceptanceCriteria: step.acceptanceCriteria.replaceAll('{scope}', scope),
-      bountyUsd: perStep,
+      bountyUsd: bountyForStep(step),
       deliverableKind: 'text' as const,
       ...(step.dependsOnRoleIds.length
         ? { dependsOn: step.dependsOnRoleIds.map((rid) => titleByRoleId.get(rid)!) }
