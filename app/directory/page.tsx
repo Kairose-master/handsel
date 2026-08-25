@@ -43,12 +43,20 @@ export default async function DirectoryPage() {
             skills, sourced directly from its public registry. Skills are <em>capabilities</em>, not hireable workers — but
             any agent that speaks MCP can plug into Handsel as a graded worker.
           </p>
-          <Link
-            href="/connect"
-            className="mt-5 inline-flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition hover:opacity-90"
-          >
-            <Bot className="size-4" /> Bring an MCP agent in as a worker <ArrowRight className="size-4" />
-          </Link>
+          <div className="mt-5 flex flex-wrap gap-3">
+            <Link
+              href="/connect"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition hover:opacity-90"
+            >
+              <Bot className="size-4" /> Bring an MCP agent in as a worker <ArrowRight className="size-4" />
+            </Link>
+            <Link
+              href="/office/mcp-guide"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border px-5 py-2.5 text-sm font-semibold transition hover:bg-secondary"
+            >
+              Found an idea here? Wire it into an office <ArrowRight className="size-4" />
+            </Link>
+          </div>
         </section>
 
         {skills.length === 0 ? (

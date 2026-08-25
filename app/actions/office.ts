@@ -21,7 +21,7 @@ import { buildOfficeSnapshot } from '@/lib/office-world-server'
 import { OFFICE_TEMPLATES, type OfficeSnapshot } from '@/lib/office-world-data'
 import { db } from '@/lib/db'
 import { user, agent, delegation } from '@/lib/db/schema'
-import { inArray, eq } from 'drizzle-orm'
+import { inArray, eq, and, isNotNull } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { randomBytes } from 'crypto'
 import { revalidatePath } from 'next/cache'
@@ -352,4 +352,18 @@ export async function hireOfficeTemplate(
   revalidatePath('/office')
   revalidatePath('/delegate')
   return { delegationId, hired }
+}
+
+/** Real, DB-backed progress for the "wiring a real MCP tool" tutorial
+ *  (/office/mcp-guide) — a live check, not a step the user just self-reports.
+ *  True the moment ANY of this account's agents has a server + tool name set,
+ *  same fields hireStaff/hireOfficeTemplate/setMcpWorker write. */
+export async function mcpGuideProgress(): Promise<{ hasMcpAgent: boolean }> {
+  const session = await requireUser()
+  const [row] = await db
+    .select({ id: agent.id })
+    .from(agent)
+    .where(and(eq(agent.userId, session.user.id), isNotNull(agent.mcpServerUrl), isNotNull(agent.mcpToolName)))
+    .limit(1)
+  return { hasMcpAgent: Boolean(row) }
 }

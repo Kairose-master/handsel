@@ -420,7 +420,11 @@ function HireOfficeTemplateDialog({
                     <a href="/directory" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
                       Browse ClawHub skills
                     </a>{' '}
-                    for capability ideas — any of them that speaks MCP can be wired in below the same way.
+                    for capability ideas, or read the{' '}
+                    <a href="/office/mcp-guide" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                      step-by-step wiring guide
+                    </a>{' '}
+                    (Exa, securities-mcp, obsidian-mcp) — any MCP server can be wired in below the same way.
                   </p>
                   <div>
                     <Label htmlFor="office-mcp-url">MCP server URL (shared by every role below)</Label>
