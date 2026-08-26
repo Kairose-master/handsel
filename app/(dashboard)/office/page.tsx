@@ -33,6 +33,9 @@ import {
   officeHireAgents,
   officeRoster,
   type OfficeRosterAgent,
+  officeSource,
+  saveOfficeSource,
+  type OfficeSourceView,
   newOfficeSlot,
   hireStaff,
   hireOfficeTemplate,
@@ -256,6 +259,11 @@ function HireOfficeTemplateDialog({
   // Empty = the prime pays for everything, which is the old behavior.
   const [billOpen, setBillOpen] = useState(false)
   const [payerByRoleId, setPayerByRoleId] = useState<Record<string, string>>({})
+  // Shown, not just applied: the shared source goes into every role's brief,
+  // and /delegate lists subtask titles rather than their full text, so
+  // without this line the one document all these agents will read would be
+  // invisible at the moment of hiring them.
+  const [sharedSource, setSharedSource] = useState<OfficeSourceView | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<HireOfficeTemplateResult | null>(null)
@@ -268,6 +276,13 @@ function HireOfficeTemplateDialog({
     // empty roster, so the dialog explains itself rather than hanging on a
     // silent catch.
     setAgentsError(null)
+    officeSource(officeSlot)
+      .then(setSharedSource)
+      .catch((err) => {
+        // Non-fatal: the hire still works and the source is still applied
+        // server-side. Only the notice below is missing, so don't block on it.
+        console.error('[office] could not read the shared source:', err)
+      })
     officeHireAgents()
       .then((list) => {
         setAgents(list)
@@ -284,7 +299,7 @@ function HireOfficeTemplateDialog({
       })
       .finally(() => setAgentsLoaded(true))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
+  }, [open, officeSlot])
 
   // scopeLabel is a full sentence with a parenthetical example. Uppercase
   // mono turns that into two dense lines, so only the head becomes the label
@@ -529,6 +544,13 @@ function HireOfficeTemplateDialog({
                 {scopeLabelAside && <span>{scopeLabelAside}. </span>}
                 {!scopeTouched && <span>Pre-filled with an example — edit it, or hire as-is.</span>}
               </p>
+              {sharedSource && (
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  Every role&apos;s brief will also carry this office&apos;s shared source
+                  {sharedSource.title ? ` — “${sharedSource.title}”` : ''} (
+                  {sharedSource.body.length.toLocaleString()} characters). Edit it on the office page.
+                </p>
+              )}
             </div>
 
             <div>
@@ -793,6 +815,136 @@ function HireOfficeTemplateDialog({
   )
 }
 
+
+/**
+ * The office's shared source — the one document every role reads.
+ *
+ * An office's agents each had their own brief and their own connector, and
+ * nothing they all read: the analyst and the reviewer were reasoning about the
+ * same subject from separate descriptions of it. This is the shared text, and
+ * each role still reaches it through its own instrument.
+ */
+function OfficeSourcePanel({ slot }: { slot: number }) {
+  const [loaded, setLoaded] = useState(false)
+  const [readError, setReadError] = useState<string | null>(null)
+  const [title, setTitle] = useState('')
+  const [body, setBody] = useState('')
+  const [maxChars, setMaxChars] = useState(8000)
+  const [savedAt, setSavedAt] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [note, setNote] = useState<string | null>(null)
+
+  useEffect(() => {
+    let dead = false
+    setLoaded(false)
+    setReadError(null)
+    setNote(null)
+    officeSource(slot)
+      .then((s: OfficeSourceView | null) => {
+        if (dead) return
+        setTitle(s?.title ?? '')
+        setBody(s?.body ?? '')
+        setSavedAt(s?.updatedAt ?? null)
+        if (s) setMaxChars(s.maxChars)
+        setLoaded(true)
+      })
+      .catch((e) => {
+        if (dead) return
+        // A failed read is not "this office has no source" — saying so, with
+        // an empty box, would invite the owner to overwrite a document that
+        // is still there.
+        console.error('[office] source read failed:', e)
+        setReadError(e instanceof Error ? e.message : 'Could not read it.')
+        setLoaded(true)
+      })
+    return () => {
+      dead = true
+    }
+  }, [slot])
+
+  const save = async () => {
+    setBusy(true)
+    setError(null)
+    setNote(null)
+    try {
+      const res = await saveOfficeSource(slot, title, body)
+      if ('error' in res) {
+        setError(res.error)
+        return
+      }
+      setSavedAt(new Date().toISOString())
+      setNote(
+        res.truncated
+          ? `Saved, cut to the first ${maxChars.toLocaleString()} characters — that is what agents will read.`
+          : body.trim()
+            ? 'Saved.'
+            : 'Cleared.',
+      )
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Shared source</CardTitle>
+        <p className="text-xs text-muted-foreground">
+          One document every agent in this office reads, each through its own connector. Applied when you hire —
+          editing it later doesn&apos;t rewrite an office already hired, because a brief that changed under a posted
+          job would move the target the worker is graded against.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {readError ? (
+          <p className="text-sm text-destructive">
+            Couldn&apos;t read this office&apos;s source — {readError}. Reload before editing; this is a read
+            failing, not an empty document.
+          </p>
+        ) : (
+          <>
+            <Input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="What it is (e.g. Q3 board memo)"
+              disabled={!loaded}
+              className="h-9"
+            />
+            <textarea
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              placeholder="Paste the brief, memo, spec or transcript every role should work from. Leave empty for none."
+              rows={7}
+              disabled={!loaded}
+              className="w-full rounded-md border border-border bg-background p-3 font-mono text-xs disabled:opacity-60"
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="button" size="sm" onClick={save} disabled={busy || !loaded}>
+                {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : body.trim() ? 'Save' : 'Clear'}
+              </Button>
+              <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                {body.length.toLocaleString()} / {maxChars.toLocaleString()}
+              </span>
+              {body.length > maxChars && (
+                <span className="text-xs text-warning">over the cap — the rest is cut on save</span>
+              )}
+              {savedAt && !note && (
+                <span className="ml-auto text-xs text-muted-foreground">
+                  in effect since {new Date(savedAt).toLocaleString()}
+                </span>
+              )}
+              {note && <span className="ml-auto text-xs text-muted-foreground">{note}</span>}
+              {error && <span className="ml-auto text-xs text-destructive">{error}</span>}
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
 
 /**
  * Office dashboard — who is in this office and how each one is wired.
@@ -1109,6 +1261,7 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
     </Card>
     {/* Shares pollTrigger with the world above so a hire re-reads both. */}
     <OfficeRosterPanel slot={slot} refreshKey={pollTrigger} />
+    <OfficeSourcePanel slot={slot} />
     </div>
   )
 }

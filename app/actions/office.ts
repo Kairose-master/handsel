@@ -16,11 +16,16 @@ import {
   createOfficeSlot,
   renameOfficeSlot,
   setAgentOfficeSlot,
+  getOfficeSource,
+  setOfficeSource,
+  type StoredOfficeSource,
 } from '@/lib/office'
+import { briefWithOfficeSource, MAX_OFFICE_SOURCE_CHARS } from '@/lib/office-source-brief'
 import { buildOfficeSnapshot } from '@/lib/office-world-server'
 import {
   OFFICE_TEMPLATES,
   officeStepBounties,
+  MAX_OFFICE_SLOTS,
   resolveRoleConnector,
   type OfficeSnapshot,
   type OfficeSlot,
@@ -356,6 +361,12 @@ export async function hireOfficeTemplate(
   // amounts, not a second implementation of them.
   const bountyByRoleId = officeStepBounties(template, input.budgetUsd)
   const titleByRoleId = new Map(template.pipeline.map((s) => [s.roleId, s.title.replaceAll('{scope}', scope)]))
+  // The one document every role in this office reads. Resolved once, here,
+  // so a step's brief is fixed at hire time — see lib/office.ts's
+  // ensureOfficeSourceTable comment for why editing it later must not rewrite
+  // an office already hired.
+  const sharedSource = await getOfficeSource(userId, input.officeSlot ?? 1)
+
   const subtasks: DelegationSubtask[] = template.pipeline.map((step) => {
     const snapshot = snapshotByRoleId.get(step.roleId)
     // Settlement split (lib/settlement-split.ts): the OTHER hired roles named
@@ -373,7 +384,10 @@ export async function hireOfficeTemplate(
       : []
     return {
       title: titleByRoleId.get(step.roleId)!,
-      description: step.brief.replaceAll('{scope}', scope) + (snapshot ? `\n\n${snapshot}` : ''),
+      description: briefWithOfficeSource(
+        step.brief.replaceAll('{scope}', scope) + (snapshot ? `\n\n${snapshot}` : ''),
+        sharedSource,
+      ),
       acceptanceCriteria: step.acceptanceCriteria.replaceAll('{scope}', scope),
       bountyUsd: bountyByRoleId.get(step.roleId)!,
       deliverableKind: 'text' as const,
@@ -488,6 +502,37 @@ export async function officeRoster(slot: number): Promise<OfficeRosterAgent[]> {
       mcpToolName: r.mcpToolName,
       hasAuthHeader: Boolean(r.mcpAuthHeaderEnc),
     }))
+}
+
+export type OfficeSourceView = StoredOfficeSource & { maxChars: number }
+
+/** This office's shared source, for the office dashboard. */
+export async function officeSource(slot: number): Promise<OfficeSourceView | null> {
+  const session = await requireUser()
+  const stored = await getOfficeSource(session.user.id, slot)
+  return stored ? { ...stored, maxChars: MAX_OFFICE_SOURCE_CHARS } : null
+}
+
+/**
+ * Write or clear this office's shared source.
+ *
+ * Truncated to MAX_OFFICE_SOURCE_CHARS here rather than rejected: the brief
+ * carries the whole document once per pipeline step, and silently accepting
+ * a document only to have it cut at injection time would mean what the owner
+ * saved and what the workers read were different things. Cutting on save
+ * makes the stored text the true text, and the dialog shows the count.
+ */
+export async function saveOfficeSource(
+  slot: number,
+  title: string,
+  body: string,
+): Promise<{ ok: true; truncated: boolean } | { error: string }> {
+  const session = await requireUser()
+  if (!Number.isInteger(slot) || slot < 1 || slot > MAX_OFFICE_SLOTS) return { error: 'Unknown office' }
+  const clipped = body.slice(0, MAX_OFFICE_SOURCE_CHARS)
+  await setOfficeSource(session.user.id, slot, title.slice(0, 120), clipped)
+  revalidatePath('/office')
+  return { ok: true, truncated: clipped.length < body.length }
 }
 
 /** Real, DB-backed progress for the "wiring a real MCP tool" tutorial

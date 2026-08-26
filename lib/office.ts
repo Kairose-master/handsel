@@ -302,3 +302,62 @@ export async function officeSlotsByAgentId(agentIds: string[]): Promise<Map<stri
   for (const row of rows) result.set(row.agent_id, row.slot)
   return result
 }
+
+/* ── The office's shared source ──────────────────────────────────────────
+ *
+ * One document per office slot, injected into every role's brief at hire
+ * time. See lib/office-source-brief.ts for the injection itself and why it
+ * isn't fenced.
+ *
+ * Injected at hire, not at post: a delegation is drafted 'planned' and its
+ * briefs are reviewed on /delegate before anything is escrowed, so what the
+ * owner reads there is exactly what the workers get. Editing the source
+ * afterwards deliberately does NOT rewrite an office already hired — a brief
+ * that changed under a posted job would change the contract a worker is
+ * being graded against.
+ */
+async function ensureOfficeSourceTable(): Promise<void> {
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS office_source (
+       user_id text NOT NULL,
+       slot integer NOT NULL,
+       title text NOT NULL DEFAULT '',
+       body text NOT NULL DEFAULT '',
+       updated_at timestamptz NOT NULL DEFAULT now(),
+       PRIMARY KEY (user_id, slot)
+     )`,
+  )
+}
+
+export type StoredOfficeSource = { title: string; body: string; updatedAt: string }
+
+/** The shared source for one of this account's offices, or null if it has
+ *  none. A row whose body is blank reads as none — clearing the box is how
+ *  the UI removes it, and an empty document must not append an empty section
+ *  to every brief. */
+export async function getOfficeSource(userId: string, slot: number): Promise<StoredOfficeSource | null> {
+  await ensureOfficeSourceTable()
+  const { rows } = await pool.query<{ title: string; body: string; updated_at: Date }>(
+    `SELECT title, body, updated_at FROM office_source WHERE user_id = $1 AND slot = $2`,
+    [userId, slot],
+  )
+  const row = rows[0]
+  if (!row || !row.body.trim()) return null
+  return { title: row.title, body: row.body, updatedAt: row.updated_at.toISOString() }
+}
+
+/** Write (or clear) an office's shared source. A blank body deletes the row
+ *  rather than storing an empty one, so "has a source" is a single fact with
+ *  one representation. */
+export async function setOfficeSource(userId: string, slot: number, title: string, body: string): Promise<void> {
+  await ensureOfficeSourceTable()
+  if (!body.trim()) {
+    await pool.query(`DELETE FROM office_source WHERE user_id = $1 AND slot = $2`, [userId, slot])
+    return
+  }
+  await pool.query(
+    `INSERT INTO office_source (user_id, slot, title, body) VALUES ($1, $2, $3, $4)
+     ON CONFLICT (user_id, slot) DO UPDATE SET title = $3, body = $4, updated_at = now()`,
+    [userId, slot, title.trim(), body],
+  )
+}
