@@ -7,6 +7,7 @@
  */
 import { getSession } from '@/lib/get-session'
 import {
+  officeSlotsByAgentId,
   officeCodeFor,
   regenerateOfficeCode,
   redeemOfficeCode,
@@ -386,6 +387,64 @@ export async function officeHireAgents(): Promise<Array<{ id: string; name: stri
     .from(agent)
     .where(eq(agent.userId, session.user.id))
   return rows.map((a) => ({ id: a.id, name: a.name, provisioned: Boolean(a.smartAccountAddress) }))
+}
+
+export type OfficeRosterAgent = {
+  id: string
+  name: string
+  provisioned: boolean
+  runtimeType: string | null
+  autoMine: boolean
+  mcpServerUrl: string | null
+  mcpToolName: string | null
+  /** Whether an Authorization header is stored. The value itself is never
+   *  returned — it is encrypted at rest and only decrypted server-side at
+   *  dispatch time (app/actions/webhook.ts). */
+  hasAuthHeader: boolean
+}
+
+/**
+ * The roster behind the office dashboard: who is in this office and how each
+ * one is wired.
+ *
+ * Connectors were previously only settable while hiring, which meant a typo
+ * in a server URL, a rotated token or an ngrok address that changed all
+ * required deleting the agent. The wiring is per-agent in the database and
+ * setMcpWorker/disconnectMcpWorker already exist and are owner-checked — they
+ * were simply never surfaced here.
+ *
+ * Columns are selected explicitly: `select().from(agent)` expands to every
+ * column schema.ts declares and throws the moment one has not been migrated
+ * yet (lib/db/ensure-columns.ts's header).
+ */
+export async function officeRoster(slot: number): Promise<OfficeRosterAgent[]> {
+  const session = await requireUser()
+  const rows = await db
+    .select({
+      id: agent.id,
+      name: agent.name,
+      smartAccountAddress: agent.smartAccountAddress,
+      runtimeType: agent.runtimeType,
+      autoMine: agent.autoMine,
+      mcpServerUrl: agent.mcpServerUrl,
+      mcpToolName: agent.mcpToolName,
+      mcpAuthHeaderEnc: agent.mcpAuthHeaderEnc,
+    })
+    .from(agent)
+    .where(eq(agent.userId, session.user.id))
+  const slotByAgentId = await officeSlotsByAgentId(rows.map((r) => r.id))
+  return rows
+    .filter((r) => slotByAgentId.get(r.id) === slot)
+    .map((r) => ({
+      id: r.id,
+      name: r.name,
+      provisioned: Boolean(r.smartAccountAddress),
+      runtimeType: r.runtimeType,
+      autoMine: Boolean(r.autoMine),
+      mcpServerUrl: r.mcpServerUrl,
+      mcpToolName: r.mcpToolName,
+      hasAuthHeader: Boolean(r.mcpAuthHeaderEnc),
+    }))
 }
 
 /** Real, DB-backed progress for the "wiring a real MCP tool" tutorial

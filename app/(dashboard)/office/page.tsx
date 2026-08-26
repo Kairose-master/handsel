@@ -18,7 +18,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { Copy, RefreshCw, Loader2, UserPlus, Building2, Plus, X } from 'lucide-react'
+import { Copy, RefreshCw, Loader2, UserPlus, Building2, Plus, X, Maximize2, Minimize2, Plug, Unplug } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -31,12 +31,15 @@ import {
   myOfficeWorld,
   myOfficeSlots,
   officeHireAgents,
+  officeRoster,
+  type OfficeRosterAgent,
   newOfficeSlot,
   hireStaff,
   hireOfficeTemplate,
   type ConnectedOffice,
   type HireOfficeTemplateResult,
 } from '@/app/actions/office'
+import { setMcpWorker, disconnectMcpWorker } from '@/app/actions/webhook'
 import OfficeWorld from './game/OfficeWorld'
 import { LiveOffice, type Agent } from './game/live-engine'
 import { AGENT_TEMPLATES, OFFICE_TEMPLATES, MAX_OFFICE_SLOTS, colorsFor, type OfficeSlot, type McpConnector } from '@/lib/office-world-data'
@@ -695,6 +698,186 @@ function HireOfficeTemplateDialog({
   )
 }
 
+
+/**
+ * Office dashboard — who is in this office and how each one is wired.
+ *
+ * Exists because connectors used to be settable only while hiring: a typo in
+ * a server URL, a rotated token, or an ngrok address that changed meant
+ * deleting the agent and starting over. The wiring has always been per-agent
+ * in the database, and setMcpWorker/disconnectMcpWorker are already
+ * owner-checked — they were just never reachable from here.
+ */
+function OfficeRosterPanel({ slot, refreshKey }: { slot: number; refreshKey: number }) {
+  const [rows, setRows] = useState<OfficeRosterAgent[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [editing, setEditing] = useState<string | null>(null)
+  const [tick, setTick] = useState(0)
+
+  useEffect(() => {
+    let dead = false
+    officeRoster(slot)
+      .then((r) => !dead && (setRows(r), setError(null)))
+      .catch((e) => {
+        if (dead) return
+        console.error('[office] roster read failed:', e)
+        setRows([])
+        setError(e instanceof Error ? e.message : 'Could not load this office.')
+      })
+    return () => {
+      dead = true
+    }
+  }, [slot, refreshKey, tick])
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Staff & connectors</CardTitle>
+        <p className="text-xs text-muted-foreground">
+          Every agent in this office and the MCP source it calls. Change a connector any time — it takes effect on the
+          next job, not retroactively on work already delivered.
+        </p>
+      </CardHeader>
+      <CardContent>
+        {error && <p className="text-sm text-destructive">Couldn&apos;t load this office — {error}</p>}
+        {!error && rows === null && <p className="text-sm text-muted-foreground">Reading the roster…</p>}
+        {!error && rows?.length === 0 && (
+          <p className="text-sm text-muted-foreground">No agents in this office yet — hire some above.</p>
+        )}
+        {rows && rows.length > 0 && (
+          <div className="hairline-grid overflow-hidden rounded-lg border border-border">
+            {rows.map((a) => (
+              <div key={a.id} className="px-3 py-2.5">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className="text-sm font-medium">{a.name}</span>
+                  {!a.provisioned && (
+                    <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                      no wallet
+                    </span>
+                  )}
+                  {a.autoMine && (
+                    <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">auto-mine</span>
+                  )}
+                  <span className="ml-auto">
+                    {a.mcpServerUrl && a.mcpToolName ? (
+                      <span className="inline-flex items-center gap-1 text-xs text-primary">
+                        <Plug className="h-3 w-3" /> connected
+                      </span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">platform agent</span>
+                    )}
+                  </span>
+                </div>
+
+                {a.mcpServerUrl && a.mcpToolName && (
+                  <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
+                    {a.mcpToolName} · {a.mcpServerUrl}
+                    {a.hasAuthHeader && ' · auth set'}
+                  </p>
+                )}
+
+                {editing === a.id ? (
+                  <ConnectorEditor
+                    agent={a}
+                    onDone={() => {
+                      setEditing(null)
+                      setTick((n) => n + 1)
+                    }}
+                    onCancel={() => setEditing(null)}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setEditing(a.id)}
+                    className="press mt-1.5 text-xs text-primary hover:underline"
+                  >
+                    {a.mcpServerUrl ? 'Change connector' : 'Connect a tool'}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function ConnectorEditor({
+  agent,
+  onDone,
+  onCancel,
+}: {
+  agent: OfficeRosterAgent
+  onDone: () => void
+  onCancel: () => void
+}) {
+  const [serverUrl, setServerUrl] = useState(agent.mcpServerUrl ?? '')
+  const [toolName, setToolName] = useState(agent.mcpToolName ?? '')
+  // Never prefilled: the stored header is encrypted and never leaves the
+  // server, so an empty box means "leave it as it is", not "clear it".
+  const [authHeader, setAuthHeader] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const save = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      await setMcpWorker(agent.id, {
+        serverUrl,
+        toolName,
+        authHeader: authHeader.trim() || undefined,
+      })
+      onDone()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const disconnect = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      await disconnectMcpWorker(agent.id)
+      onDone()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not disconnect.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="mt-2 space-y-2 rounded-md border border-border bg-secondary/40 p-2.5">
+      <Input value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} placeholder="https://…/mcp" className="h-8 text-xs" />
+      <Input value={toolName} onChange={(e) => setToolName(e.target.value)} placeholder="tool name" className="h-8 text-xs" />
+      <Input
+        value={authHeader}
+        onChange={(e) => setAuthHeader(e.target.value)}
+        placeholder={agent.hasAuthHeader ? 'Auth header set — leave blank to keep it' : 'Auth header — optional'}
+        className="h-8 text-xs"
+      />
+      {error && <p className="text-xs text-destructive">{error}</p>}
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" size="sm" onClick={save} disabled={busy || !serverUrl.trim() || !toolName.trim()}>
+          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Save'}
+        </Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onCancel} disabled={busy}>
+          Cancel
+        </Button>
+        {agent.mcpServerUrl && (
+          <Button type="button" size="sm" variant="ghost" onClick={disconnect} disabled={busy} className="ml-auto text-muted-foreground">
+            <Unplug className="mr-1 h-3.5 w-3.5" /> Disconnect
+          </Button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function OfficeWorldPanel({ slot }: { slot: number }) {
   const engineRef = useRef(new LiveOffice())
   const [agents, setAgents] = useState<Agent[]>([])
@@ -703,6 +886,28 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
   const [hiring, setHiring] = useState(false)
   const [hiringTemplate, setHiringTemplate] = useState(false)
   const [pollTrigger, setPollTrigger] = useState(0)
+  const stageRef = useRef<HTMLDivElement | null>(null)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+
+  // Track the real state rather than assuming our own toggle won — Esc and
+  // the browser's own control both exit without going through the button.
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(document.fullscreenElement === stageRef.current)
+    document.addEventListener('fullscreenchange', onChange)
+    return () => document.removeEventListener('fullscreenchange', onChange)
+  }, [])
+
+  const toggleFullscreen = () => {
+    const el = stageRef.current
+    if (!el) return
+    if (document.fullscreenElement) {
+      void document.exitFullscreen()
+    } else {
+      void el.requestFullscreen?.().catch((err: unknown) => {
+        console.error('[office] fullscreen refused:', err)
+      })
+    }
+  }
 
   useEffect(() => {
     let dead = false
@@ -745,6 +950,7 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
   }, [])
 
   return (
+    <div className="space-y-4">
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0">
         <div>
@@ -768,8 +974,23 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
         </div>
       </CardHeader>
       <CardContent>
-        <div style={{ height: 480 }} className="overflow-hidden rounded-lg border border-border">
+        {/* Fullscreen targets the world container, not the document, so the
+            canvas fills the screen without the page chrome coming with it.
+            The API is prefixed on older WebKit, hence the cast. */}
+        <div
+          ref={stageRef}
+          style={{ height: 480 }}
+          className="relative overflow-hidden rounded-lg border border-border [&:fullscreen]:h-screen [&:fullscreen]:rounded-none"
+        >
           <OfficeWorld agents={agents} selectedId={selected?.id ?? null} follow={false} onSelect={setSelected} />
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+            className="press absolute right-2 top-2 z-10 rounded-md border border-border bg-background/85 p-1.5 text-muted-foreground backdrop-blur hover:text-foreground"
+          >
+            {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          </button>
         </div>
         {selected && (
           <div className="mt-3 rounded-md border border-border bg-muted/50 p-3 text-sm">
@@ -791,6 +1012,9 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
         officeSlot={slot}
       />
     </Card>
+    {/* Shares pollTrigger with the world above so a hire re-reads both. */}
+    <OfficeRosterPanel slot={slot} refreshKey={pollTrigger} />
+    </div>
   )
 }
 
