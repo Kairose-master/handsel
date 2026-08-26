@@ -119,7 +119,7 @@ function HireStaffDialog({
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="bp-macro text-lg">Hire staff</h2>
+          <h2 className="text-lg font-semibold">Hire staff</h2>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground" aria-label="Close">
             <X className="h-4 w-4" />
           </button>
@@ -359,7 +359,7 @@ function HireOfficeTemplateDialog({
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="bp-macro text-lg">{result ? template.name : 'Hire a template office'}</h2>
+          <h2 className="text-lg font-semibold">{result ? template.name : 'Hire a template office'}</h2>
           <button onClick={handleClose} className="text-muted-foreground hover:text-foreground" aria-label="Close">
             <X className="h-4 w-4" />
           </button>
@@ -403,8 +403,8 @@ function HireOfficeTemplateDialog({
                 already says what the office does, in one line. Selection is a
                 solid red rail, not a tint wash, so it reads at a glance. */}
             <fieldset>
-              <legend className="bp-micro text-muted-foreground">[ Template ]</legend>
-              <div className="bp-hair mt-2 border border-border">
+              <legend className="label-eyebrow text-muted-foreground">[ Template ]</legend>
+              <div className="hairline-grid mt-2 border border-border">
                 {OFFICE_TEMPLATES.map((t, i) => {
                   const active = t.id === templateId
                   return (
@@ -425,7 +425,7 @@ function HireOfficeTemplateDialog({
                         {String(i + 1).padStart(2, '0')}
                       </span>
                       <span className="min-w-0 flex-1">
-                        <span className="bp-macro block text-[0.9rem]">{t.name}</span>
+                        <span className="block text-sm font-semibold">{t.name}</span>
                         <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">{t.flowSummary}</span>
                       </span>
                     </button>
@@ -436,7 +436,7 @@ function HireOfficeTemplateDialog({
 
             <div>
               <div className="flex items-center justify-between">
-                <Label htmlFor="office-scope" className="bp-micro text-muted-foreground">{scopeLabelHead}</Label>
+                <Label htmlFor="office-scope" className="label-eyebrow text-muted-foreground">{scopeLabelHead}</Label>
                 {scopeTouched && (
                   <button
                     type="button"
@@ -466,7 +466,7 @@ function HireOfficeTemplateDialog({
             </div>
 
             <div>
-              <Label htmlFor="office-prime" className="bp-micro text-muted-foreground">Paying agent — escrows the bounties on confirm</Label>
+              <Label htmlFor="office-prime" className="label-eyebrow text-muted-foreground">Paying agent — escrows the bounties on confirm</Label>
               <select
                 id="office-prime"
                 value={primeAgentId}
@@ -514,7 +514,7 @@ function HireOfficeTemplateDialog({
             </div>
 
             <div>
-              <Label htmlFor="office-budget" className="bp-micro text-muted-foreground">Total budget · USD · split across {template.pipeline.length} step{template.pipeline.length === 1 ? '' : 's'}</Label>
+              <Label htmlFor="office-budget" className="label-eyebrow text-muted-foreground">Total budget · USD · split across {template.pipeline.length} step{template.pipeline.length === 1 ? '' : 's'}</Label>
               <Input
                 id="office-budget"
                 type="number"
@@ -547,7 +547,7 @@ function HireOfficeTemplateDialog({
                     (Exa, securities-mcp, obsidian-mcp) — any MCP server can be wired in below the same way.
                   </p>
                   <div>
-                    <Label htmlFor="office-mcp-url" className="bp-micro text-muted-foreground">MCP server URL — shared by every role below</Label>
+                    <Label htmlFor="office-mcp-url" className="label-eyebrow text-muted-foreground">MCP server URL — shared by every role below</Label>
                     <Input id="office-mcp-url" value={mcpServerUrl} onChange={(e) => setMcpServerUrl(e.target.value)} placeholder="https://…" />
                     <button
                       type="button"
@@ -558,12 +558,12 @@ function HireOfficeTemplateDialog({
                     </button>
                   </div>
                   <div>
-                    <Label htmlFor="office-mcp-auth" className="bp-micro text-muted-foreground">Auth header — optional</Label>
+                    <Label htmlFor="office-mcp-auth" className="label-eyebrow text-muted-foreground">Auth header — optional</Label>
                     <Input id="office-mcp-auth" value={mcpAuthHeader} onChange={(e) => setMcpAuthHeader(e.target.value)} placeholder="Bearer …" />
                   </div>
                   {template.roles.map((r) => (
                     <div key={r.id}>
-                      <Label htmlFor={`office-tool-${r.id}`} className="bp-micro text-muted-foreground">{r.name} tool name</Label>
+                      <Label htmlFor={`office-tool-${r.id}`} className="label-eyebrow text-muted-foreground">{r.name} tool name</Label>
                       <Input
                         id={`office-tool-${r.id}`}
                         value={mcpToolNames[r.id] ?? ''}

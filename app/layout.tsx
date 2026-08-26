@@ -1,6 +1,6 @@
 import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
-import { Geist, Geist_Mono, Archivo_Black } from 'next/font/google'
+import { Geist, Geist_Mono } from 'next/font/google'
 import { LocaleProvider } from '@/lib/i18n'
 import './globals.css'
 import { origin } from '@/lib/origin'
@@ -15,11 +15,6 @@ import { isRealMoney } from '@/lib/onchain/real-money'
 // coincidence, at no new dependency (both come from next/font/google).
 const geistSans = Geist({ subsets: ['latin'], variable: '--font-geist-sans' })
 const geistMono = Geist_Mono({ subsets: ['latin'], variable: '--font-geist-mono' })
-// Macro display face for the public landing's brutalist substrate (.bp in
-// globals.css). Declared here because next/font must be called at module
-// scope in a layout; nothing outside .bp-macro references it, so the
-// dashboard never renders it.
-const archivoBlack = Archivo_Black({ subsets: ['latin'], weight: '400', variable: '--font-archivo' })
 
 // Chain-derived, not asserted: the site metadata used to end every description
 // with "Testnet, no real money" — a claim that turned false (in search results
@@ -69,7 +64,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} ${archivoBlack.variable} bg-background`} suppressHydrationWarning>
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} bg-background`} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
       </head>

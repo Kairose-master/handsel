@@ -55,112 +55,108 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* Light theme — Swiss Industrial Print (industrial-brutalist archetype).
-   Replaces "Sage & Linen" (2026-08-25): the whole site moved to the
-   brutalist substrate, so the handoff palette was retired rather than kept
-   alongside it — two palettes in one product is the incoherence the
-   archetype warns about. Unbleached documentation paper, carbon ink, and
-   aviation hazard red as the ONLY accent. Recoverable from git if the call
-   is reversed. */
+/* Light theme — "Quarry" (Soft Structuralism).
+   Replaces the industrial-brutalist Swiss Print pass (2026-08-25). That one
+   was bold but wrong for the product: hazard red as the BRAND accent reads as
+   a warning label, and the peers this sits beside — Morpho, Ondo, Portola —
+   are all quiet. The correction that matters is semantic, not cosmetic: red
+   means error again, and the brand carries a restrained, desaturated
+   sage-teal descended from the original handoff rather than invented.
+   Neutrals are cool-tinted toward that accent, never a flat mid-grey. */
 :root {
   color-scheme: light;
-  --background: #f4f4f0;
-  --foreground: #0a0a0a;
-  --card: #f4f4f0;
-  --card-foreground: #0a0a0a;
-  --popover: #f4f4f0;
-  --popover-foreground: #0a0a0a;
-  --primary: #e61919;
-  --primary-foreground: #ffffff;
-  --secondary: #e7e6e0;
-  --secondary-foreground: #0a0a0a;
-  --muted: #e7e6e0;
-  --muted-foreground: #5c5c56;
-  --accent: #e7e6e0;
-  --accent-foreground: #0a0a0a;
-  --destructive: #e61919;
-  --destructive-foreground: #ffffff;
-  --success: #1f7a1a;
-  --success-foreground: #ffffff;
-  --warning: #8a5a00;
-  --warning-foreground: #ffffff;
-  --border: #0a0a0a;
-  --input: #0a0a0a;
-  --ring: #e61919;
-  --chart-1: #e61919;
-  --chart-2: #1f7a1a;
-  --chart-3: #8a5a00;
-  --chart-4: #0a0a0a;
-  --chart-5: #5c5c56;
-  /* 90-degree geometry is non-negotiable in this archetype; every rounded-*
-     utility in the app derives from this one value. */
-  --radius: 0px;
-  --sidebar: #e7e6e0;
-  --sidebar-foreground: #0a0a0a;
-  --sidebar-primary: #e61919;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #dedcd4;
-  --sidebar-accent-foreground: #0a0a0a;
-  --sidebar-border: #0a0a0a;
-  --sidebar-ring: #e61919;
-  /* The glass depth pass is the opposite of this archetype — no sheen, no
-     bevel, no throw. Neutralised rather than deleted so .glass-card stays
-     inert wherever it is still applied. */
-  --glass-sheen: transparent;
-  --glass-rim: transparent;
-  --glass-inner: transparent;
-  --glass-contact: transparent;
-  --glass-throw: transparent;
+  --background: #fbfbfa;
+  --foreground: #16181a;
+  --card: #ffffff;
+  --card-foreground: #16181a;
+  --popover: #ffffff;
+  --popover-foreground: #16181a;
+  --primary: #1f5f57;
+  --primary-foreground: #f7faf9;
+  --secondary: #f1f2f1;
+  --secondary-foreground: #2a2d30;
+  --muted: #f1f2f1;
+  --muted-foreground: #6b7178;
+  --accent: #eaefed;
+  --accent-foreground: #1b3a36;
+  --destructive: #b3261e;
+  --destructive-foreground: #fdfcfc;
+  --success: #1f6b45;
+  --success-foreground: #f7faf9;
+  --warning: #8a5a12;
+  --warning-foreground: #fffdf9;
+  --border: #e4e5e4;
+  --input: #dfe1e0;
+  --ring: #1f5f57;
+  --chart-1: #1f5f57;
+  --chart-2: #1f6b45;
+  --chart-3: #8a5a12;
+  --chart-4: #b3261e;
+  --chart-5: #59606a;
+  /* Generous but not cartoonish. Cards step up from here; pills stay round. */
+  --radius: 0.75rem;
+  --sidebar: #f7f8f7;
+  --sidebar-foreground: #2a2d30;
+  --sidebar-primary: #1f5f57;
+  --sidebar-primary-foreground: #f7faf9;
+  --sidebar-accent: #eaefed;
+  --sidebar-accent-foreground: #1b3a36;
+  --sidebar-border: #e4e5e4;
+  --sidebar-ring: #1f5f57;
+  /* Ambient, highly diffused — never a harsh dark drop shadow. */
+  --glass-sheen: rgba(255, 255, 255, 0.7);
+  --glass-rim: rgba(255, 255, 255, 0.9);
+  --glass-inner: rgba(22, 24, 26, 0.045);
+  --glass-contact: rgba(22, 24, 26, 0.05);
+  --glass-throw: rgba(22, 24, 26, 0.07);
 }
 
-/* Dark theme — Tactical Telemetry (industrial-brutalist archetype).
-   Replaces "Nocturne". Deactivated CRT ground (never pure black behind
-   text), white phosphor foreground, the same hazard red, and terminal green
-   reserved for status readouts. */
+/* Dark theme — "Quarry Night". Deep neutral, never pure black behind text;
+   the accent lifts to stay legible on it. */
 .dark {
   color-scheme: dark;
-  --background: #0a0a0a;
-  --foreground: #eaeaea;
-  --card: #0a0a0a;
-  --card-foreground: #eaeaea;
-  --popover: #0a0a0a;
-  --popover-foreground: #eaeaea;
-  --primary: #ff2a2a;
-  --primary-foreground: #ffffff;
-  --secondary: #17171a;
-  --secondary-foreground: #eaeaea;
-  --muted: #17171a;
-  --muted-foreground: #86867e;
-  --accent: #17171a;
-  --accent-foreground: #eaeaea;
-  --destructive: #ff2a2a;
-  --destructive-foreground: #ffffff;
-  --success: #4af626;
-  --success-foreground: #0a0a0a;
-  --warning: #d9a441;
-  --warning-foreground: #0a0a0a;
-  --border: #2b2b28;
-  --input: #2b2b28;
-  --ring: #ff2a2a;
-  --chart-1: #ff2a2a;
-  --chart-2: #4af626;
-  --chart-3: #d9a441;
-  --chart-4: #eaeaea;
-  --chart-5: #86867e;
-  --radius: 0px;
-  --sidebar: #0d0d0d;
-  --sidebar-foreground: #eaeaea;
-  --sidebar-primary: #ff2a2a;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #17171a;
-  --sidebar-accent-foreground: #eaeaea;
-  --sidebar-border: #2b2b28;
-  --sidebar-ring: #ff2a2a;
-  --glass-sheen: transparent;
-  --glass-rim: transparent;
-  --glass-inner: transparent;
-  --glass-contact: transparent;
-  --glass-throw: transparent;
+  --background: #0e1011;
+  --foreground: #eceeed;
+  --card: #15181a;
+  --card-foreground: #eceeed;
+  --popover: #15181a;
+  --popover-foreground: #eceeed;
+  --primary: #5fbfab;
+  --primary-foreground: #08201c;
+  --secondary: #1b1f21;
+  --secondary-foreground: #eceeed;
+  --muted: #1b1f21;
+  --muted-foreground: #9aa2a4;
+  --accent: #1e2624;
+  --accent-foreground: #b9ded5;
+  --destructive: #e5645a;
+  --destructive-foreground: #1a0f0e;
+  --success: #57b585;
+  --success-foreground: #071a11;
+  --warning: #d3a05a;
+  --warning-foreground: #1c1408;
+  --border: #262b2d;
+  --input: #262b2d;
+  --ring: #5fbfab;
+  --chart-1: #5fbfab;
+  --chart-2: #57b585;
+  --chart-3: #d3a05a;
+  --chart-4: #e5645a;
+  --chart-5: #8b949a;
+  --radius: 0.75rem;
+  --sidebar: #101314;
+  --sidebar-foreground: #d9dddc;
+  --sidebar-primary: #5fbfab;
+  --sidebar-primary-foreground: #08201c;
+  --sidebar-accent: #1e2624;
+  --sidebar-accent-foreground: #eceeed;
+  --sidebar-border: #22282a;
+  --sidebar-ring: #5fbfab;
+  --glass-sheen: rgba(255, 255, 255, 0.045);
+  --glass-rim: rgba(255, 255, 255, 0.075);
+  --glass-inner: rgba(255, 255, 255, 0.035);
+  --glass-contact: rgba(0, 0, 0, 0.35);
+  --glass-throw: rgba(0, 0, 0, 0.45);
 }
 
 @layer base {
@@ -229,164 +225,99 @@
   from { width: 0; }
 }
 
-/* ── Brutalist chrome, site-wide ─────────────────────────────────────────
-   The palette lives in :root/.dark above, so this block is only the parts
-   that are not expressible as colour tokens.
+/* ── Refined chrome, site-wide ───────────────────────────────────────────
+   What replaced the brutalist pass. The parts of it worth keeping were the
+   discipline — a real type scale, mono for data, hairline structure. The
+   parts worth losing were the ones doing the shouting: forced uppercase,
+   the radius kill, CRT scanlines, and an !important sweep that flattened
+   every semantic colour onto one accent.
 
-   Headings take the display face but are NOT force-uppercased. That is a
-   data-integrity call, not a taste one: `{agent.name}`, `{identity.name}`
-   and job titles all render inside headings, and uppercasing them destroys
-   casing the reader cannot recover. Chrome that IS safe to shout — section
-   labels, the landing hero — opts in explicitly via .bp-macro, and the
-   landing keeps its full treatment through the .bp scope at the bottom.
-
-   h3 stays in the body face on purpose: it is where dense data lives
-   (agent cards, table rows), and Archivo Black at that size is a wall. */
+   Nothing here forces uppercase on a heading. `{agent.name}` and job titles
+   render inside headings, and shouting them destroys casing a reader cannot
+   recover — that constraint outlived the archetype that prompted it. */
 @layer components {
+  /* Display headings: the body face at a tighter optical setting rather than
+     a second, heavier family. Geist carries this at weight; adding a black
+     display face was what made the last pass feel like a poster. */
   h1,
   h2 {
-    font-family: var(--font-archivo), var(--font-geist-sans), ui-sans-serif, sans-serif;
-    letter-spacing: -0.03em;
-    line-height: 0.98;
+    letter-spacing: -0.022em;
+    line-height: 1.08;
   }
-  /* --radius: 0 squares every rounded-* utility that derives from it.
-     rounded-full is a fixed 9999px, so the pills, chips and avatars are
-     squared here — the archetype rejects radius outright. */
-  .rounded-full {
-    border-radius: 0 !important;
+  h3 {
+    letter-spacing: -0.012em;
   }
-  /* Opt-in macro type: uppercase, tightly tracked, architectural. */
-  .bp-macro {
-    font-family: var(--font-archivo), var(--font-geist-sans), ui-sans-serif, sans-serif;
-    text-transform: uppercase;
-    letter-spacing: -0.035em;
-    line-height: 0.92;
-  }
-  /* Micro type: monospace, uppercase, generously tracked — labels, unit ids,
-     metadata. */
-  .bp-micro {
-    font-family: var(--font-geist-mono), ui-monospace, monospace;
-    text-transform: uppercase;
-    letter-spacing: 0.09em;
+
+  /* Small structural label — the one place capitals still earn their keep:
+     eyebrows and field labels, where the text is chrome and never data. */
+  .label-eyebrow {
     font-size: 0.6875rem;
-    line-height: 1.4;
+    font-weight: 500;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
   }
-  /* Hairline compartmentalisation: gap over a contrasting parent, rather
-     than a border on every child. */
-  .bp-hair {
+
+  /* Hairline compartmentalisation, kept from the previous pass: one divider
+     drawn by the parent rather than a border on every child. */
+  .hairline-grid {
     display: grid;
     gap: 1px;
     background: var(--border);
   }
-  .bp-hair > * {
-    background: var(--background);
-  }
-  /* The landing commits harder than the rest of the site: every heading
-     there is static chrome (verified — no user data renders in a heading on
-     that page), so it can carry full uppercase. */
-  .bp h1,
-  .bp h2,
-  .bp h3 {
-    font-family: var(--font-archivo), var(--font-geist-sans), ui-sans-serif, sans-serif;
-    text-transform: uppercase;
-    letter-spacing: -0.035em;
-    line-height: 0.92;
+  .hairline-grid > * {
+    background: var(--card);
   }
 
-  /* Hardcoded Tailwind palette utilities, remapped onto the substrate.
-     ~114 of these are scattered across eight files, most of them behind
-     auth where they cannot be visually checked from here. Editing every
-     call site blind is riskier than one contained remap, and this reverts
-     in a single block. They are semantic in intent (green = passed, amber =
-     pending, red = failed), so they fold onto the matching tokens. */
-  [class*='text-emerald-'],
-  [class*='text-green-'],
-  [class*='text-lime-'] {
-    color: var(--success) !important;
+  /* Nested enclosure: an outer tray with a hairline, an inner plate with its
+     own ground and a concentric radius. Depth from stacked surfaces, never
+     from a hard drop shadow. */
+  .tray {
+    background: var(--secondary);
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) * 1.6);
+    padding: 0.375rem;
   }
-  [class*='bg-emerald-'],
-  [class*='bg-green-'],
-  [class*='bg-lime-'] {
-    background-color: var(--success) !important;
+  .tray > * {
+    border-radius: calc(var(--radius) * 1.6 - 0.375rem);
   }
-  [class*='border-emerald-'],
-  [class*='border-green-'] {
-    border-color: var(--success) !important;
+
+  /* Physical press. Custom curve — no linear, no ease-in-out. */
+  .press {
+    transition:
+      transform 240ms cubic-bezier(0.32, 0.72, 0, 1),
+      background-color 240ms cubic-bezier(0.32, 0.72, 0, 1),
+      border-color 240ms cubic-bezier(0.32, 0.72, 0, 1),
+      box-shadow 240ms cubic-bezier(0.32, 0.72, 0, 1);
   }
-  [class*='text-amber-'],
-  [class*='text-yellow-'],
-  [class*='text-orange-'] {
-    color: var(--warning) !important;
+  .press:active {
+    transform: scale(0.985);
   }
-  [class*='bg-amber-'],
-  [class*='bg-yellow-'],
-  [class*='bg-orange-'] {
-    background-color: var(--warning) !important;
-  }
-  [class*='border-amber-'],
-  [class*='border-yellow-'] {
-    border-color: var(--warning) !important;
-  }
-  [class*='text-red-'],
-  [class*='text-rose-'],
-  [class*='text-pink-'] {
-    color: var(--destructive) !important;
-  }
-  [class*='bg-red-'],
-  [class*='bg-rose-'],
-  [class*='bg-pink-'] {
-    background-color: var(--destructive) !important;
-  }
-  [class*='border-red-'],
-  [class*='border-rose-'] {
-    border-color: var(--destructive) !important;
-  }
-  /* Cool hues carry no status meaning in this product — they were
-     decoration. They collapse to the neutral ink so the palette stays
-     utilitarian: red is the only accent. */
-  [class*='text-sky-'],
-  [class*='text-blue-'],
-  [class*='text-indigo-'],
-  [class*='text-violet-'],
-  [class*='text-purple-'],
-  [class*='text-cyan-'],
-  [class*='text-teal-'] {
-    color: var(--muted-foreground) !important;
-  }
-  [class*='bg-sky-'],
-  [class*='bg-blue-'],
-  [class*='bg-indigo-'],
-  [class*='bg-violet-'],
-  [class*='bg-purple-'],
-  [class*='bg-cyan-'],
-  [class*='bg-teal-'] {
-    background-color: var(--secondary) !important;
-  }
-  [class*='border-sky-'],
-  [class*='border-blue-'],
-  [class*='border-purple-'],
-  [class*='border-violet-'],
-  [class*='border-cyan-'],
-  [class*='border-teal-'] {
-    border-color: var(--border) !important;
+
+  /* Entry: heavy, slightly out of focus, resolving. Opacity/transform only,
+     so it stays on the compositor. */
+  .rise {
+    animation: hs-rise 720ms cubic-bezier(0.32, 0.72, 0, 1) both;
   }
 }
 
-/* Analog degradation: CRT scanlines on the dark substrate only. Fixed,
-   inert, and skipped for readers who asked for less motion-heavy chrome. */
-.dark body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 60;
-  background: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 2px,
-    rgba(0, 0, 0, 0.18) 2px,
-    rgba(0, 0, 0, 0.18) 3px
-  );
+@keyframes hs-rise {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise {
+    animation: none;
+  }
+  .press {
+    transition: none;
+  }
 }
 
 /* Playful layer — used on the mining/market surfaces only; the financial
