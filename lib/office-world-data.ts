@@ -30,10 +30,17 @@
  * somewhere real. An agent that matches nothing sits in the lounge.
  */
 
-/** Offices per account (lib/office.ts). Defined here, not there, because
- *  that file imports @/lib/db (pg) and this one must stay importable from
- *  client components — see this file's own header for why that split is
- *  load-bearing. lib/office.ts imports this constant back. */
+/** One office slot. Declared here, in the client-safe module, rather than in
+ *  lib/office.ts: app/actions/office.ts is a 'use server' file, and
+ *  re-exporting an imported type out of one ("export type { OfficeSlot }")
+ *  did not survive Next's server-action transform — it left a runtime
+ *  reference and every action in that module threw "OfficeSlot is not
+ *  defined". Same reason MAX_OFFICE_SLOTS lives here. */
+export type OfficeSlot = { slot: number; name: string }
+
+/** Offices per account (lib/office.ts). Defined here, not there, because that
+ *  file imports @/lib/db (pg) and this one must stay importable from client
+ *  components. lib/office.ts imports it back. */
 export const MAX_OFFICE_SLOTS = 3
 
 export type OfficeDeptId =

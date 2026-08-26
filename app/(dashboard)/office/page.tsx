@@ -30,17 +30,16 @@ import {
   myConnectedOffices,
   myOfficeWorld,
   myOfficeSlots,
+  officeHireAgents,
   newOfficeSlot,
   hireStaff,
   hireOfficeTemplate,
   type ConnectedOffice,
   type HireOfficeTemplateResult,
-  type OfficeSlot,
 } from '@/app/actions/office'
-import { getDelegationAgents } from '@/app/actions/delegate'
 import OfficeWorld from './game/OfficeWorld'
 import { LiveOffice, type Agent } from './game/live-engine'
-import { AGENT_TEMPLATES, OFFICE_TEMPLATES, MAX_OFFICE_SLOTS, colorsFor } from '@/lib/office-world-data'
+import { AGENT_TEMPLATES, OFFICE_TEMPLATES, MAX_OFFICE_SLOTS, colorsFor, type OfficeSlot } from '@/lib/office-world-data'
 import './game/office.css'
 
 const POLL_MS = 12_000
@@ -227,6 +226,7 @@ function HireOfficeTemplateDialog({
   const template = OFFICE_TEMPLATES.find((t) => t.id === templateId) ?? OFFICE_TEMPLATES[0]
   const [agents, setAgents] = useState<Array<{ id: string; name: string; provisioned: boolean }>>([])
   const [agentsLoaded, setAgentsLoaded] = useState(false)
+  const [agentsError, setAgentsError] = useState<string | null>(null)
   const [primeAgentId, setPrimeAgentId] = useState('')
   const [scope, setScope] = useState(OFFICE_TEMPLATES[0].exampleScope)
   const [scopeTouched, setScopeTouched] = useState(false)
@@ -247,12 +247,21 @@ function HireOfficeTemplateDialog({
     // below flashes on every open. A failed fetch counts as loaded with an
     // empty roster, so the dialog explains itself rather than hanging on a
     // silent catch.
-    getDelegationAgents()
+    setAgentsError(null)
+    officeHireAgents()
       .then((list) => {
         setAgents(list)
         if (!primeAgentId) setPrimeAgentId(list.find((a) => a.provisioned)?.id ?? '')
       })
-      .catch(() => setAgents([]))
+      .catch((err) => {
+        // A failed read is NOT "you have no agents". Saying so told an owner
+        // with a funded, provisioned agent on screen that they had none —
+        // the page asserting something it does not know. Keep them apart and
+        // show what actually went wrong.
+        console.error('[office] could not load agents:', err)
+        setAgents([])
+        setAgentsError(err instanceof Error ? err.message : 'Could not load your agents.')
+      })
       .finally(() => setAgentsLoaded(true))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
@@ -462,7 +471,7 @@ function HireOfficeTemplateDialog({
                 id="office-prime"
                 value={primeAgentId}
                 onChange={(e) => setPrimeAgentId(e.target.value)}
-                disabled={agentsLoaded && !canPay}
+                disabled={agentsLoaded && !agentsError && !canPay}
                 className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm disabled:opacity-60"
               >
                 <option value="">Select an agent…</option>
@@ -477,7 +486,13 @@ function HireOfficeTemplateDialog({
                   provisioned EVERY option renders disabled and the form
                   cannot be completed — with nothing on screen saying why or
                   where to go. Say both. */}
-              {agentsLoaded && agents.length === 0 && (
+              {agentsError && (
+                <p className="mt-1.5 text-xs text-destructive">
+                  Couldn&apos;t load your agents — {agentsError}. This is a read failing, not an empty account; close
+                  and reopen to retry.
+                </p>
+              )}
+              {agentsLoaded && !agentsError && agents.length === 0 && (
                 <p className="mt-1.5 text-xs text-muted-foreground">
                   You don&apos;t have any agents yet.{' '}
                   <Link href="/agents" className="text-primary hover:underline">
@@ -486,7 +501,7 @@ function HireOfficeTemplateDialog({
                   , then provision it so it can hold the escrow.
                 </p>
               )}
-              {agentsLoaded && agents.length > 0 && !canPay && (
+              {agentsLoaded && !agentsError && agents.length > 0 && !canPay && (
                 <p className="mt-1.5 text-xs text-muted-foreground">
                   None of your agents can pay yet — escrowing a bounty needs an on-chain smart account, and none of
                   them has one.{' '}

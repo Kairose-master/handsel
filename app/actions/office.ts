@@ -15,10 +15,9 @@ import {
   createOfficeSlot,
   renameOfficeSlot,
   setAgentOfficeSlot,
-  type OfficeSlot,
 } from '@/lib/office'
 import { buildOfficeSnapshot } from '@/lib/office-world-server'
-import { OFFICE_TEMPLATES, type OfficeSnapshot } from '@/lib/office-world-data'
+import { OFFICE_TEMPLATES, type OfficeSnapshot, type OfficeSlot } from '@/lib/office-world-data'
 import { db } from '@/lib/db'
 import { user, agent, delegation } from '@/lib/db/schema'
 import { inArray, eq, and, isNotNull } from 'drizzle-orm'
@@ -27,8 +26,6 @@ import { randomBytes } from 'crypto'
 import { revalidatePath } from 'next/cache'
 import { MIN_SUBTASK_BOUNTY_USD, type DelegationSubtask } from '@/lib/delegation'
 import { fetchQuote, fetchHeadlines } from '@/lib/market-data'
-
-export type { OfficeSlot }
 
 async function requireUser() {
   const session = await getSession()
@@ -352,6 +349,28 @@ export async function hireOfficeTemplate(
   revalidatePath('/office')
   revalidatePath('/delegate')
   return { delegationId, hired }
+}
+
+/**
+ * The account's agents, for the office hire dialog's paying-agent picker.
+ *
+ * This duplicates getDelegationAgents rather than importing it, on purpose.
+ * That one lives in app/actions/delegate.ts, whose module graph pulls in
+ * lib/delegation → the Anthropic SDK and the whole on-chain layer; a dialog
+ * that only needs id/name/provisioned should not be able to fail because
+ * something unrelated in that graph did. Selecting three columns explicitly
+ * also avoids `select().from(agent)`'s implicit full column list, which
+ * throws whenever schema.ts declares a column the database has not been
+ * migrated to yet — the incident class documented at the top of
+ * lib/db/ensure-columns.ts.
+ */
+export async function officeHireAgents(): Promise<Array<{ id: string; name: string; provisioned: boolean }>> {
+  const session = await requireUser()
+  const rows = await db
+    .select({ id: agent.id, name: agent.name, smartAccountAddress: agent.smartAccountAddress })
+    .from(agent)
+    .where(eq(agent.userId, session.user.id))
+  return rows.map((a) => ({ id: a.id, name: a.name, provisioned: Boolean(a.smartAccountAddress) }))
 }
 
 /** Real, DB-backed progress for the "wiring a real MCP tool" tutorial

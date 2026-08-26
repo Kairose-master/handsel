@@ -31,7 +31,7 @@
  */
 import { pool } from '@/lib/db'
 import { nanoid } from 'nanoid'
-import { MAX_OFFICE_SLOTS } from '@/lib/office-world-data'
+import { MAX_OFFICE_SLOTS, type OfficeSlot } from '@/lib/office-world-data'
 
 export type ConnectResult = { connected: true; ownerId: string } | { connected: false; reason: 'unknown-code' | 'self' }
 
@@ -220,11 +220,11 @@ async function ensureOfficeSlotsTable(): Promise<void> {
 
 /** Whether a new slot can be created given how many the account already has —
  *  pure so the cap is unit-testable without a database. */
+export type { OfficeSlot }
+
 export function canCreateOfficeSlot(existingSlotCount: number): boolean {
   return existingSlotCount < MAX_OFFICE_SLOTS
 }
-
-export type OfficeSlot = { slot: number; name: string }
 
 /** Every office this account has, slot-ascending. Slot 1 always exists —
  *  created here, named DEFAULT_SLOT_NAME, the first time anyone asks. */
