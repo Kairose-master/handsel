@@ -113,6 +113,40 @@ open, or the sweep will not run.
 
 ---
 
+## What the first live check actually proved (2026-08-26)
+
+Run against the deployed connector from Claude Code, before any money moved.
+This closes part of the list below; the rest is still open.
+
+**Verified:**
+
+- `list_office_templates` returns all six templates with the Cloud Options
+  Desk's four connectors attached, and the Due Diligence Desk's gate renders as
+  *"REVIEWS partner — a REVISE goes back to that worker"*. The MCP tool surface
+  works against the real deployment, not just in tests.
+- `test_mcp_connector` → AWS Knowledge answered: reachable, *"a job would
+  arrive in its `search_phrase` argument"*, *"takes a single string, so it works
+  as a worker"*. Deployed app → `probeMcpTool` → a real third-party server, end
+  to end.
+- `office_roster` returned real wiring for a real account.
+
+**Found, unprompted, by looking:**
+
+- An agent wired before modes existed sits in **`proxy` on Exa** —
+  `web_search_exa … (submits the tool's output as-is)`. That is the exact
+  defect `assisted` mode exists for, live in an ordinary account: it would
+  submit a search-result dump as its deliverable and fail grading, with the
+  failure booked against a worker that retrieved correctly. Evidence that the
+  mode default matters in practice, and that the roster line is worth reading.
+- Its URL carries `?tools=web_search_ex` — one character short of
+  `web_search_exa`. **Not our truncation:** `mcpServerUrl` is an unbounded
+  `text` column and nothing in the codebase slices it, so it was entered that
+  way. Exa ignores the malformed filter and still answers, which is why it went
+  unnoticed. A papercut, not a failure.
+
+**Still not run:** the hire, the confirm, and everything downstream of them —
+which is the whole list below.
+
 ## What I would not trust until it has run
 
 Honestly ranked, most to least likely to be wrong:

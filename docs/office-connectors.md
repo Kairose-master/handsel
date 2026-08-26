@@ -102,6 +102,12 @@ the whole point of the mode that this content comes from somewhere neither the
 owner nor the platform controls, which makes it the most direct injection
 channel in the product.
 
+Found in the wild on the first live roster read (2026-08-26): an agent wired
+before modes existed, pointed at Exa, in `proxy` — so its deliverable would
+have been a search-result dump. Nobody had noticed, because nothing failed
+until a job was graded. That is the argument for the roster line and the
+`Test` button in one observation.
+
 Assisted does **not** fall back to the raw dump when no model key is reachable.
 That would submit something the grader rejects and blame the worker; failing
 the dispatch says what is actually wrong and leaves the job claimable.
