@@ -374,6 +374,44 @@ export function defaultWiringFor(template: OfficeTemplate): {
   return { connectors, bindings }
 }
 
+export type HireOfficeTemplateInput = {
+  templateId: string
+  primeAgentId: string
+  scope: string
+  budgetUsd: number
+  /**
+   * The connectors available to this office. Several, not one: the agent
+   * table has carried per-agent mcpServerUrl/mcpToolName all along, and only
+   * the hire form forced every role through a single shared URL — so an
+   * office could never put a web-search role, a vault role and a market-data
+   * role side by side, which is most of the point of an office.
+   */
+  mcpConnectors?: McpConnector[]
+  /** roleId -> which connector it uses and which tool on it. A role left out
+   *  stays a plain platform agent; a binding naming an unknown connector, or
+   *  missing a tool name, is skipped rather than guessed at. */
+  mcpBindings?: Record<string, McpBinding>
+  /**
+   * roleId -> which of the account's agents escrows THAT pipeline step's
+   * bounty. A step left out is paid by the prime agent, which is what every
+   * office did before this existed.
+   *
+   * An office had exactly one payer only because the delegation posted every
+   * job from `delegation.primeAgentId`. Paying is a per-job fact — the escrow
+   * comes from whoever posts — so a desk whose research is funded by one
+   * budget and whose legal review is funded by another is now expressible.
+   * Each named agent must be this account's and provisioned; it pays only for
+   * its own steps.
+   */
+  payerByRoleId?: Record<string, string>
+  officeSlot?: number
+}
+
+export type HireOfficeTemplateResult = {
+  delegationId: string
+  hired: Array<{ roleId: string; agentId: string; name: string; mcpConnected: boolean }>
+}
+
 export const OFFICE_TEMPLATES: OfficeTemplate[] = [
   {
     id: 'securities-desk',

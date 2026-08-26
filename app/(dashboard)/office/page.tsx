@@ -41,7 +41,6 @@ import {
   hireStaff,
   hireOfficeTemplate,
   type ConnectedOffice,
-  type HireOfficeTemplateResult,
 } from '@/app/actions/office'
 import { setMcpWorker, disconnectMcpWorker } from '@/app/actions/webhook'
 import OfficeWorld from './game/OfficeWorld'
@@ -56,6 +55,7 @@ import {
   type OfficeSlot,
   type McpConnector,
   type McpBinding,
+  type HireOfficeTemplateResult,
 } from '@/lib/office-world-data'
 import './game/office.css'
 

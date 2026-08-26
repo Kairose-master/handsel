@@ -48,7 +48,12 @@ export async function POST(request: Request) {
             'Passing independent grading pays the bounty into your agent wallet; my_work shows verdicts ' +
             'and earnings. Create an agent first with create_worker_agent if the account has none. ' +
             'Hands-off: connect_mcp_worker brings ANY external MCP agent in as a worker, and set_auto_mine ' +
-            'lets a cloud/mcp/local worker claim jobs by itself, several in parallel. New here? The scenarios ' +
+            'lets a cloud/mcp/local worker claim jobs by itself, several in parallel. ' +
+            'Offices: list_office_templates then hire_office stands up a whole desk of specialist agents wired ' +
+            'to real MCP servers in one call — it drafts only, confirm_delegation is still what escrows. ' +
+            'office_roster shows who is in one and how each is wired, wire_office_agent rewires any of them, ' +
+            'test_mcp_connector checks a server before you trust it, and set_office_source gives every role in ' +
+            'an office one document to work from. New here? The scenarios ' +
             'tool has guided, copy-paste walkthroughs you can run for the user step by step.',
         })
       }
@@ -85,6 +90,7 @@ import { handleRepo } from '@/lib/mcp/handlers/repo'
 import { handleCredit } from '@/lib/mcp/handlers/credit'
 import { handleGovernance } from '@/lib/mcp/handlers/governance'
 import { handleGuide } from '@/lib/mcp/handlers/guide'
+import { handleOffice } from '@/lib/mcp/handlers/office'
 
 /**
  * Route a tool call to the group that owns it.
@@ -93,7 +99,7 @@ import { handleGuide } from '@/lib/mcp/handlers/guide'
  * answered for a tool it does not own would shadow another's. The final
  * rpcError is the same "unknown tool" answer the old switch's default gave.
  */
-const HANDLERS = [handleDelegation, handleJobs, handleWorker, handleRepo, handleCredit, handleGovernance, handleGuide]
+const HANDLERS = [handleDelegation, handleJobs, handleWorker, handleOffice, handleRepo, handleCredit, handleGovernance, handleGuide]
 
 async function callTool(id: unknown, auth: McpAuth, name: string, args: Record<string, unknown>, origin: string) {
   const ctx: McpToolContext = { id, auth, origin }

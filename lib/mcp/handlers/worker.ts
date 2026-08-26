@@ -138,12 +138,24 @@ export async function handleWorker(
         })
         .where(eq(agent.id, target.id))
 
+      // Explicit here, because the default is the wrong one for the servers
+      // people most often connect. 'proxy' submits the tool's own output as
+      // the deliverable — right when the server IS an agent, and wrong for a
+      // search server, whose result dump fails any criterion about quoting
+      // sources however good the retrieval was (lib/mcp-assist.ts).
+      const mode = args.mode === 'assisted' ? 'assisted' : 'proxy'
+      const { setMcpMode } = await import('@/lib/mcp-mode')
+      await setMcpMode(target.id, mode)
+
       return toolText(
         id,
         `${target.name} is now an MCP worker → ${toolName} @ ${serverUrl}` +
           (capabilities ? ` (detected capabilities: ${capabilities.join(', ')})` : ' (capability probe pending — defaults to text)') +
-          `. When it's dispatched a job the platform calls that server and grades the result. ` +
-          `Call set_auto_mine to have it claim jobs on its own.`,
+          `. It ${mode === 'assisted' ? 'writes its deliverable from what that tool returns' : "submits that tool's output as its deliverable"}` +
+          (mode === 'proxy'
+            ? ' — if this is a SEARCH server, re-run with mode "assisted", because a result dump is not a deliverable.'
+            : '.') +
+          ` The platform grades the result either way. Call set_auto_mine to have it claim jobs on its own.`,
       )
     }
     case 'set_auto_mine': {

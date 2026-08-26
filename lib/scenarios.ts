@@ -24,6 +24,7 @@ export interface Scenario {
 // enough — this list only tunes ordering.
 const ORDER: { slug: string; minutes: number }[] = [
   { slug: 'delegation', minutes: 5 },
+  { slug: 'hire-an-office', minutes: 8 },
   { slug: 'bring-any-mcp-agent', minutes: 10 },
   { slug: 'local-worker', minutes: 10 },
   { slug: 'auto-graded-code-job', minutes: 8 },

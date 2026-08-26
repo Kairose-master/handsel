@@ -180,6 +180,15 @@ export const TOOLS = [
         server_url: { type: 'string', description: 'The external MCP server URL (must be https://). Streamable HTTP.' },
         tool_name: { type: 'string', description: 'The tool on that server that produces the deliverable, e.g. "do_task".' },
         auth_header: { type: 'string', description: 'Optional Authorization header value the platform should send to that server (stored encrypted).' },
+        mode: {
+          type: 'string',
+          enum: ['proxy', 'assisted'],
+          description:
+            'proxy (default) submits that tool\'s output as the deliverable — correct when the server on the other ' +
+            'end is itself an agent that writes finished work. assisted has your agent WRITE the deliverable from ' +
+            'what the tool returned — required for a SEARCH server, whose raw output is a result dump and fails any ' +
+            'acceptance criterion about quoting sources however good the retrieval was.',
+        },
         agent_id: { type: 'string', description: 'Which of your agents becomes this MCP worker, by id (preferred).' },
         agent_name: { type: 'string', description: 'Which agent, by name (used only if agent_id is omitted).' },
       },
@@ -202,6 +211,134 @@ export const TOOLS = [
         agent_id: { type: 'string', description: 'Which of your agents, by id (preferred).' },
         agent_name: { type: 'string', description: 'Which agent, by name (used only if agent_id is omitted).' },
       },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'list_office_templates',
+    description:
+      'List the office templates: a whole desk of specialist agents with a pipeline already wired between them, ' +
+      'including which real MCP servers each role comes pre-connected to. FREE — reads nothing but the catalogue. ' +
+      'Call this before hire_office so you can show the user what they are hiring.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    name: 'hire_office',
+    description:
+      'Stand up a whole office: creates one agent per role, wires each to its MCP server, and DRAFTS the pipeline ' +
+      'between them as escrowed subtasks. Does NOT move money — the delegation is saved as planned, exactly like ' +
+      'plan_delegation, and confirm_delegation is the separate call that escrows. Creating the agents does ' +
+      'provision on-chain wallets, so show the user the template first.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        template_id: { type: 'string', description: 'From list_office_templates (e.g. "cloud-options-desk")' },
+        scope: { type: 'string', description: "What this office should deliver — substituted into every role's brief" },
+        budget_usd: { type: 'number', description: 'Total to split across the pipeline steps. Defaults to $2 a step.' },
+        prime_agent_id: { type: 'string', description: 'Which existing agent escrows the bounties, by id (preferred)' },
+        prime_agent_name: { type: 'string', description: 'Same, by name. Defaults to your first funded agent.' },
+        office: { type: 'number', description: 'Which office slot to hire into (1-3, default 1)' },
+        connectors: {
+          type: 'array',
+          description:
+            "Override the template's own pre-wired MCP servers. Omit to use them — they are verified and need no key.",
+          items: {
+            type: 'object',
+            properties: {
+              role_id: { type: 'string', description: 'Which role of the template this wires' },
+              server_url: { type: 'string', description: 'https:// Streamable HTTP MCP endpoint' },
+              tool_name: { type: 'string', description: 'The tool on that server this role calls' },
+              label: { type: 'string' },
+              auth_header: { type: 'string', description: 'Authorization header value, if the server needs one' },
+              mode: {
+                type: 'string',
+                enum: ['assisted', 'proxy'],
+                description:
+                  'assisted (default) has the agent WRITE its deliverable from what the tool returned — correct for ' +
+                  'a search server, whose raw output is a result dump. proxy submits the tool output as the work, ' +
+                  'which is correct only when the server on the other end is itself an agent.',
+              },
+            },
+            required: ['role_id', 'server_url', 'tool_name'],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ['template_id', 'scope'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'office_roster',
+    description:
+      'Who is in one of your offices and how each one is wired: wallet, auto-mine, which MCP tool it calls and ' +
+      'whether it writes from that tool or submits its output raw. Also reports the office\'s shared source.',
+    inputSchema: {
+      type: 'object',
+      properties: { office: { type: 'number', description: 'Office slot (1-3, default 1)' } },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'set_office_source',
+    description:
+      "Give every role in an office one document to work from — it is appended to each role's brief when you hire, " +
+      'so several agents genuinely read the same thing through different tools. Applies at hire time only: it does ' +
+      'not rewrite an office already hired, because a brief that changed under a posted job would move the target ' +
+      'its worker is graded against. An empty body clears it.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        body: { type: 'string', description: 'The document. Empty clears the source.' },
+        title: { type: 'string', description: 'What it is (e.g. "Q3 board memo")' },
+        office: { type: 'number', description: 'Office slot (1-3, default 1)' },
+      },
+      required: ['body'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'wire_office_agent',
+    description:
+      'Point one of your agents at an MCP server and tool, or change the one it already uses. Use ' +
+      'test_mcp_connector first. Prefer mode "assisted" for a search-shaped server: in "proxy" the tool\'s raw ' +
+      'output becomes the deliverable, which fails any acceptance criterion about quoting sources however good ' +
+      'the retrieval was.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Which agent, by id (preferred)' },
+        agent_name: { type: 'string', description: 'Which agent, by name' },
+        server_url: { type: 'string', description: 'https:// Streamable HTTP MCP endpoint' },
+        tool_name: { type: 'string' },
+        auth_header: { type: 'string', description: 'Authorization header value, if the server needs one' },
+        mode: {
+          type: 'string',
+          enum: ['assisted', 'proxy'],
+          description:
+            'assisted (default) has the agent WRITE its deliverable from what the tool returned — required for a ' +
+            'SEARCH server, whose raw output is a result dump. proxy submits the tool output as the work, correct ' +
+            'only when the server on the other end is itself an agent that writes finished work.',
+        },
+      },
+      required: ['server_url', 'tool_name'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'test_mcp_connector',
+    description:
+      'Check an MCP server before trusting a worker to it: does it answer, does it have that tool, which argument ' +
+      'will the job arrive in, and does the tool need parameters a Handsel worker cannot supply (the call sends ' +
+      'exactly one string). Changes nothing.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        server_url: { type: 'string' },
+        tool_name: { type: 'string' },
+        auth_header: { type: 'string' },
+      },
+      required: ['server_url', 'tool_name'],
       additionalProperties: false,
     },
   },
