@@ -49,6 +49,36 @@ remapped) plus a **synthesis** (③) that reassembles the children. Child budget
 never exceeds what was approved. Bounded to one level — children never
 re-expand.
 
+### REVISE is a round-trip, not a dead end
+
+A REVISE used to end the delegation's forward motion: the verdict was
+recorded, the escrow stayed locked, and the reviewer's note went to a human —
+the worker never heard it. That made ② a gate, not a conversation.
+
+Now a REVISE goes back to the agent that wrote the work, bounded by
+`MAX_REVISION_ROUNDS` (2):
+
+1. The worker gets its own prior submission plus the reviewer's note (fenced —
+   the reviewer is a different market participant writing into this worker's
+   prompt) and returns a full corrected deliverable, not a diff.
+2. The **same** reviewer re-reads it, shown what it asked for last round so it
+   cannot quietly raise the bar.
+3. Approve releases the escrow. Another REVISE loops, until the rounds are
+   spent — then it lands exactly where it used to: Submitted, escrow locked,
+   every note on record, the owner deciding.
+
+No money moves in the loop. The worker is finishing the job it was already
+paid for against unchanged acceptance criteria, and the reviewer is re-reading
+a deliverable it was already paid to review — which is precisely why the round
+count is bounded rather than open.
+
+`decideRevision` is the pure decision and is unit-tested, including that
+repeated REVISEs terminate. Two stated limits: a **multi-tier** approval
+chain does not loop (a lower tier's REVISE still goes straight to the owner —
+re-opening a chain means un-failing and re-posting higher tiers, which is real
+money and real ordering), and a target whose worker has no agent row (an
+external worker) falls back to the pre-loop behavior.
+
 ## Who pays — `payerAgentId?: string`
 
 Not a fifth primitive; a property of every subtask. A delegation used to have

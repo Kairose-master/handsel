@@ -295,16 +295,42 @@ function DelegationCard({ d, onChanged }: { d: Delegation; onChanged: () => void
                   )}
                 </p>
               ) : null}
+              {st.revising && (
+                <p className="mt-0.5 text-xs text-warning">
+                  revision {st.revisionRound} — back with the worker, same job and same escrow
+                </p>
+              )}
               {st.awaitingReview && (
-                <p className="mt-0.5 text-xs text-warning">awaiting peer review — escrow held</p>
+                <p className="mt-0.5 text-xs text-warning">
+                  {st.reviewRerunTaskId
+                    ? `revision ${st.revisionRound} back with the reviewer — escrow held`
+                    : 'awaiting peer review — escrow held'}
+                </p>
               )}
               {st.reviewVerdict === 'approve' && (
-                <p className="mt-0.5 text-xs text-success">peer-approved — escrow released</p>
+                <p className="mt-0.5 text-xs text-success">
+                  peer-approved{st.revisionRound ? ` after ${st.revisionRound} revision${st.revisionRound === 1 ? '' : 's'}` : ''} — escrow released
+                </p>
               )}
               {st.reviewVerdict === 'revise' && (
                 <p className="mt-0.5 text-xs text-destructive">
-                  peer requested revision{st.reviewNote ? ` — ${st.reviewNote}` : ''}
+                  {st.revisionRound
+                    ? `still not approved after ${st.revisionRound} revision${st.revisionRound === 1 ? '' : 's'} — your call`
+                    : 'peer requested revision'}
+                  {st.reviewNote ? ` — ${st.reviewNote}` : ''}
                 </p>
+              )}
+              {/* The conversation itself, oldest first — what was actually
+                  asked for each round, so the owner deciding at the end can
+                  see whether the reviewer kept moving the goalposts. */}
+              {st.revisionNotes && st.revisionNotes.length > 0 && (
+                <ol className="mt-1 space-y-0.5 border-l border-border pl-2 text-xs text-muted-foreground">
+                  {st.revisionNotes.map((n, ri) => (
+                    <li key={ri}>
+                      <span className="font-mono tabular-nums">R{ri + 1}</span> {n}
+                    </li>
+                  ))}
+                </ol>
               )}
               {st.failed && <p className="text-xs text-destructive">{st.failReason}</p>}
             </div>
