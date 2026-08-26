@@ -17,7 +17,14 @@ import {
   setAgentOfficeSlot,
 } from '@/lib/office'
 import { buildOfficeSnapshot } from '@/lib/office-world-server'
-import { OFFICE_TEMPLATES, type OfficeSnapshot, type OfficeSlot } from '@/lib/office-world-data'
+import {
+  OFFICE_TEMPLATES,
+  resolveRoleConnector,
+  type OfficeSnapshot,
+  type OfficeSlot,
+  type McpConnector,
+  type McpBinding,
+} from '@/lib/office-world-data'
 import { db } from '@/lib/db'
 import { user, agent, delegation } from '@/lib/db/schema'
 import { inArray, eq, and, isNotNull } from 'drizzle-orm'
@@ -188,12 +195,18 @@ export type HireOfficeTemplateInput = {
   primeAgentId: string
   scope: string
   budgetUsd: number
-  /** Optional shared MCP server all opted-in roles connect through. */
-  mcpServerUrl?: string
-  mcpAuthHeader?: string
-  /** roleId -> tool name, only for the roles the owner wants MCP-wired. Any
-   *  role left out stays a plain platform agent — never a fabricated tool. */
-  mcpToolNames?: Record<string, string>
+  /**
+   * The connectors available to this office. Several, not one: the agent
+   * table has carried per-agent mcpServerUrl/mcpToolName all along, and only
+   * the hire form forced every role through a single shared URL — so an
+   * office could never put a web-search role, a vault role and a market-data
+   * role side by side, which is most of the point of an office.
+   */
+  mcpConnectors?: McpConnector[]
+  /** roleId -> which connector it uses and which tool on it. A role left out
+   *  stays a plain platform agent; a binding naming an unknown connector, or
+   *  missing a tool name, is skipped rather than guessed at. */
+  mcpBindings?: Record<string, McpBinding>
   officeSlot?: number
 }
 
@@ -240,6 +253,8 @@ export async function hireOfficeTemplate(
   // people's jobs on the public board, the opposite of its whole point.
   const workingRoleIds = new Set(template.pipeline.map((s) => s.roleId))
 
+  const mcpConnectors: McpConnector[] = input.mcpConnectors ?? []
+
   const hired: HireOfficeTemplateResult['hired'] = []
   const agentIdByRoleId = new Map<string, string>()
   for (const role of template.roles) {
@@ -264,16 +279,16 @@ export async function hireOfficeTemplate(
     await setAgentOfficeSlot(agentId, input.officeSlot ?? 1)
     await (await import('@/lib/agent-keys')).ensureAgentKey(agentId)
 
+    // Each role resolves its OWN connector, so one office can run several at
+    // once. A binding that names a connector which isn't in the list, or
+    // carries no tool name, is skipped — never silently pointed at some
+    // other role's server.
     let mcpConnected = false
-    const toolName = input.mcpToolNames?.[role.id]?.trim()
-    if (input.mcpServerUrl?.trim() && toolName) {
+    const wiring = resolveRoleConnector(mcpConnectors, input.mcpBindings, role.id)
+    if (wiring) {
       try {
         const { setMcpWorker } = await import('@/app/actions/webhook')
-        await setMcpWorker(agentId, {
-          serverUrl: input.mcpServerUrl.trim(),
-          toolName,
-          authHeader: input.mcpAuthHeader?.trim() || undefined,
-        })
+        await setMcpWorker(agentId, wiring)
         mcpConnected = true
       } catch (error) {
         console.error(`[office] hireOfficeTemplate: MCP connect failed for role ${role.id}:`, error)

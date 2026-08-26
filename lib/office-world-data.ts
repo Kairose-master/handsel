@@ -38,6 +38,52 @@
  *  defined". Same reason MAX_OFFICE_SLOTS lives here. */
 export type OfficeSlot = { slot: number; name: string }
 
+/**
+ * One MCP source an office can reach. Several per office: the agent table has
+ * always stored mcpServerUrl per agent, so a research role on web search, a
+ * scribe on a private vault and an analyst on market data can coexist in one
+ * pipeline — only the hire form used to force them all through one URL.
+ *
+ * Declared here rather than in app/actions/office.ts for the reason at the
+ * top of this file: the hire dialog is a client component, and types it
+ * imports should not have to come out of a 'use server' module.
+ */
+export type McpConnector = {
+  id: string
+  /** Owner-facing name. Shown in the UI only, never sent anywhere. */
+  label: string
+  serverUrl: string
+  authHeader?: string
+}
+
+export type McpBinding = { connectorId: string; toolName: string }
+
+/**
+ * Which server+tool a role should be wired to, or null for "leave it a plain
+ * platform agent".
+ *
+ * Pure so the refusals are testable, and they are the point: a binding whose
+ * connector was deleted, or one with no tool name, resolves to null rather
+ * than falling back to another role's server. Wiring an agent to the wrong
+ * source silently is worse than not wiring it at all — it would deliver
+ * confident work off the wrong data.
+ */
+export function resolveRoleConnector(
+  connectors: McpConnector[],
+  bindings: Record<string, McpBinding> | undefined,
+  roleId: string,
+): { serverUrl: string; toolName: string; authHeader?: string } | null {
+  const binding = bindings?.[roleId]
+  if (!binding) return null
+  const toolName = binding.toolName?.trim()
+  if (!toolName) return null
+  const connector = connectors.find((c) => c.id === binding.connectorId)
+  const serverUrl = connector?.serverUrl.trim()
+  if (!connector || !serverUrl) return null
+  return { serverUrl, toolName, authHeader: connector.authHeader?.trim() || undefined }
+}
+
+
 /** Offices per account (lib/office.ts). Defined here, not there, because that
  *  file imports @/lib/db (pg) and this one must stay importable from client
  *  components. lib/office.ts imports it back. */

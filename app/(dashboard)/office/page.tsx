@@ -39,7 +39,7 @@ import {
 } from '@/app/actions/office'
 import OfficeWorld from './game/OfficeWorld'
 import { LiveOffice, type Agent } from './game/live-engine'
-import { AGENT_TEMPLATES, OFFICE_TEMPLATES, MAX_OFFICE_SLOTS, colorsFor, type OfficeSlot } from '@/lib/office-world-data'
+import { AGENT_TEMPLATES, OFFICE_TEMPLATES, MAX_OFFICE_SLOTS, colorsFor, type OfficeSlot, type McpConnector } from '@/lib/office-world-data'
 import './game/office.css'
 
 const POLL_MS = 12_000
@@ -233,9 +233,12 @@ function HireOfficeTemplateDialog({
   const [budgetUsd, setBudgetUsd] = useState(String(template.pipeline.length * 2))
   const [budgetTouched, setBudgetTouched] = useState(false)
   const [mcpOpen, setMcpOpen] = useState(false)
-  const [mcpServerUrl, setMcpServerUrl] = useState('')
-  const [mcpAuthHeader, setMcpAuthHeader] = useState('')
-  const [mcpToolNames, setMcpToolNames] = useState<Record<string, string>>({})
+  // Several connectors per office, each role bound to one of them. The agent
+  // table has always stored mcpServerUrl per agent; only this form forced a
+  // single shared URL, which is what stopped an office from running (say) web
+  // search, a private vault and market data side by side.
+  const [connectors, setConnectors] = useState<McpConnector[]>([])
+  const [bindings, setBindings] = useState<Record<string, { connectorId: string; toolName: string }>>({})
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<HireOfficeTemplateResult | null>(null)
@@ -276,6 +279,36 @@ function HireOfficeTemplateDialog({
       : [template.scopeLabel.slice(0, i).trim().replace(/[:?]$/, ''), template.scopeLabel.slice(i + 1).replace(/\)$/, '').trim()]
   })()
 
+  const addConnector = (seed?: Partial<McpConnector>) =>
+    setConnectors((prev) => [
+      ...prev,
+      { id: `c${Date.now()}${prev.length}`, label: '', serverUrl: '', ...seed },
+    ])
+
+  const updateConnector = (id: string, patch: Partial<McpConnector>) =>
+    setConnectors((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)))
+
+  /** Removing a connector also clears any role still pointing at it, so a
+   *  binding can never reference one that is gone. */
+  const removeConnector = (id: string) => {
+    setConnectors((prev) => prev.filter((c) => c.id !== id))
+    setBindings((prev) =>
+      Object.fromEntries(Object.entries(prev).filter(([, b]) => b.connectorId !== id)),
+    )
+  }
+
+  /** Clearing the connector drops the whole binding rather than leaving an
+   *  orphan tool name behind. */
+  const bindRole = (roleId: string, patch: { connectorId?: string; toolName?: string }) =>
+    setBindings((prev) => {
+      const next = { ...(prev[roleId] ?? { connectorId: '', toolName: '' }), ...patch }
+      if (!next.connectorId) {
+        const { [roleId]: _drop, ...rest } = prev
+        return rest
+      }
+      return { ...prev, [roleId]: next }
+    })
+
   /** At least one agent has an on-chain account, so the form can be completed. */
   const canPay = agents.some((a) => a.provisioned)
 
@@ -301,9 +334,8 @@ function HireOfficeTemplateDialog({
     setBudgetUsd(String(template.pipeline.length * 2))
     setBudgetTouched(false)
     setMcpOpen(false)
-    setMcpServerUrl('')
-    setMcpAuthHeader('')
-    setMcpToolNames({})
+    setConnectors([])
+    setBindings({})
     setError(null)
     setResult(null)
   }
@@ -323,9 +355,8 @@ function HireOfficeTemplateDialog({
         primeAgentId,
         scope,
         budgetUsd: Number(budgetUsd),
-        mcpServerUrl: mcpOpen ? mcpServerUrl : undefined,
-        mcpAuthHeader: mcpOpen ? mcpAuthHeader : undefined,
-        mcpToolNames: mcpOpen ? mcpToolNames : undefined,
+        mcpConnectors: mcpOpen ? connectors : undefined,
+        mcpBindings: mcpOpen ? bindings : undefined,
         officeSlot,
       })
       if ('error' in res) {
@@ -533,45 +564,121 @@ function HireOfficeTemplateDialog({
                 {mcpOpen ? 'Hide' : template.usesMarketData ? 'Connect real market data (optional)' : 'Connect external tools (optional)'}
               </Button>
               {mcpOpen && (
-                <div className="mt-3 space-y-3 rounded-md border border-border p-3">
+                <div className="mt-3 space-y-4 rounded-md border border-border p-3">
                   <p className="text-xs text-muted-foreground">
-                    Leave a role's tool name blank to keep it a plain platform agent — nothing here is pre-filled with
-                    a guessed tool name. Not sure what to connect?{' '}
-                    <a href="/directory" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-                      Browse ClawHub skills
-                    </a>{' '}
-                    for capability ideas, or read the{' '}
+                    Add one connector per source, then point each role at the one it should use — an office can run
+                    several at once (web search for the researcher, your vault for the scribe, market data for the
+                    analyst). A role you leave unbound stays a plain platform agent; nothing is pre-filled with a
+                    guessed tool name.{' '}
                     <a href="/office/mcp-guide" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-                      step-by-step wiring guide
-                    </a>{' '}
-                    (Exa, securities-mcp, obsidian-mcp) — any MCP server can be wired in below the same way.
+                      Wiring guide
+                    </a>
+                    {' · '}
+                    <a href="/directory" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                      ClawHub skills
+                    </a>
                   </p>
-                  <div>
-                    <Label htmlFor="office-mcp-url" className="label-eyebrow text-muted-foreground">MCP server URL — shared by every role below</Label>
-                    <Input id="office-mcp-url" value={mcpServerUrl} onChange={(e) => setMcpServerUrl(e.target.value)} placeholder="https://…" />
-                    <button
-                      type="button"
-                      className="mt-1 text-xs text-primary hover:underline"
-                      onClick={() => setMcpServerUrl('https://mcp.exa.ai/mcp')}
-                    >
-                      Use Exa web search (real, no signup — tool name <code>web_search_exa</code>; add <code>?exaApiKey=…</code> for reliability)
-                    </button>
-                  </div>
-                  <div>
-                    <Label htmlFor="office-mcp-auth" className="label-eyebrow text-muted-foreground">Auth header — optional</Label>
-                    <Input id="office-mcp-auth" value={mcpAuthHeader} onChange={(e) => setMcpAuthHeader(e.target.value)} placeholder="Bearer …" />
-                  </div>
-                  {template.roles.map((r) => (
-                    <div key={r.id}>
-                      <Label htmlFor={`office-tool-${r.id}`} className="label-eyebrow text-muted-foreground">{r.name} tool name</Label>
-                      <Input
-                        id={`office-tool-${r.id}`}
-                        value={mcpToolNames[r.id] ?? ''}
-                        onChange={(e) => setMcpToolNames((prev) => ({ ...prev, [r.id]: e.target.value }))}
-                        placeholder={r.mcpHint}
-                      />
+
+                  <div className="space-y-2">
+                    <Label className="label-eyebrow text-muted-foreground">Connectors</Label>
+                    {connectors.length === 0 && (
+                      <p className="text-xs text-muted-foreground">None yet — add one below.</p>
+                    )}
+                    {connectors.map((c, i) => (
+                      <div key={c.id} className="hairline-grid overflow-hidden rounded-md border border-border">
+                        <div className="flex items-center gap-2 px-2.5 py-2">
+                          <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                            {String(i + 1).padStart(2, '0')}
+                          </span>
+                          <Input
+                            aria-label="Connector name"
+                            value={c.label}
+                            onChange={(e) => updateConnector(c.id, { label: e.target.value })}
+                            placeholder="Name (e.g. Exa web search)"
+                            className="h-8 flex-1"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeConnector(c.id)}
+                            className="press text-muted-foreground hover:text-destructive"
+                            aria-label={`Remove ${c.label || 'connector'}`}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                        <div className="px-2.5 py-2">
+                          <Input
+                            aria-label="Server URL"
+                            value={c.serverUrl}
+                            onChange={(e) => updateConnector(c.id, { serverUrl: e.target.value })}
+                            placeholder="https://…/mcp"
+                            className="h-8"
+                          />
+                        </div>
+                        <div className="px-2.5 py-2">
+                          <Input
+                            aria-label="Auth header"
+                            value={c.authHeader ?? ''}
+                            onChange={(e) => updateConnector(c.id, { authHeader: e.target.value })}
+                            placeholder="Authorization header — optional (Bearer …)"
+                            className="h-8"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                    <div className="flex flex-wrap gap-2">
+                      <Button type="button" variant="outline" size="sm" onClick={() => addConnector()}>
+                        <Plus className="mr-1 h-3.5 w-3.5" /> Add connector
+                      </Button>
+                      {/* Verified live earlier: Exa's public endpoint answers
+                          anonymously, and its key rides in the query string
+                          because Handsel only stores an Authorization header. */}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => addConnector({ label: 'Exa web search', serverUrl: 'https://mcp.exa.ai/mcp' })}
+                      >
+                        + Exa web search
+                      </Button>
                     </div>
-                  ))}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="label-eyebrow text-muted-foreground">Role bindings</Label>
+                    {template.roles.map((r) => {
+                      const b = bindings[r.id]
+                      return (
+                        <div key={r.id} className="grid gap-1.5 sm:grid-cols-[1fr_1fr] sm:items-center">
+                          <div className="flex items-center gap-2">
+                            <span className="w-28 shrink-0 truncate text-xs font-medium">{r.name}</span>
+                            <select
+                              aria-label={`${r.name} connector`}
+                              value={b?.connectorId ?? ''}
+                              onChange={(e) => bindRole(r.id, { connectorId: e.target.value })}
+                              disabled={connectors.length === 0}
+                              className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-xs disabled:opacity-60"
+                            >
+                              <option value="">Not connected</option>
+                              {connectors.map((c, i) => (
+                                <option key={c.id} value={c.id}>
+                                  {c.label || `Connector ${i + 1}`}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <Input
+                            aria-label={`${r.name} tool name`}
+                            value={b?.toolName ?? ''}
+                            onChange={(e) => bindRole(r.id, { toolName: e.target.value })}
+                            disabled={!b?.connectorId}
+                            placeholder={r.mcpHint}
+                            className="h-8 text-xs disabled:opacity-60"
+                          />
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
               )}
             </div>
