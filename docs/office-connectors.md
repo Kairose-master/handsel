@@ -76,6 +76,36 @@ reaches LLM workers, where it reads as a harmless note about what to look up.
 
 Office templates set it per step via `OfficeTemplateStep.mcpQuery`.
 
+## Proxy vs assisted — a search tool is a source, not a voice
+
+The second defect this desk surfaced, and the more serious one. An MCP-wired
+agent was a **pure proxy**: `callMcpTool`'s text became the submission
+verbatim. That is exactly right when the server on the other end IS an agent
+(`docs/external-agents.md` — the case the runtime was built for), and it
+quietly breaks any office that wires a role to a *search* server.
+`web_search_exa` returns 44 KB of hits; `aws___search_documentation` returns a
+JSON envelope of page chunks. Neither is a deliverable. A step whose criteria
+say "every limit carries a figure quoted from the documentation with the page
+it came from" would escrow money, receive a result dump, fail grading, refund
+— and book the failure against a worker whose retrieval was perfect.
+
+So a connector has a mode:
+
+- **proxy** — submit the tool's output as the work. The default, and unchanged
+  for every agent registered before modes existed.
+- **assisted** — call the tool, then have the owner's model write the
+  deliverable from the brief and what came back.
+
+Every default connector this repo ships is assisted, because every one of them
+is a search server. The retrieved text is fenced (`lib/mcp-assist.ts`): it is
+the whole point of the mode that this content comes from somewhere neither the
+owner nor the platform controls, which makes it the most direct injection
+channel in the product.
+
+Assisted does **not** fall back to the raw dump when no model key is reachable.
+That would submit something the grader rejects and blame the worker; failing
+the dispatch says what is actually wrong and leaves the job claimable.
+
 ## Testing a connector before you pay for it
 
 `testMcpConnector` (Office → Staff & connectors → **Test**, and next to every

@@ -333,9 +333,11 @@ async function dispatchToMcpWorker(agentRow: AgentRow, taskId: string, task: str
   try {
     const { callMcpTool } = await import('@/lib/mcp-client')
     const authHeader = agentRow.mcpAuthHeaderEnc ? decryptSecret(agentRow.mcpAuthHeaderEnc as string) : null
+    const serverUrl = agentRow.mcpServerUrl as string
+    const toolName = agentRow.mcpToolName as string
     output = await callMcpTool({
-      serverUrl: agentRow.mcpServerUrl as string,
-      toolName: agentRow.mcpToolName as string,
+      serverUrl,
+      toolName,
       task,
       authHeader,
       timeoutMs: CLOUD_CALL_TIMEOUT_MS,
@@ -343,6 +345,42 @@ async function dispatchToMcpWorker(agentRow: AgentRow, taskId: string, task: str
     if (!output.trim()) {
       success = false
       error = 'MCP tool returned empty output'
+    } else {
+      // 'assisted': the tool is this worker's SOURCE, not its voice. A search
+      // server returns result dumps, which fail an acceptance criterion like
+      // "every figure quoted with the page it came from" no matter how good
+      // the retrieval was — see lib/mcp-assist.ts. 'proxy' (the default, and
+      // every agent registered before modes existed) submits the tool's own
+      // text unchanged, which is right when the server IS the agent.
+      const { getMcpMode } = await import('@/lib/mcp-mode')
+      if ((await getMcpMode(agentRow.id)) === 'assisted') {
+        const { assistedWorkerPrompt } = await import('@/lib/mcp-assist')
+        const { untrustedNonce } = await import('@/lib/untrusted-input')
+        const { resolveLlm } = await import('@/lib/delegation')
+        // Minted now, after the retrieved text arrived.
+        const nonce = untrustedNonce()
+        const { system, user } = assistedWorkerPrompt({
+          agentName: agentRow.name,
+          customInstructions: agentRow.customInstructions,
+          brief: task,
+          toolName,
+          serverUrl,
+          toolOutput: output,
+          nonce,
+        })
+        // Deliberately not falling back to the raw dump when no model is
+        // reachable: that submits something the grader will reject and books
+        // the failure against a worker that retrieved correctly. Failing the
+        // dispatch says what is actually wrong, and leaves the job claimable.
+        const complete = await resolveLlm(agentRow.userId)
+        const written = await complete(system, user, 8000)
+        if (!written.trim()) {
+          success = false
+          error = 'assisted MCP worker retrieved content but the model returned nothing'
+        } else {
+          output = written
+        }
+      }
     }
   } catch (e) {
     success = false

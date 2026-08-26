@@ -56,7 +56,17 @@ export type McpConnector = {
   authHeader?: string
 }
 
-export type McpBinding = { connectorId: string; toolName: string }
+export type McpBinding = {
+  connectorId: string
+  toolName: string
+  /** 'assisted' has the role WRITE its deliverable from what the tool
+   *  returned, rather than submitting the tool's raw output as the work —
+   *  which is what a search-shaped server needs, since a result dump satisfies
+   *  no acceptance criterion however good the retrieval was. Absent means
+   *  'proxy', the behavior every MCP worker had before modes existed. See
+   *  lib/mcp-assist.ts. */
+  mode?: 'proxy' | 'assisted'
+}
 
 /**
  * Which server+tool a role should be wired to, or null for "leave it a plain
@@ -72,7 +82,7 @@ export function resolveRoleConnector(
   connectors: McpConnector[],
   bindings: Record<string, McpBinding> | undefined,
   roleId: string,
-): { serverUrl: string; toolName: string; authHeader?: string } | null {
+): { serverUrl: string; toolName: string; authHeader?: string; mode: 'proxy' | 'assisted' } | null {
   const binding = bindings?.[roleId]
   if (!binding) return null
   const toolName = binding.toolName?.trim()
@@ -80,7 +90,12 @@ export function resolveRoleConnector(
   const connector = connectors.find((c) => c.id === binding.connectorId)
   const serverUrl = connector?.serverUrl.trim()
   if (!connector || !serverUrl) return null
-  return { serverUrl, toolName, authHeader: connector.authHeader?.trim() || undefined }
+  return {
+    serverUrl,
+    toolName,
+    authHeader: connector.authHeader?.trim() || undefined,
+    mode: binding.mode === 'assisted' ? 'assisted' : 'proxy',
+  }
 }
 
 
@@ -352,7 +367,9 @@ export function defaultWiringFor(template: OfficeTemplate): {
       idByUrl.set(url, connectorId)
       connectors.push({ id: connectorId, label: d.label, serverUrl: url })
     }
-    bindings[role.id] = { connectorId, toolName: d.toolName.trim() }
+    // Every shipped default is a search-shaped server, so the deliverable has
+    // to be written from what it returns, not be what it returns.
+    bindings[role.id] = { connectorId, toolName: d.toolName.trim(), mode: 'assisted' }
   }
   return { connectors, bindings }
 }

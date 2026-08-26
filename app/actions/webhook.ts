@@ -1,6 +1,7 @@
 'use server'
 
 import { headers } from 'next/headers'
+import type { McpMode } from '@/lib/mcp-assist'
 import { getSession } from '@/lib/get-session'
 import { db } from '@/lib/db'
 import { agent } from '@/lib/db/schema'
@@ -160,7 +161,18 @@ export async function disconnectCloudApiWorker(agentId: string) {
  */
 export async function setMcpWorker(
   agentId: string,
-  input: { serverUrl: string; toolName: string; authHeader?: string },
+  input: {
+    serverUrl: string
+    toolName: string
+    authHeader?: string
+    /** 'assisted' has the agent WRITE from what the tool returned instead of
+     *  submitting it verbatim — the right mode for a search-shaped server,
+     *  whose raw output is a result dump and not a deliverable. Omitted keeps
+     *  whatever the agent already had (and 'proxy' for a new one), so
+     *  re-saving a URL never silently changes how the worker behaves. See
+     *  lib/mcp-assist.ts. */
+    mode?: McpMode
+  },
 ) {
   await requireOwnedAgent(agentId)
 
@@ -189,6 +201,11 @@ export async function setMcpWorker(
 
   // Mint the per-agent callback secret (same as cloud/local/webhook) so the
   // result callback dispatchToMcpWorker posts is authenticated, not open.
+  if (input.mode) {
+    const { setMcpMode } = await import('@/lib/mcp-mode')
+    await setMcpMode(agentId, input.mode)
+  }
+
   const secret = generateWebhookSecret()
   await db
     .update(agent)
@@ -209,6 +226,10 @@ export async function setMcpWorker(
 
 export async function disconnectMcpWorker(agentId: string) {
   await requireOwnedAgent(agentId)
+  // Drop the mode with the wiring — a re-connect later must start from the
+  // default, not silently inherit a mode set for a different server.
+  const { setMcpMode } = await import('@/lib/mcp-mode')
+  await setMcpMode(agentId, 'proxy')
   await db
     .update(agent)
     .set({

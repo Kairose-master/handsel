@@ -476,6 +476,8 @@ export type OfficeRosterAgent = {
   autoMine: boolean
   mcpServerUrl: string | null
   mcpToolName: string | null
+  /** How this agent uses its tool — see lib/mcp-assist.ts. */
+  mcpMode: 'proxy' | 'assisted'
   /** Whether an Authorization header is stored. The value itself is never
    *  returned — it is encrypted at rest and only decrypted server-side at
    *  dispatch time (app/actions/webhook.ts). */
@@ -512,8 +514,10 @@ export async function officeRoster(slot: number): Promise<OfficeRosterAgent[]> {
     .from(agent)
     .where(eq(agent.userId, session.user.id))
   const slotByAgentId = await officeSlotsByAgentId(rows.map((r) => r.id))
-  return rows
-    .filter((r) => slotByAgentId.get(r.id) === slot)
+  const kept = rows.filter((r) => slotByAgentId.get(r.id) === slot)
+  const { getMcpModes } = await import('@/lib/mcp-mode')
+  const modeByAgentId = await getMcpModes(kept.filter((r) => r.mcpServerUrl).map((r) => r.id))
+  return kept
     .map((r) => ({
       id: r.id,
       name: r.name,
@@ -523,6 +527,7 @@ export async function officeRoster(slot: number): Promise<OfficeRosterAgent[]> {
       mcpServerUrl: r.mcpServerUrl,
       mcpToolName: r.mcpToolName,
       hasAuthHeader: Boolean(r.mcpAuthHeaderEnc),
+      mcpMode: modeByAgentId.get(r.id) ?? 'proxy',
     }))
 }
 

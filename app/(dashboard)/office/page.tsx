@@ -55,6 +55,7 @@ import {
   defaultWiringFor,
   type OfficeSlot,
   type McpConnector,
+  type McpBinding,
 } from '@/lib/office-world-data'
 import './game/office.css'
 
@@ -316,9 +317,7 @@ function HireOfficeTemplateDialog({
   // single shared URL, which is what stopped an office from running (say) web
   // search, a private vault and market data side by side.
   const [connectors, setConnectors] = useState<McpConnector[]>(initialWiring.connectors)
-  const [bindings, setBindings] = useState<Record<string, { connectorId: string; toolName: string }>>(
-    initialWiring.bindings,
-  )
+  const [bindings, setBindings] = useState<Record<string, McpBinding>>(initialWiring.bindings)
   // Per-step payers. An office had one paying agent only because the
   // delegation posted every job from its prime; escrow comes from whoever
   // posts, so a step can just as well be funded by a different wallet.
@@ -397,7 +396,7 @@ function HireOfficeTemplateDialog({
 
   /** Clearing the connector drops the whole binding rather than leaving an
    *  orphan tool name behind. */
-  const bindRole = (roleId: string, patch: { connectorId?: string; toolName?: string }) =>
+  const bindRole = (roleId: string, patch: Partial<McpBinding>) =>
     setBindings((prev) => {
       const next = { ...(prev[roleId] ?? { connectorId: '', toolName: '' }), ...patch }
       if (!next.connectorId) {
@@ -884,6 +883,17 @@ function HireOfficeTemplateDialog({
                               />
                             )}
                           </div>
+                          {b?.connectorId && (
+                            <select
+                              aria-label={`How ${r.name} uses its tool`}
+                              value={b.mode === 'assisted' ? 'assisted' : 'proxy'}
+                              onChange={(e) => bindRole(r.id, { mode: e.target.value as McpBinding['mode'] })}
+                              className="h-8 w-full rounded-md border border-border bg-background px-2 text-xs sm:col-span-2"
+                            >
+                              <option value="assisted">Writes the deliverable from what the tool returns</option>
+                              <option value="proxy">Submits the tool&apos;s output as the deliverable</option>
+                            </select>
+                          )}
                         </div>
                       )
                     })}
@@ -1106,10 +1116,17 @@ function OfficeRosterPanel({ slot, refreshKey }: { slot: number; refreshKey: num
                 </div>
 
                 {a.mcpServerUrl && a.mcpToolName && (
-                  <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
-                    {a.mcpToolName} · {a.mcpServerUrl}
-                    {a.hasAuthHeader && ' · auth set'}
-                  </p>
+                  <>
+                    <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
+                      {a.mcpToolName} · {a.mcpServerUrl}
+                      {a.hasAuthHeader && ' · auth set'}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {a.mcpMode === 'assisted'
+                        ? 'writes its deliverable from what the tool returns'
+                        : "submits the tool's output as the deliverable"}
+                    </p>
+                  </>
                 )}
 
                 {editing === a.id ? (
@@ -1153,6 +1170,7 @@ function ConnectorEditor({
   // Never prefilled: the stored header is encrypted and never leaves the
   // server, so an empty box means "leave it as it is", not "clear it".
   const [authHeader, setAuthHeader] = useState('')
+  const [mode, setMode] = useState<'proxy' | 'assisted'>(agent.mcpMode)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -1164,6 +1182,7 @@ function ConnectorEditor({
         serverUrl,
         toolName,
         authHeader: authHeader.trim() || undefined,
+        mode,
       })
       onDone()
     } catch (e) {
@@ -1196,6 +1215,19 @@ function ConnectorEditor({
         placeholder={agent.hasAuthHeader ? 'Auth header set — leave blank to keep it' : 'Auth header — optional'}
         className="h-8 text-xs"
       />
+      <select
+        aria-label="How this agent uses its tool"
+        value={mode}
+        onChange={(e) => setMode(e.target.value as 'proxy' | 'assisted')}
+        className="h-8 w-full rounded-md border border-border bg-background px-2 text-xs"
+      >
+        <option value="assisted">Writes the deliverable from what the tool returns</option>
+        <option value="proxy">Submits the tool&apos;s output as the deliverable</option>
+      </select>
+      <p className="text-[11px] text-muted-foreground">
+        A search tool returns results, not a deliverable — pick the first for those. Pick the second when the
+        server on the other end is itself an agent that writes the finished work.
+      </p>
       {error && <p className="text-xs text-destructive">{error}</p>}
       <div className="flex flex-wrap gap-2">
         <Button type="button" size="sm" onClick={save} disabled={busy || !serverUrl.trim() || !toolName.trim()}>

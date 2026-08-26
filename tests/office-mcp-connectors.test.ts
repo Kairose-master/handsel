@@ -20,6 +20,9 @@ describe('resolveRoleConnector', () => {
       serverUrl: 'https://v.example/mcp',
       toolName: 'obsidian_search',
       authHeader: 'Bearer t',
+      // A binding that names no mode resolves to proxy — the behavior every
+      // MCP worker had before modes existed.
+      mode: 'proxy',
     })
   })
 
@@ -56,6 +59,7 @@ describe('resolveRoleConnector', () => {
       serverUrl: 'https://x/mcp',
       toolName: 'go',
       authHeader: undefined,
+      mode: 'proxy',
     })
   })
 })
