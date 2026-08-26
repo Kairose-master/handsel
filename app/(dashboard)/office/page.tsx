@@ -36,6 +36,7 @@ import {
   officeSource,
   saveOfficeSource,
   type OfficeSourceView,
+  testMcpConnector,
   newOfficeSlot,
   hireStaff,
   hireOfficeTemplate,
@@ -51,12 +52,71 @@ import {
   MAX_OFFICE_SLOTS,
   colorsFor,
   officeStepBounties,
+  defaultWiringFor,
   type OfficeSlot,
   type McpConnector,
 } from '@/lib/office-world-data'
 import './game/office.css'
 
 const POLL_MS = 12_000
+
+/**
+ * Call the server and say whether the tool is actually there.
+ *
+ * A connector's first proof of life used to be a job that had already escrowed
+ * money and came back empty — a typo in a URL, a tool renamed upstream and a
+ * worker that simply did badly were indistinguishable after the fact. This
+ * moves that answer before the hire. It reports the argument key the tool will
+ * receive too, because that is the other thing that silently goes wrong: the
+ * client picks one string parameter from the tool's schema, and seeing which
+ * one is how you notice it picked the wrong field.
+ */
+function TestConnectorButton({
+  serverUrl,
+  toolName,
+  authHeader,
+}: {
+  serverUrl: string
+  toolName: string
+  authHeader?: string
+}) {
+  const [state, setState] = useState<{ ok: boolean; text: string } | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const run = async () => {
+    setBusy(true)
+    setState(null)
+    try {
+      const res = await testMcpConnector(serverUrl, toolName, authHeader)
+      setState(
+        res.ok
+          ? { ok: true, text: `reachable · sends its input as "${res.argKey}"` }
+          : { ok: false, text: res.error },
+      )
+    } catch (e) {
+      setState({ ok: false, text: e instanceof Error ? e.message : 'Could not reach that server' })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        onClick={run}
+        disabled={busy || !serverUrl.trim() || !toolName.trim()}
+      >
+        {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Test'}
+      </Button>
+      {state && (
+        <span className={`text-xs ${state.ok ? 'text-success' : 'text-destructive'}`}>{state.text}</span>
+      )}
+    </div>
+  )
+}
 
 function HireStaffDialog({
   open,
@@ -246,13 +306,19 @@ function HireOfficeTemplateDialog({
   const [scopeTouched, setScopeTouched] = useState(false)
   const [budgetUsd, setBudgetUsd] = useState(String(template.pipeline.length * 2))
   const [budgetTouched, setBudgetTouched] = useState(false)
-  const [mcpOpen, setMcpOpen] = useState(false)
+  // Pre-filled from the template, not blank. A template that ships working
+  // endpoints and still opens this section empty is a template that made you
+  // do the setup anyway.
+  const initialWiring = defaultWiringFor(OFFICE_TEMPLATES[0])
+  const [mcpOpen, setMcpOpen] = useState(initialWiring.connectors.length > 0)
   // Several connectors per office, each role bound to one of them. The agent
   // table has always stored mcpServerUrl per agent; only this form forced a
   // single shared URL, which is what stopped an office from running (say) web
   // search, a private vault and market data side by side.
-  const [connectors, setConnectors] = useState<McpConnector[]>([])
-  const [bindings, setBindings] = useState<Record<string, { connectorId: string; toolName: string }>>({})
+  const [connectors, setConnectors] = useState<McpConnector[]>(initialWiring.connectors)
+  const [bindings, setBindings] = useState<Record<string, { connectorId: string; toolName: string }>>(
+    initialWiring.bindings,
+  )
   // Per-step payers. An office had one paying agent only because the
   // delegation posted every job from its prime; escrow comes from whoever
   // posts, so a step can just as well be funded by a different wallet.
@@ -372,6 +438,10 @@ function HireOfficeTemplateDialog({
     // Role ids are per-template, so keeping the old picks would leave entries
     // that quietly match nothing.
     setPayerByRoleId({})
+    const wiring = next ? defaultWiringFor(next) : { connectors: [], bindings: {} }
+    setConnectors(wiring.connectors)
+    setBindings(wiring.bindings)
+    setMcpOpen(wiring.connectors.length > 0)
   }
 
   if (!open) return null
@@ -381,9 +451,10 @@ function HireOfficeTemplateDialog({
     setScopeTouched(false)
     setBudgetUsd(String(template.pipeline.length * 2))
     setBudgetTouched(false)
-    setMcpOpen(false)
-    setConnectors([])
-    setBindings({})
+    const wiring = defaultWiringFor(template)
+    setMcpOpen(wiring.connectors.length > 0)
+    setConnectors(wiring.connectors)
+    setBindings(wiring.bindings)
     setBillOpen(false)
     setPayerByRoleId({})
     setError(null)
@@ -796,14 +867,23 @@ function HireOfficeTemplateDialog({
                               ))}
                             </select>
                           </div>
-                          <Input
-                            aria-label={`${r.name} tool name`}
-                            value={b?.toolName ?? ''}
-                            onChange={(e) => bindRole(r.id, { toolName: e.target.value })}
-                            disabled={!b?.connectorId}
-                            placeholder={r.mcpHint}
-                            className="h-8 text-xs disabled:opacity-60"
-                          />
+                          <div className="flex items-center gap-2">
+                            <Input
+                              aria-label={`${r.name} tool name`}
+                              value={b?.toolName ?? ''}
+                              onChange={(e) => bindRole(r.id, { toolName: e.target.value })}
+                              disabled={!b?.connectorId}
+                              placeholder={r.mcpHint}
+                              className="h-8 min-w-0 flex-1 text-xs disabled:opacity-60"
+                            />
+                            {b?.connectorId && b.toolName && (
+                              <TestConnectorButton
+                                serverUrl={connectors.find((c) => c.id === b.connectorId)?.serverUrl ?? ''}
+                                toolName={b.toolName}
+                                authHeader={connectors.find((c) => c.id === b.connectorId)?.authHeader}
+                              />
+                            )}
+                          </div>
                         </div>
                       )
                     })}
@@ -1121,6 +1201,7 @@ function ConnectorEditor({
         <Button type="button" size="sm" onClick={save} disabled={busy || !serverUrl.trim() || !toolName.trim()}>
           {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Save'}
         </Button>
+        <TestConnectorButton serverUrl={serverUrl} toolName={toolName} authHeader={authHeader || undefined} />
         <Button type="button" size="sm" variant="ghost" onClick={onCancel} disabled={busy}>
           Cancel
         </Button>

@@ -77,6 +77,7 @@ enforces it.
 | On-chain reads/writes | `lib/onchain/*` |
 | DeFi sandbox (collateral→debt) | `lib/mini-vault.ts`, `contracts/MiniVault.sol` |
 | Bring any external MCP agent in as a worker | `lib/mcp-client.ts`, `docs/external-agents.md` |
+| **Which real MCP servers actually work as workers** | **`docs/office-connectors.md`** — the four probed, the ones rejected and why, and the measurement behind `[mcp-query]` |
 | GitHub repo jobs (diff → PR, CI grades, merge pays) | `lib/repo-jobs.ts`, `lib/github-app.ts`, `app/api/github/webhook/`, `docs/github-jobs.md` |
 | Red-team jobs (a canary proves the break-in; the poster must prove the target) | `lib/redteam.ts`, `lib/redteam-grade.ts`, `app/api/redteam/`, `docs/redteam.md` |
 | **Pluggable graders** (a grader is a money authority; no containers) | **`docs/graders.md`** — design only, nothing built |

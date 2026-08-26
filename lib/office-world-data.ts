@@ -209,6 +209,19 @@ export type OfficeTemplateRole = {
   colorIndex: number
   customInstructions: string
   mcpHint: string
+  /**
+   * A real, working MCP server this role should be wired to, pre-filled in the
+   * hire dialog instead of left as advice.
+   *
+   * mcpHint above is a sentence telling somebody to go and find a tool. That
+   * is the difference between a template and a desk that works when you hire
+   * it: every endpoint named here was probed with this repo's own client
+   * (initialize → tools/list → tools/call) and answered a real question with
+   * no key — see docs/office-connectors.md for what was run and when. The
+   * dialog still shows them as ordinary connector rows, so any one can be
+   * edited or removed before hiring.
+   */
+  defaultConnector?: { label: string; serverUrl: string; toolName: string }
 }
 
 export type OfficeTemplateStep = {
@@ -244,6 +257,19 @@ export type OfficeTemplateStep = {
    * to read.
    */
   reviewOfRoleId?: string
+  /**
+   * The search query a tool-backed worker on this step should send, instead
+   * of its whole brief. Appended to the brief as an `[mcp-query]` line, which
+   * lib/mcp-client.ts's extractMcpQuery reads.
+   *
+   * Necessary because the worker call passes the brief as the tool's single
+   * string argument: measured against AWS's own docs server, a full brief
+   * returned the wrong pages while the short query under it returned the right
+   * one first. `{scope}` is substituted the same way it is everywhere else.
+   * Only meaningful for a role wired to a search-shaped tool; harmless
+   * otherwise, where it reads as a hint about what to look up.
+   */
+  mcpQuery?: string
 }
 
 export type OfficeTemplate = {
@@ -296,6 +322,39 @@ export function officeStepBounties(template: OfficeTemplate, budgetUsd: number):
       Math.max(OFFICE_MIN_STEP_BOUNTY_USD, Math.round(unitUsd * (step.bountyWeight ?? 1) * 100) / 100),
     ]),
   )
+}
+
+/**
+ * The connectors and role bindings a template ships pre-filled, ready for the
+ * hire dialog to show as ordinary editable rows.
+ *
+ * Deduplicated by server URL, so two roles reading the same docs server share
+ * one connector row rather than opening two sessions to the same host and
+ * showing the person a duplicate to maintain. Pure; returns empty for a
+ * template whose roles declare no default, which is every template written
+ * before defaults existed.
+ */
+export function defaultWiringFor(template: OfficeTemplate): {
+  connectors: McpConnector[]
+  bindings: Record<string, McpBinding>
+} {
+  const connectors: McpConnector[] = []
+  const bindings: Record<string, McpBinding> = {}
+  const idByUrl = new Map<string, string>()
+  for (const role of template.roles) {
+    const d = role.defaultConnector
+    if (!d) continue
+    const url = d.serverUrl.trim()
+    if (!url || !d.toolName.trim()) continue
+    let connectorId = idByUrl.get(url)
+    if (!connectorId) {
+      connectorId = `preset-${connectors.length + 1}`
+      idByUrl.set(url, connectorId)
+      connectors.push({ id: connectorId, label: d.label, serverUrl: url })
+    }
+    bindings[role.id] = { connectorId, toolName: d.toolName.trim() }
+  }
+  return { connectors, bindings }
 }
 
 export const OFFICE_TEMPLATES: OfficeTemplate[] = [
@@ -799,6 +858,251 @@ export const OFFICE_TEMPLATES: OfficeTemplate[] = [
         // The memo's escrow is held until this passes, and a REVISE goes back
         // to the Partner with the note — up to MAX_REVISION_ROUNDS.
         reviewOfRoleId: 'partner',
+        bountyWeight: 1,
+      },
+    ],
+  },
+  {
+    // The desk that works the moment you hire it. Every other template hands
+    // you an mcpHint — a sentence saying "go find a web-search tool" — and an
+    // office that needs an afternoon of MCP setup before it can answer
+    // anything is not useful, it is a shape. Here all four connectors are real
+    // endpoints, probed with this repo's own client and answering with no key
+    // (docs/office-connectors.md records what was run).
+    //
+    // The question it answers is one where a model's memory is actively
+    // dangerous: cloud limits, quotas and tiers change quarterly, and an
+    // answer from training data is confidently a year stale. Each vendor's
+    // claim here comes from that vendor's own current documentation, and a
+    // fourth agent checks the whole thing against sources none of the vendors
+    // control — because no vendor's docs will ever say its own service is the
+    // wrong choice.
+    id: 'cloud-options-desk',
+    name: 'Cloud Options Desk',
+    blurb:
+      "Three vendor docs and an independent check, each read live: what AWS, Azure and Cloudflare's own current " +
+      'documentation actually say about your requirement — not what a model remembers.',
+    flowSummary:
+      'AWS · Azure · Cloudflare read their own live docs → Independent Check corroborates outside the vendors → Architect writes the comparison → Red Team sends it back until every figure is sourced.',
+    exampleScope:
+      'A webhook receiver taking 5M requests a month, p99 under 300ms, bursty (10x for ~2 minutes a few times a day), ' +
+      'each request does one outbound HTTP call and one small write.',
+    scopeLabel: 'The workload and its requirements (traffic, latency, burst shape, what each request does)',
+    roles: [
+      {
+        id: 'aws',
+        name: 'AWS Reader',
+        blurb: "Answers only from AWS's own live documentation, and says so when the docs don't.",
+        colorIndex: 1,
+        customInstructions:
+          "You answer questions about AWS from AWS's own current documentation, retrieved live with your tool — " +
+          'never from memory. Cloud limits, quotas and pricing tiers change every quarter, so a remembered figure ' +
+          'is worse than no figure: it is wrong in a way nobody can see. Quote the documented number and name the ' +
+          'page it came from. Where the documentation does not state something, write that it does not — an ' +
+          'unspecified limit is a real finding here. Never compare AWS to another cloud: other agents at this desk ' +
+          'cover those, and your value is being the one who only reports what AWS itself publishes.',
+        mcpHint: 'Pre-wired to the AWS Knowledge MCP server (no key needed).',
+        defaultConnector: {
+          label: 'AWS Knowledge (official docs)',
+          serverUrl: 'https://knowledge-mcp.global.api.aws',
+          toolName: 'aws___search_documentation',
+        },
+      },
+      {
+        id: 'azure',
+        name: 'Azure Reader',
+        blurb: "Same job for Microsoft Learn — Azure's own published limits, quoted and sourced.",
+        colorIndex: 2,
+        customInstructions:
+          'You answer questions about Azure from Microsoft Learn, retrieved live with your tool — never from ' +
+          'memory. Quote the documented figure and name the page. Where Learn does not state something, say so ' +
+          'rather than estimating it. Do not compare Azure to another cloud; another agent covers each of those. ' +
+          'Be careful with service tiers: a limit that holds on one plan often does not hold on another, so name ' +
+          'the plan every figure belongs to.',
+        mcpHint: 'Pre-wired to the Microsoft Learn MCP server (no key needed).',
+        defaultConnector: {
+          label: 'Microsoft Learn (official docs)',
+          serverUrl: 'https://learn.microsoft.com/api/mcp',
+          toolName: 'microsoft_docs_search',
+        },
+      },
+      {
+        id: 'cloudflare',
+        name: 'Cloudflare Reader',
+        blurb: "Cloudflare's own developer docs — the limits that decide whether Workers fits at all.",
+        colorIndex: 4,
+        customInstructions:
+          "You answer questions about Cloudflare from Cloudflare's own developer documentation, retrieved live " +
+          'with your tool — never from memory. Quote the documented figure and name the page. Cloudflare\'s model ' +
+          'differs enough from the others that a like-for-like number sometimes does not exist: where the ' +
+          'documentation measures something differently (CPU time rather than wall-clock duration, for one), say ' +
+          'that plainly instead of converting it into a comparable-looking figure. Do not compare against other ' +
+          'clouds.',
+        mcpHint: 'Pre-wired to the Cloudflare docs MCP server (no key needed).',
+        defaultConnector: {
+          label: 'Cloudflare Docs (official)',
+          serverUrl: 'https://docs.mcp.cloudflare.com/mcp',
+          toolName: 'search_cloudflare_documentation',
+        },
+      },
+      {
+        id: 'independent',
+        name: 'Independent Check',
+        blurb: "Searches outside all three vendors, because no vendor's docs say its own product is the wrong pick.",
+        colorIndex: 3,
+        customInstructions:
+          'You check vendor claims against sources the vendors do not control. Every reader at this desk quotes ' +
+          "its own vendor's documentation, which is accurate about limits and silent about everything the vendor " +
+          'would rather not publish: real-world cold starts, what the pricing does at the edges, the failure modes ' +
+          'people actually hit. Search for independent measurements, incident write-ups and migration reports, and ' +
+          'carry the source URL and date on every one. Where you find nothing independent, write "no independent ' +
+          'source found" — that is an honest and useful answer, and inventing corroboration is the one thing that ' +
+          'would make this desk worse than not having you.',
+        mcpHint: 'Pre-wired to Exa web search (no key needed).',
+        defaultConnector: {
+          label: 'Exa web search',
+          serverUrl: 'https://mcp.exa.ai/mcp',
+          toolName: 'web_search_exa',
+        },
+      },
+      {
+        id: 'architect',
+        name: 'Architect',
+        blurb: 'Writes the comparison and the recommendation, with every figure carrying whose doc it came from.',
+        colorIndex: 5,
+        customInstructions:
+          'You write the decision document from three vendor reads and one independent check. Lead with a ' +
+          'recommendation and the single requirement that drove it. Then a comparison where every figure names ' +
+          'the vendor doc it came from — a number with no source does not go in. Where the vendors measure ' +
+          'something differently, say so instead of forcing a shared unit; where the independent check contradicts ' +
+          'a vendor claim, put both side by side and say which you are relying on and why. If the readers found a ' +
+          'limit unspecified, it stays unspecified in your document. Close with what would change the ' +
+          'recommendation.',
+        mcpHint: 'None needed — this role works from the four upstream reads and the shared source.',
+      },
+      {
+        id: 'red-team',
+        name: 'Red Team',
+        blurb: 'Sends the document back until every number is sourced and the recommendation matches the evidence.',
+        colorIndex: 0,
+        customInstructions:
+          'You are the last check before this document is used to pick a platform. Reply APPROVE or REVISE on the ' +
+          'first line with a one-line reason. REVISE is a successful outcome for your job. Look for: a figure with ' +
+          'no vendor doc behind it, a remembered-sounding number, a recommendation stronger than the evidence ' +
+          'under it, an unspecified limit quietly filled in, and an independent finding that was dropped because ' +
+          'it was inconvenient. Your note goes back to the author, so name the specific claim and what is missing. ' +
+          'Judge only against the acceptance criteria; do not add new requirements between rounds.',
+        mcpHint: 'None needed — the document and the upstream reads are the material.',
+      },
+    ],
+    pipeline: [
+      {
+        roleId: 'aws',
+        title: 'AWS read — {scope}',
+        brief:
+          "Report what AWS's own current documentation says about hosting this workload:\n\n{scope}\n\nCover the " +
+          'limits that decide whether it fits at all — execution duration, memory, concurrency, payload size, and ' +
+          'the request-rate quotas — and for each say whether it is adjustable by quota increase or fixed. Quote ' +
+          'the figure and name the page. Anything the documentation does not state, mark unspecified rather than ' +
+          'estimating. Do not compare against other clouds.',
+        acceptanceCriteria:
+          'Every limit carries a figure quoted from AWS documentation with the page it came from, adjustable-vs-' +
+          'fixed is stated for each, and anything the docs do not specify is marked unspecified rather than ' +
+          'estimated. No comparison to another cloud.',
+        // Short and subject-first: this is what the docs server actually
+        // searches on, and the brief above would drown it. See
+        // lib/mcp-client.ts's extractMcpQuery.
+        mcpQuery:
+          'Lambda and API Gateway quotas: execution timeout, memory, concurrent executions, payload size, request rate, which are adjustable',
+        dependsOnRoleIds: [],
+        bountyWeight: 1,
+      },
+      {
+        roleId: 'azure',
+        title: 'Azure read — {scope}',
+        brief:
+          'Report what Microsoft Learn says about hosting this workload on Azure:\n\n{scope}\n\nCover execution ' +
+          'duration, memory, concurrency/scale-out, payload size and request-rate limits, and name the plan or ' +
+          'tier each figure belongs to — a limit that holds on one plan often does not hold on another. Quote the ' +
+          'figure and name the page. Mark anything Learn does not state as unspecified. Do not compare against ' +
+          'other clouds.',
+        acceptanceCriteria:
+          'Every limit carries a figure quoted from Microsoft Learn with its page and the plan or tier it applies ' +
+          'to, and anything Learn does not specify is marked unspecified rather than estimated. No comparison to ' +
+          'another cloud.',
+        mcpQuery:
+          'Azure Functions hosting plans: function timeout, memory, scale-out limits, request payload size, per-plan quotas',
+        dependsOnRoleIds: [],
+        bountyWeight: 1,
+      },
+      {
+        roleId: 'cloudflare',
+        title: 'Cloudflare read — {scope}',
+        brief:
+          "Report what Cloudflare's own developer documentation says about hosting this workload on Workers:\n\n" +
+          '{scope}\n\nCover CPU time, wall-clock duration, memory, subrequest limits, request size and the ' +
+          'per-plan differences. Where Cloudflare measures something on a different basis than a duration limit ' +
+          'would suggest, say so plainly rather than converting it into a comparable-looking number. Quote the ' +
+          'figure and name the page. Do not compare against other clouds.',
+        acceptanceCriteria:
+          'Every limit carries a figure quoted from Cloudflare documentation with its page and plan, any metric ' +
+          'measured on a different basis than the others is called out as such rather than converted, and ' +
+          'anything undocumented is marked unspecified. No comparison to another cloud.',
+        mcpQuery:
+          'Workers limits: CPU time, duration, memory, subrequests, request size, free vs paid plan',
+        dependsOnRoleIds: [],
+        bountyWeight: 1,
+      },
+      {
+        roleId: 'independent',
+        title: 'Independent check — outside all three vendors',
+        brief:
+          'Find what sources the vendors do not control say about running this workload:\n\n{scope}\n\nReal ' +
+          'measured cold starts, real bills at this scale, incident write-ups, migration reports. Every finding ' +
+          'carries its source URL and date. Where you find nothing independent for a point, write "no independent ' +
+          'source found" for it — do not substitute a vendor page, and do not fill the gap with something that ' +
+          'sounds right.',
+        acceptanceCriteria:
+          'Every finding carries a source URL and a date and none of them is a vendor page for the vendor being ' +
+          'checked; points with nothing independent behind them are written as "no independent source found" ' +
+          'rather than filled in.',
+        mcpQuery:
+          'independent benchmark cold start latency and real cost AWS Lambda vs Azure Functions vs Cloudflare Workers',
+        dependsOnRoleIds: [],
+        bountyWeight: 1,
+      },
+      {
+        roleId: 'architect',
+        title: 'Platform recommendation — {scope}',
+        brief:
+          'Write the decision document for this workload:\n\n{scope}\n\nOpen with a recommendation and the one ' +
+          'requirement that drove it. Then the comparison, every figure naming the vendor doc it came from. Where ' +
+          'the vendors measure something on different bases, say so rather than forcing a shared unit. Where the ' +
+          'independent check contradicts a vendor claim, show both and say which you rely on and why. A limit the ' +
+          'readers marked unspecified stays unspecified. Close with what would change the recommendation.',
+        acceptanceCriteria:
+          'Opens with one recommendation and the requirement that drove it; every figure in the comparison names ' +
+          'the vendor document it came from; differently-measured metrics are called out rather than converted; ' +
+          'each contradiction between a vendor claim and the independent check is shown with both sides and a ' +
+          'stated choice; nothing marked unspecified upstream appears as a number; and it ends with what would ' +
+          'change the recommendation.',
+        dependsOnRoleIds: ['aws', 'azure', 'cloudflare', 'independent'],
+        bountyWeight: 2,
+      },
+      {
+        roleId: 'red-team',
+        title: 'Red team — every number sourced before anyone picks a platform',
+        brief:
+          'Challenge the recommendation above. Reply APPROVE or REVISE on the first line with a one-line reason. ' +
+          'Look for a figure with no vendor doc behind it, a number that reads as remembered rather than ' +
+          'retrieved, a recommendation stronger than its evidence, an unspecified limit quietly filled in, and an ' +
+          'independent finding dropped for being inconvenient. If you send it back, name the specific claim and ' +
+          'what would fix it.',
+        acceptanceCriteria:
+          'Replies APPROVE or REVISE on the first line with a reason, and any REVISE names the specific claim at ' +
+          'fault and what would fix it rather than asking for more rigour in general.',
+        dependsOnRoleIds: ['architect'],
+        reviewOfRoleId: 'architect',
         bountyWeight: 1,
       },
     ],

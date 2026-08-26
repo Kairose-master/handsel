@@ -385,7 +385,15 @@ export async function hireOfficeTemplate(
     return {
       title: titleByRoleId.get(step.roleId)!,
       description: briefWithOfficeSource(
-        step.brief.replaceAll('{scope}', scope) + (snapshot ? `\n\n${snapshot}` : ''),
+        step.brief.replaceAll('{scope}', scope) +
+          (snapshot ? `\n\n${snapshot}` : '') +
+          // The query a tool-backed worker sends instead of the whole brief.
+          // Position doesn't matter — extractMcpQuery scans line by line, and
+          // the marker and its query share one line — so this survives the
+          // shared source being appended after it and the collaboration DSL
+          // being prepended before it. An LLM worker just sees a line naming
+          // what to look up.
+          (step.mcpQuery ? `\n\n[mcp-query] ${step.mcpQuery.replaceAll('{scope}', scope)}` : ''),
         sharedSource,
       ),
       acceptanceCriteria: step.acceptanceCriteria.replaceAll('{scope}', scope),
@@ -516,6 +524,45 @@ export async function officeRoster(slot: number): Promise<OfficeRosterAgent[]> {
       mcpToolName: r.mcpToolName,
       hasAuthHeader: Boolean(r.mcpAuthHeaderEnc),
     }))
+}
+
+/**
+ * Actually call an MCP server and report whether the named tool is there.
+ *
+ * Before this, a connector's first proof of life was a job that had already
+ * escrowed money and came back empty — a typo in a URL, a tool renamed
+ * upstream, or a token that expired were all indistinguishable from a worker
+ * that did the work badly. probeMcpTool already did the handshake for imported
+ * agents; this just makes it reachable from the office, before the hire.
+ *
+ * Owner-agnostic on purpose: it takes a URL the caller typed and connects to
+ * it, which any logged-in user could do from their own machine anyway. It is
+ * still behind requireUser so it is not an open proxy, and it returns only
+ * what the handshake said — never the response body of a tool call, which it
+ * does not make.
+ */
+export async function testMcpConnector(
+  serverUrl: string,
+  toolName: string,
+  authHeader?: string,
+): Promise<{ ok: true; argKey: string; description: string | null } | { ok: false; error: string }> {
+  await requireUser()
+  const url = serverUrl.trim()
+  const tool = toolName.trim()
+  if (!/^https:\/\//i.test(url)) return { ok: false, error: 'The server URL must start with https://' }
+  if (!tool) return { ok: false, error: 'Name the tool to call on that server' }
+  try {
+    const { probeMcpTool, pickToolArgumentKey } = await import('@/lib/mcp-client')
+    const found = await probeMcpTool({ serverUrl: url, toolName: tool, authHeader: authHeader?.trim() || null })
+    if (!found) return { ok: false, error: `Connected, but that server advertises no tool called "${tool}"` }
+    return {
+      ok: true,
+      argKey: pickToolArgumentKey(found.inputSchema),
+      description: found.description?.replace(/\s+/g, ' ').slice(0, 160) ?? null,
+    }
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'Could not reach that server' }
+  }
 }
 
 export type OfficeSourceView = StoredOfficeSource & { maxChars: number }

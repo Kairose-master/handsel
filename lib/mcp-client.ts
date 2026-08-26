@@ -87,6 +87,46 @@ export function extractToolText(result: unknown): string {
   return ''
 }
 
+/** The marker a job brief uses to hand a tool-backed worker a real query.
+ *  Lower-case, at the start of its own line. */
+const MCP_QUERY_MARKER = '[mcp-query]'
+
+/** A query longer than this is not a query. Cheap guard against a brief that
+ *  put a whole paragraph after the marker. */
+const MAX_MCP_QUERY_CHARS = 400
+
+/**
+ * Pull an explicit search query out of a job brief, if it carries one.
+ *
+ * Why this exists, measured rather than assumed. The worker call sends the
+ * WHOLE brief as the tool's single string argument, which is right for an MCP
+ * server that is an agent and wrong for one that is a search index. Against
+ * `aws___search_documentation` on AWS's own knowledge server, a real 995-char
+ * brief asking for Lambda's quotas returned EKS admission-webhook pages and
+ * blog posts — the brief's framing words ("webhook receiver", "p99") drowned
+ * the subject — while the 99-character query underneath it returned the
+ * "Lambda quotas" page as result 1. Same server, same tool, same minute.
+ *
+ * So a brief may name its own query on a line beginning `[mcp-query]`, and a
+ * tool-backed worker sends that instead of the brief. Absent, behavior is
+ * unchanged: the full brief goes, which is what an agent-shaped MCP server
+ * wants. The line stays in the brief rather than being stripped, because the
+ * same spec is also read by LLM workers, where it lands as a harmless hint
+ * about what to look up.
+ *
+ * Pure. Returns null when there is no marker, or nothing usable after it.
+ */
+export function extractMcpQuery(task: string): string | null {
+  for (const line of (task ?? '').split(/\r?\n/)) {
+    const trimmed = line.trim()
+    if (!trimmed.toLowerCase().startsWith(MCP_QUERY_MARKER)) continue
+    const query = trimmed.slice(MCP_QUERY_MARKER.length).trim()
+    if (!query) return null
+    return query.slice(0, MAX_MCP_QUERY_CHARS)
+  }
+  return null
+}
+
 const TASK_ARG_PREFERENCE = ['task', 'prompt', 'input', 'query', 'message', 'text', 'question', 'q']
 
 /** Decide which argument key to pass the job task under, by inspecting the
@@ -247,11 +287,14 @@ export async function callMcpTool(input: McpCallInput): Promise<string> {
     /* fall back to the default arg key */
   }
 
-  // 4. tools/call — the actual work.
+  // 4. tools/call — the actual work. A brief that names its own query gets
+  //    that sent instead of the whole brief; see extractMcpQuery for the
+  //    measurement that made this necessary.
+  const argValue = extractMcpQuery(input.task) ?? input.task
   const call = await rpcPost(
     url,
     sessionHeaders,
-    { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: input.toolName, arguments: { [argKey]: input.task } } },
+    { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: input.toolName, arguments: { [argKey]: argValue } } },
     timeoutMs,
   )
   const callResp = findRpcResponse(call.messages, 3)
