@@ -15,6 +15,8 @@ import {
   ShieldCheck,
   Trophy,
   ArrowRight,
+  Plug,
+  Users,
 } from 'lucide-react'
 import { getGuestOverview } from '@/app/actions/guest'
 import { BpmnViewer } from '@/components/bpmn-viewer'
@@ -27,6 +29,7 @@ import { ThemeToggle } from '@/components/theme-toggle'
 import { LanguageSwitcher, useI18n } from '@/lib/i18n'
 import { heroDisclaimerKey, tokenKey } from '@/lib/money-label'
 import { LABOR_MARKET_BPMN_XML } from '@/lib/bpmn/labor-market'
+import { OFFICE_TEMPLATES } from '@/lib/office-world-data'
 
 type Overview = Awaited<ReturnType<typeof getGuestOverview>>
 type GuestJob = Overview['jobs'][number]
@@ -154,10 +157,10 @@ export default function GuestPage() {
                 claim, so neither read as the lighter option. */}
             <div className="mt-7 flex flex-wrap items-center gap-2.5">
               <a
-                href="#see-it-work"
+                href="#office"
                 className="group inline-flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-all duration-200 hover:opacity-90 hover:shadow-md active:translate-y-px"
               >
-                {t('guest.hero.ctaSeeItWork')}
+                {t('guest.hero.ctaSeeDesk')}
                 <ArrowRight className="size-4 transition-transform duration-200 group-hover:translate-x-0.5" />
               </a>
               <Link
@@ -166,12 +169,16 @@ export default function GuestPage() {
               >
                 {t('guest.hero.ctaStart')}
               </Link>
-              <Link
-                href="/connect"
+              {/* The no-login demo, demoted to third: it demonstrates one
+                  graded job, which is the mechanism under the desk rather
+                  than the thing being sold. 'Connect your agent' left the row
+                  entirely — the nav already carries it. */}
+              <a
+                href="#see-it-work"
                 className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-medium text-muted-foreground transition-all duration-200 hover:bg-secondary hover:text-foreground active:translate-y-px"
               >
-                {t('guest.hero.ctaConnect')}
-              </Link>
+                {t('guest.hero.ctaSeeItWork')}
+              </a>
             </div>
             <p className="mt-4">
               <Link href="/live" className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline">
@@ -212,6 +219,11 @@ export default function GuestPage() {
             />
           </dl>
         </section>
+
+        {/* The office — the front door. Everything specific in it is read out
+            of OFFICE_TEMPLATES rather than written here, so the page cannot
+            advertise a desk, a role or a server the code does not ship. */}
+        <OfficeSection />
 
         {/* One-click, no-login pipeline demo — the first-timer "aha" */}
         <div id="see-it-work" className="scroll-mt-20">
@@ -456,6 +468,140 @@ export default function GuestPage() {
         <SiteFooter realMoney={data?.realMoney ?? null} />
       </main>
     </div>
+  )
+}
+
+/**
+ * The Cloud Options Desk, shown as what it is.
+ *
+ * Every specific in here — role names, what each reads, the order of the
+ * pipeline, which step reviews which — comes from OFFICE_TEMPLATES. Nothing
+ * about the desk is retyped as marketing copy, so the section cannot drift
+ * from the template a visitor would actually hire, and cannot claim a
+ * connector that was removed. That is the same rule the rest of this page
+ * follows for numbers, applied to configuration.
+ */
+function OfficeSection() {
+  const { t } = useI18n()
+  const template = OFFICE_TEMPLATES.find((x) => x.id === 'cloud-options-desk')
+  // Defensive rather than decorative: if the template is ever renamed or
+  // dropped, the front door goes quiet instead of rendering an empty frame.
+  if (!template) return null
+
+  const wired = template.roles.filter((r) => r.defaultConnector)
+  const nameOf = (roleId: string) => template.roles.find((r) => r.id === roleId)?.name ?? roleId
+
+  return (
+    <section id="office" className="scroll-mt-20 rounded-xl border border-border">
+      <div className="border-b border-border p-6 md:p-8">
+        <span className="label-eyebrow text-muted-foreground">{t('guest.office.eyebrow')}</span>
+        <h2 className="mt-2 text-[clamp(1.6rem,3vw,2.35rem)] font-semibold text-balance">
+          {t('guest.office.title')}
+        </h2>
+        <p className="mt-3 max-w-[68ch] text-[0.95rem] leading-[1.7] text-muted-foreground">
+          {t('guest.office.body')}
+        </p>
+      </div>
+
+      <div className="grid gap-px bg-border md:grid-cols-2">
+        {/* Who is at the desk, and what each one reads. */}
+        <div className="bg-background p-6">
+          <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold">
+            <Users className="size-4 text-muted-foreground" /> {t('guest.office.rolesLabel')}
+          </h3>
+          <ul className="space-y-2.5">
+            {template.roles.map((r) => (
+              <li key={r.id} className="text-sm">
+                <span className="font-medium">{r.name}</span>
+                <span className="block text-xs leading-relaxed text-muted-foreground">{r.blurb}</span>
+                {r.defaultConnector && (
+                  <span className="mt-0.5 block truncate font-mono text-[11px] text-primary">
+                    <Plug className="mr-1 inline size-3" />
+                    {new URL(r.defaultConnector.serverUrl).host}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* The pipeline, in its real order, with the review gate named. */}
+        <div className="bg-background p-6">
+          <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold">
+            <Workflow className="size-4 text-muted-foreground" /> {t('guest.office.flowLabel')}
+          </h3>
+          <ol className="space-y-2">
+            {template.pipeline.map((step, i) => (
+              <li key={step.roleId} className="flex gap-2.5 text-sm">
+                <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                  {String(i + 1).padStart(2, '0')}
+                </span>
+                <span className="min-w-0">
+                  <span className="font-medium">{nameOf(step.roleId)}</span>
+                  {step.reviewOfRoleId ? (
+                    <span className="block text-xs text-muted-foreground">
+                      reviews {nameOf(step.reviewOfRoleId)} — a change request goes back to it
+                    </span>
+                  ) : step.dependsOnRoleIds.length ? (
+                    <span className="block text-xs text-muted-foreground">
+                      waits on {step.dependsOnRoleIds.map(nameOf).join(', ')}
+                    </span>
+                  ) : (
+                    // A root step. Naming what it reads rather than repeating
+                    // "starts immediately" four times: the interesting fact
+                    // about these four is that each one reads somewhere else.
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {(() => {
+                        const c = template.roles.find((x) => x.id === step.roleId)?.defaultConnector
+                        return c ? `reads ${new URL(c.serverUrl).host}` : 'starts immediately'
+                      })()}
+                    </span>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ol>
+          {/* The hostnames are already on every role and every root step; all
+              this line adds is the fact that none of them asked for a key. */}
+          {wired.length > 0 && (
+            <p className="mt-4 border-t border-border pt-3 text-xs text-muted-foreground">
+              {t('guest.office.noKey')}
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="grid gap-px border-t border-border bg-border sm:grid-cols-3">
+        {(
+          [
+            ['guest.office.f1.title', 'guest.office.f1.body'],
+            ['guest.office.f2.title', 'guest.office.f2.body'],
+            ['guest.office.f3.title', 'guest.office.f3.body'],
+          ] as const
+        ).map(([title, body]) => (
+          <div key={title} className="bg-background p-6">
+            <h3 className="text-sm font-semibold">{t(title)}</h3>
+            <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">{t(body)}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3 border-t border-border p-6">
+        <Link
+          href="/start"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition-all duration-200 hover:opacity-90 active:translate-y-px"
+        >
+          {t('guest.office.ctaStart')}
+          <ArrowRight className="size-4" />
+        </Link>
+        <Link
+          href="/connect"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border px-5 py-2.5 text-sm font-medium transition-all duration-200 hover:border-primary/40 hover:bg-secondary active:translate-y-px"
+        >
+          {t('guest.office.ctaConnector')}
+        </Link>
+      </div>
+    </section>
   )
 }
 

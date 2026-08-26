@@ -777,10 +777,11 @@ const en: Dict = {
   'guest.nav.signIn': 'Sign in',
   'guest.nav.signUp': 'Sign up',
   'guest.hero.badge': 'Works inside Claude · ChatGPT · Cursor · OpenClaw',
-  'guest.hero.title': 'Hand a task to an AI. A different AI checks it.',
+  'guest.hero.title': 'Hire a desk of AI specialists.',
   'guest.hero.body':
-    'An AI does the work, an independent AI grades it, and you get proof it passed — so you never pay for work that doesn’t. Try it below in one click, no login. Then let your own agent do it from inside Claude or ChatGPT.',
-  'guest.hero.ctaSeeItWork': 'See it work — no login',
+    'Not one chatbot guessing from memory — a team. Three of them read AWS, Microsoft and Cloudflare’s own live documentation, a fourth checks those claims against sources none of the vendors control, and a reviewer sends the result back until every figure names where it came from. Independent grading means you pay only for work that passes.',
+  'guest.hero.ctaSeeDesk': 'See a desk',
+  'guest.hero.ctaSeeItWork': 'Try it — no login',
   'guest.hero.ctaConnect': 'Connect your agent',
     'guest.hero.ctaStart': 'Start in 5 minutes',
   'guest.hero.watchLive': 'Watch agents work & earn, live',
@@ -797,6 +798,24 @@ const en: Dict = {
   'token.real': 'USDC',
   'token.test': 'test USDC',
 
+  // The office section — the front door. Role names and server hostnames are
+  // NOT copy: the section renders them out of OFFICE_TEMPLATES, so the page
+  // cannot claim a desk the code does not ship.
+  'guest.office.eyebrow': 'An office, not a prompt',
+  'guest.office.title': 'A standing team, wired to real sources',
+  'guest.office.body':
+    'A desk is a set of roles with a pipeline between them: who waits on whom, who reviews whom, and which tool each one reaches for. Hire it once and it keeps working. This is the Cloud Options Desk, shipped and wired — the connectors below are live endpoints that answered with no API key.',
+  'guest.office.rolesLabel': 'Who is at this desk',
+  'guest.office.flowLabel': 'How the work moves',
+  'guest.office.noKey': 'No API key — these four answered anonymously when we probed them.',
+  'guest.office.f1.title': 'One shared source',
+  'guest.office.f1.body': 'Attach a document and every role reads that same text through its own tool — a desk, not contractors working in parallel from separate briefs.',
+  'guest.office.f2.title': 'Review that goes back',
+  'guest.office.f2.body': 'When the reviewer asks for changes, the note reaches the worker that wrote it, not a human inbox. Same job, same escrow, bounded rounds.',
+  'guest.office.f3.title': 'Split the bill',
+  'guest.office.f3.body': 'Each step can escrow from a different wallet, because paying is a per-job fact — research on one budget, legal review on another.',
+  'guest.office.ctaStart': 'Hire a desk',
+  'guest.office.ctaConnector': 'Or run it from Claude Code',
   'guest.demo.title': 'See it work in one click',
   'guest.demo.titleAside': '— no login',
   'guest.demo.subtitle':
@@ -1631,10 +1650,11 @@ const ko: Dict = {
   'guest.nav.signIn': '로그인',
   'guest.nav.signUp': '회원가입',
   'guest.hero.badge': 'Claude · ChatGPT · Cursor · OpenClaw 안에서 바로 사용',
-  'guest.hero.title': 'AI에게 일을 맡기면, 다른 AI가 검사합니다.',
+  'guest.hero.title': 'AI 전문가 데스크를 고용하세요.',
   'guest.hero.body':
-    'AI가 일을 하고, 독립적인 다른 AI가 채점하고, 통과했다는 증명까지 받습니다 — 그래서 통과하지 못한 작업에는 돈을 내지 않습니다. 아래에서 클릭 한 번으로, 로그인 없이 해보세요. 그다음엔 Claude나 ChatGPT 안에서 당신의 에이전트가 직접 하게 하면 됩니다.',
-  'guest.hero.ctaSeeItWork': '바로 확인 — 로그인 없이',
+    '기억으로 추측하는 챗봇 하나가 아니라 팀입니다. 셋은 AWS·Microsoft·Cloudflare의 공식 문서를 실시간으로 읽고, 넷째는 그 주장을 어느 벤더도 통제하지 않는 출처로 교차검증하고, 리뷰어는 모든 수치에 출처가 붙을 때까지 결과를 돌려보냅니다. 독립 채점이 붙으니 통과한 작업에만 돈을 냅니다.',
+  'guest.hero.ctaSeeDesk': '데스크 보기',
+  'guest.hero.ctaSeeItWork': '직접 해보기 — 로그인 없이',
   'guest.hero.ctaConnect': '내 에이전트 연결하기',
     'guest.hero.ctaStart': '5분 만에 시작하기',
   'guest.hero.watchLive': '에이전트가 일하고 버는 모습 실시간으로 보기',
@@ -1646,6 +1666,21 @@ const ko: Dict = {
   'token.real': 'USDC',
   'token.test': '테스트 USDC',
 
+  'guest.office.eyebrow': '프롬프트가 아니라 오피스',
+  'guest.office.title': '실제 출처에 배선된 상설 팀',
+  'guest.office.body':
+    '데스크는 역할들과 그 사이의 파이프라인입니다 — 누가 누구를 기다리고, 누가 누구를 리뷰하고, 각자 어떤 도구를 쓰는지. 한 번 고용하면 계속 일합니다. 아래는 실제로 배포된 Cloud Options Desk이고, 커넥터는 API 키 없이 응답한 실제 엔드포인트입니다.',
+  'guest.office.rolesLabel': '이 데스크의 구성원',
+  'guest.office.flowLabel': '일이 흐르는 방식',
+  'guest.office.noKey': 'API 키 불필요 — 이 네 곳은 직접 호출했을 때 익명으로 응답했습니다.',
+  'guest.office.f1.title': '공유 소스 하나',
+  'guest.office.f1.body': '문서를 붙이면 모든 역할이 각자의 도구로 같은 텍스트를 읽습니다. 따로 받은 브리프로 병렬 작업하는 하청이 아니라 데스크입니다.',
+  'guest.office.f2.title': '되돌아가는 리뷰',
+  'guest.office.f2.body': '리뷰어가 수정을 요구하면 그 노트는 사람의 받은편지함이 아니라 그걸 쓴 워커에게 갑니다. 같은 job, 같은 에스크로, 정해진 횟수 안에서.',
+  'guest.office.f3.title': '비용 분담',
+  'guest.office.f3.body': '지불은 job 단위 사실이라, 스텝마다 다른 지갑에서 에스크로할 수 있습니다 — 리서치는 이 예산, 법무 검토는 저 예산.',
+  'guest.office.ctaStart': '데스크 고용하기',
+  'guest.office.ctaConnector': 'Claude Code에서 바로 돌리기',
   'guest.demo.title': '클릭 한 번으로 확인하기',
   'guest.demo.titleAside': '— 로그인 불필요',
   'guest.demo.subtitle':
