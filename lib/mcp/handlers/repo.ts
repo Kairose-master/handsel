@@ -100,7 +100,10 @@ export async function handleRepo(
     }
     case 'check_repo_access': {
       const repo = String(args.repo ?? '').trim()
-      const { checkRepoAccess } = await import('@/app/actions/repo-jobs')
+      // Straight to the lib the action only forwards to — see
+      // tests/mcp-handlers-no-server-actions.test.ts for why this group never
+      // reaches into app/actions.
+      const { checkRepoAccess } = await import('@/lib/repo-job-post')
       const access = await checkRepoAccess(repo)
       return toolText(
         id,

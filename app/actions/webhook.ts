@@ -1,7 +1,7 @@
 'use server'
 
 import { headers } from 'next/headers'
-import type { McpMode } from '@/lib/mcp-assist'
+import type { McpWorkerWiring } from '@/lib/mcp-worker-wiring'
 import { getSession } from '@/lib/get-session'
 import { db } from '@/lib/db'
 import { agent } from '@/lib/db/schema'
@@ -159,67 +159,11 @@ export async function disconnectCloudApiWorker(agentId: string) {
  * is encrypted at rest with the same AES-256-GCM helper as every other stored
  * secret and decrypted only server-side at dispatch time.
  */
-export async function setMcpWorker(
-  agentId: string,
-  input: {
-    serverUrl: string
-    toolName: string
-    authHeader?: string
-    /** 'assisted' has the agent WRITE from what the tool returned instead of
-     *  submitting it verbatim — the right mode for a search-shaped server,
-     *  whose raw output is a result dump and not a deliverable. Omitted keeps
-     *  whatever the agent already had (and 'proxy' for a new one), so
-     *  re-saving a URL never silently changes how the worker behaves. See
-     *  lib/mcp-assist.ts. */
-    mode?: McpMode
-  },
-) {
-  await requireOwnedAgent(agentId)
-
-  const serverUrl = input.serverUrl.trim()
-  const toolName = input.toolName.trim()
-  const authHeader = input.authHeader?.trim()
-  if (!/^https:\/\//.test(serverUrl)) throw new Error('MCP server URL must start with https://')
-  if (!toolName) throw new Error('Tool name required (the tool on that server that does the work)')
-
-  // Best-effort: probe the server for the tool and auto-declare what this
-  // imported agent can produce, so the capability matcher routes it the right
-  // jobs (an image tool shouldn't be handed text-only work, and vice-versa).
-  // Non-fatal — a server that's momentarily down still registers as text.
-  let capabilities: string[] | undefined
-  try {
-    const { probeMcpTool } = await import('@/lib/mcp-client')
-    const tool = await probeMcpTool({ serverUrl, toolName, authHeader })
-    if (tool) {
-      const { inferDeliverableKind, normalizeCapabilities } = await import('@/lib/artifacts')
-      const kind = inferDeliverableKind(tool.name, tool.description ?? undefined)
-      capabilities = normalizeCapabilities([kind])
-    }
-  } catch (error) {
-    console.error('[setMcpWorker] capability probe failed (non-fatal):', error)
-  }
-
-  // Mint the per-agent callback secret (same as cloud/local/webhook) so the
-  // result callback dispatchToMcpWorker posts is authenticated, not open.
-  if (input.mode) {
-    const { setMcpMode } = await import('@/lib/mcp-mode')
-    await setMcpMode(agentId, input.mode)
-  }
-
-  const secret = generateWebhookSecret()
-  await db
-    .update(agent)
-    .set({
-      runtimeType: 'mcp',
-      mcpServerUrl: serverUrl,
-      mcpToolName: toolName,
-      mcpAuthHeaderEnc: authHeader ? encryptSecret(authHeader) : null,
-      webhookSecretEnc: encryptWebhookSecret(secret),
-      ...(capabilities ? { capabilities } : {}),
-      updatedAt: new Date(),
-    })
-    .where(eq(agent.id, agentId))
-
+export async function setMcpWorker(agentId: string, input: McpWorkerWiring) {
+  const session = await getSession()
+  if (!session?.user) throw new Error('Unauthorized')
+  const { setMcpWorkerFor } = await import('@/lib/mcp-worker-wiring')
+  await setMcpWorkerFor(session.user.id, agentId, input)
   revalidatePath('/profile')
   revalidatePath('/mine')
 }

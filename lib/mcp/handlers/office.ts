@@ -267,8 +267,10 @@ export async function handleOffice(
         )
       }
       const mode = args.mode === 'proxy' ? 'proxy' : 'assisted'
-      const { setMcpWorker } = await import('@/app/actions/webhook')
-      await setMcpWorker(found.id, {
+      // The lib, not the server action: an action reads the caller from the
+      // session cookie, which an MCP request does not have.
+      const { setMcpWorkerFor } = await import('@/lib/mcp-worker-wiring')
+      await setMcpWorkerFor(auth.userId, found.id, {
         serverUrl,
         toolName,
         authHeader: args.auth_header ? String(args.auth_header) : undefined,
