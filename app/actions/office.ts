@@ -395,9 +395,23 @@ export async function hireOfficeTemplate(
       // hired worker does the office's own work, instead of racing whoever
       // else is watching the public board when the job posts.
       assignedAgentId: agentIdByRoleId.get(step.roleId),
-      ...(step.dependsOnRoleIds.length
-        ? { dependsOn: step.dependsOnRoleIds.map((rid) => titleByRoleId.get(rid)!) }
-        : {}),
+      // A review always depends on what it reviews, whether or not the
+      // template said so — a reviewer posted before its target delivers has
+      // nothing to read. Deduped, so naming it in both places is harmless.
+      ...(() => {
+        const deps = [
+          ...new Set(
+            [...step.dependsOnRoleIds, ...(step.reviewOfRoleId ? [step.reviewOfRoleId] : [])].map(
+              (rid) => titleByRoleId.get(rid)!,
+            ),
+          ),
+        ]
+        return deps.length ? { dependsOn: deps } : {}
+      })(),
+      // Peer review (lib/delegation.ts ②): the reviewed step's escrow is held
+      // until this one approves, and a REVISE goes back to that step's own
+      // worker with the note rather than to a human.
+      ...(step.reviewOfRoleId ? { reviewOf: titleByRoleId.get(step.reviewOfRoleId)! } : {}),
       ...(splitRecipients.length ? { splitSpec: { recipients: splitRecipients } } : {}),
       // Absent = the prime pays, exactly as before per-step payers existed.
       ...(payerById.has(input.payerByRoleId?.[step.roleId] ?? '')

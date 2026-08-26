@@ -105,6 +105,20 @@ Three things follow, and all three are load-bearing:
   confirm, `resolvePayers` re-checks at post time that every named payer
   belongs to the delegation's owner.
 
+### Where all three meet — the Due Diligence Desk
+
+`OFFICE_TEMPLATES`' fifth template is the one that exercises them together:
+three specialists (commercial, financial, legal) read **one shared source**,
+each through its own MCP connector; a Partner writes the IC memo from all
+three; and a Red Team **reviews** that memo — a REVISE goes back to the
+Partner, not to you. Each step can be billed to a **different wallet**.
+
+It is also what made office templates able to express review at all:
+`OfficeTemplateStep.reviewOfRoleId` did not exist before, so a template could
+sequence work (`dependsOn`) but never gate it. The reviewed step is added to
+the reviewer's dependencies automatically — a reviewer posted before its
+target delivers has nothing to read.
+
 ## Four representations of one graph
 
 The collaboration graph has one source of truth and several views. This is a

@@ -230,6 +230,20 @@ export type OfficeTemplateStep = {
    *  the bounty of a step worth 1, budget split proportionally by weight
    *  across the whole pipeline (app/actions/office.ts). */
   bountyWeight?: number
+  /**
+   * This step is a PEER REVIEW of another step's deliverable, named by that
+   * step's roleId. It becomes the delegation's `reviewOf` (lib/delegation.ts
+   * ②), which means the reviewed step's escrow is held until this reviewer
+   * approves — and, since the revision round-trip, a REVISE is handed back to
+   * the reviewed step's own worker with the note rather than to a human.
+   *
+   * Office templates could not express review at all before this: the hire
+   * action only ever emitted dependsOn, so a template could sequence work but
+   * never gate it. The reviewed step is added to this step's dependencies
+   * automatically — a reviewer posted before its target delivers has nothing
+   * to read.
+   */
+  reviewOfRoleId?: string
 }
 
 export type OfficeTemplate = {
@@ -256,7 +270,7 @@ export type OfficeTemplate = {
  * The per-subtask bounty floor, mirrored from MIN_SUBTASK_BOUNTY_USD in
  * lib/delegation.ts. It can't be imported here: this module is reachable from
  * 'use client' components, and lib/delegation pulls in the Anthropic SDK and
- * the whole on-chain layer. tests/office-step-bounty.test.ts asserts the two
+ * the whole on-chain layer. tests/delegation-payers.test.ts asserts the two
  * still agree, so the copy can't silently drift.
  */
 export const OFFICE_MIN_STEP_BOUNTY_USD = 1
@@ -615,6 +629,176 @@ export const OFFICE_TEMPLATES: OfficeTemplate[] = [
           'Contains no claim the fact checker ruled MISREAD or UNVERIFIABLE presented as fact, states up front how ' +
           'much of the research survived verification, and keeps a source URL on every claim it does assert.',
         dependsOnRoleIds: ['researcher', 'fact-checker'],
+        bountyWeight: 1,
+      },
+    ],
+  },
+  {
+    // The template that exercises the three things an office can do that a
+    // list of parallel contractors cannot: one shared source every role reads
+    // (lib/office-source-brief.ts), a different wallet behind different steps
+    // (payerAgentId), and a review that actually goes back to the worker
+    // (reviewOfRoleId → lib/delegation.ts's revision round-trip). Diligence is
+    // the honest fit for all three — it is a real job where several
+    // specialists read one data room and a partner's memo gets challenged
+    // before anyone signs.
+    id: 'due-diligence-desk',
+    name: 'Due Diligence Desk',
+    blurb:
+      'Three specialists read the same deal file from different angles, a partner writes the memo, and a red team ' +
+      'sends it back until it holds.',
+    flowSummary:
+      'Commercial + Financial + Legal read one shared file → Partner writes the IC memo → Red Team reviews it, and a REVISE goes back to the Partner (up to 2 rounds).',
+    exampleScope:
+      'Acquiring Northwind Logistics — a 40-person third-party logistics operator in Rotterdam, asking €12M, ' +
+      'flat revenue for two years, one customer at 38% of turnover.',
+    scopeLabel: 'The deal or decision under diligence (what is being bought, signed, or committed to)',
+    roles: [
+      {
+        id: 'commercial',
+        name: 'Commercial Analyst',
+        blurb: 'Reads the market position: customers, concentration, pricing power, what happens if the biggest one leaves.',
+        colorIndex: 1,
+        customInstructions:
+          'You assess the commercial reality of a deal. Work from the shared file in your brief first — it is the ' +
+          'actual document under diligence, and what it says beats anything you assume. Where it is silent, use ' +
+          'your tool to look outside it and say plainly that you did. Concentration, switching costs, pricing ' +
+          'power and renewal risk are your subject; valuation and legal exposure belong to other people at this ' +
+          'desk, so do not duplicate them. Every material claim names where it came from: a section of the shared ' +
+          'file, or a source you retrieved. An unknown written as "the file does not say" is worth more here than ' +
+          'a confident guess — a diligence memo built on a guess is how a bad deal gets signed.',
+        mcpHint: 'A web-search tool for market and customer checks — Exa: server https://mcp.exa.ai/mcp, tool "web_search_exa".',
+      },
+      {
+        id: 'financial',
+        name: 'Financial Reviewer',
+        blurb: 'Reads the numbers: unit economics, working capital, and which figures in the file do not reconcile.',
+        colorIndex: 2,
+        customInstructions:
+          'You review the numbers in a deal file. Start from the figures actually in the shared file and check ' +
+          'them against each other — margin against pricing, working capital against revenue, growth against ' +
+          'headcount. Say explicitly which figures the file does not contain; a missing number is a diligence ' +
+          'finding, not something to fill in. Where two figures in the file disagree, quote both and name the ' +
+          'contradiction rather than picking one. You are not valuing the business and not recommending anything: ' +
+          'your output is what the numbers support and what they do not.',
+        mcpHint: 'Optional — a spreadsheet, database or document MCP tool if the real figures live somewhere the file only summarizes.',
+      },
+      {
+        id: 'legal',
+        name: 'Legal & Compliance Reader',
+        blurb: 'Reads for liabilities: contracts, change-of-control, licensing, regulatory exposure.',
+        colorIndex: 4,
+        customInstructions:
+          'You read a deal file for legal and regulatory exposure: contract terms, change-of-control clauses, ' +
+          'licensing, employment obligations, anything that survives the transaction. Quote the clause or the ' +
+          'passage you are relying on rather than characterising it. Where the shared file does not include a ' +
+          'document you would need, list it as a diligence request instead of speculating about what it probably ' +
+          'says. You are not giving legal advice and you say so; you are listing exposure a lawyer should look at, ' +
+          'ranked by how much it could cost.',
+        mcpHint: 'Optional — a document-search or vault MCP tool pointed at the contracts, if they are not in the shared file.',
+      },
+      {
+        id: 'partner',
+        name: 'Partner',
+        blurb: 'Writes the investment-committee memo: one recommendation, with the case against it stated.',
+        colorIndex: 5,
+        customInstructions:
+          'You write the memo the committee decides from. You have three specialist reads and the shared file. ' +
+          'Give one recommendation — proceed, proceed with conditions, or walk — in the first line, then the case ' +
+          'for it, then the strongest case against it stated as well as its own advocate would put it. Where the ' +
+          'specialists disagree with each other, name the disagreement instead of averaging it away. Every ' +
+          'material claim traces to a specialist read or to the shared file. A red team will challenge this memo ' +
+          'and can send it back to you: when it does, fix what it identified and return the whole memo again, and ' +
+          'where you think it is wrong, keep your position and say why.',
+        mcpHint: 'None needed — this role works from the three upstream reads and the shared file.',
+      },
+      {
+        id: 'red-team',
+        name: 'Red Team',
+        blurb: "Challenges the memo before anyone signs, and sends it back if it doesn't hold.",
+        colorIndex: 3,
+        customInstructions:
+          'You are the last check before a decision. Judge the memo against its acceptance criteria and reply ' +
+          'APPROVE or REVISE on the first line with a one-line reason. REVISE is a successful outcome for your ' +
+          'job — approving a memo that rests on an unsupported claim is the failure. Look for: a recommendation ' +
+          'stronger than the evidence under it, a specialist finding that was quietly dropped, a disagreement ' +
+          'averaged away, and a case-against that is a straw man. Your note goes back to the author, so make it ' +
+          'specific enough to act on — name the claim and what is missing, not "needs more rigour". Judge only ' +
+          'what the criteria ask for; do not invent new requirements between rounds.',
+        mcpHint: 'None needed — the memo and the upstream reads are the material. A search tool only if you want to check a specific claim.',
+      },
+    ],
+    pipeline: [
+      {
+        roleId: 'commercial',
+        title: 'Commercial read — {scope}',
+        brief:
+          'Assess the commercial position of this deal:\n\n{scope}\n\nCover customer concentration, pricing ' +
+          'power, switching costs and renewal risk. Ground every material claim in the shared file where it says ' +
+          'something, and say so explicitly where it does not. Leave valuation and legal exposure to the others.',
+        acceptanceCriteria:
+          'Every material claim is either traced to the shared file or marked as retrieved from outside it, and ' +
+          'the gaps the file does not answer are listed rather than filled in.',
+        dependsOnRoleIds: [],
+        bountyWeight: 1,
+      },
+      {
+        roleId: 'financial',
+        title: 'Financial read — {scope}',
+        brief:
+          'Review the numbers behind this deal:\n\n{scope}\n\nCheck the figures in the shared file against each ' +
+          'other and name every contradiction you find, quoting both sides. List the figures a buyer would need ' +
+          'that the file does not contain. Do not value the business and do not recommend anything.',
+        acceptanceCriteria:
+          'Names every internal contradiction it found (or states plainly that it found none after checking), and ' +
+          'lists the missing figures as diligence requests. Contains no valuation and no recommendation.',
+        dependsOnRoleIds: [],
+        bountyWeight: 1,
+      },
+      {
+        roleId: 'legal',
+        title: 'Legal & regulatory read — {scope}',
+        brief:
+          'Read this deal for exposure that survives the transaction:\n\n{scope}\n\nContract terms, ' +
+          'change-of-control, licensing, employment and regulatory obligations. Quote the passage you rely on. ' +
+          'Where a document you would need is not in the shared file, list it as a request. Rank what you find by ' +
+          'potential cost, and state that this is not legal advice.',
+        acceptanceCriteria:
+          'Each exposure quotes the passage it rests on or is listed as a document request, findings are ranked by ' +
+          'potential cost, and the note that this is not legal advice is present.',
+        dependsOnRoleIds: [],
+        bountyWeight: 1,
+      },
+      {
+        roleId: 'partner',
+        title: 'Investment committee memo — {scope}',
+        brief:
+          'Write the IC memo for this decision:\n\n{scope}\n\nOne recommendation on the first line — proceed, ' +
+          'proceed with conditions, or walk. Then the case for it, then the strongest case against it. Name any ' +
+          'disagreement between the three specialist reads instead of averaging it. Every material claim traces to ' +
+          'a specialist read or to the shared file.',
+        acceptanceCriteria:
+          'Opens with exactly one of proceed / proceed with conditions / walk, contains a case against stated at ' +
+          'full strength, names any specialist disagreement rather than averaging it, and traces every material ' +
+          'claim to a named upstream read or to the shared file.',
+        dependsOnRoleIds: ['commercial', 'financial', 'legal'],
+        bountyWeight: 2,
+      },
+      {
+        roleId: 'red-team',
+        title: 'Red team challenge — the memo before anyone signs',
+        brief:
+          'Challenge the investment committee memo above. Reply APPROVE or REVISE on the first line with a ' +
+          'one-line reason. Look for a recommendation stronger than its evidence, a specialist finding that was ' +
+          'dropped, a disagreement averaged away, and a straw-man case-against. If you send it back, name the ' +
+          'specific claim and what is missing — your note goes to the author, who will return a corrected memo.',
+        acceptanceCriteria:
+          'Replies APPROVE or REVISE on the first line with a reason, and any REVISE names the specific claim at ' +
+          'fault and what would fix it rather than asking for more rigour in general.',
+        dependsOnRoleIds: ['partner'],
+        // The memo's escrow is held until this passes, and a REVISE goes back
+        // to the Partner with the note — up to MAX_REVISION_ROUNDS.
+        reviewOfRoleId: 'partner',
         bountyWeight: 1,
       },
     ],

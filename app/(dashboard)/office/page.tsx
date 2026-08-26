@@ -348,6 +348,10 @@ function HireOfficeTemplateDialog({
   // that step's payer is actually asked for.
   const budgetOk = Number.isFinite(Number(budgetUsd)) && Number(budgetUsd) > 0
   const stepBounties = officeStepBounties(template, budgetOk ? Number(budgetUsd) : 0)
+  // Each step's share rounds to cents on its own, so a weighted split can
+  // land a cent or two off the figure typed above. Shown rather than
+  // absorbed: the escrow is the sum of the steps, not the number in the box.
+  const bountyTotal = [...stepBounties.values()].reduce((sum, x) => sum + x, 0)
   const splitSteps = template.pipeline.filter((step) => {
     const picked = payerByRoleId[step.roleId]
     return Boolean(picked) && picked !== primeAgentId
@@ -614,6 +618,11 @@ function HireOfficeTemplateDialog({
                   setBudgetTouched(true)
                 }}
               />
+              {budgetOk && Math.abs(bountyTotal - Number(budgetUsd)) >= 0.005 && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Escrows ${bountyTotal.toFixed(2)} — each step&apos;s share rounds to cents on its own.
+                </p>
+              )}
             </div>
 
             {/* Per-step payers. Collapsed by default because one payer is the
