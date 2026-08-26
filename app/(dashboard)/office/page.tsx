@@ -674,11 +674,13 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
 
 function OfficeTabs({
   slots,
+  slotsError,
   activeSlot,
   onSelect,
   onCreated,
 }: {
   slots: OfficeSlot[]
+  slotsError: string | null
   activeSlot: number
   onSelect: (slot: number) => void
   onCreated: (slot: number) => void
@@ -707,11 +709,17 @@ function OfficeTabs({
     }
   }
 
+  // Slot 1 always exists server-side (listOfficeSlots creates it on first
+  // read), so an empty list means the read failed, not that the account has
+  // no office. Show the current one rather than a bare "+ New office".
+  const shown: OfficeSlot[] = slots.length > 0 ? slots : [{ slot: activeSlot, name: 'Main Office' }]
+
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {slots.map((s) => (
+      {shown.map((s) => (
         <button
           key={s.slot}
+          type="button"
           onClick={() => onSelect(s.slot)}
           className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
             s.slot === activeSlot ? 'border-primary bg-primary/10 font-medium' : 'border-border text-muted-foreground hover:bg-muted/50'
@@ -720,7 +728,7 @@ function OfficeTabs({
           {s.name}
         </button>
       ))}
-      {slots.length < MAX_OFFICE_SLOTS &&
+      {shown.length < MAX_OFFICE_SLOTS &&
         (adding ? (
           <form onSubmit={submit} className="flex items-center gap-1.5">
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Office name" className="h-8 w-40" autoFocus />
@@ -741,6 +749,11 @@ function OfficeTabs({
           </button>
         ))}
       {error && <p className="w-full text-xs text-destructive">{error}</p>}
+      {slotsError && (
+        <p className="w-full text-xs text-muted-foreground">
+          {slotsError} Showing the office you were on — reload to try again.
+        </p>
+      )}
     </div>
   )
 }
@@ -753,14 +766,31 @@ export default function OfficePage() {
   const [visitMessage, setVisitMessage] = useState<string | null>(null)
   const [connections, setConnections] = useState<ConnectedOffice[]>([])
   const [slots, setSlots] = useState<OfficeSlot[]>([])
+  const [slotsError, setSlotsError] = useState<string | null>(null)
   const [activeSlot, setActiveSlot] = useState(1)
   const [loading, setLoading] = useState(true)
 
+  // allSettled, not all: these three are independent, and Promise.all threw
+  // the other two away whenever any one rejected. Because refresh() had no
+  // catch either, a single failing action left `slots` empty — so the office
+  // tabs silently vanished while "+ New office" kept rendering (0 < MAX), and
+  // nothing on screen said anything had failed. That is what "can't switch
+  // offices, but the new-office button is there" was.
   const refresh = async () => {
-    const [c, list, officeList] = await Promise.all([myOfficeCode(), myConnectedOffices(), myOfficeSlots()])
-    setCode(c)
-    setConnections(list)
-    setSlots(officeList)
+    const [codeRes, connRes, slotRes] = await Promise.allSettled([
+      myOfficeCode(),
+      myConnectedOffices(),
+      myOfficeSlots(),
+    ])
+    if (codeRes.status === 'fulfilled') setCode(codeRes.value)
+    if (connRes.status === 'fulfilled') setConnections(connRes.value)
+    if (slotRes.status === 'fulfilled') {
+      setSlots(slotRes.value)
+      setSlotsError(null)
+    } else {
+      console.error('[office] could not load office list:', slotRes.reason)
+      setSlotsError('Could not load your offices just now.')
+    }
   }
 
   useEffect(() => {
@@ -820,6 +850,7 @@ export default function OfficePage() {
 
       <OfficeTabs
         slots={slots}
+        slotsError={slotsError}
         activeSlot={activeSlot}
         onSelect={setActiveSlot}
         onCreated={(slot) => {
