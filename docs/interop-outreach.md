@@ -130,13 +130,20 @@ four hours for a signal this very section records as invisible. Nothing here
 moves on a four-hour timescale: upstream `sync:` commits land every few days at
 best (2026-08-01, -07, -10, -11, -12, -16).
 
-**Verified 2026-08-25, git-only, all unchanged.** SWE-AF: nothing has touched
+**Verified 2026-08-26, git-only, all unchanged.** SWE-AF: nothing has touched
 `examples/agent-comparison/` since our merge `dfd3157`; the README table still
 reads Codex/CC-Haiku `Structure 10` against the merged scorer's 20, so the
-divergence stands and they have neither regenerated nor recalibrated.
-taskmarket-contracts: still no `.gitmodules` (thread 1 unabsorbed); the only
-sync since 08-12 is `657b9f7` (08-16), which touched `docker/anvil/Dockerfile`
-alone — so PR #12's fix is unabsorbed too.
+divergence stands and they have neither regenerated nor recalibrated. Its
+README *has* moved twice (`f9aec21` #140, `0c64fe7` #142) — a Railway deploy
+link and a Docker `HARNESS_MODEL` fix, neither near the benchmark table, which
+is worth recording so the next check doesn't read the churn as a response.
+taskmarket-contracts: still no `.gitmodules` (thread 1 unabsorbed). One new
+sync has landed since the previous check — `6584077` (08-25), a single-line
+correction to a path inside an ERC-8195 spec document
+(`docs/CONTRACTS_GUIDE.md` → `docs/guides/CONTRACTS_GUIDE.md`). It touches no
+contract, and nothing has touched RewardVault or `claimTask` since `657b9f7`,
+so PR #12's fix is unabsorbed too. The base rate holds: syncs keep arriving,
+none of them ours.
 
 ## Inbound, for the first time (2026-08-18)
 
