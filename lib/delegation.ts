@@ -130,6 +130,22 @@ export interface DelegationSubtask {
    *  planner-authored, same as splitSpec — office templates are the only
    *  producer, set from the step's own roleId's resolved agentId. */
   assignedAgentId?: string
+  /** Which of the OWNER's agents escrows this subtask's bounty. Absent (the
+   *  default, and every plan written before this existed) means the
+   *  delegation's own prime agent pays, exactly as before.
+   *
+   *  A delegation used to have precisely one payer, because
+   *  `delegation.primeAgentId` is a single column and every job was posted
+   *  from it — so an office could only ever have one wallet behind it, no
+   *  matter how many agents worked in it. The payer is a per-job fact, not a
+   *  per-delegation one: the contract escrows from whoever posts.
+   *
+   *  Never planner-authored, same as splitSpec and assignedAgentId. The
+   *  subtask list is jsonb and therefore tamperable between plan and confirm,
+   *  so `resolvePayers` re-checks at post time that every named payer is an
+   *  agent of this delegation's owner — an unowned id must never become a
+   *  wallet this code spends from. */
+  payerAgentId?: string
 }
 
 /** Parse a peer reviewer's free-text verdict into a decision. Pure. Defaults
@@ -540,9 +556,72 @@ export async function expandSubcontracts(
 /** Post ONE planned subtask as a real escrowed job from the prime agent's
  *  wallet, filling in its specHash/onchainJobId. Shared by the initial wave
  *  (postDelegationJobs) and the dependency scheduler (tickDelegation). */
-async function postOneSubtask(
+/** Who escrows this subtask — its own named payer, or the delegation's prime
+ *  agent when it doesn't name one. Pure. */
+export function payerIdFor(st: DelegationSubtask, primeAgentId: string): string {
+  return st.payerAgentId?.trim() || primeAgentId
+}
+
+/** What each payer still has to fund, in dollars, keyed by agent id.
+ *
+ *  Only counts subtasks that haven't been posted yet and aren't integration
+ *  subtasks (platform-verified, bounty 0, never escrowed) — so a retried
+ *  confirm re-checks only the remainder, and the precheck reflects each
+ *  wallet's OWN obligation rather than one wallet's against the whole plan.
+ *  Pure. */
+export function escrowByPayer(
+  subtasks: DelegationSubtask[],
   primeAgentId: string,
-  primeName: string,
+): Map<string, number> {
+  const out = new Map<string, number>()
+  for (const st of subtasks) {
+    if (st.isIntegration) continue
+    if (st.onchainJobId !== undefined) continue
+    const id = payerIdFor(st, primeAgentId)
+    out.set(id, Math.round(((out.get(id) ?? 0) + st.bountyUsd) * 100) / 100)
+  }
+  return out
+}
+
+type Payer = { id: string; name: string; userId: string; smartAccountAddress: string | null }
+
+/** Load every distinct payer a plan names, and refuse any that isn't the
+ *  owner's.
+ *
+ *  This is the security boundary for per-subtask payers. `subtasks` is jsonb
+ *  and can be edited between plan and confirm, so an id arriving here is an
+ *  untrusted claim: without this check a tampered plan would have the
+ *  platform escrow from a wallet belonging to somebody else. Same defense-in-
+ *  depth reasoning as re-validating the budget in postDelegationJobs. */
+async function resolvePayers(
+  primeAgentId: string,
+  ownerId: string,
+  subtasks: DelegationSubtask[],
+): Promise<Map<string, Payer>> {
+  const ids = [...new Set([primeAgentId, ...subtasks.map((st) => payerIdFor(st, primeAgentId))])]
+  const rows = await db
+    .select({
+      id: agent.id,
+      name: agent.name,
+      userId: agent.userId,
+      smartAccountAddress: agent.smartAccountAddress,
+    })
+    .from(agent)
+    .where(inArray(agent.id, ids))
+  const byId = new Map(rows.filter((r) => r.userId === ownerId).map((r) => [r.id, r as Payer]))
+  for (const id of ids) {
+    const found = byId.get(id)
+    if (!found) throw new Error('A subtask names a paying agent that does not belong to this account')
+    if (!found.smartAccountAddress) {
+      throw new Error(`${found.name} has no provisioned wallet — provision it before it can escrow a bounty`)
+    }
+  }
+  return byId
+}
+
+async function postOneSubtask(
+  payerAgentId: string,
+  payerName: string,
   ownerId: string,
   st: DelegationSubtask,
   autoVerify: boolean,
@@ -569,7 +648,7 @@ async function postOneSubtask(
         ? 'text'
         : inferDeliverableKind(st.title, st.description, st.acceptanceCriteria)
   const sealed = sealForInsert(
-    primeAgentId,
+    payerAgentId,
     {
       title: st.title,
       description,
@@ -587,14 +666,14 @@ async function postOneSubtask(
   await ensureJobSpecColumns()
   await db.insert(jobSpec).values({
     ...sealed,
-    requesterAgentId: primeAgentId,
+    requesterAgentId: payerAgentId,
     autoApprove: autoVerify || Boolean(st.testCode),
     officeOwnerId: st.reviewOf && st.officeOnly ? ownerId : null,
     splitSpec: st.splitSpec ?? null,
   })
   // Bundler rate-limits back-to-back userops (free tier) — space them.
   if (spaceOut) await new Promise((r) => setTimeout(r, 2000))
-  await postJob(primeAgentId, st.bountyUsd, 0, specHash)
+  await postJob(payerAgentId, st.bountyUsd, 0, specHash)
   // postJob doesn't return the id — resolve via specHash. maxAgeMs 0: we JUST
   // wrote this job; a cached read from before the tx would miss it.
   const jobs = await readJobs({ maxAgeMs: 0 })
@@ -604,7 +683,7 @@ async function postOneSubtask(
     const { reserveJobForAgent } = await import('@/lib/job-reservation')
     await reserveJobForAgent(specHash, st.assignedAgentId)
   }
-  await logPlatformEvent('JOB_POSTED', `${primeName} subcontracted "${st.title}" — $${st.bountyUsd} bounty (delegation)`)
+  await logPlatformEvent('JOB_POSTED', `${payerName} subcontracted "${st.title}" — $${st.bountyUsd} bounty (delegation)`)
 }
 
 /** Post every planned subtask as a real escrowed job from the prime
@@ -626,19 +705,24 @@ export async function postDelegationJobs(
 
   const [prime] = await db.select().from(agent).where(eq(agent.id, primeAgentId))
   if (!prime?.smartAccountAddress) throw new Error('Prime agent has no provisioned wallet')
+  // Every wallet this plan will escrow from, checked to be the owner's.
+  const payers = await resolvePayers(primeAgentId, prime.userId, subtasks)
 
   // Check the escrow is actually affordable BEFORE the first on-chain call —
   // a raw "USDC: balance" revert mid-posting is undiagnosable for users.
-  // Integration subtasks are platform-verified (bounty 0) — never escrowed.
-  const remaining = subtasks.filter((st) => st.onchainJobId === undefined && !st.isIntegration)
-  const needed = remaining.reduce((s, x) => s + x.bountyUsd, 0)
+  // Per payer, not in aggregate: with several paying agents a plan can be
+  // affordable overall and still revert on the one wallet that's short.
   try {
     const { usdcBalanceOf } = await import('@/lib/onchain/treasury')
-    const balance = await usdcBalanceOf(prime.smartAccountAddress as `0x${string}`)
-    if (balance < needed) {
-      throw new Error(
-        `${prime.name}'s wallet holds $${balance.toFixed(2)} but posting the remaining subtasks escrows $${needed.toFixed(2)} — mint test USDC on the agent's Treasury card first`,
-      )
+    for (const [payerId, needed] of escrowByPayer(subtasks, primeAgentId)) {
+      if (needed <= 0) continue
+      const payer = payers.get(payerId)!
+      const balance = await usdcBalanceOf(payer.smartAccountAddress as `0x${string}`)
+      if (balance < needed) {
+        throw new Error(
+          `${payer.name}'s wallet holds $${balance.toFixed(2)} but the subtasks it pays for escrow $${needed.toFixed(2)} — mint test USDC on that agent's Treasury card first`,
+        )
+      }
     }
   } catch (error) {
     if (error instanceof Error && error.message.includes('mint test USDC')) throw error
@@ -664,7 +748,8 @@ export async function postDelegationJobs(
     if (st.isIntegration) continue // platform-verified after work completes — never posted/escrowed
     if (st.onchainJobId !== undefined) continue // already posted (confirm retried)
     if (st.dependsOn?.length) continue // waits on upstream — the wave scheduler posts it later
-    await postOneSubtask(primeAgentId, prime.name, prime.userId, st, autoVerify, postedCount > 0, planDsl)
+    const payer = payers.get(payerIdFor(st, primeAgentId))!
+    await postOneSubtask(payer.id, payer.name, prime.userId, st, autoVerify, postedCount > 0, planDsl)
     postedCount++
   }
   return subtasks
@@ -977,7 +1062,10 @@ export async function tickDelegation(
               `"${st.title}" — passed grading, now awaiting an independent peer review before escrow releases`,
             )
           } else {
-            const txHash = await approveJob(row.primeAgentId, st.onchainJobId)
+            // The contract only lets the job's REQUESTER release it, and
+            // the requester is whoever posted — the subtask's own payer, not
+            // necessarily the prime.
+            const txHash = await approveJob(payerIdFor(st, row.primeAgentId), st.onchainJobId)
             const { creditWorkerForJob } = await import('@/app/actions/labor')
             await creditWorkerForJob(job.worker, st.onchainJobId, job.bounty, txHash)
             st.output = output ?? `(${kind} deliverable — see attached artifact)`
@@ -1017,6 +1105,17 @@ export async function tickDelegation(
   )
   if (heldBack.length) {
     const [prime] = await db.select().from(agent).where(eq(agent.id, row.primeAgentId))
+    // Each held-back subtask escrows from its own payer once its wave opens.
+    // If this can't be resolved — a tampered plan naming somebody else's
+    // agent, or just a DB hiccup — the wave stays held back and retries on
+    // the next tick. Deliberately not "fall back to the prime": that would
+    // quietly spend a wallet the plan didn't name.
+    let payers: Map<string, Payer> | null = null
+    try {
+      payers = prime ? await resolvePayers(row.primeAgentId, prime.userId, heldBack) : null
+    } catch (error) {
+      console.error(`[delegation] ${row.id}: cannot resolve subtask payers, holding the wave:`, error)
+    }
     const planDsl =
       subtasks.filter((s) => !s.isIntegration).length > 1
         ? graphToDsl({ task: row.task, budgetUsd: Number(row.budgetUsd), subtasks }, { compact: true })
@@ -1090,7 +1189,10 @@ export async function tickDelegation(
         st.dependencyInjected = true
       }
       try {
-        if (prime) await postOneSubtask(row.primeAgentId, prime.name, prime.userId, st, row.autoVerify, false, planDsl)
+        const payer = payers?.get(payerIdFor(st, row.primeAgentId))
+        if (prime && payer) {
+          await postOneSubtask(payer.id, payer.name, prime.userId, st, row.autoVerify, false, planDsl)
+        }
         changed = true
       } catch (error) {
         console.error('[delegation] failed to post dependent subtask (will retry):', error)
@@ -1127,7 +1229,7 @@ export async function tickDelegation(
     if (verdict === 'approve') {
       if (targetJob && target.onchainJobId !== undefined && targetJob.status === 'Submitted') {
         try {
-          const txHash = await approveJob(row.primeAgentId, target.onchainJobId)
+          const txHash = await approveJob(payerIdFor(target, row.primeAgentId), target.onchainJobId)
           const { creditWorkerForJob } = await import('@/app/actions/labor')
           await creditWorkerForJob(targetJob.worker, target.onchainJobId, targetJob.bounty, txHash)
         } catch (error) {

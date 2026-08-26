@@ -42,7 +42,15 @@ import {
 import { setMcpWorker, disconnectMcpWorker } from '@/app/actions/webhook'
 import OfficeWorld from './game/OfficeWorld'
 import { LiveOffice, type Agent } from './game/live-engine'
-import { AGENT_TEMPLATES, OFFICE_TEMPLATES, MAX_OFFICE_SLOTS, colorsFor, type OfficeSlot, type McpConnector } from '@/lib/office-world-data'
+import {
+  AGENT_TEMPLATES,
+  OFFICE_TEMPLATES,
+  MAX_OFFICE_SLOTS,
+  colorsFor,
+  officeStepBounties,
+  type OfficeSlot,
+  type McpConnector,
+} from '@/lib/office-world-data'
 import './game/office.css'
 
 const POLL_MS = 12_000
@@ -242,6 +250,12 @@ function HireOfficeTemplateDialog({
   // search, a private vault and market data side by side.
   const [connectors, setConnectors] = useState<McpConnector[]>([])
   const [bindings, setBindings] = useState<Record<string, { connectorId: string; toolName: string }>>({})
+  // Per-step payers. An office had one paying agent only because the
+  // delegation posted every job from its prime; escrow comes from whoever
+  // posts, so a step can just as well be funded by a different wallet.
+  // Empty = the prime pays for everything, which is the old behavior.
+  const [billOpen, setBillOpen] = useState(false)
+  const [payerByRoleId, setPayerByRoleId] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<HireOfficeTemplateResult | null>(null)
@@ -314,6 +328,15 @@ function HireOfficeTemplateDialog({
 
   /** At least one agent has an on-chain account, so the form can be completed. */
   const canPay = agents.some((a) => a.provisioned)
+  // The same arithmetic the hire action escrows with (lib/office-world-data),
+  // not a second copy of it — the amount shown beside a step is the amount
+  // that step's payer is actually asked for.
+  const budgetOk = Number.isFinite(Number(budgetUsd)) && Number(budgetUsd) > 0
+  const stepBounties = officeStepBounties(template, budgetOk ? Number(budgetUsd) : 0)
+  const splitSteps = template.pipeline.filter((step) => {
+    const picked = payerByRoleId[step.roleId]
+    return Boolean(picked) && picked !== primeAgentId
+  }).length
 
   // Picking a template fills the scope with a ready-to-use example — hire is
   // one click for anyone just trying a template, not a blank form. Once the
@@ -327,6 +350,9 @@ function HireOfficeTemplateDialog({
     // step count left the first one's figure sitting in the field. Follow the
     // selection unless the owner has typed their own number.
     if (!budgetTouched && next) setBudgetUsd(String(next.pipeline.length * 2))
+    // Role ids are per-template, so keeping the old picks would leave entries
+    // that quietly match nothing.
+    setPayerByRoleId({})
   }
 
   if (!open) return null
@@ -339,6 +365,8 @@ function HireOfficeTemplateDialog({
     setMcpOpen(false)
     setConnectors([])
     setBindings({})
+    setBillOpen(false)
+    setPayerByRoleId({})
     setError(null)
     setResult(null)
   }
@@ -360,6 +388,10 @@ function HireOfficeTemplateDialog({
         budgetUsd: Number(budgetUsd),
         mcpConnectors: mcpOpen ? connectors : undefined,
         mcpBindings: mcpOpen ? bindings : undefined,
+        // Sent whether or not the section is expanded — collapsing is only
+        // hiding, and a pick that silently stopped applying would move money
+        // from a wallet the person thought they had reassigned.
+        payerByRoleId: splitSteps > 0 ? payerByRoleId : undefined,
         officeSlot,
       })
       if ('error' in res) {
@@ -560,6 +592,69 @@ function HireOfficeTemplateDialog({
                   setBudgetTouched(true)
                 }}
               />
+            </div>
+
+            {/* Per-step payers. Collapsed by default because one payer is the
+                ordinary case; the summary line means a pick is never hidden
+                by collapsing the section. */}
+            <div>
+              <Button type="button" variant="outline" size="sm" onClick={() => setBillOpen((v) => !v)}>
+                {billOpen ? 'Hide' : 'Split the bill across agents (optional)'}
+              </Button>
+              {!billOpen && splitSteps > 0 && (
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  {splitSteps} step{splitSteps === 1 ? '' : 's'} billed to another agent.
+                </p>
+              )}
+              {billOpen && (
+                <div className="mt-3 space-y-2 rounded-md border border-border p-3">
+                  <p className="text-xs text-muted-foreground">
+                    Each step escrows from whichever agent posts it, so an office doesn&apos;t have to run on one
+                    wallet — a research step can come out of one budget and a legal review out of another. Left on
+                    the prime, everything bills to it as before. Amounts are this step&apos;s share of the budget.
+                  </p>
+                  <div className="hairline-grid overflow-hidden rounded-md border border-border">
+                    {template.pipeline.map((step, i) => (
+                      <div key={step.roleId} className="flex flex-wrap items-center gap-2 px-2.5 py-2">
+                        <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                          {String(i + 1).padStart(2, '0')}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-xs font-medium">
+                          {step.title.replaceAll('{scope}', scope)}
+                        </span>
+                        <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                          {/* A dash, not $1.00: with the budget field empty
+                              the split floors every step, and printing that
+                              would state an amount nothing is going to
+                              escrow. */}
+                          {budgetOk ? `$${(stepBounties.get(step.roleId) ?? 0).toFixed(2)}` : '—'}
+                        </span>
+                        <select
+                          aria-label={`Who pays for ${step.title.replaceAll('{scope}', scope)}`}
+                          value={payerByRoleId[step.roleId] ?? ''}
+                          onChange={(e) =>
+                            setPayerByRoleId((prev) => {
+                              const next = { ...prev }
+                              if (e.target.value) next[step.roleId] = e.target.value
+                              else delete next[step.roleId]
+                              return next
+                            })
+                          }
+                          className="h-8 w-full rounded-md border border-border bg-background px-2 text-xs sm:w-48"
+                        >
+                          <option value="">Prime agent</option>
+                          {agents.map((a) => (
+                            <option key={a.id} value={a.id} disabled={!a.provisioned}>
+                              {a.name}
+                              {a.provisioned ? '' : ' (not provisioned)'}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div>

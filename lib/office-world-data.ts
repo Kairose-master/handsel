@@ -252,6 +252,38 @@ export type OfficeTemplate = {
   pipeline: OfficeTemplateStep[]
 }
 
+/**
+ * The per-subtask bounty floor, mirrored from MIN_SUBTASK_BOUNTY_USD in
+ * lib/delegation.ts. It can't be imported here: this module is reachable from
+ * 'use client' components, and lib/delegation pulls in the Anthropic SDK and
+ * the whole on-chain layer. tests/office-step-bounty.test.ts asserts the two
+ * still agree, so the copy can't silently drift.
+ */
+export const OFFICE_MIN_STEP_BOUNTY_USD = 1
+
+/**
+ * How a template's total budget divides across its pipeline steps, keyed by
+ * roleId. Pure, and the single definition of that arithmetic: the hire action
+ * escrows exactly these amounts and the hire dialog shows exactly these
+ * amounts, so what a person reads before choosing who pays for which step is
+ * what that agent's wallet is actually asked for.
+ *
+ * Weight defaults to 1 (equal split). A step whose weighted share falls under
+ * the floor is raised to it — which means a heavily lopsided plan can total
+ * slightly more than the budget, exactly as postDelegationJobs' own budget
+ * check already tolerates.
+ */
+export function officeStepBounties(template: OfficeTemplate, budgetUsd: number): Map<string, number> {
+  const totalWeight = template.pipeline.reduce((s, step) => s + (step.bountyWeight ?? 1), 0)
+  const unitUsd = totalWeight > 0 ? budgetUsd / totalWeight : 0
+  return new Map(
+    template.pipeline.map((step) => [
+      step.roleId,
+      Math.max(OFFICE_MIN_STEP_BOUNTY_USD, Math.round(unitUsd * (step.bountyWeight ?? 1) * 100) / 100),
+    ]),
+  )
+}
+
 export const OFFICE_TEMPLATES: OfficeTemplate[] = [
   {
     id: 'securities-desk',

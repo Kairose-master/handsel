@@ -188,10 +188,26 @@ export async function getMyDelegations() {
       // Transparent money breakdown — escrow/released/refunded/locked, plus
       // gas (sponsored, $0) and fee ($0) stated so nothing is unexplained.
       cost: delegationCost(row, jobs),
-      subtasks:
-        row.status === 'planned'
-          ? (row.subtasks as DelegationSubtask[]).map((st) => ({ ...st, jobStatus: null, workerLabel: null }))
-          : await subtaskViews(row, jobs),
+      // Who escrows each subtask. Named only where it ISN'T the prime — a
+      // delegation with one payer (still the common case) would otherwise
+      // repeat the same name down every line. Unresolvable ids are labelled
+      // rather than dropped: a plan naming a wallet outside this account is
+      // something the owner must see before confirming, and postDelegationJobs
+      // refuses it at that point.
+      subtasks: (row.status === 'planned'
+        ? (row.subtasks as DelegationSubtask[]).map((st) => ({
+            ...st,
+            jobStatus: null as string | null,
+            workerLabel: null as string | null,
+          }))
+        : await subtaskViews(row, jobs)
+      ).map((st) => ({
+        ...st,
+        payerLabel:
+          st.payerAgentId && st.payerAgentId !== row.primeAgentId
+            ? (agentName.get(st.payerAgentId) ?? 'an agent outside this account')
+            : null,
+      })),
     })),
   )
 }

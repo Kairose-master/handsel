@@ -258,6 +258,11 @@ function DelegationCard({ d, onChanged }: { d: Delegation; onChanged: () => void
             <div className="min-w-0 flex-1">
               <p className="font-medium">
                 {st.title} <span className="font-normal text-muted-foreground">— ${st.bountyUsd}</span>
+                {st.payerLabel && (
+                  <span className="ml-2 rounded bg-secondary px-1.5 py-0.5 text-xs font-normal text-muted-foreground">
+                    paid by {st.payerLabel}
+                  </span>
+                )}
                 {st.jobStatus && (
                   <span className="ml-2 rounded bg-secondary px-1.5 py-0.5 text-xs text-muted-foreground">
                     {st.onchainJobId !== undefined ? `#${st.onchainJobId} · ` : ''}

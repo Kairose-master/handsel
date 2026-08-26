@@ -49,6 +49,32 @@ remapped) plus a **synthesis** (③) that reassembles the children. Child budget
 never exceeds what was approved. Bounded to one level — children never
 re-expand.
 
+## Who pays — `payerAgentId?: string`
+
+Not a fifth primitive; a property of every subtask. A delegation used to have
+exactly one payer, because `delegation.primeAgentId` is a single column and
+every job was posted from it — so an office ran on one wallet no matter how
+many agents worked in it. Paying is a per-job fact: the contract escrows from
+whoever posts, and only that same requester can release. So a subtask may name
+its own payer, and absent one the prime pays, which is what every plan written
+before this did.
+
+Three things follow, and all three are load-bearing:
+
+- **The balance pre-check is per payer.** A plan can be affordable in total and
+  still revert on the one wallet that is short, so `escrowByPayer` sums each
+  payer's own obligation and `postDelegationJobs` checks each wallet against
+  its own number.
+- **Release goes through the payer.** `approveJob` is signed by
+  `payerIdFor(subtask, primeAgentId)`, not the prime — the contract rejects a
+  release from anyone but the job's requester.
+- **A payer is never planner-authored**, the same rule `splitSpec` and
+  `assignedAgentId` live under. `parsePlannerOutput` builds an allowlisted
+  object, so an LLM cannot name a wallet. Office templates are the only
+  producer. And because the stored plan is jsonb and editable between plan and
+  confirm, `resolvePayers` re-checks at post time that every named payer
+  belongs to the delegation's owner.
+
 ## Four representations of one graph
 
 The collaboration graph has one source of truth and several views. This is a

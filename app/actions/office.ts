@@ -20,6 +20,7 @@ import {
 import { buildOfficeSnapshot } from '@/lib/office-world-server'
 import {
   OFFICE_TEMPLATES,
+  officeStepBounties,
   resolveRoleConnector,
   type OfficeSnapshot,
   type OfficeSlot,
@@ -208,6 +209,19 @@ export type HireOfficeTemplateInput = {
    *  stays a plain platform agent; a binding naming an unknown connector, or
    *  missing a tool name, is skipped rather than guessed at. */
   mcpBindings?: Record<string, McpBinding>
+  /**
+   * roleId -> which of the account's agents escrows THAT pipeline step's
+   * bounty. A step left out is paid by the prime agent, which is what every
+   * office did before this existed.
+   *
+   * An office had exactly one payer only because the delegation posted every
+   * job from `delegation.primeAgentId`. Paying is a per-job fact — the escrow
+   * comes from whoever posts — so a desk whose research is funded by one
+   * budget and whose legal review is funded by another is now expressible.
+   * Each named agent must be this account's and provisioned; it pays only for
+   * its own steps.
+   */
+  payerByRoleId?: Record<string, string>
   officeSlot?: number
 }
 
@@ -241,6 +255,31 @@ export async function hireOfficeTemplate(
   const [prime] = await db.select().from(agent).where(eq(agent.id, input.primeAgentId))
   if (!prime || prime.userId !== userId) return { error: 'Agent not found' }
   if (!prime.smartAccountAddress) return { error: 'Provision the prime agent first — it escrows the bounties' }
+
+  // Per-step payers. Validated here so a bad pick is a form error the user
+  // can fix, rather than a throw at confirm time — but this is convenience,
+  // not the security boundary: postDelegationJobs re-checks ownership of
+  // every payer against the delegation owner because the stored plan is
+  // jsonb and can be edited in between.
+  const payerIds = [...new Set(Object.values(input.payerByRoleId ?? {}).map((id) => id.trim()).filter(Boolean))]
+  const payerById = new Map<string, { id: string; name: string; provisioned: boolean }>()
+  if (payerIds.length) {
+    const rows = await db
+      .select({ id: agent.id, name: agent.name, userId: agent.userId, smartAccountAddress: agent.smartAccountAddress })
+      .from(agent)
+      .where(inArray(agent.id, payerIds))
+    for (const r of rows) {
+      if (r.userId !== userId) continue
+      payerById.set(r.id, { id: r.id, name: r.name, provisioned: Boolean(r.smartAccountAddress) })
+    }
+    for (const id of payerIds) {
+      const found = payerById.get(id)
+      if (!found) return { error: 'A step names a paying agent that is not on this account' }
+      if (!found.provisioned) {
+        return { error: `Provision ${found.name} before it can pay for a step — it escrows that step's bounty` }
+      }
+    }
+  }
 
   const minBudget = template.pipeline.length * MIN_SUBTASK_BOUNTY_USD
   if (!Number.isFinite(input.budgetUsd) || input.budgetUsd < minBudget) {
@@ -311,11 +350,11 @@ export async function hireOfficeTemplate(
 
   // Budget splits by weight (default 1 — equal split, unchanged for every
   // template that doesn't set one). A weight-2 step gets twice a weight-1
-  // step's bounty out of the same total.
-  const totalWeight = template.pipeline.reduce((s, step) => s + (step.bountyWeight ?? 1), 0)
-  const unitUsd = input.budgetUsd / totalWeight
-  const bountyForStep = (step: (typeof template.pipeline)[number]) =>
-    Math.max(MIN_SUBTASK_BOUNTY_USD, Math.round(unitUsd * (step.bountyWeight ?? 1) * 100) / 100)
+  // step's bounty out of the same total. The arithmetic lives in
+  // lib/office-world-data.ts so the hire dialog shows the same numbers this
+  // escrows — a person picking who pays for which step is reading real
+  // amounts, not a second implementation of them.
+  const bountyByRoleId = officeStepBounties(template, input.budgetUsd)
   const titleByRoleId = new Map(template.pipeline.map((s) => [s.roleId, s.title.replaceAll('{scope}', scope)]))
   const subtasks: DelegationSubtask[] = template.pipeline.map((step) => {
     const snapshot = snapshotByRoleId.get(step.roleId)
@@ -336,7 +375,7 @@ export async function hireOfficeTemplate(
       title: titleByRoleId.get(step.roleId)!,
       description: step.brief.replaceAll('{scope}', scope) + (snapshot ? `\n\n${snapshot}` : ''),
       acceptanceCriteria: step.acceptanceCriteria.replaceAll('{scope}', scope),
-      bountyUsd: bountyForStep(step),
+      bountyUsd: bountyByRoleId.get(step.roleId)!,
       deliverableKind: 'text' as const,
       // Reserve this step for the role it was written for — an office's own
       // hired worker does the office's own work, instead of racing whoever
@@ -346,6 +385,10 @@ export async function hireOfficeTemplate(
         ? { dependsOn: step.dependsOnRoleIds.map((rid) => titleByRoleId.get(rid)!) }
         : {}),
       ...(splitRecipients.length ? { splitSpec: { recipients: splitRecipients } } : {}),
+      // Absent = the prime pays, exactly as before per-step payers existed.
+      ...(payerById.has(input.payerByRoleId?.[step.roleId] ?? '')
+        ? { payerAgentId: input.payerByRoleId![step.roleId] }
+        : {}),
     }
   })
 
