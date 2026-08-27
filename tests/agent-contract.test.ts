@@ -255,3 +255,35 @@ describe('the sealed set cannot drift from lib/spec-hash.ts', () => {
     expect(overclaimed, `claimed sealed but not in the hash: ${overclaimed.join(', ')}`).toEqual([])
   })
 })
+
+describe('the route a counterparty can act on', () => {
+  it('says what may be issued from where the trade actually is', () => {
+    const c = toAgentContract({ spec: spec(), job: job({ status: 'Accepted' }), binding: 'sealed' })
+    expect(c.route.state).toBe('Accepted')
+    expect(c.route.issuable).toContain('delivery')
+    // Delivery before acknowledgement is the illegal transition the table
+    // exists to block; from Accepted it is the expected next move.
+    expect(c.route.issuable).not.toContain('acknowledgement')
+  })
+
+  it('separates the instruments that move money', () => {
+    // The subset a counterparty must have decided about before it acts.
+    const c = toAgentContract({ spec: spec(), job: job({ status: 'Open' }), binding: 'sealed' })
+    expect(c.route.movesValue).toContain('acknowledgement')
+    expect(c.route.movesValue.every((t) => c.route.issuable.includes(t))).toBe(true)
+  })
+
+  it('reports a settled trade as terminal rather than as having no options', () => {
+    const c = toAgentContract({ spec: spec(), job: job({ status: 'Completed' }), binding: 'sealed' })
+    expect(c.route.terminal).toBe(true)
+    expect(c.route.issuable).toEqual([])
+  })
+
+  it('treats an unposted spec as draft, not as unknown', () => {
+    // An unposted spec has real options — it can still be ordered — and
+    // calling it unknown would hide them.
+    const c = toAgentContract({ spec: spec({ onchainJobId: null }), binding: 'unverifiable' })
+    expect(c.route.state).toBe('draft')
+    expect(c.route.issuable).toContain('order')
+  })
+})

@@ -36,6 +36,7 @@
  * a contract object; there is no second source of truth to drift.
  */
 import type { GraderClass } from '@/lib/grader-class'
+import { issuableIn, type InstrumentType, type TradeState } from '@/lib/trade-instruments'
 
 export const AGENT_CONTRACT_PROTOCOL = 'handsel/agent-contract'
 export const AGENT_CONTRACT_VERSION = 1
@@ -142,6 +143,27 @@ export type ContractSettlement = {
   parties: ContractParty[]
 }
 
+/**
+ * Where the trade is on its paper trail, and what may legitimately happen
+ * next.
+ *
+ * A status alone ('Submitted') tells a counterparty nothing about its own
+ * options. This says which instruments it may issue from here — and,
+ * separately, which of those move money. Both come from
+ * lib/trade-instruments.ts rather than being re-derived, so there is one
+ * route table and not one per reader.
+ */
+export type ContractRoute = {
+  state: TradeState
+  /** What may be issued from here at all. */
+  issuable: InstrumentType[]
+  /** The subset that moves value. Called out because it is the subset a
+   *  counterparty has to have decided about before it acts. */
+  movesValue: InstrumentType[]
+  /** True when nothing legitimate can be issued: the trade is closed. */
+  terminal: boolean
+}
+
 export type AgentContract = {
   protocol: typeof AGENT_CONTRACT_PROTOCOL
   version: typeof AGENT_CONTRACT_VERSION
@@ -156,6 +178,7 @@ export type AgentContract = {
   verification: ContractVerification
   acceptance: ContractAcceptance
   settlement: ContractSettlement
+  route: ContractRoute
 }
 
 /** The row shape this projects from — structural, so the projection is pure
@@ -252,6 +275,12 @@ export function toAgentContract(input: {
     ...payeesOf(spec.splitSpec),
   ]
 
+  // 'draft' rather than a made-up status when nothing is posted: an unposted
+  // spec is a real state with real legal options (it can still be ordered),
+  // and calling it 'unknown' would hide them.
+  const state = (job?.status ?? 'draft') as TradeState
+  const issuable = issuableIn(state)
+
   return {
     protocol: AGENT_CONTRACT_PROTOCOL,
     version: AGENT_CONTRACT_VERSION,
@@ -300,6 +329,12 @@ export function toAgentContract(input: {
       feeUsd: input.feeUsd === undefined ? platform(null) : platform(input.feeUsd),
       state: job ? chain(job.status) : platform('unposted'),
       parties,
+    },
+    route: {
+      state,
+      issuable: issuable.map((i) => i.type),
+      movesValue: issuable.filter((i) => i.movesValue).map((i) => i.type),
+      terminal: issuable.length === 0,
     },
   }
 }

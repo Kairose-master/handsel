@@ -91,11 +91,37 @@ nobody reached:
 An `appealed: true` means a verdict was overturned. Without surfacing it, a
 rewritten verdict is indistinguishable from one that was never questioned.
 
+## The instruments
+
+A trade is a sequence of typed documents, not four verbs. `lib/trade-instruments.ts`
+holds the route table: who issues each, to whom, what it binds, and whether it
+moves money. `AgentContract.route` reports where a trade is and what may
+legitimately be issued from there.
+
+Three rules that are easy to get wrong:
+
+- **An inspection binds nobody.** It is evidence. Escrow moves on a deadline
+  or an approval, never on the finding by itself — evidence that moved money
+  by existing would be a verdict its subject could have authored.
+- **An acknowledgement moves value even though nothing is paid**, because
+  accepting stakes the seller's own bond.
+- **Standing is checkable.** `hasStanding()` — an inspection from the buyer is
+  not an inspection, a receipt from the seller is not a receipt.
+
+`missingInstruments()` names what Handsel does not issue yet: `rfq`, `quote`,
+`invoice`. The absence of `quote` is why an office cannot list a capability
+for sale, which is the first thing an inter-office market needs.
+
+`verifierIndependence()` returns `'unknown'` until an Agent ↔ Operator ↔
+Organization relation exists. It never returns `'independent'` on missing
+evidence.
+
 ## Where the rest of it lives
 
 | Layer | Read |
 |---|---|
 | Contract object | `lib/agent-contract.ts` |
+| Trade instruments and routes | `lib/trade-instruments.ts`, `docs/trade-instruments.md` |
 | The seal | `lib/spec-hash.ts` — adding a field is a version bump, not an edit |
 | Verification | `lib/grader-class.ts`, `lib/job-grade.ts`, `lib/test-suite-grading.ts` |
 | Escrow state machine | `contracts/LaborMarketV2.sol`, `lib/deadlines.ts`, `lib/labor-settle.ts` |

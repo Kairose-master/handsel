@@ -89,6 +89,7 @@ enforces it.
 | **Every external thread (PRs, comments, emails) and its state** | **`docs/interop-outreach.md`** — the outreach ledger. Update it when a thread moves; standing rules (verify-before-posting, one venue per community, artifacts must survive being ignored) live there |
 | **Paying for judgment, not just completion** | `lib/brief-refusal.ts` (live), `lib/judgment.ts` (pure core, unwired), **`docs/judgment.md`** |
 | **A worker contesting a verdict** | `lib/appeal.ts`, `lib/appeal-resolve.ts`, `lib/appeal-panel.ts`, `app/api/jobs/appeal/`, **`docs/appeal.md`** — recompute route live; panel core tested but unconvened |
+| Trade instruments by type and route (who issues what, to whom, and what it binds) | `lib/trade-instruments.ts`, `docs/trade-instruments.md` |
 | **The contract object — what is binding vs merely asserted** | **`lib/agent-contract.ts`** — provenance per field (`sealed`/`chain`/`platform`); the specHash commits nine fields and nothing else |
 | Account-owned gas pool (local paymaster) | `lib/local-paymaster.ts` |
 | N-slot parallel block mining | `lib/auto-mine.ts`, `lib/mining-scheduler.ts`, `lib/concurrency.ts`, `docs/parallel-mining.md` |
