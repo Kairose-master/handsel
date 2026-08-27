@@ -183,13 +183,30 @@ export async function handleOffice(
       const roster = result.hired
         .map((h) => `  · ${h.name} (${h.roleId})${h.mcpConnected ? ' — MCP connected' : ''}`)
         .join('\n')
+
+      // Which roles were SUPPOSED to end up wired. A hire that creates the
+      // agents and connects none of them used to read as success: the summary
+      // simply omitted "MCP connected" on every line, which is easy to miss
+      // and impossible to act on. It is the difference between a desk that
+      // reads live vendor docs and six agents answering from memory, so it is
+      // stated, not implied.
+      const shouldBeWired = new Set(Object.keys(mcpBindings))
+      const unwired = result.hired.filter((h) => shouldBeWired.has(h.roleId) && !h.mcpConnected)
+      const warning = unwired.length
+        ? `\n\n⚠ ${unwired.length} of ${shouldBeWired.size} role(s) that should have an MCP connector came out UNWIRED: ` +
+          `${unwired.map((h) => h.roleId).join(', ')}. They will run as plain platform agents answering from memory, ` +
+          `which is the opposite of what this desk is for. Fix them with wire_office_agent (test_mcp_connector first) ` +
+          `BEFORE confirm_delegation, or the escrow buys the wrong work.`
+        : ''
+
       return toolText(
         id,
         `Hired ${result.hired.length} agents into office ${parseSlot(args)} and drafted the pipeline between them.\n` +
-          `${roster}\n\n` +
+          `${roster}${warning}\n\n` +
           `NOTHING IS ESCROWED YET. delegation_id: ${result.delegationId}\n` +
           `Show the user delegation_status for it, and call confirm_delegation only after they approve — ` +
           `that is the call that moves USDC.`,
+        unwired.length > 0,
       )
     }
 

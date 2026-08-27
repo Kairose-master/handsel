@@ -164,8 +164,15 @@ export async function hireOfficeTemplateFor(
     const wiring = resolveRoleConnector(mcpConnectors, input.mcpBindings, role.id)
     if (wiring) {
       try {
-        const { setMcpWorker } = await import('@/app/actions/webhook')
-        await setMcpWorker(agentId, wiring)
+        // The lib, never the server action. hireOfficeTemplateFor runs on BOTH
+        // surfaces, and an action resolves its caller from the session cookie —
+        // which the MCP path does not have. Called that way it threw
+        // Unauthorized into the catch below, so hire_office created six agents
+        // and silently wired none of them: every reader came out a plain
+        // platform agent answering from memory, which is the exact failure this
+        // desk exists to prevent.
+        const { setMcpWorkerFor } = await import('@/lib/mcp-worker-wiring')
+        await setMcpWorkerFor(userId, agentId, wiring)
         mcpConnected = true
       } catch (error) {
         console.error(`[office] hireOfficeTemplate: MCP connect failed for role ${role.id}:`, error)
