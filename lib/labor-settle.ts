@@ -518,6 +518,10 @@ export async function sweepStuckGradedJobs(): Promise<void> {
       }
 
       let verdict = spec.testResult && spec.testResult.passed !== null ? spec.testResult.passed : null
+      /** Did THIS pass produce the verdict? Everything below logs only on the
+       *  first sighting; a per-tick line about a job waiting out its review
+       *  window is noise that outlasts every real message around it. */
+      const fresh = verdict === null
       if (verdict === null) {
         console.log(`[labor-settle] re-grading ungraded Submitted job #${job.id} (${spec.deliverableKind ?? 'text'})`)
         verdict = await regradeSubmittedSpec(spec).catch((e) => {
@@ -525,14 +529,36 @@ export async function sweepStuckGradedJobs(): Promise<void> {
           return null
         })
         if (verdict === null) continue // still no verdict → manual review
-      } else {
-        console.log(`[labor-settle] re-driving stuck settlement for job #${job.id} (passed=${verdict})`)
       }
 
       if (verdict) {
+        if (!fresh) console.log(`[labor-settle] re-driving stuck settlement for job #${job.id} (passed=true)`)
         await autoApprovePassedJob(spec)
       } else {
-        await returnFailedJobToMarket(spec)
+        // A failed verdict on V2 is not stuck and is not being re-driven:
+        // returnFailedJobToMarket stands down (lib/dispute-policy.ts) and the
+        // review deadline settles it. Saying "re-driving stuck settlement"
+        // every five minutes for the healthy path is how a normal wait reads
+        // as an outage — it sent one reader hunting a settlement bug that did
+        // not exist. lib/dispute-policy.ts already has the pattern for this
+        // (V2_HANDLES_IT); the sweep just never used it.
+        const { offchainMayResolveDisputes } = await import('@/lib/dispute-policy')
+        if (await offchainMayResolveDisputes()) {
+          if (!fresh) console.log(`[labor-settle] re-driving stuck settlement for job #${job.id} (passed=false)`)
+          await returnFailedJobToMarket(spec)
+        } else if (fresh) {
+          // Once, when the verdict is first recorded. Repeating it on every
+          // tick until the deadline buries whatever else the log is saying.
+          // `deadline` is whichever one is live for the current status, which
+          // for Submitted is the review deadline. Null on a shape that did not
+          // decode it, so the line degrades to the fact without the timing
+          // rather than inventing one.
+          const when =
+            job.deadline === null
+              ? 'at the review deadline'
+              : `in ~${Math.max(0, Math.round((job.deadline * 1000 - Date.now()) / 60_000))} min, at the review deadline`
+          console.log(`[labor-settle] job #${job.id} failed grading — v2 deadlines decide it, escrow settles ${when}`)
+        }
       }
     }
   } catch (error) {
