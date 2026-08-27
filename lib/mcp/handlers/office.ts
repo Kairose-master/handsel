@@ -335,7 +335,11 @@ export async function handleOffice(
       const { getOfficeSource } = await import('@/lib/office')
       const source = await getOfficeSource(auth.userId, slot)
       const sourceLine = source
-        ? `\n\nShared source: "${source.title || 'untitled'}" (${source.body.length} chars) — every role hired from now on reads it.`
+        ? `\n\nShared source: "${source.title || 'untitled'}" (${source.body.length} chars)` +
+          (source.sourceUrl
+            ? ` — snapshot of ${source.sourceUrl}, fetched ${source.fetchedAt ?? 'at an unrecorded time'}`
+            : ' — typed in, no origin document') +
+          `. Every role hired from now on reads it.`
         : '\n\nNo shared source set. set_office_source gives every role in this office one document to work from.'
       return toolText(id, `Office ${slot}:\n${lines.join('\n')}${sourceLine}`)
     }
@@ -397,17 +401,44 @@ export async function handleOffice(
 
     case 'set_office_source': {
       const slot = parseSlot(args)
-      const body = typeof args.body === 'string' ? args.body : ''
-      const title = String(args.title ?? '').slice(0, 120)
+      const url = typeof args.url === 'string' ? args.url.trim() : ''
+      let body = typeof args.body === 'string' ? args.body : ''
+      let title = String(args.title ?? '').slice(0, 120)
+      let provenance: { sourceUrl: string; fetchedAt: string; contentHash: string } | undefined
+
+      if (url) {
+        if (body.trim()) return toolText(id, 'Pass a url or a body, not both — otherwise which one is the source?', true)
+        const { fetchOfficeSource } = await import('@/lib/office-source-fetch')
+        const fetched = await fetchOfficeSource(url)
+        if (!fetched.ok) return toolText(id, `${fetched.code}: ${fetched.error}`, true)
+        body = fetched.body
+        // The caller's title wins if given — a page's <title> is often
+        // navigation furniture rather than what the document is.
+        title = title || fetched.title
+        provenance = { sourceUrl: fetched.finalUrl, fetchedAt: fetched.fetchedAt, contentHash: fetched.contentHash }
+      }
+
       const { setOfficeSource } = await import('@/lib/office')
       const clipped = body.slice(0, MAX_OFFICE_SOURCE_CHARS)
-      await setOfficeSource(auth.userId, slot, title, clipped)
+      // The hash must describe what was STORED. Hashing the fetched text and
+      // then storing a clipped version would make the recorded fingerprint
+      // describe a document nobody has.
+      if (provenance && clipped.length < body.length) {
+        const { createHash } = await import('node:crypto')
+        provenance = { ...provenance, contentHash: `0x${createHash('sha256').update(clipped).digest('hex')}` }
+      }
+      await setOfficeSource(auth.userId, slot, title, clipped, provenance)
       if (!clipped.trim()) return toolText(id, `Cleared the shared source for office ${slot}.`)
+
+      const origin = provenance
+        ? `\nFetched from ${provenance.sourceUrl} at ${provenance.fetchedAt}.\nFingerprint ${provenance.contentHash.slice(0, 18)}… — this is a SNAPSHOT, not a live link. ` +
+          `Re-run this call to pick up changes; the fingerprint tells you whether anything moved.`
+        : ''
       return toolText(
         id,
         `Shared source set for office ${slot} (${clipped.length} chars${
           clipped.length < body.length ? `, cut from ${body.length} at the ${MAX_OFFICE_SOURCE_CHARS} cap` : ''
-        }). It is injected into every role's brief when you hire — it does NOT rewrite an office already hired, ` +
+        }).${origin}\n\nIt is injected into every role's brief when you hire — it does NOT rewrite an office already hired, ` +
           `because a brief that changed under a posted job would move the target its worker is graded against.`,
       )
     }

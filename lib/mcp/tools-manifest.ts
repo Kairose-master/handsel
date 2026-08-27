@@ -301,17 +301,19 @@ export const TOOLS = [
     name: 'set_office_source',
     description:
       "Give every role in an office one document to work from — it is appended to each role's brief when you hire, " +
-      'so several agents genuinely read the same thing through different tools. Applies at hire time only: it does ' +
-      'not rewrite an office already hired, because a brief that changed under a posted job would move the target ' +
-      'its worker is graded against. An empty body clears it.',
+      'so several agents genuinely read the same thing through different tools. Pass body to paste it, or url to ' +
+      'fetch it from a public page. A fetched source is a SNAPSHOT with its origin and fingerprint recorded, not a ' +
+      'live link: a brief that changed under a posted job would move the target its worker is graded against, so ' +
+      're-run this call to pick up changes. Applies at hire time only, and does not rewrite an office already ' +
+      'hired. An empty body clears it.',
     inputSchema: {
       type: 'object',
       properties: {
-        body: { type: 'string', description: 'The document. Empty clears the source.' },
-        title: { type: 'string', description: 'What it is (e.g. "Q3 board memo")' },
+        body: { type: 'string', description: 'The document, pasted. Empty clears the source. Use this or url, not both.' },
+        url: { type: 'string', description: 'https:// page to fetch the document from. Must be reachable without credentials.' },
+        title: { type: 'string', description: 'What it is (e.g. "Q3 board memo"). Defaults to the page title when fetching.' },
         office: { type: 'number', description: 'Office slot (1-3, default 1)' },
       },
-      required: ['body'],
       additionalProperties: false,
     },
   },

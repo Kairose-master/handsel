@@ -357,9 +357,30 @@ async function ensureOfficeSourceTable(): Promise<void> {
        PRIMARY KEY (user_id, slot)
      )`,
   )
+  // Where the snapshot came from. Self-migrating, and nullable because a
+  // pasted source has no origin — null means "typed in", not "unknown".
+  //
+  // The hash is what makes "has the original moved since?" answerable without
+  // re-fetching and comparing prose. Without it a stale snapshot and a current
+  // one are the same row.
+  await pool.query(`ALTER TABLE office_source ADD COLUMN IF NOT EXISTS source_url text`)
+  await pool.query(`ALTER TABLE office_source ADD COLUMN IF NOT EXISTS fetched_at timestamptz`)
+  await pool.query(`ALTER TABLE office_source ADD COLUMN IF NOT EXISTS content_hash text`)
 }
 
-export type StoredOfficeSource = { title: string; body: string; updatedAt: string }
+export type StoredOfficeSource = {
+  title: string
+  body: string
+  updatedAt: string
+  /** Where this snapshot was fetched from. Null means it was typed in — which
+   *  is a different fact from "we do not know", and the two must not read the
+   *  same. */
+  sourceUrl: string | null
+  fetchedAt: string | null
+  /** sha256 of the stored body. What makes "has the original moved since?"
+   *  answerable without re-fetching and diffing prose. */
+  contentHash: string | null
+}
 
 /** The shared source for one of this account's offices, or null if it has
  *  none. A row whose body is blank reads as none — clearing the box is how
@@ -367,27 +388,53 @@ export type StoredOfficeSource = { title: string; body: string; updatedAt: strin
  *  to every brief. */
 export async function getOfficeSource(userId: string, slot: number): Promise<StoredOfficeSource | null> {
   await ensureOfficeSourceTable()
-  const { rows } = await pool.query<{ title: string; body: string; updated_at: Date }>(
-    `SELECT title, body, updated_at FROM office_source WHERE user_id = $1 AND slot = $2`,
+  const { rows } = await pool.query<{
+    title: string
+    body: string
+    updated_at: Date
+    source_url: string | null
+    fetched_at: Date | null
+    content_hash: string | null
+  }>(
+    `SELECT title, body, updated_at, source_url, fetched_at, content_hash
+       FROM office_source WHERE user_id = $1 AND slot = $2`,
     [userId, slot],
   )
   const row = rows[0]
   if (!row || !row.body.trim()) return null
-  return { title: row.title, body: row.body, updatedAt: row.updated_at.toISOString() }
+  return {
+    title: row.title,
+    body: row.body,
+    updatedAt: row.updated_at.toISOString(),
+    sourceUrl: row.source_url,
+    fetchedAt: row.fetched_at?.toISOString() ?? null,
+    contentHash: row.content_hash,
+  }
 }
 
 /** Write (or clear) an office's shared source. A blank body deletes the row
  *  rather than storing an empty one, so "has a source" is a single fact with
  *  one representation. */
-export async function setOfficeSource(userId: string, slot: number, title: string, body: string): Promise<void> {
+export async function setOfficeSource(
+  userId: string,
+  slot: number,
+  title: string,
+  body: string,
+  provenance?: { sourceUrl: string; fetchedAt: string; contentHash: string },
+): Promise<void> {
   await ensureOfficeSourceTable()
   if (!body.trim()) {
     await pool.query(`DELETE FROM office_source WHERE user_id = $1 AND slot = $2`, [userId, slot])
     return
   }
+  // Provenance is overwritten wholesale, including to null: pasting over a
+  // fetched source makes it a typed one, and leaving the old URL attached
+  // would credit the new text to a document it never came from.
   await pool.query(
-    `INSERT INTO office_source (user_id, slot, title, body) VALUES ($1, $2, $3, $4)
-     ON CONFLICT (user_id, slot) DO UPDATE SET title = $3, body = $4, updated_at = now()`,
-    [userId, slot, title.trim(), body],
+    `INSERT INTO office_source (user_id, slot, title, body, source_url, fetched_at, content_hash)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     ON CONFLICT (user_id, slot) DO UPDATE
+       SET title = $3, body = $4, source_url = $5, fetched_at = $6, content_hash = $7, updated_at = now()`,
+    [userId, slot, title.trim(), body, provenance?.sourceUrl ?? null, provenance?.fetchedAt ?? null, provenance?.contentHash ?? null],
   )
 }
