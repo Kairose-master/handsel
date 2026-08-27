@@ -84,7 +84,13 @@ export function assertNotSelfClaim(worker: AgentRow, requesterAddress: string | 
  * unaffected. Async because it resolves the requester's owner from the
  * on-chain address.
  */
-export async function assertNotSelfDeal(worker: AgentRow, requesterAddress: string | undefined): Promise<void> {
+export async function assertNotSelfDeal(
+  worker: AgentRow,
+  requesterAddress: string | undefined,
+  /** The job's spec hash, when the caller has it. An office's own reserved
+   *  job is the one same-owner case that is allowed through — see below. */
+  specHash?: string,
+): Promise<void> {
   assertNotSelfClaim(worker, requesterAddress)
   if (!requesterAddress) return
   const { sql } = await import('drizzle-orm')
@@ -92,11 +98,32 @@ export async function assertNotSelfDeal(worker: AgentRow, requesterAddress: stri
     .select({ userId: agentTable.userId, name: agentTable.name })
     .from(agentTable)
     .where(sql`lower(${agentTable.smartAccountAddress}) = ${requesterAddress.toLowerCase()}`)
-  if (requesterAgent && requesterAgent.userId === worker.userId) {
-    throw new Error(
-      `This job was posted by "${requesterAgent.name}" on your own account — you can't grade and pay yourself (it would farm credit). Use a separate account to work it, or leave it for the market.`,
-    )
+  if (!requesterAgent || requesterAgent.userId !== worker.userId) return
+
+  // An office is same-owner by construction: you hire the roles onto your own
+  // account and your own prime pays them. Enforced without an exception, this
+  // guard made every office template unusable — six of them shipped and not
+  // one could complete a job.
+  //
+  // The exception is narrow on purpose: only a job RESERVED for this exact
+  // worker (lib/job-reservation.ts, set from the pipeline step's own role) is
+  // let through. A same-owner agent claiming some other same-owner job is
+  // still refused.
+  //
+  // This does not reopen credit farming, because the farm was never the work
+  // — it was the free JOB_COMPLETED event at the end of it. That is closed at
+  // the other end instead: creditWorkerForJob writes no credit event when
+  // requester and worker share an owner, whatever route the job took. The
+  // money still loops within one owner and still loses the fee, so there is
+  // nothing left to farm.
+  if (specHash) {
+    const { reservedAgentFor } = await import('@/lib/job-reservation')
+    if ((await reservedAgentFor(specHash)) === worker.id) return
   }
+
+  throw new Error(
+    `This job was posted by "${requesterAgent.name}" on your own account — you can't grade and pay yourself (it would farm credit). Use a separate account to work it, or leave it for the market.`,
+  )
 }
 
 /** True when someone else holds a live (non-stale) claim on this spec. */
@@ -189,7 +216,7 @@ export async function acceptAndDispatchJob(
   const job = jobs.find((j) => j.id === jobId)
   const [spec] = job ? await db.select().from(jobSpec).where(eq(jobSpec.specHash, job.specHash)) : []
 
-  await assertNotSelfDeal(worker, job?.requester)
+  await assertNotSelfDeal(worker, job?.requester, job?.specHash)
 
   if (spec?.failedWorkerIds?.includes(worker.id)) {
     throw new Error(
@@ -279,7 +306,7 @@ export async function acceptJobForExternalWorker(
   const [spec] = await db.select().from(jobSpec).where(eq(jobSpec.specHash, job.specHash))
   if (!spec) throw new Error('Job has no off-chain spec — nothing to actually do')
 
-  await assertNotSelfDeal(worker, job.requester)
+  await assertNotSelfDeal(worker, job.requester, job.specHash)
 
   if (spec.failedWorkerIds?.includes(worker.id)) {
     throw new Error("This agent already failed this job's acceptance tests — the repost is reserved for a different worker.")

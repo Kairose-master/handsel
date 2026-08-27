@@ -517,8 +517,33 @@ export async function creditWorkerForJob(workerAddress: string, jobId: number, b
   // without a join at score time.
   const [specRow] = await db.select({ requesterAgentId: jobSpec.requesterAgentId }).from(jobSpec).where(eq(jobSpec.onchainJobId, jobId))
   const [requesterRow] = specRow?.requesterAgentId
-    ? await db.select({ creditScore: agent.creditScore }).from(agent).where(eq(agent.id, specRow.requesterAgentId))
+    ? await db
+        .select({ creditScore: agent.creditScore, userId: agent.userId })
+        .from(agent)
+        .where(eq(agent.id, specRow.requesterAgentId))
     : []
+
+  // Same owner on both sides of the job → paid, but no credit event.
+  //
+  // This is where the self-dealing defence actually lives now. Blocking the
+  // CLAIM was the wrong end of it: an office is same-owner by construction —
+  // you hire the roles onto your own account and your own prime pays them —
+  // so the claim-side rule made every office template unable to complete a
+  // job, while the thing worth preventing was never the work. It was the free
+  // JOB_COMPLETED event: money loops A1→A2 inside one owner's control and A2
+  // banks reputation for it. Withhold the event and the loop is pure fee
+  // expense with nothing earned, which is exactly the deterrent intended.
+  //
+  // Deliberately keyed on ownership rather than on a marker set at post time:
+  // it holds for every route into this function, including any future one,
+  // and cannot be dodged by a job that took a different path. The payout
+  // itself already happened on-chain and is untouched.
+  if (requesterRow && requesterRow.userId === workerAgent.userId) {
+    console.info(
+      `[labor] job ${jobId}: requester and worker share an owner — paid, no credit event (self-dealing cannot earn reputation)`,
+    )
+    return
+  }
   const written = await db.insert(agentEvent).values({
     id: nanoid(),
     agentId: workerAgent.id,
