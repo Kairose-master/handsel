@@ -92,7 +92,23 @@ export async function handleDelegation(
 
       const hasActive = rows.some((r) => r.status === 'posted')
       const { readJobs } = await import('@/lib/onchain/labor')
-      const jobs = hasActive ? await readJobs().catch(() => []) : []
+      // `null` for a read that FAILED, `[]` for "no active delegation, so we
+      // did not ask". Collapsing the two rendered every subtask of every
+      // delegation as unposted and every cost as $0 — including a delegation
+      // that had already COMPLETED and paid out, which no on-chain state can
+      // ever go back to. Read live, that is indistinguishable from "the money
+      // never moved", on the one surface an owner checks to find out whether
+      // it did. Invariant 10 in docs/failure-modes.md, in the tick path this
+      // time rather than the roster.
+      const jobs = hasActive ? await readJobs().catch(() => null) : []
+      if (jobs === null) {
+        return toolText(
+          id,
+          'Could not read the market contract just now, so I cannot report where your delegations stand. ' +
+            'Nothing has changed on-chain — this is a failed read, not a settlement. Try again in a moment.',
+          true,
+        )
+      }
       if (hasActive) {
         const active = rows.filter((r) => r.status === 'posted')
         after(async () => {
