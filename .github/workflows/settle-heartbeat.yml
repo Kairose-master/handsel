@@ -26,13 +26,27 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 6
     steps:
+      # A skip must not look like a run.
+      #
+      # These guards printed a line and exited 0, so an unconfigured heartbeat
+      # produced a green tick — 931 consecutive green ticks, in fact, for a job
+      # that had never once called the endpoint. Meanwhile nothing settled
+      # unless a human had a dashboard tab open, and a delegation sat stranded
+      # for days with its escrow locked.
+      #
+      # Still exit 0, because a fork with no deployment of its own is correctly
+      # configured to do nothing and should not fail. But ::warning:: puts a
+      # yellow annotation on the run and in the Actions list, which is the
+      # difference between "off" and "off and nobody can tell".
       - name: Call /api/cron/settle
         run: |
           if [ -z "${{ secrets.CRON_SECRET }}" ]; then
+            echo "::warning title=Settlement heartbeat is OFF::CRON_SECRET repo secret is not set, so this job did nothing. Until it is set, work only settles while somebody has a dashboard open. Settings → Secrets and variables → Actions."
             echo "CRON_SECRET repo secret is not set — skipping (add it to enable the heartbeat)."
             exit 0
           fi
           if [ -z "${{ vars.PLATFORM_URL }}" ]; then
+            echo "::warning title=Settlement heartbeat is OFF::PLATFORM_URL repo variable is not set, so this job did nothing. There is deliberately no default — guessing would point this repo's heartbeat at somebody else's deployment."
             echo "PLATFORM_URL repo variable is not set — skipping."
             echo "There is deliberately no default: guessing would point this repo's heartbeat"
             echo "at somebody else's deployment."

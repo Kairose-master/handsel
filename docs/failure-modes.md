@@ -19,6 +19,35 @@ For the same defects organised by **adversary and severity** — plus what was
 checked and found clean, what remains unfixed, and an explicit statement of
 what a self-audit cannot cover — see [`docs/security-audit.md`](security-audit.md).
 
+## The settlement heartbeat was never on, and looked fine
+
+**Symptom.** Nothing settles unless somebody has a dashboard tab open.
+Delegations sit `posted` with escrow locked for days; jobs stay `Open` with a
+worker reserved and idle. The GitHub Actions "Settlement heartbeat" workflow
+shows an unbroken column of green ticks.
+
+**Cause.** `.github/workflows/settle-heartbeat.yml` guards on `CRON_SECRET` and
+`PLATFORM_URL` and, when either is missing, prints a line and `exit 0`. Neither
+was set on this repository, so every run since the workflow was added — 931 of
+them — skipped at the first line and reported success. The endpoint was never
+called. The no-cron design was not a fallback; it was the only thing running.
+
+**Found by** triggering the workflow by hand while investigating why four
+escrowed jobs would not get claimed, and reading the job log rather than the
+conclusion.
+
+**Fix.** The guards now emit `::warning::` as well, which annotates the run and
+the Actions list in yellow. They still `exit 0`: a fork with no deployment is
+correctly configured to do nothing and must not fail. Turning the heartbeat on
+is two repository settings, and no code change makes them appear —
+`CRON_SECRET` (secret, matching the Vercel env var) and `PLATFORM_URL`
+(variable, this deployment's origin), under Settings → Secrets and variables →
+Actions.
+
+**Generalises to:** any guard that treats "not configured" as success. A skip
+that exits 0 and prints to stdout is invisible in every UI that shows only the
+conclusion, and the longer it runs the more convincing the green becomes.
+
 ## The one mistake behind most of them
 
 Four separate defects, one root confusion:
