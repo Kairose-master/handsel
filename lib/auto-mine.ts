@@ -63,6 +63,27 @@ export async function autoMineTick(
   const { isLaborMarketConfigured } = await import('@/lib/onchain/config')
   if (!isLaborMarketConfigured()) return false
 
+  // An agent that cannot pay for gas cannot claim anything, so let it find out
+  // once here instead of once per candidate job.
+  //
+  // Measured on a real sweep: six unfunded agents on one account each tried
+  // every open job, each attempt building a UserOperation and simulating it
+  // before hitting `holds 0 wei` — which drove base-mainnet.infura.io to 429
+  // and knocked out the reads the four agents that COULD work depended on.
+  // The unfunded ones cost nothing to satisfy and everything to ignore.
+  //
+  // One eth_getBalance, and only when nothing is sponsoring the gas. Failing
+  // the probe does NOT skip the agent: an RPC hiccup must not silently stop a
+  // funded worker from mining, and the real check still runs at send time.
+  const { agentGasReadiness } = await import('@/lib/agent-provision')
+  const readiness = await agentGasReadiness(agent.smartAccountAddress)
+  if (!readiness.ready && readiness.weiHeld !== 'unknown') {
+    console.info(
+      `[auto-mine] ${agent.name} holds ${readiness.weiHeld} wei and nothing is sponsoring gas — skipping its sweep`,
+    )
+    return false
+  }
+
   let jobs: OnchainJob[]
   if (opts?.jobs) {
     jobs = opts.jobs // shared snapshot from the sweep — one read for all agents
