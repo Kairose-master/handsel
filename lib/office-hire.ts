@@ -156,6 +156,34 @@ export async function hireOfficeTemplateFor(
     await setAgentOfficeSlot(agentId, input.officeSlot ?? 1)
     await (await import('@/lib/agent-keys')).ensureAgentKey(agentId)
 
+    // Provision the on-chain account, because without one this role cannot do
+    // the job the office was hired for. auto-mine refuses an agent with no
+    // smart account (lib/auto-mine.ts: `!agent.smartAccountAddress` → false),
+    // so an unprovisioned role cannot claim even the job reserved for it by
+    // assignedAgentId. The escrow would sit until the 30-minute reservation
+    // lapsed and then be taken by whoever was watching the public board —
+    // some worker wired to nothing, delivering exactly the answer-from-memory
+    // this desk exists to avoid. Hiring a desk that cannot work is not a
+    // hire.
+    //
+    // Non-fatal, like create_worker_agent's own provisioning: a chain hiccup
+    // should not throw away the roster and the plan. The caller is told which
+    // roles came out unprovisioned so it can stop before escrowing.
+    let provisioned = false
+    try {
+      const { isAgentAccountConfigured } = await import('@/lib/onchain/config')
+      if (isAgentAccountConfigured()) {
+        const { getAgentAccountAddress } = await import('@/lib/onchain/account')
+        const address = await getAgentAccountAddress(agentId)
+        await db.update(agent).set({ smartAccountAddress: address }).where(eq(agent.id, agentId))
+        const { recalculateCredit } = await import('@/lib/credit-engine')
+        await recalculateCredit(agentId)
+        provisioned = true
+      }
+    } catch (error) {
+      console.error(`[office] hireOfficeTemplate: provisioning failed for role ${role.id}:`, error)
+    }
+
     // Each role resolves its OWN connector, so one office can run several at
     // once. A binding that names a connector which isn't in the list, or
     // carries no tool name, is skipped — never silently pointed at some
@@ -179,7 +207,7 @@ export async function hireOfficeTemplateFor(
       }
     }
     agentIdByRoleId.set(role.id, agentId)
-    hired.push({ roleId: role.id, agentId, name, mcpConnected })
+    hired.push({ roleId: role.id, agentId, name, mcpConnected, provisioned })
   }
 
   // Real, no-signup snapshots baked into the brief text so the pipeline

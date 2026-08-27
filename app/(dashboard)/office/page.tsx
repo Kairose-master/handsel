@@ -528,9 +528,12 @@ function HireOfficeTemplateDialog({
             </p>
             <ul className="space-y-1 text-sm">
               {result.hired.map((h) => (
-                <li key={h.agentId} className="flex items-center justify-between rounded-md border border-border px-3 py-1.5">
+                <li key={h.agentId} className="flex flex-wrap items-center gap-x-2 rounded-md border border-border px-3 py-1.5">
                   <span>{h.name}</span>
-                  {h.mcpConnected && <span className="text-xs text-muted-foreground">MCP connected</span>}
+                  {h.mcpConnected && <span className="ml-auto text-xs text-muted-foreground">MCP connected</span>}
+                  {/* Stated, not implied by an absent label: a role with no
+                      wallet cannot claim even its own reserved job. */}
+                  {!h.provisioned && <span className="ml-auto text-xs text-destructive">no wallet — cannot claim work</span>}
                 </li>
               ))}
             </ul>

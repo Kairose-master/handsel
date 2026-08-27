@@ -192,12 +192,27 @@ export async function handleOffice(
       // stated, not implied.
       const shouldBeWired = new Set(Object.keys(mcpBindings))
       const unwired = result.hired.filter((h) => shouldBeWired.has(h.roleId) && !h.mcpConnected)
-      const warning = unwired.length
-        ? `\n\n⚠ ${unwired.length} of ${shouldBeWired.size} role(s) that should have an MCP connector came out UNWIRED: ` +
-          `${unwired.map((h) => h.roleId).join(', ')}. They will run as plain platform agents answering from memory, ` +
-          `which is the opposite of what this desk is for. Fix them with wire_office_agent (test_mcp_connector first) ` +
-          `BEFORE confirm_delegation, or the escrow buys the wrong work.`
-        : ''
+      const unprovisioned = result.hired.filter((h) => !h.provisioned)
+      const warnings: string[] = []
+      if (unwired.length) {
+        warnings.push(
+          `⚠ ${unwired.length} of ${shouldBeWired.size} role(s) that should have an MCP connector came out UNWIRED: ` +
+            `${unwired.map((h) => h.roleId).join(', ')}. They will run as plain platform agents answering from memory, ` +
+            `which is the opposite of what this desk is for. Fix them with wire_office_agent (test_mcp_connector first).`,
+        )
+      }
+      if (unprovisioned.length) {
+        // Worth as much noise as an unwired connector: auto-mine refuses an
+        // agent with no smart account, so the job reserved for this role sits
+        // until the reservation lapses and is then taken by whoever is
+        // watching the public board.
+        warnings.push(
+          `⚠ ${unprovisioned.length} role(s) have NO on-chain wallet: ${unprovisioned.map((h) => h.roleId).join(', ')}. ` +
+            `An agent without one cannot claim even the job reserved for it, so the escrow would end up with some ` +
+            `other worker entirely. Provision them before confirming.`,
+        )
+      }
+      const warning = warnings.length ? `\n\n${warnings.join('\n\n')}\n\nFIX THESE BEFORE confirm_delegation — the escrow buys the wrong work otherwise.` : ''
 
       return toolText(
         id,
@@ -206,7 +221,7 @@ export async function handleOffice(
           `NOTHING IS ESCROWED YET. delegation_id: ${result.delegationId}\n` +
           `Show the user delegation_status for it, and call confirm_delegation only after they approve — ` +
           `that is the call that moves USDC.`,
-        unwired.length > 0,
+        warnings.length > 0,
       )
     }
 

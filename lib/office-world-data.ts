@@ -409,7 +409,15 @@ export type HireOfficeTemplateInput = {
 
 export type HireOfficeTemplateResult = {
   delegationId: string
-  hired: Array<{ roleId: string; agentId: string; name: string; mcpConnected: boolean }>
+  hired: Array<{
+    roleId: string
+    agentId: string
+    name: string
+    mcpConnected: boolean
+    /** Whether the role got an on-chain account. Without one it cannot claim
+     *  even its own reserved job — see the comment in lib/office-hire.ts. */
+    provisioned: boolean
+  }>
 }
 
 export const OFFICE_TEMPLATES: OfficeTemplate[] = [

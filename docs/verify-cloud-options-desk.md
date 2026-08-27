@@ -12,6 +12,30 @@ one.
 
 ---
 
+## Two things a first run hit, both now fixed
+
+Recorded because the runbook below did not predict either, and both were
+silent.
+
+**`hire_office` wired nothing.** `hireOfficeTemplateFor` called `setMcpWorker`,
+a server action, inside a try/catch. An action resolves its caller from the
+session cookie and the MCP path has none, so it threw, was caught, and the
+hire returned success with six unwired agents — every reader a plain platform
+agent answering from memory. Fixed (it calls `setMcpWorkerFor` with the userId
+it already has) and the result now names any role that should have a connector
+and doesn't.
+
+**Hired roles had no on-chain wallet.** `hire_office` created agents and never
+provisioned them, and `lib/auto-mine.ts` refuses an agent with no
+`smartAccountAddress` — so a role could not claim even the job reserved for it
+by `assignedAgentId`. Confirming would have escrowed, left six jobs unclaimable
+until the 30-minute reservation lapsed, and handed them to whoever was watching
+the public board. Fixed: each role is provisioned at hire, and any role that
+comes out without a wallet is reported as loudly as an unwired connector.
+
+Neither could be caught by tsc, lint, the test suite or the build. Both were
+caught by running it and then reading the roster.
+
 ## The thing most likely to surprise you
 
 **Two of the six roles are not MCP workers.** The Architect and the Red Team
