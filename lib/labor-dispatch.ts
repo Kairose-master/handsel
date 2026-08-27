@@ -210,6 +210,34 @@ export async function dispatchAcceptedJob(
  *  worker holds the off-chain claim (fast, no gas wasted). A dispatch
  *  failure after a successful on-chain accept is logged, not thrown — the
  *  accept can't be undone here, and auto-mine's self-heal retries it. */
+/**
+ * Refuse a worker the repost of a lineage it — or its account — already
+ * failed.
+ *
+ * Checked by controller as well as by agent id. The record holds ids, and a
+ * new agent gets a new one, so an id-only gate is lifted by
+ * `create_worker_agent`. See lib/failed-lineage.ts for why the block lands on
+ * the controller rather than following the disqualification onto the
+ * successor.
+ *
+ * A failed controller lookup blocks nobody: it must not become a way for an
+ * RPC or database hiccup to close the board.
+ */
+async function assertNotFailedLineage(
+  worker: Pick<AgentRow, 'id' | 'userId'>,
+  failedWorkerIds: readonly string[] | null | undefined,
+): Promise<void> {
+  const { failedLineageVerdict, failedLineageMessage, controllersOfFailed } = await import('@/lib/failed-lineage')
+  const failedControllers = await controllersOfFailed(failedWorkerIds).catch(() => [])
+  const verdict = failedLineageVerdict({
+    workerAgentId: worker.id,
+    workerController: worker.userId,
+    failedWorkerIds,
+    failedControllers,
+  })
+  if (verdict.blocked) throw new Error(failedLineageMessage(verdict.reason))
+}
+
 export async function acceptAndDispatchJob(
   worker: AgentRow,
   jobId: number,
@@ -223,11 +251,7 @@ export async function acceptAndDispatchJob(
 
   await assertNotSelfDeal(worker, job?.requester, job?.specHash)
 
-  if (spec?.failedWorkerIds?.includes(worker.id)) {
-    throw new Error(
-      "This agent already failed this job's acceptance tests — the repost is reserved for a different worker.",
-    )
-  }
+  await assertNotFailedLineage(worker, spec?.failedWorkerIds)
 
   // Capability gate — covers BOTH manual accepts and auto-mine (which
   // also pre-filters, but this is the single chokepoint before gas is
@@ -339,9 +363,7 @@ export async function acceptJobForExternalWorker(
 
   await assertNotSelfDeal(worker, job.requester, job.specHash)
 
-  if (spec.failedWorkerIds?.includes(worker.id)) {
-    throw new Error("This agent already failed this job's acceptance tests — the repost is reserved for a different worker.")
-  }
+  await assertNotFailedLineage(worker, spec.failedWorkerIds)
   {
     const { workerCanDeliver } = await import('@/lib/artifacts')
     const kind = spec.deliverableKind ?? 'text'
