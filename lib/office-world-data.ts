@@ -392,6 +392,17 @@ export type HireOfficeTemplateInput = {
    *  missing a tool name, is skipped rather than guessed at. */
   mcpBindings?: Record<string, McpBinding>
   /**
+   * Build a second, separate desk instead of reusing the one already in this
+   * office slot.
+   *
+   * Reuse is the default because the alternative was worse in a way nobody
+   * could see: a re-hire minted "AWS Reader 2" with a fresh smart account and
+   * no ETH, so on a no-paymaster deployment the new desk could not transact
+   * at all, while the hand-funded original sat idle beside it. Opting out is
+   * for genuinely wanting two of the same desk in one office.
+   */
+  freshAgents?: boolean
+  /**
    * roleId -> which of the account's agents escrows THAT pipeline step's
    * bounty. A step left out is paid by the prime agent, which is what every
    * office did before this existed.
@@ -417,6 +428,11 @@ export type HireOfficeTemplateResult = {
     /** Whether the role got an on-chain account. Without one it cannot claim
      *  even its own reserved job — see the comment in lib/office-hire.ts. */
     provisioned: boolean
+    /** True when this role is the agent that was already in the office,
+     *  keeping its wallet and the gas in it, rather than a new hire. Reported
+     *  because "reused" and "created" differ in exactly the way that matters:
+     *  a new agent starts with no ETH. */
+    reused: boolean
   }>
 }
 

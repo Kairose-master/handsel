@@ -40,6 +40,54 @@ async function uniqueAgentName(userId: string, base: string): Promise<string> {
   return `${base} ${n}`
 }
 
+/**
+ * Who already plays each of this template's roles in this office.
+ *
+ * Hiring the same template into the same office twice used to mint a whole
+ * parallel desk — "AWS Reader 2" and friends, each with a fresh smart account
+ * and no ETH. On a deployment with no paymaster that is a desk that cannot
+ * transact, standing next to the one the owner had already hand-funded. So a
+ * re-hire finds the existing desk instead.
+ *
+ * Two ways to match, in order:
+ *
+ *  1. `role_id` on agent_office_slot — durable, and the only one that
+ *     survives a rename.
+ *  2. The role's name, for agents hired before that column existed. Anchored
+ *     so "AWS Reader" and "AWS Reader 2" match and "AWS Reader Backup" does
+ *     not, and skipped entirely when two agents in the slot answer to it —
+ *     an ambiguous name is not evidence, and reusing the wrong agent is worse
+ *     than making a new one.
+ */
+async function existingRoleAgents(
+  userId: string,
+  slot: number,
+  roles: ReadonlyArray<{ id: string; name: string }>,
+): Promise<Map<string, string>> {
+  const mine = await db
+    .select({ id: agent.id, name: agent.name })
+    .from(agent)
+    .where(eq(agent.userId, userId))
+  if (mine.length === 0) return new Map()
+
+  const { officeRoleAgents, officeSlotsByAgentId } = await import('@/lib/office')
+  const byRole = await officeRoleAgents(mine.map((a) => a.id), slot)
+
+  const slots = await officeSlotsByAgentId(mine.map((a) => a.id))
+  const inSlot = mine.filter((a) => (slots.get(a.id) ?? 1) === slot)
+  const owned = new Set(mine.map((a) => a.id))
+  for (const [roleId, agentId] of byRole) if (!owned.has(agentId)) byRole.delete(roleId)
+
+  for (const role of roles) {
+    if (byRole.has(role.id)) continue
+    const escaped = role.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const pattern = new RegExp(`^${escaped}( \\d+)?$`)
+    const matches = inSlot.filter((a) => pattern.test(a.name))
+    if (matches.length === 1) byRole.set(role.id, matches[0].id)
+  }
+  return byRole
+}
+
 /** Real quote + headline snapshots, keyed by the role that consumes each —
  *  the zero-setup default for the Securities Office template's read-only
  *  roles. Never throws: a failed fetch becomes a plain-text note in the
@@ -134,26 +182,63 @@ export async function hireOfficeTemplateFor(
 
   const hired: HireOfficeTemplateResult['hired'] = []
   const agentIdByRoleId = new Map<string, string>()
+  const slot = input.officeSlot ?? 1
+  // Reuse the desk that is already in this office, unless the caller
+  // explicitly wants a second one. Default reuse, because hiring the same
+  // template into the same slot twice plainly means "this desk" — and the
+  // alternative silently replaced a hand-funded, gas-holding desk with a
+  // duplicate that could not transact.
+  const reusable = input.freshAgents ? new Map<string, string>() : await existingRoleAgents(userId, slot, template.roles)
+  const reused: string[] = []
+
   for (const role of template.roles) {
-    const name = await uniqueAgentName(userId, role.name)
-    const agentId = nanoid()
-    await db.insert(agent).values({
-      id: agentId,
-      userId,
-      name,
-      walletAddress: `0x${randomBytes(20).toString('hex')}`,
-      description: role.blurb,
-      customInstructions: role.customInstructions,
-      modelVersion: 'claude-sonnet-5',
-      creditScore: '0',
-      creditRating: 'unrated',
-      riskLevel: 'UNKNOWN',
-      riskRating: 'unrated',
-      totalCreditLine: '0',
-      availableCredit: '0',
-      autoMine: workingRoleIds.has(role.id),
-    })
-    await setAgentOfficeSlot(agentId, input.officeSlot ?? 1)
+    const existingId = reusable.get(role.id)
+    let agentId: string
+    let name: string
+
+    if (existingId) {
+      agentId = existingId
+      const [row] = await db.select({ name: agent.name }).from(agent).where(eq(agent.id, existingId))
+      name = row?.name ?? role.name
+      reused.push(name)
+      // Refresh what the TEMPLATE owns and leave alone what the OWNER owns:
+      // instructions and the working/auto-mine flag come from the template and
+      // may have changed; the name, the wallet, and the ETH in it are the
+      // owner's and are the whole reason to reuse this row.
+      await db
+        .update(agent)
+        .set({
+          description: role.blurb,
+          customInstructions: role.customInstructions,
+          autoMine: workingRoleIds.has(role.id),
+          updatedAt: new Date(),
+        })
+        .where(eq(agent.id, agentId))
+    } else {
+      name = await uniqueAgentName(userId, role.name)
+      agentId = nanoid()
+      await db.insert(agent).values({
+        id: agentId,
+        userId,
+        name,
+        walletAddress: `0x${randomBytes(20).toString('hex')}`,
+        description: role.blurb,
+        customInstructions: role.customInstructions,
+        modelVersion: 'claude-sonnet-5',
+        creditScore: '0',
+        creditRating: 'unrated',
+        riskLevel: 'UNKNOWN',
+        riskRating: 'unrated',
+        totalCreditLine: '0',
+        availableCredit: '0',
+        autoMine: workingRoleIds.has(role.id),
+      })
+    }
+
+    // Always, including on reuse: this is what stamps role_id on an agent
+    // hired before that column existed, so the NEXT re-hire matches durably
+    // instead of falling back to the name.
+    await setAgentOfficeSlot(agentId, slot, role.id)
     await (await import('@/lib/agent-keys')).ensureAgentKey(agentId)
 
     // Provision the on-chain account, because without one this role cannot do
@@ -199,7 +284,7 @@ export async function hireOfficeTemplateFor(
       }
     }
     agentIdByRoleId.set(role.id, agentId)
-    hired.push({ roleId: role.id, agentId, name, mcpConnected, provisioned })
+    hired.push({ roleId: role.id, agentId, name, mcpConnected, provisioned, reused: Boolean(existingId) })
   }
 
   // Real, no-signup snapshots baked into the brief text so the pipeline
@@ -224,7 +309,7 @@ export async function hireOfficeTemplateFor(
   // so a step's brief is fixed at hire time — see lib/office.ts's
   // ensureOfficeSourceTable comment for why editing it later must not rewrite
   // an office already hired.
-  const sharedSource = await getOfficeSource(userId, input.officeSlot ?? 1)
+  const sharedSource = await getOfficeSource(userId, slot)
 
   const subtasks: DelegationSubtask[] = template.pipeline.map((step) => {
     const snapshot = snapshotByRoleId.get(step.roleId)

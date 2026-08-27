@@ -225,7 +225,7 @@ export const TOOLS = [
   {
     name: 'hire_office',
     description:
-      'Stand up a whole office: creates one agent per role, wires each to its MCP server, and DRAFTS the pipeline ' +
+      'Stand up a whole office: one agent per role, each wired to its MCP server, and DRAFTS the pipeline ' +
       'between them as escrowed subtasks. Does NOT move money — the delegation is saved as planned, exactly like ' +
       'plan_delegation, and confirm_delegation is the separate call that escrows. Creating the agents does ' +
       'provision on-chain wallets, so show the user the template first.',
@@ -238,6 +238,11 @@ export const TOOLS = [
         prime_agent_id: { type: 'string', description: 'Which existing agent escrows the bounties, by id (preferred)' },
         prime_agent_name: { type: 'string', description: 'Same, by name. Defaults to your first funded agent.' },
         office: { type: 'number', description: 'Which office slot to hire into (1-3, default 1)' },
+        fresh_agents: {
+          type: 'boolean',
+          description:
+            'Build a SECOND desk instead of reusing the one already in this office. Off by default: re-hiring a template reuses the agents already playing those roles, so they keep their wallets and the gas you funded them with. A new agent starts with no ETH and, without a paymaster, cannot transact at all.',
+        },
         connectors: {
           type: 'array',
           description:

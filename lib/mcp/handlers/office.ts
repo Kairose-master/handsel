@@ -177,11 +177,16 @@ export async function handleOffice(
         mcpConnectors,
         mcpBindings,
         officeSlot: parseSlot(args),
+        freshAgents: args.fresh_agents === true,
       })
       if ('error' in result) return toolText(id, result.error, true)
 
       const roster = result.hired
-        .map((h) => `  · ${h.name} (${h.roleId})${h.mcpConnected ? ' — MCP connected' : ''}`)
+        .map(
+          (h) =>
+            `  · ${h.name} (${h.roleId})${h.reused ? ' — already in this office, kept its wallet' : ' — new hire'}` +
+            `${h.mcpConnected ? ' · MCP connected' : ''}`,
+        )
         .join('\n')
 
       // Which roles were SUPPOSED to end up wired. A hire that creates the

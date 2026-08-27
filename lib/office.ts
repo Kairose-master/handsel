@@ -273,20 +273,50 @@ async function ensureAgentOfficeSlotTable(): Promise<void> {
        updated_at timestamptz NOT NULL DEFAULT now()
      )`,
   )
+  // Which ROLE this agent plays, so hiring the same template into the same
+  // office twice finds the desk that is already there instead of minting a
+  // parallel one. Without it a second hire produced "AWS Reader 2" — a fresh
+  // agent with a fresh smart account and no ETH, which on a no-paymaster
+  // deployment is an agent that cannot transact at all. The owner had hand-
+  // funded the first set; the second was born unable to work.
+  //
+  // Nullable, and null is meaningful: an agent hired before this column
+  // existed. lib/office-hire.ts falls back to matching those by name.
+  await pool.query(`ALTER TABLE agent_office_slot ADD COLUMN IF NOT EXISTS role_id text`)
 }
 
-/** Record which office a newly hired agent belongs to. Only worth a row
- *  when it isn't slot 1 — an agent absent from this table simply reads as
- *  slot 1 everywhere below, so the common (one-office) case never writes
- *  here at all. */
-export async function setAgentOfficeSlot(agentId: string, slot: number): Promise<void> {
-  if (slot === 1) return
+/** Record which office a newly hired agent belongs to, and which role it
+ *  plays there.
+ *
+ *  Slot 1 alone is still not worth a row — an agent absent from this table
+ *  reads as slot 1 everywhere below, so the common one-office case stays
+ *  write-free. A role id IS worth one at any slot: it is the only durable way
+ *  to find this desk again, and names are editable. */
+export async function setAgentOfficeSlot(agentId: string, slot: number, roleId?: string): Promise<void> {
+  if (slot === 1 && !roleId) return
   await ensureAgentOfficeSlotTable()
   await pool.query(
-    `INSERT INTO agent_office_slot (agent_id, slot) VALUES ($1, $2)
-     ON CONFLICT (agent_id) DO UPDATE SET slot = $2, updated_at = now()`,
-    [agentId, slot],
+    `INSERT INTO agent_office_slot (agent_id, slot, role_id) VALUES ($1, $2, $3)
+     ON CONFLICT (agent_id) DO UPDATE
+       SET slot = $2, role_id = COALESCE($3, agent_office_slot.role_id), updated_at = now()`,
+    [agentId, slot, roleId ?? null],
   )
+}
+
+/** roleId → agentId for the agents already playing a template role in this
+ *  slot. Only ids the caller passes in, so ownership is the caller's to
+ *  establish (every call site selects the user's own agents first). */
+export async function officeRoleAgents(agentIds: string[], slot: number): Promise<Map<string, string>> {
+  const result = new Map<string, string>()
+  if (agentIds.length === 0) return result
+  await ensureAgentOfficeSlotTable()
+  const { rows } = await pool.query<{ agent_id: string; role_id: string | null }>(
+    `SELECT agent_id, role_id FROM agent_office_slot
+      WHERE agent_id = ANY($1) AND slot = $2 AND role_id IS NOT NULL`,
+    [agentIds, slot],
+  )
+  for (const row of rows) if (row.role_id) result.set(row.role_id, row.agent_id)
+  return result
 }
 
 /** Every given agent's office slot, defaulting to 1 for any id absent from
