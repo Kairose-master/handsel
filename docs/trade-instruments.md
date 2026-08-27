@@ -70,6 +70,45 @@ And one that exists but is weaker than its name:
   stranger once that window lapsed (§31). The eligibility-gated clock fixed
   the symptom; the award is still not a durable record of the assignment.
 
+## Capabilities that act on the world
+
+Every instrument above was written for **reversible** work without saying so.
+`credit_note` is valid from four states and reads as making the buyer whole —
+true when the deliverable is text, false the moment a capability sends an
+email, updates a CRM, or acts in someone else's system.
+
+> Escrow protects the payment. It does not protect the thing the payment was
+> protecting.
+
+If a seller sends 500 outreach emails and the verifier returns FAIL, the buyer
+gets its money back and the emails are still in strangers' inboxes. This is
+the same property `lib/normative-transport.ts` calls **indexical**: the act
+happened, to that recipient, at that time, and no later instrument reverses
+it.
+
+`admissibleRoute(effect)` states the consequence:
+
+| Effect class | Ordinary route | Because |
+|---|---|---|
+| `observational` | ✔ | Reads only; a refund fully restores the buyer |
+| `reversible` | ✔ | Effects are undoable here, so escrow bounds exposure |
+| `irreversible` | ✖ | A credit note returns the money and not the world |
+
+The fix is not a better verifier. It is to **move the inspection in front of
+the act**: the deliverable becomes a plan, the plan is inspected, and the
+buyer issues `authorisation` before anything executes.
+
+`authorisation` runs buyer → seller, binds the **issuer**, moves no value, and
+is issuable only in `Submitted` — against a delivered plan, never before one,
+because authorising earlier is a blank cheque. It sits alongside `inspection`
+rather than replacing it: an independent party reviews the plan, and the buyer
+then decides. Collapsing the two would let a buyer authorise unreviewed work,
+or a verifier commit the buyer.
+
+Nothing produces it yet, because no Handsel capability acts on the world yet.
+That is the order this has to happen in — the instrument before the
+integration, not after.
+
 ## Verifier independence
 
 The design doc asks for `independencePolicy: "not-buyer-or-seller"` inside the

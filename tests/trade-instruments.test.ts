@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
+  admissibleRoute,
+  EFFECT_CLASSES,
   INSTRUMENTS,
   INSTRUMENT_TYPES,
   INSTRUMENT_COVERAGE,
@@ -156,9 +158,11 @@ describe('verifier independence is a route question, not a self-declaration', ()
 
 describe('the gaps this exercise exists to surface', () => {
   it('names exactly the instruments nothing produces', () => {
-    // Two of these explain failures already seen in production; the third is
-    // what an inter-office market needs before an office can sell anything.
-    expect(missingInstruments().sort()).toEqual(['invoice', 'quote', 'rfq'])
+    // Two of these explain failures already seen in production, one is what
+    // an inter-office market needs before an office can sell anything, and
+    // `authorisation` is what any capability acting on the world needs before
+    // it ships.
+    expect(missingInstruments().sort()).toEqual(['authorisation', 'invoice', 'quote', 'rfq'])
   })
 
   it('records that an award exists but only as an expiring priority', () => {
@@ -166,5 +170,66 @@ describe('the gaps this exercise exists to surface', () => {
     const award = INSTRUMENT_COVERAGE.award
     expect(award.emittedBy).toContain('job-reservation')
     expect(award.note).toMatch(/priority/i)
+  })
+})
+
+describe('capabilities that act on the world', () => {
+  // The property every instrument above was written for without saying so.
+  // credit_note reads as making the buyer whole, which is true for text and
+  // false the moment a capability sends an email or updates someone's CRM.
+  it('refuses to sell irreversible work under verify-after-deliver', () => {
+    const r = admissibleRoute('irreversible')
+    expect(r.ok).toBe(false)
+    expect(r.requires).toContain('authorisation')
+    expect(r.why).toMatch(/credit note|money and not the world/i)
+  })
+
+  it('allows reversible and observational work on the ordinary route', () => {
+    for (const e of ['reversible', 'observational'] as const) {
+      expect(admissibleRoute(e).ok, e).toBe(true)
+      expect(admissibleRoute(e).requires).toEqual([])
+    }
+  })
+
+  it('has an answer for every declared effect class', () => {
+    // A class added and not handled would default to admissible, which is the
+    // permissive direction and the wrong one.
+    for (const e of EFFECT_CLASSES) expect(() => admissibleRoute(e)).not.toThrow()
+  })
+})
+
+describe('the authorisation instrument', () => {
+  it('runs buyer → seller and binds the buyer', () => {
+    // It moves the decision to the party that can still change its mind,
+    // while changing its mind is still possible — so the buyer owns the
+    // consequences of what it authorised.
+    expect(instrument('authorisation')).toMatchObject({ from: 'buyer', to: 'seller', binds: 'issuer' })
+  })
+
+  it('is issuable only against a delivered plan, never before one', () => {
+    // Authorising in Open or Accepted would be a blank cheque: there is
+    // nothing yet to have inspected.
+    expect(canIssue('authorisation', 'Submitted')).toBe(true)
+    for (const s of ['draft', 'Open', 'Accepted'] as const) {
+      expect(canIssue('authorisation', s), s).toBe(false)
+    }
+  })
+
+  it('sits alongside inspection rather than replacing it', () => {
+    // The plan is inspected by someone independent; the buyer then decides.
+    // Collapsing the two would let a buyer authorise unreviewed work, or a
+    // verifier commit the buyer.
+    expect(instrument('inspection').validIn).toContain('Submitted')
+    expect(instrument('authorisation').from).not.toBe(instrument('inspection').from)
+  })
+
+  it('moves no value itself', () => {
+    expect(instrument('authorisation').movesValue).toBe(false)
+    expect(instrument('authorisation').advancesTo).toBeNull()
+  })
+
+  it('is recorded as not yet produced, with the reason', () => {
+    expect(INSTRUMENT_COVERAGE.authorisation.emittedBy).toBeNull()
+    expect(INSTRUMENT_COVERAGE.authorisation.note).toMatch(/un-send|Zapier|world/i)
   })
 })

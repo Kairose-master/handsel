@@ -52,6 +52,24 @@ export type TradeState = (typeof TRADE_STATES)[number]
 
 export type PartyRole = 'buyer' | 'seller' | 'verifier' | 'escrow' | 'arbiter' | 'market'
 
+/**
+ * What executing a capability does to the world, and therefore whether a
+ * refund restores anything.
+ *
+ * Every instrument below was written for `reversible` work without saying so.
+ * `credit_note` is valid from four states and reads as making the buyer
+ * whole — which is true when the deliverable is text, and false the moment a
+ * capability sends an email, updates a CRM, or moves money in someone else's
+ * system. Escrow protects the payment; it does not protect the thing the
+ * payment was protecting.
+ *
+ * The distinction is the same one lib/normative-transport.ts calls indexical:
+ * an executed side effect happened, to that recipient, at that time, and no
+ * later instrument reverses it.
+ */
+export const EFFECT_CLASSES = ['observational', 'reversible', 'irreversible'] as const
+export type EffectClass = (typeof EFFECT_CLASSES)[number]
+
 export const INSTRUMENT_TYPES = [
   'rfq',
   'quote',
@@ -64,6 +82,7 @@ export const INSTRUMENT_TYPES = [
   'credit_note',
   'dispute',
   'award',
+  'authorisation',
 ] as const
 export type InstrumentType = (typeof INSTRUMENT_TYPES)[number]
 
@@ -211,6 +230,23 @@ export const INSTRUMENTS: readonly Instrument[] = [
     advancesTo: 'Refunded',
   },
   {
+    type: 'authorisation',
+    label: 'Authorisation to act',
+    from: 'buyer',
+    to: 'seller',
+    // Binds the issuer: once given, the buyer owns the consequences of the
+    // act it authorised. That is the point — it moves the decision to the
+    // party that can still change its mind, while changing its mind is still
+    // possible.
+    binds: 'issuer',
+    movesValue: false,
+    // Issued against a PLAN, in Submitted — after the plan has been
+    // inspected and before anything touches the world. An irreversible
+    // capability that acts first has no state in which this could help.
+    validIn: ['Submitted'],
+    advancesTo: null,
+  },
+  {
     type: 'dispute',
     label: 'Notice of dispute',
     from: 'buyer',
@@ -315,6 +351,48 @@ export const INSTRUMENT_COVERAGE: Record<
   receipt: { emittedBy: 'approveJob / expireReview — lib/labor-settle.ts' },
   credit_note: { emittedBy: 'expireReview, expireOpen, resolveDispute' },
   dispute: { emittedBy: 'raiseDispute — lib/onchain/labor.ts' },
+  authorisation: {
+    emittedBy: null,
+    note: 'Nothing asks the buyer before a capability acts on the world, because no capability does yet. Required before any Zapier- or API-backed capability ships: a refund does not un-send an email.',
+  },
+}
+
+/**
+ * May a capability with this effect class be sold under Handsel's ordinary
+ * verify-after-deliver contract?
+ *
+ * No, when it is irreversible — and this is the rule that has to exist before
+ * any capability backed by Zapier, an API, or anything else that touches the
+ * world outside this system. The ordinary route is: deliver, inspect, settle
+ * or refund. That is safe precisely because the buyer's only exposure is the
+ * escrowed amount. An irreversible capability inverts it: the act lands
+ * first, the inspection judges what already happened, and the refund returns
+ * money for harm it cannot undo.
+ *
+ * The fix is not a better verifier. It is to move the inspection in front of
+ * the act — the deliverable becomes a PLAN, the buyer issues `authorisation`
+ * against it, and only then does anything execute.
+ */
+export function admissibleRoute(effect: EffectClass): {
+  ok: boolean
+  requires: InstrumentType[]
+  why: string
+} {
+  if (effect === 'irreversible') {
+    return {
+      ok: false,
+      requires: ['delivery', 'inspection', 'authorisation'],
+      why: 'Irreversible work cannot be sold under verify-after-deliver: a credit note returns the money and not the world. Deliver a plan, inspect that, and require the buyer to authorise before anything executes.',
+    }
+  }
+  return {
+    ok: true,
+    requires: [],
+    why:
+      effect === 'observational'
+        ? 'Reads nothing into the world; a refund fully restores the buyer.'
+        : 'Effects are undoable within this system, so the escrowed amount bounds the buyer’s exposure.',
+  }
 }
 
 /** The instruments with no producer. */
