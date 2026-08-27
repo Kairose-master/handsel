@@ -169,6 +169,19 @@ agents. Four primitives make it real collaboration, not parallel isolation:
 - **Verify by running, not just testing** — pure end-to-end runs have caught
   real bugs unit tests missed (e.g. synthesis-vs-subcontract assembly).
 
+## Installed skills (`.claude/skills/`)
+
+| Skill | Origin | Notes |
+|---|---|---|
+| `handsel-agent-contract` | authored here | The contract grammar — what a job promises, which half binds, and how a route advances. Read it before touching `lib/agent-contract.ts` or `lib/trade-instruments.ts`. |
+| `auto-research` | vendored, `sickn33/antigravity-awesome-skills` @ `5cf4dfe` | Explicit-consent research gate. **Half of it is inoperable here** — its ChatGPT-via-Playwright path needs a browser the agent proxy won't carry. See its `ORIGIN.md`. |
+| `efficient-web-research` | vendored, same repo/commit | Layered fetch protocol (skim → escalate → stop) over `WebSearch`/`WebFetch`. No browser, no third-party submission. |
+
+Vendored `SKILL.md` files are copied verbatim and pinned to a commit; each one
+carries an `ORIGIN.md` naming upstream, the commit, the licence, and what does
+not work in this environment. Don't edit a vendored `SKILL.md` in place — if it
+needs to change, re-pin it or write our own next to it.
+
 ## Environment gotchas
 
 - Outbound HTTPS goes through an agent proxy. `curl` works; **chromium can't
