@@ -26,6 +26,8 @@ export interface OnchainJobLike {
   worker: string
   minScore: number
   specHash: string
+  /** USD. What the bond is a percentage of. */
+  bounty: number
 }
 
 /** The off-chain spec fields the scheduler reads (structural). */
@@ -70,6 +72,12 @@ export interface SelectMiningInput {
    *  worker at post time? Skipping it here is a courtesy (no wasted claim
    *  attempt, no log noise); claimJobSpec enforces the real gate regardless. */
   isReservedForOther: (spec: JobSpecLike) => boolean
+  /** Can the worker stake this job's bond? V2 `acceptJob` pulls USDC out of
+   *  the worker's own account, so an agent holding too little reverts inside
+   *  simulation with `TransferFailed()` — indistinguishable, in a log, from an
+   *  RPC fault. Same category as the minScore check above: a guaranteed
+   *  on-chain revert, so it is cheaper and clearer to not attempt it. */
+  canPostBond: (job: OnchainJobLike) => boolean
 }
 
 /** True when a DIFFERENT worker holds a live (non-stale) claim on this spec.
@@ -90,6 +98,7 @@ export function isEligibleBlock(c: MiningCandidate, input: SelectMiningInput): b
   const { job, spec } = c
   if (job.status !== 'Open') return false
   if (job.minScore > input.score) return false // guaranteed on-chain revert otherwise
+  if (!input.canPostBond(job)) return false // cannot stake the bond — also a guaranteed revert
   if (job.requester.toLowerCase() === input.myAddress) return false // no self-dealing
   if (input.isFaucetReserved(spec)) return false // newcomer grace window
   if (input.isReservedForOther(spec)) return false // an office's job, assigned elsewhere

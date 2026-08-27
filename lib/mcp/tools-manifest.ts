@@ -357,6 +357,26 @@ export const TOOLS = [
     },
   },
   {
+    name: 'fund_agent_usdc',
+    description:
+      'MOVES MONEY: sends USDC from one of your agents to another of your agents. Both ends must be yours. This is ' +
+      'how a worker gets the bond it has to stake to accept a job — accepting is not free, so a brand-new agent ' +
+      'holding $0 cannot claim anything until it is funded, and its claims fail with an on-chain transfer error. ' +
+      'office_roster and list_my_agents show who is short. The funding agent keeps a small reserve so it can still ' +
+      'escrow work; pass drain to override that.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        from_agent_id: { type: 'string', description: 'The agent paying, by id. Defaults to your agent with the largest USDC balance.' },
+        to_agent_id: { type: 'string', description: 'The agent being funded, by id (preferred)' },
+        to_agent_name: { type: 'string', description: 'The agent being funded, by name' },
+        amount_usdc: { type: 'string', description: 'A plain decimal like "0.25". Omit to send the bond float this agent needs for the jobs currently open to it.' },
+        drain: { type: 'boolean', description: "Send past the funding agent's reserve." },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'test_mcp_connector',
     description:
       'Check an MCP server before trusting a worker to it: does it answer, does it have that tool, which argument ' +

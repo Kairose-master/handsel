@@ -245,8 +245,58 @@ export async function handleOffice(
 
       const { getMcpModes } = await import('@/lib/mcp-mode')
       const modes = await getMcpModes(here.filter((r) => r.mcpServerUrl).map((r) => r.id))
+
+      // Balances, not just addresses. This line used to read "funded wallet"
+      // for any agent that had an address at all, which is how a desk of ten
+      // agents holding $0 each looked completely healthy while every one of
+      // them was structurally unable to claim a job. An agent needs BOTH: ETH
+      // for gas and USDC for the bond that accepting stakes.
+      const { usdcBalanceOf, ethBalanceOfWei } = await import('@/lib/onchain/treasury')
+      const { bondScheduleOf } = await import('@/lib/onchain/labor-v2')
+      const { AGENT_GAS_FLOOR } = await import('@/lib/onchain/account')
+      const { bondForBounty } = await import('@/lib/agent-bond')
+      const { readJobs } = await import('@/lib/onchain/labor')
+      const [schedule, jobs] = await Promise.all([bondScheduleOf().catch(() => null), readJobs().catch(() => [])])
+      // Size the check against the CHEAPEST open job: an agent that cannot
+      // afford even that one is out of the market entirely, which is the
+      // statement worth making. Fall back to the flat bond when nothing is
+      // open, so a quiet market still reports the floor.
+      const openBounties = jobs.filter((j) => j.status === 'Open').map((j) => j.bounty)
+      const cheapestBond = schedule
+        ? openBounties.length
+          ? Math.min(...openBounties.map((b) => bondForBounty(b, schedule)))
+          : schedule.flat
+        : null
+      const balances = new Map<string, { usd: number | null; wei: bigint | null }>()
+      await Promise.all(
+        here
+          .filter((a) => a.smartAccountAddress)
+          .map(async (a) => {
+            const addr = a.smartAccountAddress as `0x${string}`
+            const [usd, wei] = await Promise.all([
+              usdcBalanceOf(addr).catch(() => null),
+              ethBalanceOfWei(addr).catch(() => null),
+            ])
+            balances.set(a.id, { usd, wei })
+          }),
+      )
+
       const lines = here.map((a) => {
-        const bits = [a.smartAccountAddress ? 'funded wallet' : 'no wallet']
+        const bal = balances.get(a.id)
+        const bits: string[] = []
+        if (!a.smartAccountAddress) {
+          bits.push('NO WALLET — provision_office gives it one')
+        } else {
+          const usd = bal?.usd
+          const wei = bal?.wei
+          const gasBad = wei !== null && wei !== undefined && wei < AGENT_GAS_FLOOR
+          const bondBad = usd !== null && usd !== undefined && cheapestBond !== null && Math.round(usd * 1e6) < Math.round(cheapestBond * 1e6)
+          const money = `$${(usd ?? 0).toFixed(4)} USDC`
+          if (gasBad && bondBad) bits.push(`${money} · CANNOT WORK: no gas and cannot post the $${cheapestBond!.toFixed(4)} bond`)
+          else if (bondBad) bits.push(`${money} · CANNOT CLAIM: needs $${cheapestBond!.toFixed(4)} to stake the bond — fund_agent_usdc`)
+          else if (gasBad) bits.push(`${money} · CANNOT TRANSACT: out of gas ETH`)
+          else bits.push(`${money} · ready`)
+        }
         if (a.autoMine) bits.push('auto-mine')
         if (a.mcpServerUrl && a.mcpToolName) {
           bits.push(
@@ -402,6 +452,63 @@ export async function handleOffice(
           (args.drain === true
             ? `\n\nDrained: ${found.name} kept nothing and cannot transact again until it is funded.`
             : `\n\n${Number(ETH_WITHDRAW_RESERVE_WEI) / 1e18} ETH stayed behind so it can still work. Pass drain to take that too.`),
+      )
+    }
+
+    case 'fund_agent_usdc': {
+      const agents = await db.select().from(agent).where(eq(agent.userId, auth.userId))
+      if (agents.length < 2) return toolText(id, 'Funding moves USDC between two of your agents; this account has fewer than two.', true)
+
+      const toId = args.to_agent_id ? String(args.to_agent_id) : null
+      const toName = args.to_agent_name ? String(args.to_agent_name) : null
+      const to = toId
+        ? agents.find((a) => a.id === toId)
+        : toName
+          ? agents.find((a) => a.name.toLowerCase() === toName.toLowerCase())
+          : null
+      if (!to) return toolText(id, toId ? `No agent with id "${toId}".` : toName ? `No agent named "${toName}".` : 'Say which agent to fund (to_agent_id or to_agent_name).', true)
+
+      const { usdcBalanceOf } = await import('@/lib/onchain/treasury')
+      let from = args.from_agent_id ? agents.find((a) => a.id === String(args.from_agent_id)) : undefined
+      if (args.from_agent_id && !from) return toolText(id, `No agent with id "${String(args.from_agent_id)}".`, true)
+      if (!from) {
+        // Default to whoever can actually pay. Making the caller name a funder
+        // means knowing which wallet holds the balance, which is the thing
+        // they came here to stop having to track.
+        const funded = await Promise.all(
+          agents
+            .filter((a) => a.smartAccountAddress && a.id !== to.id)
+            .map(async (a) => ({ a, usd: await usdcBalanceOf(a.smartAccountAddress as `0x${string}`).catch(() => 0) })),
+        )
+        funded.sort((x, y) => y.usd - x.usd)
+        from = funded[0]?.a
+        if (!from || funded[0].usd <= 0) return toolText(id, 'No agent on this account holds any USDC to fund with.', true)
+      }
+
+      const { fundAgentUsdc, parseUsdcAmount, suggestedFloatFor } = await import('@/lib/agent-usdc-funding')
+      let amountUsd: number | null = null
+      if (args.amount_usdc !== undefined) {
+        amountUsd = parseUsdcAmount(String(args.amount_usdc))
+        if (amountUsd === null) return toolText(id, 'amount_usdc must be a plain positive decimal, e.g. "0.25".', true)
+      } else {
+        // No amount given: send exactly the float this agent needs for the
+        // work actually open to it right now. A guessed round number either
+        // strands money in a worker or leaves it one cent short again.
+        const { bondScheduleOf } = await import('@/lib/onchain/labor-v2')
+        const { readJobs } = await import('@/lib/onchain/labor')
+        const [schedule, jobs] = await Promise.all([bondScheduleOf().catch(() => null), readJobs().catch(() => [])])
+        if (!schedule) return toolText(id, 'Could not read the bond schedule from the market contract, so I cannot size the transfer. Pass amount_usdc.', true)
+        const openBounties = jobs.filter((j) => j.status === 'Open').map((j) => j.bounty)
+        if (openBounties.length === 0) return toolText(id, 'No open jobs right now, so there is no bond float to size against. Pass amount_usdc.', true)
+        amountUsd = suggestedFloatFor(openBounties, schedule)
+      }
+
+      const res = await fundAgentUsdc(auth.userId, from.id, to.id, { amountUsd, drain: args.drain === true })
+      if (!res.ok) return toolText(id, res.error, true)
+      return toolText(
+        id,
+        `Sent $${res.amountUsd.toFixed(4)} USDC from ${res.from} to ${res.to}.\ntx ${res.txHash}\n\n` +
+          `${res.to} can now stake bonds and claim work. Accepting a job locks the bond until it settles, then returns it.`,
       )
     }
 

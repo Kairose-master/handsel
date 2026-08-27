@@ -26,6 +26,7 @@ function candidate(over: Partial<{
   deliverableKind: string | null
   requiredCapabilities: string[] | null
   title: string
+  bounty: number
 }> = {}): MiningCandidate {
   const specHash = over.specHash ?? `hash-${over.id ?? 1}`
   return {
@@ -36,6 +37,7 @@ function candidate(over: Partial<{
       worker: over.worker ?? '0x0000000000000000000000000000000000000000',
       minScore: over.minScore ?? 0,
       specHash,
+      bounty: over.bounty ?? 1,
     },
     spec: {
       specHash,
@@ -53,6 +55,7 @@ function candidate(over: Partial<{
 
 function input(candidates: MiningCandidate[], over: Partial<SelectMiningInput> = {}): SelectMiningInput {
   return {
+    canPostBond: () => true,
     candidates,
     myAddress: ME,
     score: 500,
@@ -178,5 +181,24 @@ describe('selectMiningBlocks', () => {
     const cs = [candidate({ id: 1 }), candidate({ id: 2, status: 'Accepted' })]
     const picked = selectMiningBlocks(input(cs, { freeSlots: 5 }))
     expect(picked.map((c) => c.job.id)).toEqual([1])
+  })
+})
+
+describe('the bond gate', () => {
+  // Accepting stakes USDC out of the worker's own account, so affordability
+  // decides eligibility exactly the way minScore does — both are guaranteed
+  // on-chain reverts, and attempting either costs a built UserOperation and a
+  // log line that reads like an RPC fault.
+  it('skips a job whose bond the worker cannot stake', () => {
+    const jobs = [candidate({ id: 1, bounty: 1.71 }), candidate({ id: 2, bounty: 0.1 })]
+    const picked = selectMiningBlocks(
+      input(jobs, { canPostBond: (job) => job.bounty < 1 }),
+    )
+    expect(picked.map((c) => c.job.id)).toEqual([2])
+  })
+
+  it('takes everything when the balance covers it', () => {
+    const jobs = [candidate({ id: 1, bounty: 1.71 }), candidate({ id: 2, bounty: 0.1 })]
+    expect(selectMiningBlocks(input(jobs)).map((c) => c.job.id)).toEqual([1, 2])
   })
 })

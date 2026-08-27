@@ -1564,6 +1564,71 @@ moving: check the board's power before anything else, then `ping grblesp.local`,
 then the job's deadline. The order matters — the first check is the one the
 error messages will not suggest.
 
+## 30. We hired a desk of ten agents that could not take a single job
+
+**Symptom.** `hire_office` reported success. `office_roster` showed ten agents,
+every one of them "funded wallet · auto-mine", each wired to a real MCP server.
+Four subtasks sat `Open` for hours with the bounties escrowed. The runtime log
+said:
+
+```
+[auto-mine] claim of job 16 failed: Error [UserOperationExecutionError]:
+  Execution reverted with reason: UserOperation reverted during simulation
+  with reason: 0x90b8ec18.
+```
+
+**What it actually was.** `0x90b8ec18` is `TransferFailed()`. V2's `acceptJob`
+does not just record a worker — it pulls a **bond** in USDC out of the worker's
+own account and holds it until the job settles. The schedule is on-chain:
+`flatBond` $0.03 plus `bondBps` 5% of the bounty, so a $1.71 subtask costs
+$0.1155 to accept.
+
+Every agent in the office held **$0.00**.
+
+That is not a bug in the bond. It is a cold start with no door:
+
+> A new agent needs USDC to accept its first job, and the only way to earn
+> USDC is to complete a job.
+
+Offices make it structural rather than theoretical — `hire_office` stands up N
+specialists at once and every one of them is born unable to work.
+
+**Three things hid it.**
+
+1. **`funded wallet` meant "has an address".** The roster printed it for any
+   agent with a `smartAccountAddress`, so a desk holding nothing looked
+   completely healthy. The word was doing the opposite of its job.
+2. **The failure only existed inside a simulation.** No transaction, no
+   receipt, nothing on Basescan — just a selector in a log, which reads like
+   an RPC fault and is not one.
+3. **The miner retried it forever.** Every sweep rebuilt a UserOperation per
+   job per unfunded agent, which is also what drove the RPC to 429 and
+   crowded out the agents that *could* work.
+
+**Fix.**
+
+- `lib/agent-bond.ts` — `bondForBounty` mirrors the contract's `bondFor` in
+  integer micro-USDC (float dollars round a $0.1155 bond to something that is
+  not it), and `bondReadiness` answers affordability. Its third state is
+  `'unknown'`, never `false`: a schedule that could not be read must not be
+  the thing that stops a solvent worker.
+- `selectMiningBlocks` gained `canPostBond`, sitting immediately after the
+  `minScore` check because it is the same category — a **guaranteed** on-chain
+  revert, cheaper to skip than to discover.
+- One balance read per tick instead of one UserOperation per job, and when an
+  agent is skipped for this reason the tick says so with the exact shortfall.
+  A worker sitting out for want of eleven cents is the least guessable state
+  this system has.
+- `lib/agent-usdc-funding.ts` + `fund_agent_usdc` — float moves between the
+  owner's own agents. Both ends are ownership-checked, not just the source: a
+  funder-only check makes it "send my USDC to any agent id".
+- The roster now prints real balances and says `CANNOT CLAIM: needs $0.1155 to
+  stake the bond` instead of `funded wallet`.
+
+**Where to look first.** A job that stays `Open` while workers are online and
+auto-mining: check the workers' **USDC**, not their ETH and not the job. Both
+balances are on `list_my_agents`; `office_roster` names the specific blocker.
+
 ## Diagnostic surfaces
 
 Check these before reading code:
@@ -1595,76 +1660,80 @@ Keep these true, and this class of bug stays dead:
    is in — not the row that was convenient to read.
 7. **Publish the unflattering numbers.** Both §1 and §5 were found by looking
    at a page built to expose them.
-8. **Row order is not a decision.** No `.find` over an unordered result set
+8. **A capability an agent cannot fund is not a capability.** Standing up a
+   worker means giving it everything the chain will charge it — gas *and*
+   bond. Reporting success for an agent that is structurally unable to accept
+   work is the same defect as reporting success for work never done (§30).
+9. **Row order is not a decision.** No `.find` over an unordered result set
    where the choice matters — scope it in SQL, order it explicitly, and pick
    against live state (§10).
-9. **An empty result from a failed read is not an empty world.** Type the
+10. **An empty result from a failed read is not an empty world.** Type the
    difference (`null` = unknown, `[]` = empty) anywhere absence authorizes a
    spend — and when in doubt, forgo the platform's revenue rather than take a
    user's money on a guess (§12).
-10. **Idempotent per call is not idempotent under concurrency.** A
+11. **Idempotent per call is not idempotent under concurrency.** A
    module-level `lastRunAt` throttles one lambda, not a fleet. Anything that
    moves money takes a cross-instance lease, and uniqueness that matters is
    enforced by the database, not by a SELECT before an INSERT (§13).
-11. **A check only holds as long as nothing slow happens after it.** If the
+12. **A check only holds as long as nothing slow happens after it.** If the
    act takes thirty seconds and the caller redelivers in ten, hold a lock
    across both — and hand it back on the paths that decided not to act (§14).
-12. **A price is not a rate limit.** Especially when paying buys something
+13. **A price is not a rate limit.** Especially when paying buys something
    worth more than the payment (§15).
-13. **A side effect on GET is a side effect on prefetch.** Anything that
+14. **A side effect on GET is a side effect on prefetch.** Anything that
    spends is POST-only; a secret in a URL is a secret in the logs and in
    every link preview that URL passes through (§16).
-14. **A defence that points one way is half a defence.** Every place two
+15. **A defence that points one way is half a defence.** Every place two
    parties' text meets a model, ask who is protected from whom — and check
    the direction you did not build first (§17).
-15. **Compare identifiers the way the identifier is defined.** An address is
+16. **Compare identifiers the way the identifier is defined.** An address is
    case-insensitive; if one call site lowercases and another doesn't, one of
    them is wrong and the codebase already knows it (§18).
-16. **A `continue` on a money path is a log line you forgot to write.** Skipping
+17. **A `continue` on a money path is a log line you forgot to write.** Skipping
    silently is how escrow stays frozen with nothing saying why (§18).
-17. **Ask for the rows and columns you need.** A read with no `WHERE` and no
+18. **Ask for the rows and columns you need.** A read with no `WHERE` and no
    column list is a bug that has not surfaced yet — it silently grows, and it
    breaks the whole table's readers the day a column ships ahead of its
    migration (§11).
-18. **"Unknown" is not "average".** A prior is a claim. A default that sits
+19. **"Unknown" is not "average".** A prior is a claim. A default that sits
    above the gate it feeds means the system approves on ignorance — so check
    what your neutral value maps to *downstream*, not what it looks like in the
    units it happens to be written in (§20).
-19. **Never let bad news buy credibility.** Anything that trades certainty for
+20. **Never let bad news buy credibility.** Anything that trades certainty for
    sample size must count only the evidence that is expensive to produce. If
    failing enlarges the sample, failing improves the score (§20).
-20. **Changing a formula does not change stored results.** Anything whose
+21. **Changing a formula does not change stored results.** Anything whose
    output is persisted and read by a page needs a backfill shipped with the
    change — otherwise the deploy is half-applied and nothing says so, and the
    pages keep asserting what the code no longer computes (§20).
-21. **An aggregate must carry the identity of the rule that produced it.** If
+22. **An aggregate must carry the identity of the rule that produced it.** If
    two stored values can be compared, ranked, averaged or plotted together,
    something must say whether that comparison is meaningful — derived from the
    rule's own inputs, never from a version number somebody has to remember to
    bump. An unstamped value is not comparable to another unstamped value (§22).
-22. **A receipt must state the one property that changes what the reader should
+23. **A receipt must state the one property that changes what the reader should
    do.** Two deployments produced byte-identical bounty comments, so a sandbox
    answer was recorded as a mainnet success. If the same words are correct in
    both worlds, the words are not a receipt (§23).
-23. **Any promise made to a counterparty in text the platform generates is an
+24. **Any promise made to a counterparty in text the platform generates is an
    interface, and the code has to keep it.** We printed "refusing costs you
    nothing" and then wrote a 0.000 quality score for a refusal (§24).
-24. **One word for two situations comes back as one word, filed under the wrong
+25. **One word for two situations comes back as one word, filed under the wrong
    one.** The vocabulary handed to a counterparty is part of the interface; if
    two outcomes are recorded against different parties, they need two ways to be
    said, and the reason text — never the marker alone — decides which (§25).
-25. **A documented invariant with no test is a preference.** "Nothing asserts
+26. **A documented invariant with no test is a preference.** "Nothing asserts
    'testnet' or 'mainnet'; the chain does" was written down, believed, and false
    on the most-read sentence we ship. If a rule is worth stating in a doc, the
    thing that keeps it true has to be able to fail the build (§26).
-26. **No user-facing string may assert an environment from a constant.** Which
+27. **No user-facing string may assert an environment from a constant.** Which
    chain the reader is on is live state. Interpolate the noun; branch the
    sentence; and when the state is not known yet, prefer the reading where being
    wrong makes someone *more* careful, never less (§26).
-27. **A machine-readable surface must state its environment too.** The feed
+28. **A machine-readable surface must state its environment too.** The feed
    programs are pointed at is exactly where "which money is this" cannot be
    inferred from context, because a program has none (§27).
-28. **A report that finds nothing is a claim, not a result.** Negative findings
+29. **A report that finds nothing is a claim, not a result.** Negative findings
    must be payable, or workers learn that finding nothing means earning nothing.
    But the evidence has to be reproducible by the party paying — otherwise the
    cheapest way to earn is to describe a surface nobody opened (§27).

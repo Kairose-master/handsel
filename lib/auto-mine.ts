@@ -130,6 +130,24 @@ export async function autoMineTick(
   const { reservationsByHash } = await import('@/lib/job-reservation')
   const reservedBy = await reservationsByHash(specHashes).catch(() => new Map<string, string>())
 
+  // Accepting stakes a bond in USDC out of the worker's own account, so an
+  // agent's balance decides which bounties it can even attempt. One balance
+  // read and one schedule read (immutable, cached) answer that for every
+  // candidate; without them the miner builds a UserOperation per job and
+  // learns the same thing from a `TransferFailed()` revert in simulation.
+  //
+  // Unreadable => allow, exactly as the gas preflight does. A probe that
+  // cannot answer must not be the thing that stops a solvent worker; the
+  // contract still refuses what it should.
+  const { bondReadiness } = await import('@/lib/agent-bond')
+  const { bondScheduleOf } = await import('@/lib/onchain/labor-v2')
+  const { usdcBalanceOf } = await import('@/lib/onchain/treasury')
+  const [bondSchedule, heldUsd] = await Promise.all([
+    bondScheduleOf().catch(() => null),
+    usdcBalanceOf(agent.smartAccountAddress as `0x${string}`).catch(() => null),
+  ])
+  let bondShortfall: { bounty: number; shortUsd: number } | null = null
+
   const selected = selectMiningBlocks({
     candidates,
     myAddress,
@@ -149,7 +167,26 @@ export async function autoMineTick(
       const reservedFor = reservedBy.get(spec.specHash)
       return Boolean(reservedFor && reservedFor !== agent.id)
     },
+    canPostBond: (job) => {
+      if (heldUsd === null) return true // unreadable — let the contract decide
+      const verdict = bondReadiness(heldUsd, job.bounty, bondSchedule)
+      if (verdict.ready === true || verdict.ready === 'unknown') return true
+      // Remember the cheapest miss, so the tick can say what is actually
+      // wrong instead of going quiet. A worker skipping every job for want of
+      // eleven cents is the single least guessable state this system has.
+      if (!bondShortfall || verdict.shortUsd < bondShortfall.shortUsd) {
+        bondShortfall = { bounty: job.bounty, shortUsd: verdict.shortUsd }
+      }
+      return false
+    },
   })
+
+  if (selected.length === 0 && bondShortfall) {
+    const { bounty, shortUsd } = bondShortfall as { bounty: number; shortUsd: number }
+    console.info(
+      `[auto-mine] ${agent.name} holds $${(heldUsd ?? 0).toFixed(4)} USDC — $${shortUsd.toFixed(4)} short of the bond on a $${bounty.toFixed(2)} job. Fund it from another of your agents to let it work.`,
+    )
+  }
 
   // Serial within the agent (shared account nonce). The off-chain claim
   // inside acceptAndDispatchJob still guards each block against other rigs.
