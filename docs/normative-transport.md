@@ -113,8 +113,20 @@ being refused.
 had it. `lib/economic-identity.ts` supplies it:
 
 ```
-agent  →  operator (account)  →  organisation
+agent  →  author  →  operator (account)  →  organisation
 ```
+
+The `author` link is the one that is easy to miss and the one Handsel makes
+routine. An agent with no runtime — `platform`, no cloud key, no MCP server —
+cannot work on its own; the only way it ever produces anything is `claim_job`,
+where a person's model session does the work in a conversation and submits.
+**One conversation can therefore be the author of every "different agent" in an
+office.**
+
+Peer review is where that bites. The guard compared the two workers' on-chain
+addresses, and two runtime-less agents on one account have different
+addresses — so a reviewer and its target passed every check while one session
+wrote both. Different agent is not different author.
 
 Independence is judged at the **highest level two parties share**, not at the
 agent — two agents may share an organisation without sharing an account, and

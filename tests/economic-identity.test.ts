@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import {
+  channelOf,
+  sameAuthor,
   independenceOf,
   sharesController,
   strongestControlKey,
@@ -141,5 +143,94 @@ describe('an operator cannot attest to its own membership', () => {
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/(^|[^:])\/\/.*$/gm, '$1')
     expect(body).not.toContain('attested')
+  })
+})
+
+describe('different agent is not different author', () => {
+  // The case the on-chain address comparison misses entirely, and the one
+  // Handsel makes routine: an agent with no runtime cannot work on its own,
+  // so a person's model session writes for it through claim_job. One
+  // conversation can therefore be the author of every "different agent" in an
+  // office, and peer review is where that matters.
+  const sess = (agentId: string, operatorId: string | null) => ({
+    controller: ctrl({ agentId, operatorId }),
+    channel: 'session' as const,
+  })
+
+  it('catches two runtime-less agents on one account', () => {
+    // Architect and Red Team: different ids, different on-chain addresses,
+    // same author.
+    expect(sameAuthor(sess('architect', 'u1'), sess('redteam', 'u1'))).toBe('yes')
+  })
+
+  it('clears two session agents on genuinely different accounts', () => {
+    expect(sameAuthor(sess('a', 'u1'), sess('b', 'u2'))).toBe('no')
+  })
+
+  it('clears a real runtime, even on the same account', () => {
+    // A cloud or MCP worker is driven by Handsel itself, so it is its own
+    // author regardless of who owns it.
+    const mcp = { controller: ctrl({ agentId: 'reader', operatorId: 'u1' }), channel: 'mcp' as const }
+    expect(sameAuthor(sess('architect', 'u1'), mcp)).toBe('no')
+  })
+
+  it('is yes for the same agent whatever the channel', () => {
+    const a = { controller: ctrl({ agentId: 'x', operatorId: 'u1' }), channel: 'cloud' as const }
+    expect(sameAuthor(a, a)).toBe('yes')
+  })
+
+  it('returns unknown — never no — when a channel cannot be resolved', () => {
+    // An unresolvable channel is the arrangement an attacker would choose.
+    const un = { controller: ctrl({ agentId: 'y', operatorId: 'u2' }), channel: 'unknown' as const }
+    expect(sameAuthor(sess('architect', 'u1'), un)).toBe('unknown')
+  })
+})
+
+describe('channelOf', () => {
+  it('treats a runtime Handsel can drive as its own author', () => {
+    for (const rt of ['cloud', 'mcp', 'webhook', 'local'] as const) {
+      expect(channelOf(rt)).toBe(rt)
+    }
+  })
+
+  it('treats a runtime-less agent as session-authored', () => {
+    // 'platform' means no cloud key, no MCP server, nothing to poll — the only
+    // way it ever produces work is a person driving the connector.
+    expect(channelOf('platform')).toBe('session')
+  })
+
+  it('does not guess at an unrecognised runtime', () => {
+    expect(channelOf(null)).toBe('unknown')
+    expect(channelOf('something-new')).toBe('unknown')
+  })
+})
+
+describe('the peer-review gate uses it', () => {
+  const del = readFileSync('lib/delegation.ts', 'utf8')
+  const gate = del.slice(del.indexOf('const sameAddress = Boolean('), del.indexOf('const samePerson = sameAddress'))
+
+  it('no longer decides on the address alone', () => {
+    expect(gate).toContain('sameAuthor')
+    expect(gate).toContain('sameAuthorVerdict')
+  })
+
+  it('discards the review when authorship cannot be established', () => {
+    const after = del.slice(del.indexOf('const samePerson = sameAddress'))
+    expect(after.slice(0, 120)).toContain("sameAuthorVerdict !== 'no'")
+  })
+
+  it('resolves the worker from the chain, not from a mirror row', () => {
+    expect(gate).toContain('targetJob.worker')
+    expect(gate).toContain('smartAccountAddress')
+  })
+
+  it('says which kind of collision it found', () => {
+    // "Discarded" without a reason sends the owner looking for a bug that is
+    // not there; the three cases need different follow-up.
+    const noteAt = del.indexOf('target.reviewNote = samePerson')
+    const note = del.slice(noteAt, del.indexOf('target.awaitingReview = false', noteAt))
+    expect(note).toMatch(/own work/)
+    expect(note).toMatch(/could not establish/)
+    expect(note).toMatch(/same author/)
   })
 })

@@ -45,7 +45,7 @@
 import { pool } from '@/lib/db'
 
 /** The layers, weakest first. Independence must clear ALL of them. */
-export const CONTROL_LEVELS = ['agent', 'operator', 'organization'] as const
+export const CONTROL_LEVELS = ['agent', 'author', 'operator', 'organization'] as const
 export type ControlLevel = (typeof CONTROL_LEVELS)[number]
 
 /**
@@ -90,6 +90,67 @@ function ensureTables(): Promise<void> {
   return tableReady
 }
 
+/**
+ * How the work was actually produced.
+ *
+ * The chain above answers "who OWNS this agent". It does not answer "who WROTE
+ * this", and those come apart in the one case Handsel makes routine.
+ *
+ * An agent with no runtime — `platform`, no cloud key, no MCP server — cannot
+ * work on its own. The only way it ever produces anything is `claim_job`: a
+ * human's model session claims the job, does the work in that conversation,
+ * and submits. So a single conversation can be the author of every "different
+ * agent" in an office.
+ *
+ * Peer review is where that matters. The existing guard compares the two
+ * workers' on-chain ADDRESSES, and two runtime-less agents on one account have
+ * different addresses — so a reviewer and its target can pass every check
+ * while one session wrote both. Different agent is not different author.
+ *
+ * `session` is a genuinely different author from `session`: we cannot tell two
+ * conversations apart from the server. That is why this returns `unknown`
+ * rather than `independent` — see `sameAuthor`.
+ */
+export type ExecutionChannel = 'session' | 'cloud' | 'mcp' | 'webhook' | 'local' | 'unknown'
+
+/** Map an agent's runtime to the channel that produces its work. A runtime
+ *  Handsel can drive by itself is its own author; anything else is whoever is
+ *  holding the connector. */
+export function channelOf(runtimeType: string | null | undefined): ExecutionChannel {
+  switch (runtimeType) {
+    case 'cloud':
+    case 'mcp':
+    case 'webhook':
+    case 'local':
+      return runtimeType
+    case 'platform':
+      return 'session'
+    default:
+      return 'unknown'
+  }
+}
+
+/**
+ * Could one author have produced both of these?
+ *
+ * `'yes'` only when both are session-authored on the same account, which is
+ * the case the address comparison misses entirely. `'unknown'` when either
+ * channel cannot be resolved — never `'no'`, because an unresolvable channel
+ * is the arrangement an attacker would choose.
+ */
+export function sameAuthor(
+  a: { controller: Controller; channel: ExecutionChannel },
+  b: { controller: Controller; channel: ExecutionChannel },
+): 'yes' | 'no' | 'unknown' {
+  if (a.controller.agentId === b.controller.agentId) return 'yes'
+  if (a.channel === 'unknown' || b.channel === 'unknown') return 'unknown'
+  if (a.channel !== 'session' || b.channel !== 'session') return 'no'
+  // Both are a person driving a connector. Same account means plausibly the
+  // same conversation, and we cannot tell two conversations apart — so this
+  // is a conflict rather than a coin flip.
+  return sharesController(a.controller, b.controller) === 'yes' ? 'yes' : 'no'
+}
+
 export type Independence = 'independent' | 'conflicted' | 'unknown'
 
 /**
@@ -105,13 +166,46 @@ export function independenceOf(input: {
   buyer: Controller
   seller: Controller
   verifier: Controller
+  /** How each party's work is produced. Optional, because most callers can
+   *  only supply controllers — but omitting it means the author level cannot
+   *  be checked, and an unchecked level is a level an attacker uses. */
+  channels?: { buyer: ExecutionChannel; seller: ExecutionChannel; verifier: ExecutionChannel }
 }): { verdict: Independence; level: ControlLevel | null; why: string } {
-  const { buyer, seller, verifier } = input
+  const { buyer, seller, verifier, channels } = input
 
   // Agent level first: the same agent on two sides of its own trade is the
   // crudest case and needs no organisation data to catch.
   if (verifier.agentId === buyer.agentId || verifier.agentId === seller.agentId) {
     return { verdict: 'conflicted', level: 'agent', why: 'The verifier is a party to the trade.' }
+  }
+
+  // Author, before operator: two runtime-less agents on one account are
+  // different agents with different addresses and one author, and every
+  // check below would clear them.
+  if (channels) {
+    for (const [role, party] of [
+      ['buyer', buyer],
+      ['seller', seller],
+    ] as const) {
+      const verdict = sameAuthor(
+        { controller: verifier, channel: channels.verifier },
+        { controller: party, channel: channels[role] },
+      )
+      if (verdict === 'yes') {
+        return {
+          verdict: 'conflicted',
+          level: 'author',
+          why: `The verifier and the ${role} are different agents but the same author — both produced through one account's own session.`,
+        }
+      }
+      if (verdict === 'unknown') {
+        return {
+          verdict: 'unknown',
+          level: null,
+          why: `Could not establish that the verifier and the ${role} are different authors.`,
+        }
+      }
+    }
   }
 
   if (verifier.operatorId !== null) {

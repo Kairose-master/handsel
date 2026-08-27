@@ -1504,14 +1504,66 @@ export async function tickDelegation(
 
     const targetJob = jobs.find((j) => j.id === target.onchainJobId)
     const reviewerJob = jobs.find((j) => j.id === reviewer.onchainJobId)
-    const samePerson = Boolean(
+    // Same ADDRESS is the crude case and was the only one checked. It misses
+    // the one Handsel makes routine: an agent with no runtime can only ever
+    // work through claim_job, meaning a person's model session writes for it —
+    // so a reviewer and its target can be two different agents, two different
+    // addresses, and one author. Different agent is not different author.
+    const sameAddress = Boolean(
       targetJob?.worker &&
         reviewerJob?.worker &&
         targetJob.worker.toLowerCase() === reviewerJob.worker.toLowerCase(),
     )
+    let sameAuthorVerdict: 'yes' | 'no' | 'unknown' = 'no'
+    if (!sameAddress && targetJob?.worker && reviewerJob?.worker) {
+      try {
+        // Resolved from the on-chain worker ADDRESS, not from a row: the chain
+        // is the authority on who actually worked a job (invariant 6), and the
+        // mirror has been wrong before.
+        const { controllersFor, channelOf, sameAuthor } = await import('@/lib/economic-identity')
+        const { db: dbi } = await import('@/lib/db')
+        const { agent: agentTable } = await import('@/lib/db/schema')
+        const { inArray } = await import('drizzle-orm')
+        const addrs = [targetJob.worker.toLowerCase(), reviewerJob.worker.toLowerCase()]
+        const rows = await dbi
+          .select({ id: agentTable.id, runtimeType: agentTable.runtimeType, addr: agentTable.smartAccountAddress })
+          .from(agentTable)
+        const byAddr = new Map(
+          rows.filter((r) => r.addr).map((r) => [r.addr!.toLowerCase(), r]),
+        )
+        const tRow = byAddr.get(addrs[0])
+        const rRow = byAddr.get(addrs[1])
+        if (!tRow || !rRow) {
+          // A worker this deployment does not know is, for these purposes, a
+          // genuinely outside author.
+          sameAuthorVerdict = 'no'
+        } else {
+          const controllers = await controllersFor([tRow.id, rRow.id])
+          const side = (row: { id: string; runtimeType: string | null }) => ({
+            controller:
+              controllers.get(row.id) ?? { agentId: row.id, operatorId: null, organizationId: null, organizationLink: null },
+            channel: channelOf(row.runtimeType),
+          })
+          sameAuthorVerdict = sameAuthor(side(tRow), side(rRow))
+        }
+      } catch (e) {
+        // Unresolvable authorship is not clearance. Treat it as unknown and
+        // discard the verdict below, because the arrangement an attacker wants
+        // is exactly the one we cannot resolve.
+        console.warn('[delegation] could not resolve review authorship:', e)
+        sameAuthorVerdict = 'unknown'
+      }
+    }
+    const samePerson = sameAddress || sameAuthorVerdict !== 'no'
     const { approve, note } = parseReviewVerdict(verdictText)
     const decision = decideRevision({ approve, samePerson, round: target.revisionRound ?? 0 })
-    target.reviewNote = samePerson ? 'peer review discarded — a worker cannot review its own work' : note
+    target.reviewNote = samePerson
+      ? sameAddress
+        ? 'peer review discarded — a worker cannot review its own work'
+        : sameAuthorVerdict === 'unknown'
+          ? 'peer review discarded — could not establish that the reviewer and the worker are different authors'
+          : 'peer review discarded — reviewer and worker are different agents but the same author (both worked through this account\'s own session)'
+      : note
     target.awaitingReview = false
     changed = true
 
