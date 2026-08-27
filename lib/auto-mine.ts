@@ -133,6 +133,20 @@ export async function autoMineTick(
     assignmentsByHash(specHashes).catch(() => new Map<string, string>()),
   ])
   const specHashByJobId = new Map(openJobs.map((j) => [j.id, j.specHash]))
+
+  // This agent has cleared the gas preflight, so for its OWN assigned open
+  // jobs it is able to claim right now — and the priority window measures
+  // time spent able and idle, not time since posting. Starting the clock here
+  // is what stops a desk from losing its own work while it was blocked (see
+  // RESERVATION_TTL_MS). A ready agent normally claims in this same tick, so
+  // the stamp only bites when it was ready and passed.
+  const mineAndOpen = openJobs.map((j) => j.specHash).filter((h) => assignedBy.get(h) === agent.id)
+  if (mineAndOpen.length) {
+    const { markReservationsEligible } = await import('@/lib/job-reservation')
+    await markReservationsEligible(mineAndOpen, agent.id).catch((e) =>
+      console.warn('[auto-mine] could not start the reservation clock:', e),
+    )
+  }
   /** Work this office posted and assigned to this exact agent. The owner
    *  covers the bond on it (lib/office-bond-cover.ts), so an empty balance is
    *  not a reason to skip — it is a reason to top up on the way in. */

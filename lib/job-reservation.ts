@@ -24,7 +24,38 @@
  */
 import { pool } from '@/lib/db'
 
-export const RESERVATION_TTL_MS = 30 * 60 * 1000 // 30 minutes
+/**
+ * How long the assigned agent keeps priority once it is ABLE to take the job.
+ *
+ * This clock used to start at post time, and that is what it cost: a desk of
+ * newly hired specialists could not accept anything (no bond — see
+ * lib/agent-bond.ts), the window ran out while they were structurally unable
+ * to move, and one unwired stranger took all four "independent" reads of a
+ * Cloud Options Desk. For that template independence IS the deliverable, so
+ * the buyer silently got four correlated answers from one agent instead of
+ * four sourced ones.
+ *
+ * The TTL was never meant to punish an agent for being blocked. It exists so
+ * an agent that COULD work and doesn't cannot entomb its own job's escrow. So
+ * it now measures exactly that — time spent able and idle — and the clock
+ * does not start until the agent is ready to claim.
+ */
+export const RESERVATION_TTL_MS = 30 * 60 * 1000 // 30 minutes of being able
+
+/**
+ * The backstop, and the reason the change above is safe.
+ *
+ * An eligibility-gated clock has an obvious failure: an agent that is NEVER
+ * able never starts it, and the reservation holds forever — which is the
+ * exact entombment the original TTL was written to prevent, reintroduced
+ * through the fix for it. So a second clock runs unconditionally from post
+ * time and opens the job to the market regardless.
+ *
+ * Long enough that a desk waiting on a deploy, a funding transfer or a slow
+ * grader still gets its own work; short enough that nobody's escrow is stuck
+ * overnight.
+ */
+export const RESERVATION_HARD_TTL_MS = 6 * 60 * 60 * 1000 // 6 hours from posting
 
 async function ensureTable(): Promise<void> {
   await pool.query(
@@ -34,6 +65,25 @@ async function ensureTable(): Promise<void> {
        reserved_at timestamptz NOT NULL DEFAULT now()
      )`,
   )
+  // Self-migrating, like every other side table here: the column has to exist
+  // before the first SELECT that names it, and there is no migration step to
+  // gate on. Added after the table shipped, so it is nullable — a null means
+  // "this agent has not yet been seen able to claim", which is precisely the
+  // state the soft clock is waiting on.
+  await pool.query(`ALTER TABLE job_reservation ADD COLUMN IF NOT EXISTS eligible_since timestamptz`)
+}
+
+/** Has priority lapsed? Two clocks, and either one opens the job.
+ *
+ *  Pure, so the rule that decides who may claim an office's own work is
+ *  testable without a database. */
+export function reservationLapsed(
+  row: { reservedAt: Date; eligibleSince: Date | null },
+  now: number,
+): boolean {
+  if (now - row.reservedAt.getTime() > RESERVATION_HARD_TTL_MS) return true
+  if (row.eligibleSince === null) return false // never been able — the clock has not started
+  return now - row.eligibleSince.getTime() > RESERVATION_TTL_MS
 }
 
 /** Reserve a job for exactly one agent — called once, right after the spec
@@ -51,14 +101,39 @@ export async function reserveJobForAgent(specHash: string, agentId: string): Pro
  *  reservation has expired (RESERVATION_TTL_MS). */
 export async function reservedAgentFor(specHash: string): Promise<string | null> {
   await ensureTable()
-  const { rows } = await pool.query<{ agent_id: string; reserved_at: Date }>(
-    `SELECT agent_id, reserved_at FROM job_reservation WHERE spec_hash = $1`,
+  const { rows } = await pool.query<{ agent_id: string; reserved_at: Date; eligible_since: Date | null }>(
+    `SELECT agent_id, reserved_at, eligible_since FROM job_reservation WHERE spec_hash = $1`,
     [specHash],
   )
   const row = rows[0]
   if (!row) return null
-  if (Date.now() - new Date(row.reserved_at).getTime() > RESERVATION_TTL_MS) return null
-  return row.agent_id
+  const lapsed = reservationLapsed(
+    { reservedAt: new Date(row.reserved_at), eligibleSince: row.eligible_since ? new Date(row.eligible_since) : null },
+    Date.now(),
+  )
+  return lapsed ? null : row.agent_id
+}
+
+/**
+ * Start the soft clock: this agent has been seen ABLE to claim these jobs.
+ *
+ * Called from the mining sweep once the agent has cleared the gas preflight,
+ * for its own assigned open jobs. A ready agent normally claims in the same
+ * tick, so this only ever matters when it was ready and did NOT take the work
+ * — slots full, capability mismatch, already busy. Which is exactly the case
+ * the priority window should be counting.
+ *
+ * Idempotent (`WHERE eligible_since IS NULL`): the first sighting is the one
+ * that counts, so a long-running agent cannot keep resetting its own clock.
+ */
+export async function markReservationsEligible(specHashes: string[], agentId: string): Promise<void> {
+  if (specHashes.length === 0) return
+  await ensureTable()
+  await pool.query(
+    `UPDATE job_reservation SET eligible_since = now()
+      WHERE spec_hash = ANY($1) AND agent_id = $2 AND eligible_since IS NULL`,
+    [specHashes, agentId],
+  )
 }
 
 /**
@@ -113,13 +188,22 @@ export async function reservationsByHash(specHashes: string[]): Promise<Map<stri
   const result = new Map<string, string>()
   if (specHashes.length === 0) return result
   await ensureTable()
-  const { rows } = await pool.query<{ spec_hash: string; agent_id: string; reserved_at: Date }>(
-    `SELECT spec_hash, agent_id, reserved_at FROM job_reservation WHERE spec_hash = ANY($1)`,
+  const { rows } = await pool.query<{
+    spec_hash: string
+    agent_id: string
+    reserved_at: Date
+    eligible_since: Date | null
+  }>(
+    `SELECT spec_hash, agent_id, reserved_at, eligible_since FROM job_reservation WHERE spec_hash = ANY($1)`,
     [specHashes],
   )
   const now = Date.now()
   for (const row of rows) {
-    if (now - new Date(row.reserved_at).getTime() <= RESERVATION_TTL_MS) result.set(row.spec_hash, row.agent_id)
+    const lapsed = reservationLapsed(
+      { reservedAt: new Date(row.reserved_at), eligibleSince: row.eligible_since ? new Date(row.eligible_since) : null },
+      now,
+    )
+    if (!lapsed) result.set(row.spec_hash, row.agent_id)
   }
   return result
 }

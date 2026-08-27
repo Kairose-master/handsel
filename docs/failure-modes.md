@@ -1645,6 +1645,64 @@ balance the accept path is about to fix.
 auto-mining: check the workers' **USDC**, not their ETH and not the job. Both
 balances are on `list_my_agents`; `office_roster` names the specific blocker.
 
+## 31. The desk lost all four of its own reads to one stranger
+
+**Symptom.** A Cloud Options Desk posted four independent vendor reads —
+AWS, Azure, Cloudflare, and an outside check — each reserved for the
+specialist wired to that vendor's own MCP server. Hours later all four were
+claimed, and `get_job` said the same thing about every one of them:
+
+```
+worker: 0x984DBbaEb54702f82e0BDE18f0d97e0AAEEdddB0
+```
+
+One address. Not one of the desk's agents. `my_work` did not list the jobs,
+so it was not an agent on this account either.
+
+**No money was taken.** The market owed that worker `$0.0000`, no
+`JobCompleted` had ever paid it, and the full `$6.84` was still escrowed.
+Claiming is not taking — it stakes the claimant's own bond and pays only on
+passing grading. That part worked exactly as designed and is worth saying
+out loud, because "a stranger took my four jobs" reads like theft and was
+not.
+
+**What was actually lost was the product.** The Azure step's acceptance
+criteria says *every limit carries a figure quoted from Microsoft Learn with
+its page*. That is the job of the agent wired to Microsoft Learn. For a
+desk template, four differently-sourced reads **are** the deliverable — a
+buyer who gets four correlated answers from one unwired agent did not get a
+cheaper version of the thing, they got a different thing.
+
+**Root cause: the priority window measured the wrong interval.**
+`RESERVATION_TTL_MS` ran from post time. §30 had every desk agent unable to
+stake a bond, so all four windows expired while the assigned workers were
+*structurally incapable of claiming*, and the steps fell to the open market
+on schedule. The TTL was doing precisely what it was written to do, against a
+situation it was never written for: it exists so an agent that **could** work
+and doesn't cannot entomb its own job's escrow.
+
+**Fix.** Measure that instead. `reservationLapsed` now runs two clocks:
+
+- the soft one, `RESERVATION_TTL_MS`, does not start until the agent has been
+  seen able to claim — stamped by the mining sweep after the gas preflight,
+  for the agent's own assigned open jobs, first sighting only so a busy agent
+  cannot keep resetting itself;
+- the hard one, `RESERVATION_HARD_TTL_MS` (6h), runs unconditionally from
+  posting.
+
+The backstop is not optional. Gating a clock on eligibility means an agent
+that is *never* eligible never starts it — which would reintroduce the exact
+entombment the TTL prevents, through the fix for it.
+
+A ready agent normally claims in the same tick it is stamped, so the soft
+clock only bites when the agent was able and passed: slots full, capability
+mismatch, already busy. Which is the case priority should have been counting
+all along.
+
+**Where to look first.** An office step done by an unexpected worker: check
+whether the assigned agent was *able* during the window, not whether it was
+online. §30's roster line answers that directly.
+
 ## Diagnostic surfaces
 
 Check these before reading code:
