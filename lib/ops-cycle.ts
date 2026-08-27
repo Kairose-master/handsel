@@ -295,11 +295,31 @@ export const OPS_STEPS: OpsStep[] = [
   },
 ]
 
+/** How long a full cycle holds the floor. Sized to the cron interval, not to
+ *  how long the cycle takes: the point is that the next scheduled fire is a
+ *  no-op while this one is still working, not that slow steps get a deadline. */
+export const FULL_CYCLE_LEASE_MS = 5 * 60_000
+
 /** Run steps, collecting a per-step result. One failing sweep never stops
- *  the others — the report carries its error string instead. */
+ *  the others — the report carries its error string instead.
+ *
+ *  The full cycle takes a lease. The fast subset never needed one at this
+ *  level — every money-moving step inside it already leases individually —
+ *  but the full cycle adds `fleetTick` and `delegations`, and those write
+ *  plan state rather than settling an on-chain fact. Two overlapping runs
+ *  would each advance the same delegation a wave, which posts the same
+ *  subtask twice. Per-call idempotence does not compose under concurrency,
+ *  so the cycle serialises itself. */
 export async function runOpsCycle(origin: string, opts?: { fastOnly?: boolean }): Promise<Record<string, unknown>> {
   const steps = opts?.fastOnly ? OPS_STEPS.filter((s) => s.fast) : OPS_STEPS
   const report: Record<string, unknown> = {}
+
+  if (!opts?.fastOnly) {
+    const { acquireOpsLease } = await import('@/lib/ops-lease')
+    if (!(await acquireOpsLease('full-cycle', FULL_CYCLE_LEASE_MS))) {
+      return { skipped: 'another full cycle holds the lease' }
+    }
+  }
 
   // Index creation belongs on a background path, not on a request a user is
   // waiting behind: CREATE INDEX takes a lock, and on a table big enough for

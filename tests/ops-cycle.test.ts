@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { OPS_STEPS, TRAFFIC_TICK_INTERVAL_MS } from '@/lib/ops-cycle'
+import { OPS_STEPS, TRAFFIC_TICK_INTERVAL_MS, FULL_CYCLE_LEASE_MS } from '@/lib/ops-cycle'
+import { readFileSync } from 'node:fs'
 import { DRAIN_BATCH } from '@/lib/callback/settlement-drain'
 import { RECONCILE_MAX_LOOKUPS } from '@/lib/bounty-reconcile'
 import { MAX_EXITS_PER_PASS } from '@/lib/deadlines'
@@ -69,5 +70,39 @@ describe('OPS_STEPS', () => {
 
   it('ticks traffic no more than once every five minutes', () => {
     expect(TRAFFIC_TICK_INTERVAL_MS).toBeGreaterThanOrEqual(5 * 60_000)
+  })
+})
+
+describe('the scheduled full cycle', () => {
+  // Traffic only ever runs the fast subset, so the steps that actually drive
+  // an open plan forward — `fleetTick` (mining) and `delegations` (waves,
+  // review, synthesis) — reach production ONLY through the cron. A cron slow
+  // enough to be decorative leaves those two dark, which looks exactly like a
+  // market where nobody claims anything. That failure is a schedule, not a
+  // bug, so the schedule is pinned here.
+  const crons = JSON.parse(readFileSync('vercel.json', 'utf8')).crons as Array<{
+    path: string
+    schedule: string
+  }>
+
+  it('schedules the settlement heartbeat at least every 15 minutes', () => {
+    const settle = crons.find((c) => c.path === '/api/cron/settle')
+    expect(settle).toBeDefined()
+    const [minute, hour] = settle!.schedule.split(' ')
+    // `*/N * * * *` is the only shape that runs intraday; anything with a
+    // fixed hour is at best hourly and cannot carry the fleet.
+    expect(hour).toBe('*')
+    const everyN = /^\*\/(\d+)$/.exec(minute)
+    expect(everyN, `expected */N minutes, got ${settle!.schedule}`).not.toBeNull()
+    expect(Number(everyN![1])).toBeLessThanOrEqual(15)
+  })
+
+  it('holds a lease at least as long as the gap between fires', () => {
+    // The lease is what makes a frequent cron safe: the next fire is a no-op
+    // while this one still works. Shorter than the interval and it buys
+    // nothing; the two numbers have to move together.
+    const settle = crons.find((c) => c.path === '/api/cron/settle')!
+    const everyMinutes = Number(/^\*\/(\d+)$/.exec(settle.schedule.split(' ')[0])![1])
+    expect(FULL_CYCLE_LEASE_MS).toBeGreaterThanOrEqual(everyMinutes * 60_000)
   })
 })

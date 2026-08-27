@@ -10,10 +10,19 @@ export const maxDuration = 300 // settlement = several on-chain txs, LLM verify 
  * tab: Submitted jobs then sit ungraded and the UI falls back to manual
  * approve/dispute buttons. This endpoint is the scheduler-callable version:
  *
+ *  - Vercel Cron (vercel.json) — the real scheduler, every 5 minutes. Vercel
+ *    signs the request with CRON_SECRET itself, so nothing has to be stored
+ *    outside the project. This deployment is on Pro; a Hobby project is
+ *    capped at daily and needs the Action below instead.
  *  - GitHub Actions (.github/workflows/settle-heartbeat.yml) — free, but
  *    measured at 80–100 min against a requested 5, so it is a floor on
- *    freshness, not a guarantee
- *  - Vercel Cron (vercel.json) — daily on Hobby, per-minute on Pro
+ *    freshness, not a guarantee. A fallback, not the plan.
+ *
+ * Frequency is not cosmetic. Traffic drives only the FAST subset, and the two
+ * steps that move an open plan forward — `fleetTick` (mining) and
+ * `delegations` (waves, peer review, synthesis) — are not in it. They run
+ * here or nowhere, so a daily schedule reads from outside as a market where
+ * no worker ever claims anything.
  *
  * The sweeps themselves live in lib/ops-cycle.ts, because ordinary traffic
  * drives the latency-critical subset of the same list (see
