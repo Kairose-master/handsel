@@ -127,8 +127,19 @@ export async function autoMineTick(
   const faucetId = await faucetAgentId().catch(() => null)
   const now = Date.now()
   const { workerCanDeliver } = await import('@/lib/artifacts')
-  const { reservationsByHash } = await import('@/lib/job-reservation')
-  const reservedBy = await reservationsByHash(specHashes).catch(() => new Map<string, string>())
+  const { reservationsByHash, assignmentsByHash } = await import('@/lib/job-reservation')
+  const [reservedBy, assignedBy] = await Promise.all([
+    reservationsByHash(specHashes).catch(() => new Map<string, string>()),
+    assignmentsByHash(specHashes).catch(() => new Map<string, string>()),
+  ])
+  const specHashByJobId = new Map(openJobs.map((j) => [j.id, j.specHash]))
+  /** Work this office posted and assigned to this exact agent. The owner
+   *  covers the bond on it (lib/office-bond-cover.ts), so an empty balance is
+   *  not a reason to skip — it is a reason to top up on the way in. */
+  const isMineByAssignment = (jobId: number) => {
+    const hash = specHashByJobId.get(jobId)
+    return Boolean(hash && assignedBy.get(hash) === agent.id)
+  }
 
   // Accepting stakes a bond in USDC out of the worker's own account, so an
   // agent's balance decides which bounties it can even attempt. One balance
@@ -169,6 +180,7 @@ export async function autoMineTick(
     },
     canPostBond: (job) => {
       if (heldUsd === null) return true // unreadable — let the contract decide
+      if (isMineByAssignment(job.id)) return true // the office pays this one's bond
       const verdict = bondReadiness(heldUsd, job.bounty, bondSchedule)
       if (verdict.ready === true || verdict.ready === 'unknown') return true
       // Remember the cheapest miss, so the tick can say what is actually

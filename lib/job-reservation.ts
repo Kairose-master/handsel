@@ -86,6 +86,26 @@ export async function assignedAgentFor(specHash: string): Promise<string | null>
   return rows[0]?.agent_id ?? null
 }
 
+/** Batch form of `assignedAgentFor` — ownership, with NO expiry.
+ *
+ *  The TTL on `reservationsByHash` governs claim *priority*: after the window
+ *  a reserved job also becomes fair game for other rigs. It was never meant
+ *  to govern whether the office still owns the step, and two things must not
+ *  be gated on it — the self-deal exception, and bond cover. A desk whose
+ *  owner stopped paying its bonds thirty minutes after posting would be a
+ *  worse bug than the one bond cover fixes. */
+export async function assignmentsByHash(specHashes: string[]): Promise<Map<string, string>> {
+  const result = new Map<string, string>()
+  if (specHashes.length === 0) return result
+  await ensureTable()
+  const { rows } = await pool.query<{ spec_hash: string; agent_id: string }>(
+    `SELECT spec_hash, agent_id FROM job_reservation WHERE spec_hash = ANY($1)`,
+    [specHashes],
+  )
+  for (const row of rows) result.set(row.spec_hash, row.agent_id)
+  return result
+}
+
 /** Batch form for the mining-sweep candidate build — one query for every
  *  open job's spec hash, not N. Expired reservations are excluded, same
  *  cutoff as reservedAgentFor. */

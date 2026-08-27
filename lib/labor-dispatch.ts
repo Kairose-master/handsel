@@ -254,6 +254,32 @@ export async function acceptAndDispatchJob(
     )
   }
 
+  // The accept about to happen stakes a bond in USDC out of this worker's own
+  // account. For an office pipeline step — a job this owner posted, escrowed
+  // and assigned to this exact agent — the owner covers it, because otherwise
+  // a desk of new hires is turned away from its own work for want of cents of
+  // the owner's own money. Strictly limited to reserved jobs; see
+  // lib/office-bond-cover.ts for why that gate is the safety argument.
+  //
+  // After the claim, so a worker that lost the race never moves money. Never
+  // fatal: if the cover fails the accept proceeds and the chain refuses it,
+  // exactly as it does today.
+  if (job) {
+    try {
+      const { coverBondForAssignedJob } = await import('@/lib/office-bond-cover')
+      const cover = await coverBondForAssignedJob({ worker, specHash: job.specHash, bountyUsd: job.bounty })
+      if (cover.covered) {
+        console.info(
+          `[labor-dispatch] covered ${worker.name}'s $${cover.amountUsd.toFixed(4)} bond for job ${jobId} from ${cover.from} (tx ${cover.txHash})`,
+        )
+      } else if (cover.why === 'failed') {
+        console.warn(`[labor-dispatch] bond cover for job ${jobId} failed, letting the accept try anyway: ${cover.error}`)
+      }
+    } catch (coverError) {
+      console.warn(`[labor-dispatch] bond cover for job ${jobId} threw, letting the accept try anyway:`, coverError)
+    }
+  }
+
   let txHash: string
   try {
     txHash = await acceptJob(worker.id, jobId)

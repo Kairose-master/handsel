@@ -1625,6 +1625,22 @@ specialists at once and every one of them is born unable to work.
 - The roster now prints real balances and says `CANNOT CLAIM: needs $0.1155 to
   stake the bond` instead of `funded wallet`.
 
+**The second half.** Funding by hand does not scale to a desk, and it should
+not have to: the owner posted the job, escrowed the bounty, and picked which
+of their agents would do it. `lib/office-bond-cover.ts` pays the bond
+automatically — but only for a job `assignedAgentFor` says belongs to that
+exact worker. That gate is the whole safety argument, not a detail: anyone can
+post a job, and a worker that topped itself up from its owner's wallet for
+*any* job it fancied would let a stranger price work to drain the funder into
+bonds, which are burned rather than returned when work is abandoned. It runs
+after the off-chain claim (a worker that lost the race never pays), before the
+accept, capped, and never fatally — a failed cover lets the chain refuse the
+accept exactly as it does today.
+
+The miner had to learn the same thing, or the two halves cancel: `canPostBond`
+lets an assigned job through, because the balance it is about to check is the
+balance the accept path is about to fix.
+
 **Where to look first.** A job that stays `Open` while workers are online and
 auto-mining: check the workers' **USDC**, not their ETH and not the job. Both
 balances are on `list_my_agents`; `office_roster` names the specific blocker.
