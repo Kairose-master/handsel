@@ -104,10 +104,38 @@ export async function handleDelegation(
 
       const blocks: string[] = []
       for (const row of rows) {
-        const views = row.status === 'planned' ? [] : await subtaskViews(row, jobs)
-        const subLines = views
-          .map((v) => `   - ${v.failed ? '❌' : v.jobStatus ?? '…'} ${v.title} ($${v.bountyUsd.toFixed(2)})${v.workerLabel ? ` by ${v.workerLabel}` : ''}`)
-          .join('\n')
+        // A planned delegation has no on-chain jobs to read, but it does have
+        // the plan — and that plan is the thing the caller is told to review
+        // before confirm_delegation escrows. Rendering nothing for it made the
+        // two-step safety story unusable from a connector: the only way to see
+        // what you were about to buy was the web dashboard. Straight from the
+        // stored jsonb; no chain reads, which is why they were skipped here.
+        let subLines: string
+        if (row.status === 'planned') {
+          const planned = (row.subtasks ?? []) as Array<{
+            title: string
+            bountyUsd: number
+            dependsOn?: string[]
+            reviewOf?: string
+            payerAgentId?: string
+            assignedAgentId?: string
+          }>
+          subLines = planned
+            .map((st) => {
+              const notes: string[] = []
+              if (st.reviewOf) notes.push(`REVIEWS "${st.reviewOf}" — a REVISE goes back to that worker`)
+              else if (st.dependsOn?.length) notes.push(`waits on ${st.dependsOn.join(', ')}`)
+              if (st.payerAgentId) notes.push(`paid by ${st.payerAgentId}`)
+              if (st.assignedAgentId) notes.push('reserved for this office')
+              return `   - ${st.title} ($${st.bountyUsd.toFixed(2)})${notes.length ? `\n       ${notes.join(' · ')}` : ''}`
+            })
+            .join('\n')
+        } else {
+          const views = await subtaskViews(row, jobs)
+          subLines = views
+            .map((v) => `   - ${v.failed ? '❌' : v.jobStatus ?? '…'} ${v.title} ($${v.bountyUsd.toFixed(2)})${v.workerLabel ? ` by ${v.workerLabel}` : ''}`)
+            .join('\n')
+        }
         const preview =
           row.finalOutput && row.finalOutput.length > 2000
             ? `${row.finalOutput.slice(0, 2000)}\n… [TRUNCATED — ${row.finalOutput.length - 2000} more chars. Call get_delegation_output with delegation_id "${row.id}" for the complete document.]`
