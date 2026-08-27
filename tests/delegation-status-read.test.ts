@@ -49,8 +49,10 @@ describe('the safe reader already exists', () => {
     // It cannot tell a failed read from an empty market either, but nothing
     // it does on absence spends — so the collapse is survivable there and was
     // not in the renderer.
+    // The guard lives in the locked body; the exported entry point is now the
+    // lease wrapper (see tests/delegation-tick-lease.test.ts).
     const del = readFileSync('lib/delegation.ts', 'utf8')
-    const tick = del.slice(del.indexOf('export async function tickDelegation'))
+    const tick = del.slice(del.indexOf('async function tickDelegationLocked'))
     expect(tick.slice(0, 800)).toContain('if (jobs.length === 0) return')
   })
 })

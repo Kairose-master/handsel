@@ -1703,6 +1703,46 @@ all along.
 whether the assigned agent was *able* during the window, not whether it was
 online. §30's roster line answers that directly.
 
+## 32. The same step was escrowed twice because I kept refreshing
+
+**Symptom.** A Cloud Options Desk's synthesis step appeared twice on chain:
+job 24 `Completed` and paid $2.00 to the Architect, and job 25 `Open` with a
+second $2.00 escrowed against the identical spec. `delegation_status` showed
+the step as `Open`, which read as "it never ran".
+
+**Cause.** `tickDelegation` posts held-back subtasks and nothing serialised
+it. Five call sites reach it — the ops cycle, the MCP `delegation_status`
+handler's `after()`, the `/delegate` action, the delegations API — and two
+overlapping ticks both read the Architect subtask as
+`onchainJobId === undefined` and both posted it.
+
+`postOneSubtask` does skip an already-posted subtask. That is idempotence per
+call, and `lib/ops-lease.ts`'s own header already says why it is not enough:
+
+> Idempotence per call does not compose into idempotence under concurrency.
+
+**Who caused it.** Polling. Each `delegation_status` call fires a tick in
+`after()`, and I called it repeatedly while watching the run, alongside the
+5-minute traffic tick. The tool's description says "polling this also drives
+verification/payout" — driving settlement from a read is the design, and this
+is the cost of that design without a lease.
+
+**Fix.** A per-delegation mutex inside `tickDelegation`, released in `finally`.
+It belongs to the operation and not to a caller: a guard on one entry point is
+a guard the other four walk around. Keyed per delegation, because a global one
+would serialise unrelated work and turn a correctness fix into a throughput
+bug.
+
+**What it did not catch.** The full-cycle lease added the same morning (§ops)
+covers `fleetTick` and `delegations` *inside the ops cycle*. The MCP handler's
+`after()` never enters that cycle, so it bypassed the lease entirely. A lease
+on a caller protects that caller.
+
+**Where to look first.** Two on-chain jobs with the same `specHash` and
+different ids. `backfillJobIds` repairs a *lost* id; it does not merge a
+*duplicated* post, and the second escrow has to be cancelled or expired
+deliberately.
+
 ## Diagnostic surfaces
 
 Check these before reading code:

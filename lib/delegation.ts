@@ -1109,11 +1109,51 @@ export function assembleFinalOutput(task: string, subtasks: DelegationSubtask[])
  * terminal. Called from the owner's own read path — same no-cron pattern
  * as reapStuckTasks/tickCloudAutoMineAgents.
  */
+/** How long one delegation's tick holds the floor. Long enough to cover the
+ *  on-chain posts a wave advance makes, short enough that a crashed tick does
+ *  not strand the delegation for long. */
+export const DELEGATION_TICK_LEASE_MS = 2 * 60_000
+
+/**
+ * Advance one delegation, under a lease.
+ *
+ * The lease is not optional and it belongs HERE rather than at a caller.
+ * There are five entry points — the ops cycle, the MCP `delegation_status`
+ * handler's `after()`, the /delegate action, the delegations API, and any
+ * future one — and the operation is only safe if every one of them is
+ * serialised. A guard on one caller is a guard the others walk around.
+ *
+ * What happens without it, observed in production: two ticks overlap, both
+ * read a held-back subtask as `onchainJobId === undefined`, and both post it.
+ * The same step is escrowed twice and the second escrow is stranded on a job
+ * nobody will ever work. `postOneSubtask` already skips an already-posted
+ * subtask, which is idempotence per call — and lib/ops-lease.ts's own header
+ * says why that is not enough: "Idempotence per call does not compose into
+ * idempotence under concurrency."
+ *
+ * Taken as a MUTEX, not as an interval: released in `finally` so a legitimate
+ * next tick is not blocked for the rest of the TTL. Losing the lease is a
+ * no-op rather than an error — another tick is already doing this work.
+ */
 export async function tickDelegation(
   row: typeof delegation.$inferSelect,
   jobsShared?: Awaited<ReturnType<typeof import('@/lib/onchain/labor').readJobs>>,
 ): Promise<void> {
   if (row.status !== 'posted') return
+  const { acquireOpsLease, releaseOpsLease } = await import('@/lib/ops-lease')
+  const leaseName = `delegation-tick:${row.id}`
+  if (!(await acquireOpsLease(leaseName, DELEGATION_TICK_LEASE_MS))) return
+  try {
+    await tickDelegationLocked(row, jobsShared)
+  } finally {
+    await releaseOpsLease(leaseName)
+  }
+}
+
+async function tickDelegationLocked(
+  row: typeof delegation.$inferSelect,
+  jobsShared?: Awaited<ReturnType<typeof import('@/lib/onchain/labor').readJobs>>,
+): Promise<void> {
   const subtasks = row.subtasks as DelegationSubtask[]
 
   const { readJobs, approveJob } = await import('@/lib/onchain/labor')
