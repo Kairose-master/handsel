@@ -70,20 +70,35 @@ describe('where it is called from', () => {
   const dispatch = readFileSync('lib/labor-dispatch.ts', 'utf8')
   const accept = codeOnly(dispatch.slice(dispatch.indexOf('export async function acceptAndDispatchJob')))
 
+  it('is shared by BOTH accept paths, not inlined in one', () => {
+    // It was inlined in acceptAndDispatchJob, so a worker arriving through
+    // claim_job — the live connector path, and the ONLY way a platform agent
+    // with no runtime can ever work — reached acceptJob with an empty wallet
+    // and reverted on TransferFailed(). The failed-lineage gate had been
+    // through this exact lesson one function earlier.
+    const calls = [...dispatch.matchAll(/coverBondIfAssigned\(/g)]
+    expect(calls.length, 'definition + both call sites').toBeGreaterThanOrEqual(3)
+  })
+
+  it('covers before the accept on the live-worker path too', () => {
+    const live = dispatch.slice(dispatch.indexOf('Job requires credit score'))
+    expect(live.indexOf('coverBondIfAssigned')).toBeLessThan(live.indexOf('await acceptJob('))
+  })
+
   it('runs after the off-chain claim, so a worker that lost the race never pays', () => {
     const claimAt = accept.indexOf('claimJobSpec')
-    const coverAt = accept.indexOf('coverBondForAssignedJob')
+    const coverAt = accept.indexOf('coverBondIfAssigned')
     expect(claimAt).toBeGreaterThan(-1)
     expect(coverAt).toBeGreaterThan(claimAt)
   })
 
   it('runs before the accept it exists to make possible', () => {
-    expect(accept.indexOf('coverBondForAssignedJob')).toBeLessThan(accept.indexOf('await acceptJob('))
+    expect(accept.indexOf('coverBondIfAssigned')).toBeLessThan(accept.indexOf('await acceptJob('))
   })
 
   it('cannot fail the accept', () => {
-    const window = accept.slice(accept.indexOf('coverBondForAssignedJob') - 400, accept.indexOf('await acceptJob('))
-    expect(window).toContain('catch')
+    const helper = dispatch.slice(dispatch.indexOf('async function coverBondIfAssigned'))
+    expect(helper.slice(0, 1200)).toContain('catch')
   })
 })
 

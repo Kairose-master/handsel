@@ -249,6 +249,41 @@ async function assertNotFailedLineage(
   if (verdict.blocked) throw new Error(failedLineageMessage(verdict.reason))
 }
 
+/**
+ * Cover the worker's bond, when the office owns this job.
+ *
+ * Shared by BOTH accept paths, because it was not. It lived inline in
+ * `acceptAndDispatchJob`, so a worker arriving through `claim_job` — the live
+ * connector path, which is the only way a platform agent with no runtime can
+ * ever work — reached `acceptJob` with an empty wallet and reverted on
+ * `TransferFailed()`. The failed-lineage gate had already been through this
+ * exact lesson one function earlier; the bond had not.
+ *
+ * Called after the off-chain claim so a worker that lost the race never moves
+ * money, and before the accept it exists to enable. Never fatal: a failed
+ * cover lets the chain refuse the accept exactly as it would have.
+ */
+async function coverBondIfAssigned(
+  worker: AgentRow,
+  job: { specHash: string; bounty: number } | undefined,
+  jobId: number,
+): Promise<void> {
+  if (!job) return
+  try {
+    const { coverBondForAssignedJob } = await import('@/lib/office-bond-cover')
+    const cover = await coverBondForAssignedJob({ worker, specHash: job.specHash, bountyUsd: job.bounty })
+    if (cover.covered) {
+      console.info(
+        `[labor-dispatch] covered ${worker.name}'s $${cover.amountUsd.toFixed(4)} bond for job ${jobId} from ${cover.from} (tx ${cover.txHash})`,
+      )
+    } else if (cover.why === 'failed') {
+      console.warn(`[labor-dispatch] bond cover for job ${jobId} failed, letting the accept try anyway: ${cover.error}`)
+    }
+  } catch (coverError) {
+    console.warn(`[labor-dispatch] bond cover for job ${jobId} threw, letting the accept try anyway:`, coverError)
+  }
+}
+
 export async function acceptAndDispatchJob(
   worker: AgentRow,
   jobId: number,
@@ -289,31 +324,7 @@ export async function acceptAndDispatchJob(
     )
   }
 
-  // The accept about to happen stakes a bond in USDC out of this worker's own
-  // account. For an office pipeline step — a job this owner posted, escrowed
-  // and assigned to this exact agent — the owner covers it, because otherwise
-  // a desk of new hires is turned away from its own work for want of cents of
-  // the owner's own money. Strictly limited to reserved jobs; see
-  // lib/office-bond-cover.ts for why that gate is the safety argument.
-  //
-  // After the claim, so a worker that lost the race never moves money. Never
-  // fatal: if the cover fails the accept proceeds and the chain refuses it,
-  // exactly as it does today.
-  if (job) {
-    try {
-      const { coverBondForAssignedJob } = await import('@/lib/office-bond-cover')
-      const cover = await coverBondForAssignedJob({ worker, specHash: job.specHash, bountyUsd: job.bounty })
-      if (cover.covered) {
-        console.info(
-          `[labor-dispatch] covered ${worker.name}'s $${cover.amountUsd.toFixed(4)} bond for job ${jobId} from ${cover.from} (tx ${cover.txHash})`,
-        )
-      } else if (cover.why === 'failed') {
-        console.warn(`[labor-dispatch] bond cover for job ${jobId} failed, letting the accept try anyway: ${cover.error}`)
-      }
-    } catch (coverError) {
-      console.warn(`[labor-dispatch] bond cover for job ${jobId} threw, letting the accept try anyway:`, coverError)
-    }
-  }
+  await coverBondIfAssigned(worker, job, jobId)
 
   let txHash: string
   try {
@@ -395,6 +406,8 @@ export async function acceptJobForExternalWorker(
         : 'Another worker is already claiming this job — try a different one.',
     )
   }
+
+  await coverBondIfAssigned(worker, job, jobId)
 
   try {
     await acceptJob(worker.id, jobId)
