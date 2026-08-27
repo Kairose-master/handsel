@@ -288,8 +288,13 @@ export async function handleOffice(
       const failed: string[] = []
       for (const a of missing) {
         const res = await provisionAgentAccount(auth.userId, a.id)
-        if (res.ok) done.push(`${a.name} → ${res.address}`)
-        else failed.push(`${a.name}: ${res.reason}${res.detail ? ` (${res.detail.slice(0, 120)})` : ''}`)
+        if (res.ok) {
+          // A failed credit mirror is a footnote, not a failure: the account
+          // exists and the agent can claim.
+          done.push(`${a.name} → ${res.address}${res.mirrorFailed ? ' (credit mirror deferred)' : ''}`)
+        } else {
+          failed.push(`${a.name}: ${res.reason}${res.detail ? ` (${res.detail.slice(0, 120)})` : ''}`)
+        }
       }
       return toolText(
         id,

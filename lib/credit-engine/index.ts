@@ -234,6 +234,20 @@ export async function recalculateCredit(
     assessment.creditLimit = collateralizedCreditLimit(creditLimitForScore(assessment.score), settledTrades)
   }
 
+  // Before the READ, not just before the write. `select()` expands to every
+  // column schema.ts declares, so this query names `engine_version` and dies
+  // on a database the migration has not reached — which is the whole reason
+  // ensureCreditScoreColumns exists. It used to be called further down, right
+  // before the INSERT, so the ALTER ran strictly after the SELECT that needed
+  // it and the guard could never fire in time. Third instance of the hazard in
+  // lib/db/ensure-columns.ts's header; the fix is ordering, not another guard.
+  //
+  // Observed as: provisioning nine agents wrote every smart account and then
+  // reported all nine as failures, because this threw in the credit mirror
+  // that runs after the address is saved.
+  const { ensureCreditScoreColumns } = await import('@/lib/db/ensure-columns')
+  await ensureCreditScoreColumns()
+
   const [previous] = await db
     .select()
     .from(creditScoreEntry)
@@ -258,8 +272,6 @@ export async function recalculateCredit(
   // its comparability class cannot be ranked against another score later, and
   // the engine has already changed once under rows that carry no mark of it
   // (docs/failure-modes.md §20 — a one-job agent moved 673 -> 394).
-  const { ensureCreditScoreColumns } = await import('@/lib/db/ensure-columns')
-  await ensureCreditScoreColumns()
   const { scoringEngineVersion } = await import('@/lib/credit-engine/version')
   await db.insert(creditScoreEntry).values({
     id: scoreEntryId,
