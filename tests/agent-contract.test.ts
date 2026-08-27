@@ -110,7 +110,7 @@ describe('outcomes that are not verdicts about the worker', () => {
       job: job(),
       binding: 'sealed',
     })
-    expect(c.verification.outcome.value).toBe('brief-refused')
+    expect(c.verification.outcome.value).toBe('REFUSED_BRIEF')
   })
 
   it('keeps work nobody could do distinct from work done badly', () => {
@@ -119,13 +119,13 @@ describe('outcomes that are not verdicts about the worker', () => {
       job: job(),
       binding: 'sealed',
     })
-    expect(c.verification.outcome.value).toBe('worker-incapable')
+    expect(c.verification.outcome.value).toBe('CANNOT_DO')
   })
 
   it('reports ungraded as pending, not as failed', () => {
     const c = toAgentContract({ spec: spec({ testResult: { passed: null } }), job: job(), binding: 'sealed' })
     expect(c.verification.verdict.value).toBe('ungraded')
-    expect(c.verification.outcome.value).toBe('pending')
+    expect(c.verification.outcome.value).toBe('UNKNOWN')
   })
 
   it('surfaces an appeal, because a rewritten verdict is otherwise invisible', () => {
@@ -285,5 +285,51 @@ describe('the route a counterparty can act on', () => {
     const c = toAgentContract({ spec: spec({ onchainJobId: null }), binding: 'unverifiable' })
     expect(c.route.state).toBe('draft')
     expect(c.route.issuable).toContain('order')
+  })
+})
+
+describe('whether the judgment happened is a separate question', () => {
+  // "It failed" and "it scored low" must never be the same state. A grader
+  // that never ran says nothing about the worker, and collapsing that into a
+  // low score turns a system fault into someone's penalty.
+  it('never attributes an incomplete evaluation to the worker', () => {
+    const c = toAgentContract({ spec: spec({ testResult: null }), job: job(), binding: 'sealed' })
+    expect(c.verification.execution.value).toBe('PARTIAL')
+    expect(c.verification.attributableToWorker.value).toBe(false)
+  })
+
+  it('does not claim SUCCESS it cannot evidence', () => {
+    // A null verdict cannot distinguish "the grader never ran" from "the
+    // grader ran and could not decide", so it reports PARTIAL rather than
+    // asserting the stronger of the two.
+    const c = toAgentContract({ spec: spec({ testResult: { passed: null } }), job: job(), binding: 'sealed' })
+    expect(c.verification.execution.value).toBe('PARTIAL')
+  })
+
+  it('attributes only a completed judgment that found the work wanting', () => {
+    const failed = toAgentContract({ spec: spec({ testResult: { passed: false } }), job: job(), binding: 'sealed' })
+    expect(failed.verification.execution.value).toBe('SUCCESS')
+    expect(failed.verification.attributableToWorker.value).toBe(true)
+
+    const passed = toAgentContract({ spec: spec({ testResult: { passed: true } }), job: job(), binding: 'sealed' })
+    expect(passed.verification.attributableToWorker.value).toBe(false)
+  })
+
+  it('does not attribute a refused brief, even though it completed', () => {
+    const c = toAgentContract({
+      spec: spec({ testResult: { passed: false, refusedBrief: true } }),
+      job: job(),
+      binding: 'sealed',
+    })
+    expect(c.verification.execution.value).toBe('SUCCESS')
+    expect(c.verification.attributableToWorker.value).toBe(false)
+  })
+
+  it('keeps both axes at platform provenance', () => {
+    // Neither is sealed, and neither is on-chain. A grader could otherwise
+    // appear to carry the authority of the hash.
+    const c = toAgentContract({ spec: spec(), job: job(), binding: 'sealed' })
+    expect(c.verification.execution.from).toBe('platform')
+    expect(c.verification.attributableToWorker.from).toBe('platform')
   })
 })

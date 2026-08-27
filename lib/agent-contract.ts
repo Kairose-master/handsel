@@ -37,6 +37,7 @@
  */
 import type { GraderClass } from '@/lib/grader-class'
 import { issuableIn, type InstrumentType, type TradeState } from '@/lib/trade-instruments'
+import { attributableToWorker as isWorkersFault, type EvaluationExecution, type TaskOutcome } from '@/lib/failure-codes'
 
 export const AGENT_CONTRACT_PROTOCOL = 'handsel/agent-contract'
 export const AGENT_CONTRACT_VERSION = 1
@@ -106,10 +107,27 @@ export type ContractVerification = {
   /** deterministic | model | peer | human — see lib/grader-class.ts. */
   graderClass: Attested<GraderClass | null>
   verdict: Attested<'passed' | 'failed' | 'ungraded'>
-  /** A refusal and an incapacity are recorded against different parties, so
-   *  they are not collapsed into `failed` here either (see §24/§25 of
-   *  docs/failure-modes.md). */
-  outcome: Attested<'graded' | 'brief-refused' | 'worker-incapable' | 'pending'>
+  /**
+   * What the judgment said about the WORK.
+   *
+   * A refusal and an incapacity are recorded against different parties, so
+   * they are not collapsed into `failed` (see §24/§25 of
+   * docs/failure-modes.md).
+   */
+  outcome: Attested<TaskOutcome>
+  /**
+   * Whether the judgment HAPPENED, which is a different question.
+   *
+   * "It failed" and "it scored low" must never be the same state
+   * (lib/failure-codes.ts). A grader that timed out produces
+   * `outcome: UNKNOWN, execution: FAILURE` — nothing about the worker — and
+   * collapsing that into a low score turns a system fault into someone's
+   * penalty.
+   */
+  execution: Attested<EvaluationExecution>
+  /** True only when a completed judgment found the work wanting. The question
+   *  the two axes exist to answer. */
+  attributableToWorker: Attested<boolean>
   appealed: Attested<boolean>
 }
 
@@ -245,13 +263,21 @@ export function toAgentContract(input: {
   // brief goes on record against the requester, work nobody could do goes back
   // to the market. Flattening either into "failed" writes a verdict about the
   // worker that nobody reached.
-  const outcome: ContractVerification['outcome']['value'] = result?.refusedBrief
-    ? 'brief-refused'
+  // Two axes, kept apart. `outcome` says what the judgment found; `execution`
+  // says whether there was one. Handsel records the second only implicitly —
+  // a null verdict means "not graded yet" and cannot distinguish "the grader
+  // never ran" from "the grader ran and could not decide" — so this reports
+  // PARTIAL rather than claiming SUCCESS it cannot evidence.
+  const outcome: TaskOutcome = result?.refusedBrief
+    ? 'REFUSED_BRIEF'
     : result?.workerIncapable
-      ? 'worker-incapable'
-      : result?.passed === null || result == null
-        ? 'pending'
-        : 'graded'
+      ? 'CANNOT_DO'
+      : result?.passed === true
+        ? 'PASS'
+        : result?.passed === false
+          ? 'FAIL'
+          : 'UNKNOWN'
+  const execution: EvaluationExecution = result == null ? 'PARTIAL' : result.passed === null ? 'PARTIAL' : 'SUCCESS'
 
   const nowSec = input.nowSec ?? Math.floor(Date.now() / 1000)
 
@@ -310,6 +336,8 @@ export function toAgentContract(input: {
       graderClass: platform(input.graderClass ?? null),
       verdict: platform(verdict),
       outcome: platform(outcome),
+      execution: platform(execution),
+      attributableToWorker: platform(isWorkersFault({ taskOutcome: outcome, execution })),
       appealed: platform(result?.appeal !== undefined),
     },
     acceptance: {
