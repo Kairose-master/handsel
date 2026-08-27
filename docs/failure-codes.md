@@ -113,3 +113,102 @@ decision the executor acts on. The third, "scorekeeper records, not rewrites",
 is what the credit engine has to keep true; `appealed` is surfaced on the
 contract because a rewritten verdict is otherwise indistinguishable from one
 nobody questioned.
+
+---
+
+# The case file
+
+`lib/adjudication.ts`. The two axes above were right and not enough — three
+things still shared one field:
+
+> **what was OBSERVED · why it happened · who is RESPONSIBLE**
+
+gRPC already refuses that reduction for its own vocabulary:
+`DEADLINE_EXCEEDED` does not mean the work failed, because a state-changing
+call may have **succeeded** with only the response arriving late. An
+observation is not an outcome.
+
+## The layer is in the code
+
+| Prefix | Speaks about |
+|---|---|
+| `OBS.` | what was seen, before anyone knows why |
+| `POL.` | a decision taken **before** the work about what was permitted |
+| `INF.` | a service this depended on |
+| `EVD.` | the proof, not the performance |
+| `VRF.` | the judge, not the judged |
+| `SEC.` | a suspicion, possibly about neither party |
+| `ECO.` | the payment rail, after the judgment is already made |
+| `WRK.` | **the only layer that speaks about whether the job was done** |
+
+`impliesWorkerFault()` returns true for `WRK.*` and nothing else.
+`POLICY_BLOCKED ≠ WORK_FAILED`, `VERIFICATION_FAILED ≠ WORK_FAILED`,
+`SECURITY_SUSPECTED ≠ MALICIOUS_WORKER`.
+
+That is not decoration. Sybil says redundancy across identities proves nothing
+if one entity can mint them; FLP says a consensus that will not converge is no
+evidence of malice. Compressing DISAGREEMENT, TIMEOUT, COMPROMISE and
+COLLUSION into a worker's FAIL is wrong as engineering before it is wrong as
+fairness.
+
+## Observation is never overwritten
+
+```
+OBS.DEADLINE_EXCEEDED
+  ├─ reconcile → the work already completed → re-verify
+  ├─ diagnose  → INF.UNAVAILABLE
+  ├─ diagnose  → POL.PERMISSION_DENIED
+  └─ evidence  → WRK.REQUIREMENT_NOT_MET
+```
+
+Each is **appended**; the latest disposition governs the money, and the raw
+signal survives every interpretation of it. `attributedCode` starts `null`,
+and null is *not* "no fault" — it is "not yet decided", and an unattributed
+observation resolves to `INCONCLUSIVE` whatever it looked like.
+
+An appeal is a **compensating event, not a deletion**. A verdict whose history
+you cannot see is indistinguishable from one nobody questioned.
+
+## Retry is separate from diagnosis
+
+`SAFE_BACKOFF` · `RECONCILE_FIRST` · `FIX_PRECONDITION` ·
+`HIGHER_LEVEL_RETRY` · `NEW_VERIFIER` · `NO_RETRY_ESCALATE`
+
+`RECONCILE_FIRST` is the one that matters: after a timeout the state-changing
+call may already have landed, so re-running a non-idempotent job is how one
+payment becomes two. Reconcile against an execution id *before* retrying,
+never instead of it. An unknown code escalates rather than retrying.
+
+## Two independent columns
+
+| State | Worker at fault? | Money |
+|---|---|---|
+| `PROVISIONAL_PASS` | no | held |
+| `SETTLED_PASS` | no | pays |
+| `ATTRIBUTED_FAIL` | **yes** | refunds |
+| `NO_FAULT_CANCELLED` | no | refunds |
+| `INCONCLUSIVE` | undetermined | held |
+| `SECURITY_HOLD` | undetermined | held |
+| `SETTLEMENT_BLOCKED` | no | held |
+| `POLICY_BLOCKED` | no | no movement |
+
+Neither column is derivable from the other.
+
+## Evidence: three judgments, and a hash settles one
+
+Authenticating a record by hash establishes that **the file is the file** —
+not who wrote it, and not whether what it says is true. (FRE 902's committee
+note draws exactly this line.)
+
+- **authenticity** — is this the artifact it claims to be? A hash answers this.
+- **admissibility** — may this ruleset use it at all? A policy question.
+- **weight** — if usable, how much does it settle? Never derivable from the
+  other two.
+
+`establishesResponsibility()` requires all three. This matters directly for
+`lib/agent-contract.ts`: a passing `binding: 'sealed'` answers **authenticity
+only**, and reading it as more is the inference this model exists to refuse.
+
+Collection order follows RFC 3227: fix the original hash and attestation
+*first*, then work on a copy. Opening an artifact, modifying it, and hashing
+afterwards produces a fingerprint of the analysis rather than of the evidence.

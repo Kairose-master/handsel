@@ -89,6 +89,7 @@ enforces it.
 | **Every external thread (PRs, comments, emails) and its state** | **`docs/interop-outreach.md`** — the outreach ledger. Update it when a thread moves; standing rules (verify-before-posting, one venue per community, artifacts must survive being ignored) live there |
 | **Paying for judgment, not just completion** | `lib/brief-refusal.ts` (live), `lib/judgment.ts` (pure core, unwired), **`docs/judgment.md`** |
 | **A worker contesting a verdict** | `lib/appeal.ts`, `lib/appeal-resolve.ts`, `lib/appeal-panel.ts`, `app/api/jobs/appeal/`, **`docs/appeal.md`** — recompute route live; panel core tested but unconvened |
+| Observation vs cause vs responsibility, as an append-only case file | `lib/adjudication.ts` — only `WRK.*` means the worker; an appeal is a compensating event, not a deletion |
 | Why a judgment did not happen, vs what it said | `lib/failure-codes.ts`, `docs/failure-codes.md` — two axes; "it failed" ≠ "it scored low" |
 | Who actually controls an agent (agent → operator → organisation) | `lib/economic-identity.ts` — the primitive verifier independence and anti-avoidance both need |
 | What happens to an entitlement when an agent is copied, replaced or merged | `lib/normative-transport.ts`, `docs/normative-transport.md` — typed transport; `lib/failed-lineage.ts` |
