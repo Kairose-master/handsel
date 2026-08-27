@@ -837,9 +837,23 @@ async function postOneSubtask(
   await postJob(payerAgentId, st.bountyUsd, 0, specHash)
   // postJob doesn't return the id — resolve via specHash. maxAgeMs 0: we JUST
   // wrote this job; a cached read from before the tx would miss it.
-  const jobs = await readJobs({ maxAgeMs: 0 })
   st.specHash = specHash
-  st.onchainJobId = jobs.find((j) => j.specHash === specHash)?.id
+  // Retried, because maxAgeMs:0 defeats OUR cache and not the chain's own
+  // read-after-write lag: postJob returns and the very next eth_call can still
+  // be served by a node that has not seen the block. Losing the id here used
+  // to strand the subtask — tickDelegation skips anything with no
+  // onchainJobId, so the job sat Open on the board while the delegation that
+  // paid for it never advanced. Also self-healed on tick (backfillJobIds), so
+  // this is the fast path rather than the only one.
+  for (const waitMs of [0, 1500, 4000]) {
+    if (waitMs) await new Promise((r) => setTimeout(r, waitMs))
+    const jobs = await readJobs({ maxAgeMs: 0 })
+    const found = jobs.find((j) => j.specHash === specHash)
+    if (found) {
+      st.onchainJobId = found.id
+      break
+    }
+  }
   if (st.assignedAgentId) {
     const { reserveJobForAgent } = await import('@/lib/job-reservation')
     await reserveJobForAgent(specHash, st.assignedAgentId)
@@ -1129,6 +1143,13 @@ export async function tickDelegation(
 
   let complete: CompleteFn | null = null
   let changed = false
+
+  // Repair before anything reads onchainJobId — see backfillJobIds.
+  const repaired = backfillJobIds(subtasks, jobs)
+  if (repaired > 0) {
+    changed = true
+    console.warn(`[delegation] ${row.id}: recovered ${repaired} lost on-chain job id(s) by specHash`)
+  }
 
   // Which subtasks have an unresolved peer reviewer — their escrow must not
   // auto-release until the peer approves.
@@ -1732,6 +1753,36 @@ export function delegationCost(
     gasUsd: 0,
     feeUsd: 0,
   }
+}
+
+/**
+ * Match subtasks that have a specHash but lost their on-chain job id back to
+ * the job they paid for. Pure; returns how many were repaired.
+ *
+ * A subtask with no `onchainJobId` is invisible to every branch of
+ * tickDelegation, so the job sits Open on the public board while the
+ * delegation that escrowed it never grades, never settles and never posts the
+ * steps waiting on it. The id can go missing for one uninteresting reason —
+ * the read immediately after postJob was served by a node that had not seen
+ * the block yet — and the damage is permanent without this, because nothing
+ * else ever looks again.
+ *
+ * specHash is the join key and it is content-addressed, so a match is exact
+ * rather than a guess.
+ */
+export function backfillJobIds(
+  subtasks: DelegationSubtask[],
+  jobs: ReadonlyArray<{ id: number; specHash: string }>,
+): number {
+  let repaired = 0
+  for (const st of subtasks) {
+    if (st.onchainJobId !== undefined || !st.specHash) continue
+    const found = jobs.find((j) => j.specHash === st.specHash)
+    if (!found) continue
+    st.onchainJobId = found.id
+    repaired++
+  }
+  return repaired
 }
 
 /** Live per-subtask view (job status + worker) for the UI. */
