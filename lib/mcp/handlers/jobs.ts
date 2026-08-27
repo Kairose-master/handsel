@@ -44,6 +44,70 @@ export async function handleJobs(
       })
       return toolText(id, lines.join('\n'))
     }
+    case 'get_contract': {
+      const { jobSpec } = await import('@/lib/db/schema')
+      const wantHash = args.spec_hash ? String(args.spec_hash).trim() : null
+      const jobNo = args.job === undefined ? null : Number(args.job)
+      if (wantHash === null && (jobNo === null || !Number.isInteger(jobNo) || jobNo < 0)) {
+        return toolText(id, 'Pass job (a job number) or spec_hash.', true)
+      }
+
+      const { readJobs } = await import('@/lib/onchain/labor')
+      // null, not [], for a failed read: "no such job" and "the chain did not
+      // answer" are different answers and only one of them is about the job.
+      const jobs = await readJobs().catch(() => null)
+      const job = jobNo === null ? (jobs?.find((j) => j.specHash.toLowerCase() === wantHash!.toLowerCase()) ?? null) : (jobs?.find((j) => j.id === jobNo) ?? null)
+      const specHash = wantHash ?? job?.specHash ?? null
+      if (!specHash) {
+        return toolText(
+          id,
+          jobs === null ? 'Could not read the market contract just now, so I cannot resolve that job.' : `No job #${jobNo} on the market.`,
+          true,
+        )
+      }
+
+      const [spec] = await db.select().from(jobSpec).where(eq(jobSpec.specHash, specHash))
+      if (!spec) return toolText(id, `No brief recorded for ${specHash}.`, true)
+
+      const { briefMatchesHash } = await import('@/lib/spec-hash')
+      const { toAgentContract, bindingClaims, bindingFromBriefVerdict } = await import('@/lib/agent-contract')
+      const { classifyGrader } = await import('@/lib/grader-class')
+
+      // Read from the contract's own immutables, never from env: what someone
+      // believed at deploy time and what the bytecode charges have already
+      // diverged once in this repo's history. Null when unread — a fee of 0
+      // and a fee nobody could read are different answers, and only one of
+      // them is safe to accept work on.
+      let bondUsd: number | null = null
+      let feeUsd: number | null = null
+      if (job) {
+        const { bondScheduleOf } = await import('@/lib/onchain/labor-v2')
+        const schedule = await bondScheduleOf().catch(() => null)
+        if (schedule) {
+          const { bondForBounty } = await import('@/lib/agent-bond')
+          bondUsd = bondForBounty(job.bounty, schedule)
+          // The fee schedule is the same shape as the bond's on this market
+          // (a flat part plus bps), and `postCost` is what the requester
+          // actually paid — bounty plus fee — so the fee is the difference.
+          const { postCostOf } = await import('@/lib/onchain/labor-v2')
+          const cost = await postCostOf(job.bounty).catch(() => null)
+          if (cost !== null) feeUsd = Math.round((cost - job.bounty) * 1e6) / 1e6
+        }
+      }
+
+      const contract = toAgentContract({
+        spec,
+        job: job ? { id: job.id, requester: job.requester, worker: job.worker, bounty: job.bounty, status: job.status, deadline: job.deadline } : null,
+        binding: bindingFromBriefVerdict(briefMatchesHash(spec)),
+        bondUsd,
+        feeUsd,
+        graderClass: spec.testSuiteSlug || spec.testCode ? classifyGrader('deterministic') : classifyGrader(null),
+      })
+
+      const payload = args.binding_only === true ? bindingClaims(contract) : contract
+      return toolText(id, JSON.stringify(payload, null, 2))
+    }
+
     case 'get_job': {
       const jobNo = Number(args.job)
       if (!Number.isInteger(jobNo) || jobNo < 0) return toolText(id, 'job must be a job number, e.g. 144.', true)

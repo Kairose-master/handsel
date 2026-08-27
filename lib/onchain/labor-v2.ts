@@ -364,6 +364,23 @@ export async function bondScheduleOf(): Promise<{ flat: number; bps: number } | 
   return schedule
 }
 
+/**
+ * What posting a bounty of this size actually costs the requester.
+ *
+ * Read, not computed. `postJob` already reads it for the approve rather than
+ * reimplementing the fee — this exposes the same number to callers that need
+ * to SHOW it (the contract object) instead of spend it, so the figure a
+ * counterparty is quoted and the figure the market charges cannot drift.
+ */
+export async function postCostOf(bountyUsd: number): Promise<number> {
+  const raw = (await publicClient().readContract({
+    ...market(),
+    functionName: 'postCost',
+    args: [toUnits(bountyUsd)],
+  })) as bigint
+  return fromUnits(raw)
+}
+
 /** What settlement has credited an address and not yet handed over. */
 export async function withdrawableOf(who: Address): Promise<number> {
   const address = onchainEnv.laborMarketAddress

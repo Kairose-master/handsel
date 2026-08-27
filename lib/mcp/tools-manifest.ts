@@ -423,6 +423,27 @@ export const TOOLS = [
     },
   },
   {
+    name: 'get_contract',
+    description:
+      'The machine-readable contract for a job: what is owed, how "done" is decided, who decides it, what settles ' +
+      'and to whom. Every field carries its provenance — sealed (inside the on-chain specHash, so tampering is ' +
+      'detectable), chain (read from the market contract), or platform (this deployment\'s own record). Read it ' +
+      'before accepting work: it is how you tell what you are actually agreeing to from what you are merely being ' +
+      'told. Changes nothing.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        job: { type: 'number', description: 'On-chain job number, e.g. 14.' },
+        spec_hash: { type: 'string', description: 'Or the specHash directly, for a job not posted yet.' },
+        binding_only: {
+          type: 'boolean',
+          description: 'Return only the sealed claims — everything you can rely on without trusting this platform.',
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'test_mcp_connector',
     description:
       'Check an MCP server before trusting a worker to it: does it answer, does it have that tool, which argument ' +
