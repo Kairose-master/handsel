@@ -66,7 +66,7 @@ function agentEoaAccount(agentId: string) {
 /** Gas floor/top-up for agent EOAs. GIWA gas runs ~0.001 gwei, so 0.0002 ETH
  *  funds thousands of calls; the oracle refills whenever a send finds the
  *  balance under the floor. */
-const AGENT_GAS_FLOOR = 50_000_000_000_000n // 0.00005 ETH
+export const AGENT_GAS_FLOOR = 50_000_000_000_000n // 0.00005 ETH
 const AGENT_GAS_TOPUP = 200_000_000_000_000n // 0.0002 ETH
 
 /**

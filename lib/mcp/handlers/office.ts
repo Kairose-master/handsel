@@ -283,15 +283,21 @@ export async function handleOffice(
         return toolText(id, `Every agent in office ${slot} already has an on-chain account.`)
       }
 
-      const { provisionAgentAccount } = await import('@/lib/agent-provision')
+      const { provisionAgentAccount, agentGasReadiness } = await import('@/lib/agent-provision')
       const done: string[] = []
       const failed: string[] = []
+      const unfunded: string[] = []
       for (const a of missing) {
         const res = await provisionAgentAccount(auth.userId, a.id)
         if (res.ok) {
           // A failed credit mirror is a footnote, not a failure: the account
           // exists and the agent can claim.
           done.push(`${a.name} → ${res.address}${res.mirrorFailed ? ' (credit mirror deferred)' : ''}`)
+          // An address is not the ability to use one. Where the deployment
+          // sponsors no gas, a fresh account holds nothing and cannot accept
+          // even a job escrowed for it.
+          const gas = await agentGasReadiness(res.address)
+          if (!gas.ready) unfunded.push(`${a.name} → ${gas.address}`)
         } else {
           failed.push(`${a.name}: ${res.reason}${res.detail ? ` (${res.detail.slice(0, 120)})` : ''}`)
         }
@@ -304,10 +310,16 @@ export async function handleOffice(
             ? `\nStill without a wallet — these cannot claim work, including jobs reserved for them:\n` +
               failed.map((f) => `  · ${f}`).join('\n')
             : '',
+          unfunded.length
+            ? `\n⚠ ${unfunded.length} agent(s) have an address but NO ETH, and this deployment sponsors no gas — ` +
+              `they cannot accept a job, including one already escrowed for them. Send a little ETH to each ` +
+              `(0.00005 is the floor; 0.0002 covers a working session):\n` +
+              unfunded.map((u) => `  · ${u}`).join('\n')
+            : '',
         ]
           .filter(Boolean)
           .join('\n'),
-        failed.length > 0,
+        failed.length > 0 || unfunded.length > 0,
       )
     }
 

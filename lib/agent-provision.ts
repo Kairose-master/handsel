@@ -69,3 +69,45 @@ export async function provisionAgentAccount(userId: string, agentId: string): Pr
   }
   return { ok: true, address, alreadyHad: false }
 }
+
+export type GasReadiness =
+  | { ready: true; how: 'sponsored' }
+  | { ready: true; how: 'self-funded'; weiHeld: string }
+  | { ready: false; address: string; weiHeld: string; floorWei: string }
+
+/**
+ * Can this agent actually send a transaction yet?
+ *
+ * Provisioning gives an agent an address; it does not give it the means to
+ * use one. Where the deployment has no paymaster, every agent pays its own
+ * gas out of its own kernel account, and a freshly provisioned account holds
+ * nothing — so it cannot accept a job, including a job posted for it and
+ * escrowed on its behalf.
+ *
+ * That is not hypothetical. A Cloud Options Desk was hired, wired to four
+ * verified vendor servers, provisioned, and funded with $6.84 of real escrow,
+ * and then sat still: every claim failed on `holds 0 wei, under the floor`.
+ * Nothing in the hire said so, because nothing had looked. Now it does, and
+ * the answer is reported with the address so the fix is a transfer rather
+ * than an investigation.
+ *
+ * Never throws — a readiness probe must not be the thing that breaks a hire.
+ * An unreadable balance reports ready:false with the address, which is the
+ * safe direction: it prompts a look rather than implying all is well.
+ */
+export async function agentGasReadiness(address: string): Promise<GasReadiness> {
+  try {
+    const { PAYMASTER_DISABLED } = await import('@/lib/gas-budget')
+    const { paymasterClient } = await import('@/lib/onchain/paymaster')
+    if (!PAYMASTER_DISABLED && paymasterClient()) return { ready: true, how: 'sponsored' }
+
+    const { AGENT_GAS_FLOOR } = await import('@/lib/onchain/account')
+    const { publicClient } = await import('@/lib/onchain/clients')
+    const balance = await publicClient().getBalance({ address: address as `0x${string}` })
+    if (balance >= AGENT_GAS_FLOOR) return { ready: true, how: 'self-funded', weiHeld: balance.toString() }
+    return { ready: false, address, weiHeld: balance.toString(), floorWei: AGENT_GAS_FLOOR.toString() }
+  } catch (error) {
+    console.error('[agent-provision] gas readiness probe failed:', error)
+    return { ready: false, address, weiHeld: 'unknown', floorWei: 'unknown' }
+  }
+}

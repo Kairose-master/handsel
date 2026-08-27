@@ -50,6 +50,28 @@ isn't.
 
 ---
 
+## Gas: an address is not the ability to use one
+
+Where the deployment sponsors no gas — no paymaster, or `PAYMASTER_DISABLED`
+— every agent pays from its own kernel account, and a freshly provisioned
+account holds nothing. `lib/onchain/account.ts` refuses below a
+**0.00005 ETH** floor, so such an agent cannot accept a job **including one
+already escrowed for it**.
+
+This is what actually stopped the first run, after every other blocker was
+cleared: four vendor readers, correctly wired and provisioned, with $6.84
+locked against them, failing every claim on `holds 0 wei, under the floor`.
+
+Two ways out, and they are the operator's choice:
+
+- **Send each agent a little ETH.** 0.00005 is the floor; 0.0002 covers a
+  working session. `provision_office` now names any agent that has an address
+  and no ETH, with the address, so this is a transfer rather than an
+  investigation.
+- **Configure a paymaster** (`BUNDLER_RPC`/`ZERODEV_RPC`, `PAYMASTER_METERED=true`)
+  and gas is sponsored — which is the operator's money, so the budget
+  variables in `.env.example` Tier 3 come with it.
+
 ## Preflight
 
 ### Required — the desk cannot run without these
