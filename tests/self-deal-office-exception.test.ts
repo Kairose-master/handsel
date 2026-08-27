@@ -23,10 +23,24 @@ describe('the claim-side exception stays narrow', () => {
     expect(dispatch).toContain("you can't grade and pay yourself")
   })
 
-  it('lets through only a job reserved for THIS worker', () => {
-    // Not "any reservation" and not "any same-owner agent" — the reservation
+  it('lets through only a job assigned to THIS worker', () => {
+    // Not "any reservation" and not "any same-owner agent" — the assignment
     // must name the claiming worker.
-    expect(dispatch).toMatch(/reservedAgentFor\(specHash\)\)\s*===\s*worker\.id/)
+    expect(dispatch).toMatch(/assignedAgentFor\(specHash\)\)\s*===\s*worker\.id/)
+  })
+
+  it('reads the assignment, not the TTL-gated claim priority', () => {
+    // reservedAgentFor expires after 30 minutes so an abandoned job falls back
+    // to the market, and it is the RIGHT call in claimJobSpec and the accept
+    // paths — which is why this is scoped to assertNotSelfDeal rather than the
+    // file. Whether a job is its office's own work does not expire, and using
+    // the expiring view there locked the desk out of its own escrow.
+    const body = dispatch.slice(
+      dispatch.indexOf('export async function assertNotSelfDeal'),
+      dispatch.indexOf('export async function dispatchAcceptedJob'),
+    )
+    expect(body).toContain('assignedAgentFor')
+    expect(body).not.toMatch(/await reservedAgentFor\(/)
   })
 
   it('keeps the self-CLAIM check absolute — the contract reverts on it', () => {

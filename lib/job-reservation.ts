@@ -61,6 +61,31 @@ export async function reservedAgentFor(specHash: string): Promise<string | null>
   return row.agent_id
 }
 
+/**
+ * Who this job was reserved FOR, ignoring the TTL.
+ *
+ * `reservedAgentFor` answers "may this agent still claim ahead of the market",
+ * and that has to expire — otherwise a hired agent that never runs entombs its
+ * own job's escrow. This answers a different and permanent question: "was this
+ * job posted as that office's own work". An office does not stop owning its
+ * pipeline thirty minutes later.
+ *
+ * The distinction is load-bearing for the same-owner exception in
+ * assertNotSelfDeal. Gating it on the TTL view meant a desk whose deploy or
+ * grading ran long was locked out of its own escrowed jobs permanently — the
+ * priority lapsed, the exception stopped applying, and the same-owner rule
+ * refused the only agents the work was written for. Observed exactly that way
+ * on the first real run.
+ */
+export async function assignedAgentFor(specHash: string): Promise<string | null> {
+  await ensureTable()
+  const { rows } = await pool.query<{ agent_id: string }>(
+    `SELECT agent_id FROM job_reservation WHERE spec_hash = $1`,
+    [specHash],
+  )
+  return rows[0]?.agent_id ?? null
+}
+
 /** Batch form for the mining-sweep candidate build — one query for every
  *  open job's spec hash, not N. Expired reservations are excluded, same
  *  cutoff as reservedAgentFor. */

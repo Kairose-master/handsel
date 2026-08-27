@@ -116,9 +116,14 @@ export async function assertNotSelfDeal(
   // requester and worker share an owner, whatever route the job took. The
   // money still loops within one owner and still loses the fee, so there is
   // nothing left to farm.
+  // assignedAgentFor, not reservedAgentFor: the TTL governs claim PRIORITY
+  // over the open market, which must expire. Whether this job is this office's
+  // own work does not expire, and gating the exception on the TTL locked a
+  // desk out of its own escrowed jobs the moment a deploy or a grading pass
+  // ran past thirty minutes.
   if (specHash) {
-    const { reservedAgentFor } = await import('@/lib/job-reservation')
-    if ((await reservedAgentFor(specHash)) === worker.id) return
+    const { assignedAgentFor } = await import('@/lib/job-reservation')
+    if ((await assignedAgentFor(specHash)) === worker.id) return
   }
 
   throw new Error(
