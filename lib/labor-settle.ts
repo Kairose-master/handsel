@@ -22,6 +22,7 @@ import { agent, agentEvent, jobSpec } from '@/lib/db/schema'
 import { eq, inArray } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { logPlatformEvent } from '@/lib/platform-feed'
+import { heldForPeerReview, type HoldVerdict, type ReviewableSubtask } from '@/lib/peer-review-hold'
 
 /** Retries a step that runs AFTER a prior on-chain action already
  *  succeeded and can't be undone — a transient DB/RPC failure here would
@@ -96,6 +97,34 @@ export const AUTO_APPROVE_MAX_BOUNTY_USD = Number(process.env.AUTO_APPROVE_MAX_B
  * at the time THEY posted the job. AUTO_APPROVE_MAX_BOUNTY_USD is the
  * second, independent layer bounding what a single grader mistake can move.
  */
+/**
+ * The DB half of the peer-review gate: find the delegation this on-chain job
+ * belongs to, then ask the pure predicate (lib/peer-review-hold.ts).
+ *
+ * Scans only 'posted' delegations — a completed or failed one has no reviewer
+ * still owed a look. Errors hold rather than release: this function exists to
+ * stop money moving, so a DB hiccup must not read as "nobody is waiting". A
+ * held job stays Submitted and the next delegation tick releases it.
+ */
+async function heldForPeerReviewOnChain(jobId: number): Promise<HoldVerdict> {
+  try {
+    const { delegation } = await import('@/lib/db/schema')
+    const rows = await db.select().from(delegation).where(eq(delegation.status, 'posted'))
+    for (const row of rows) {
+      const verdict = heldForPeerReview(row.subtasks as ReviewableSubtask[], jobId)
+      if (verdict.hold) return verdict
+      // A subtask matched and is clear — no other delegation owns this job.
+      if ((row.subtasks as ReviewableSubtask[]).some((s) => s.onchainJobId === jobId)) {
+        return { hold: false }
+      }
+    }
+    return { hold: false }
+  } catch (error) {
+    console.error(`[labor-settle] cannot check peer review for job ${jobId}, holding:`, error)
+    return { hold: true, reason: 'could not read delegations to check for a pending peer review' }
+  }
+}
+
 export async function autoApprovePassedJob(
   spec: typeof jobSpec.$inferSelect,
   opts?: {
@@ -126,6 +155,23 @@ export async function autoApprovePassedJob(
     const jobs = await retryRpc(() => readJobs())
     const job = jobs.find((j) => j.id === spec.onchainJobId)
     if (!job || job.status !== 'Submitted') return
+
+    // A reviewed subtask does not release on a grade alone. The peer-review
+    // gate lives in tickDelegation, which is a DIFFERENT release path running
+    // on a DIFFERENT schedule — so without this check the two race, and when
+    // this one wins the money is gone before the reviewer has read anything.
+    // Losing that race does not delay the gate, it removes it.
+    //
+    // Deliberately not gated on `authorization === 'merge'`: a merge is the
+    // requester's own first-party act and outranks a GRADER, but a peer review
+    // is a promise the requester made to themselves in the plan, and the
+    // reviewer is being paid a bounty to keep it. Merging early does not
+    // discharge it.
+    const held = await heldForPeerReviewOnChain(spec.onchainJobId)
+    if (held.hold) {
+      console.log(`[labor-settle] job ${spec.onchainJobId} held — ${held.reason}`)
+      return
+    }
 
     // Reputation-raised cap (EAS Reputation Lending pattern): a worker whose
     // oracle-attested credit score clears the four gates unlocks a HIGHER

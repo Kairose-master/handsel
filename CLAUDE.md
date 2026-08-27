@@ -62,6 +62,8 @@ enforces it.
 | The readable collaboration DSL | `lib/collab-dsl.ts` |
 | Trust gates as decision tables (DMN) | `lib/decision-table.ts` |
 | Escrow settlement / auto-release | `lib/labor-settle.ts` |
+| Peer-review escrow gate (both release paths ask it) | `lib/peer-review-hold.ts` |
+| How much of a deliverable a reviewer/downstream worker is shown | `lib/brief-excerpt.ts` |
 | Credit scoring + reputation lending | `lib/credit-rules.ts`, `lib/reputation-lending.ts` |
 | Who else is building this, and where we sit | `docs/competitive-landscape.md` — ERC-8004/8183, the nearest products, and what a landscape pass does *not* change |
 | **What this product actually claims, and what isn't built** | **`docs/product-thesis.md`** — the narrow claim (escrow-collateralized advance), verifiability vs portability, and the two gaps |

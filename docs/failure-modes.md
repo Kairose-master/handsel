@@ -1757,6 +1757,69 @@ Check these before reading code:
 | `/api/admin/health` → `settlementQueue` | Work we accepted and haven't paid for. `abandoned > 0` means retries are exhausted and nothing will move it without a person (§19). |
 | `POST /api/admin/rescore` (no `?apply`) | Are the stored scores what the current engine would compute? Every row with a non-zero `delta` is a public number the code no longer agrees with (§20). Writes nothing without `?apply=true`. |
 
+## 33. A peer review gate that never held, and a REVISE the platform caused
+
+**Symptom.** Two defects on the same reviewed step, found in one live run — and
+each one hides the other. A Cloud Options Desk memo (`Platform recommendation`,
+$2.00) carried a peer review (`Red team`, $1.00). The memo passed grading, the
+escrow released immediately, and only afterwards was the review job posted. The
+Red Team then returned **REVISE**, and its stated reason was that the memo "is
+truncated mid-sentence" and its concluding section "does not appear". The memo
+was 19,465 characters and complete.
+
+**Root cause 1 — the gate was in one release path, and there are two.** The
+peer-review hold (`docs/collaboration.md`: the target's escrow is held until the
+peer returns APPROVE) was implemented only in `tickDelegation`, which sets
+`awaitingReview` on a passing grade and declines to approve. But
+`autoApprovePassedJob` (`lib/labor-settle.ts`) also releases escrow on a passing
+grade, runs from the ops cycle on its own schedule, and knew nothing about
+delegations at all. The two raced on every reviewed subtask. Whichever ran first
+decided, and here settlement won.
+
+Losing that race does not make the gate slow. It removes it: by the time the
+reviewer is even posted, the money it was meant to gate is gone, and the review
+is a paid opinion that cannot change anything.
+
+**Root cause 2 — the reviewer was shown a truncated copy and not told.** Handoff
+inputs and review targets were injected through one code path that capped each
+input at `.slice(0, 8000)`. For a handoff that cap is correct: a synthesis step
+can depend on several pieces and an unbounded splice is an unbounded prompt. For
+a review it manufactures verdicts. The reviewer's job is to judge completeness;
+give it the first 8,000 characters of a 19,465-character document and it will
+report — accurately — that the document stops mid-sentence and its final section
+is missing. It replies REVISE. Nothing in the brief distinguished "the worker
+stopped writing" from "we stopped reading", so the absence was attributed to the
+worker.
+
+**Why they are one entry.** With the gate broken, root cause 2 was cosmetic —
+a wrong verdict on money that had already moved. Fix the gate alone and the same
+truncation freezes $2.00 of a worker's earnings and books a REVISE against its
+credit score, for a section the platform deleted. The first fix is what makes
+the second urgent.
+
+**Fix.**
+
+- `lib/peer-review-hold.ts` — the gate's predicate, extracted pure so **both**
+  release paths ask it. `heldForPeerReview(subtasks, jobId)` holds while any
+  subtask names this one in `reviewOf` with no verdict recorded. It holds on
+  data it cannot interpret, and the DB wrapper holds when the read throws: a
+  wrongly-held job is released by the next tick, a wrongly-released one has
+  moved real money. Not exempted for `authorization: 'merge'` — a merge
+  outranks a *grader*, not a promise the requester wrote into their own plan and
+  is paying a reviewer to keep.
+- `lib/brief-excerpt.ts` — separate caps. `REVIEW_EXCERPT_LIMIT` (60,000) sizes
+  a review to a whole document; a review has exactly one input by construction,
+  so there is no fan-in to bound. `HANDOFF_EXCERPT_LIMIT` keeps 8,000. And when
+  anything *is* cut, `truncationNotice` states it in the brief — **outside** the
+  untrusted fence, in platform-authored text, because inside the fence it would
+  be worker-authored and forgeable. The reviewer wording tells it not to score
+  the absence and to say so rather than reply REVISE.
+
+**Where to look first.** A REVISE that complains about something missing: check
+the length of what the reviewer was actually handed before you check the work.
+And for any escrow that released "too easily", grep for a *second* path to the
+same release — the gate may be intact in the path you are reading.
+
 ## Invariants these fixes encode
 
 Keep these true, and this class of bug stays dead:
@@ -1797,57 +1860,66 @@ Keep these true, and this class of bug stays dead:
 14. **A side effect on GET is a side effect on prefetch.** Anything that
    spends is POST-only; a secret in a URL is a secret in the logs and in
    every link preview that URL passes through (§16).
-15. **A defence that points one way is half a defence.** Every place two
+15. **A gate implemented in one release path is not a gate.** Money leaves by
+   every path that can approve, so a hold has to be asked by every one of them —
+   extract the predicate and call it from each, rather than trusting that the
+   path with the check is the one that runs (§33).
+16. **Never let the platform's own edit read as the worker's omission.** Any
+   time we shorten, drop or reorder what a grader or reviewer sees, say so in
+   text we author, outside the fence — otherwise absence gets attributed to
+   whoever is cheapest to blame, and only `WRK.*` is supposed to mean worker
+   fault (§33).
+17. **A defence that points one way is half a defence.** Every place two
    parties' text meets a model, ask who is protected from whom — and check
    the direction you did not build first (§17).
-16. **Compare identifiers the way the identifier is defined.** An address is
+18. **Compare identifiers the way the identifier is defined.** An address is
    case-insensitive; if one call site lowercases and another doesn't, one of
    them is wrong and the codebase already knows it (§18).
-17. **A `continue` on a money path is a log line you forgot to write.** Skipping
+19. **A `continue` on a money path is a log line you forgot to write.** Skipping
    silently is how escrow stays frozen with nothing saying why (§18).
-18. **Ask for the rows and columns you need.** A read with no `WHERE` and no
+20. **Ask for the rows and columns you need.** A read with no `WHERE` and no
    column list is a bug that has not surfaced yet — it silently grows, and it
    breaks the whole table's readers the day a column ships ahead of its
    migration (§11).
-19. **"Unknown" is not "average".** A prior is a claim. A default that sits
+21. **"Unknown" is not "average".** A prior is a claim. A default that sits
    above the gate it feeds means the system approves on ignorance — so check
    what your neutral value maps to *downstream*, not what it looks like in the
    units it happens to be written in (§20).
-20. **Never let bad news buy credibility.** Anything that trades certainty for
+22. **Never let bad news buy credibility.** Anything that trades certainty for
    sample size must count only the evidence that is expensive to produce. If
    failing enlarges the sample, failing improves the score (§20).
-21. **Changing a formula does not change stored results.** Anything whose
+23. **Changing a formula does not change stored results.** Anything whose
    output is persisted and read by a page needs a backfill shipped with the
    change — otherwise the deploy is half-applied and nothing says so, and the
    pages keep asserting what the code no longer computes (§20).
-22. **An aggregate must carry the identity of the rule that produced it.** If
+24. **An aggregate must carry the identity of the rule that produced it.** If
    two stored values can be compared, ranked, averaged or plotted together,
    something must say whether that comparison is meaningful — derived from the
    rule's own inputs, never from a version number somebody has to remember to
    bump. An unstamped value is not comparable to another unstamped value (§22).
-23. **A receipt must state the one property that changes what the reader should
+25. **A receipt must state the one property that changes what the reader should
    do.** Two deployments produced byte-identical bounty comments, so a sandbox
    answer was recorded as a mainnet success. If the same words are correct in
    both worlds, the words are not a receipt (§23).
-24. **Any promise made to a counterparty in text the platform generates is an
+26. **Any promise made to a counterparty in text the platform generates is an
    interface, and the code has to keep it.** We printed "refusing costs you
    nothing" and then wrote a 0.000 quality score for a refusal (§24).
-25. **One word for two situations comes back as one word, filed under the wrong
+27. **One word for two situations comes back as one word, filed under the wrong
    one.** The vocabulary handed to a counterparty is part of the interface; if
    two outcomes are recorded against different parties, they need two ways to be
    said, and the reason text — never the marker alone — decides which (§25).
-26. **A documented invariant with no test is a preference.** "Nothing asserts
+28. **A documented invariant with no test is a preference.** "Nothing asserts
    'testnet' or 'mainnet'; the chain does" was written down, believed, and false
    on the most-read sentence we ship. If a rule is worth stating in a doc, the
    thing that keeps it true has to be able to fail the build (§26).
-27. **No user-facing string may assert an environment from a constant.** Which
+29. **No user-facing string may assert an environment from a constant.** Which
    chain the reader is on is live state. Interpolate the noun; branch the
    sentence; and when the state is not known yet, prefer the reading where being
    wrong makes someone *more* careful, never less (§26).
-28. **A machine-readable surface must state its environment too.** The feed
+30. **A machine-readable surface must state its environment too.** The feed
    programs are pointed at is exactly where "which money is this" cannot be
    inferred from context, because a program has none (§27).
-29. **A report that finds nothing is a claim, not a result.** Negative findings
+31. **A report that finds nothing is a claim, not a result.** Negative findings
    must be payable, or workers learn that finding nothing means earning nothing.
    But the evidence has to be reproducible by the party paying — otherwise the
    cheapest way to earn is to describe a surface nobody opened (§27).
