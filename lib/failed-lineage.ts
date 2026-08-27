@@ -75,20 +75,24 @@ export function failedLineageMessage(reason: 'same-agent' | 'same-controller'): 
 /**
  * Controllers of the agents that failed this lineage.
  *
- * Returns nulls for ids that no longer resolve rather than dropping them: a
- * deleted agent is not a cleared one, and a caller that cannot tell should
- * see that it cannot tell.
+ * Resolved through lib/economic-identity.ts rather than by reading `userId`
+ * directly, so the block widens with the identity layer instead of being
+ * pinned to accounts. An operator who opens a second ACCOUNT escapes a
+ * userId-only check exactly as a second AGENT escaped an id-only one; the
+ * organisation level is what closes that, and it closes here for free.
+ *
+ * The strongest known level wins: an organisation id when there is one, the
+ * operator otherwise. Returns nulls for ids that no longer resolve rather
+ * than dropping them — a deleted agent is not a cleared one, and a caller
+ * that cannot tell should see that it cannot tell.
  */
 export async function controllersOfFailed(failedWorkerIds: readonly string[] | null | undefined): Promise<(string | null)[]> {
   const ids = (failedWorkerIds ?? []).filter(Boolean)
   if (ids.length === 0) return []
-  const { db } = await import('@/lib/db')
-  const { agent } = await import('@/lib/db/schema')
-  const { inArray } = await import('drizzle-orm')
-  const rows = await db
-    .select({ id: agent.id, userId: agent.userId })
-    .from(agent)
-    .where(inArray(agent.id, [...ids]))
-  const byId = new Map(rows.map((r) => [r.id, r.userId]))
-  return ids.map((id) => byId.get(id) ?? null)
+  const { controllersFor, strongestControlKey } = await import('@/lib/economic-identity')
+  const controllers = await controllersFor(ids)
+  return ids.map((id) => {
+    const c = controllers.get(id)
+    return c ? strongestControlKey(c) : null
+  })
 }

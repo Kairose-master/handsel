@@ -228,10 +228,21 @@ async function assertNotFailedLineage(
   failedWorkerIds: readonly string[] | null | undefined,
 ): Promise<void> {
   const { failedLineageVerdict, failedLineageMessage, controllersOfFailed } = await import('@/lib/failed-lineage')
-  const failedControllers = await controllersOfFailed(failedWorkerIds).catch(() => [])
+  const { controllersFor, strongestControlKey } = await import('@/lib/economic-identity')
+  // Both sides must be keyed the same way or the comparison silently never
+  // matches — `op:u1` and `u1` are different strings, and a gate that never
+  // fires looks exactly like a gate that passed.
+  const [failedControllers, mine] = await Promise.all([
+    controllersOfFailed(failedWorkerIds).catch(() => []),
+    controllersFor([worker.id]).catch(() => new Map()),
+  ])
+  const workerController = (() => {
+    const c = mine.get(worker.id)
+    return c ? strongestControlKey(c) : null
+  })()
   const verdict = failedLineageVerdict({
     workerAgentId: worker.id,
-    workerController: worker.userId,
+    workerController,
     failedWorkerIds,
     failedControllers,
   })

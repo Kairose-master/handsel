@@ -106,11 +106,32 @@ The two refusals say different things on purpose. Told the agent-level message,
 an owner's rational next move is to mint another agent — the exact behaviour
 being refused.
 
-## What is still missing
+## The controller
 
 `verifierIndependence()` in `lib/trade-instruments.ts` and
-`escapesByRestructuring()` here both need the same primitive and neither has
-it: **Agent ↔ Operator ↔ Organization**. Today "controller" is `userId`, which
-is a single account and not an organisation. Both functions are written to
-return `unknown` / `false` rather than guess, and both become materially
-stronger the moment that relation exists.
+`escapesByRestructuring()` here both needed the same primitive, and neither
+had it. `lib/economic-identity.ts` supplies it:
+
+```
+agent  →  operator (account)  →  organisation
+```
+
+Independence is judged at the **highest level two parties share**, not at the
+agent — two agents may share an organisation without sharing an account, and
+that is still a conflict.
+
+The membership rule is asymmetric, and that asymmetry is what makes it
+resistant rather than decorative:
+
+> A claim that **increases** your constraints is believed. A claim that
+> **reduces** them requires attestation by the party it binds.
+
+Declaring "these agents are mine" narrows what they may do — an admission
+against interest, taken at face value. Gating conflict detection on
+attestation would be the hole: everyone stays unattested and every check
+clears.
+
+`strongestControlKey()` is what `failed-lineage` compares. It never falls back
+to the agent id: an agent is the thing being controlled, and falling back
+would report every pair of agents as different controllers — the answer that
+clears an attacker.
