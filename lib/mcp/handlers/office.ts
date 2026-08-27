@@ -256,17 +256,28 @@ export async function handleOffice(
       const { AGENT_GAS_FLOOR } = await import('@/lib/onchain/account')
       const { bondForBounty } = await import('@/lib/agent-bond')
       const { readJobs } = await import('@/lib/onchain/labor')
-      const [schedule, jobs] = await Promise.all([bondScheduleOf().catch(() => null), readJobs().catch(() => [])])
+      // `null` for a read that FAILED, `[]` for a market with nothing open.
+      // Collapsing the two would make an RPC blip report the flat bond as the
+      // requirement — understating what a worker needs, on the exact surface
+      // an owner consults to find out. That is invariant 10 in
+      // docs/failure-modes.md, and this line is where it would have been
+      // broken again.
+      const [schedule, jobs] = await Promise.all([
+        bondScheduleOf().catch(() => null),
+        readJobs().catch(() => null),
+      ])
       // Size the check against the CHEAPEST open job: an agent that cannot
       // afford even that one is out of the market entirely, which is the
-      // statement worth making. Fall back to the flat bond when nothing is
-      // open, so a quiet market still reports the floor.
-      const openBounties = jobs.filter((j) => j.status === 'Open').map((j) => j.bounty)
-      const cheapestBond = schedule
-        ? openBounties.length
-          ? Math.min(...openBounties.map((b) => bondForBounty(b, schedule)))
-          : schedule.flat
-        : null
+      // statement worth making. With nothing open, the flat bond is the floor
+      // and still worth reporting; with nothing READ, there is no honest
+      // number and the line says so instead of inventing one.
+      const openBounties = jobs?.filter((j) => j.status === 'Open').map((j) => j.bounty) ?? null
+      const cheapestBond =
+        schedule === null || openBounties === null
+          ? null
+          : openBounties.length
+            ? Math.min(...openBounties.map((b) => bondForBounty(b, schedule)))
+            : schedule.flat
       const balances = new Map<string, { usd: number | null; wei: bigint | null }>()
       await Promise.all(
         here
@@ -290,11 +301,13 @@ export async function handleOffice(
           const usd = bal?.usd
           const wei = bal?.wei
           const gasBad = wei !== null && wei !== undefined && wei < AGENT_GAS_FLOOR
-          const bondBad = usd !== null && usd !== undefined && cheapestBond !== null && Math.round(usd * 1e6) < Math.round(cheapestBond * 1e6)
-          const money = `$${(usd ?? 0).toFixed(4)} USDC`
+          const bondBad =
+            usd !== null && usd !== undefined && cheapestBond !== null && Math.round(usd * 1e6) < Math.round(cheapestBond * 1e6)
+          const money = usd === null || usd === undefined ? 'USDC unreadable' : `$${usd.toFixed(4)} USDC`
           if (gasBad && bondBad) bits.push(`${money} · CANNOT WORK: no gas and cannot post the $${cheapestBond!.toFixed(4)} bond`)
           else if (bondBad) bits.push(`${money} · CANNOT CLAIM: needs $${cheapestBond!.toFixed(4)} to stake the bond — fund_agent_usdc`)
           else if (gasBad) bits.push(`${money} · CANNOT TRANSACT: out of gas ETH`)
+          else if (cheapestBond === null) bits.push(`${money} · bond requirement unreadable — cannot say if it can claim`)
           else bits.push(`${money} · ready`)
         }
         if (a.autoMine) bits.push('auto-mine')
@@ -496,8 +509,12 @@ export async function handleOffice(
         // strands money in a worker or leaves it one cent short again.
         const { bondScheduleOf } = await import('@/lib/onchain/labor-v2')
         const { readJobs } = await import('@/lib/onchain/labor')
-        const [schedule, jobs] = await Promise.all([bondScheduleOf().catch(() => null), readJobs().catch(() => [])])
+        const [schedule, jobs] = await Promise.all([
+          bondScheduleOf().catch(() => null),
+          readJobs().catch(() => null), // null = read failed; [] = nothing open
+        ])
         if (!schedule) return toolText(id, 'Could not read the bond schedule from the market contract, so I cannot size the transfer. Pass amount_usdc.', true)
+        if (jobs === null) return toolText(id, 'Could not read the job board, so I cannot size the transfer. Pass amount_usdc.', true)
         const openBounties = jobs.filter((j) => j.status === 'Open').map((j) => j.bounty)
         if (openBounties.length === 0) return toolText(id, 'No open jobs right now, so there is no bond float to size against. Pass amount_usdc.', true)
         amountUsd = suggestedFloatFor(openBounties, schedule)
