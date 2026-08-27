@@ -118,5 +118,46 @@ export async function coverBondForAssignedJob(input: {
   const { fundAgentUsdc } = await import('@/lib/agent-usdc-funding')
   const res = await fundAgentUsdc(worker.userId, funder.id, worker.id, { amountUsd })
   if (!res.ok) return { covered: false, why: 'failed', error: res.error }
+
+  // The transfer is mined — `sendAgentCall` waits for the UserOp receipt — and
+  // the accept STILL reverted the first time this ran in production, with the
+  // money provably in the worker's account. Read-after-write on a
+  // load-balanced RPC: the node simulating the accept had not yet seen the
+  // block carrying the transfer, so it priced the bond against a balance of
+  // zero. lib/onchain/account.ts already documents this exact race for
+  // approve-then-spend and answers it the same way.
+  //
+  // Waiting here rather than retrying the accept, because an accept costs gas
+  // and a balance read does not. It cannot turn a genuine shortfall into a
+  // success — it is waiting for a number that is already true on chain to
+  // become visible to the node that will be asked about it.
+  const visible = await waitForVisibleBalance(worker.smartAccountAddress as `0x${string}`, verdict.needUsd)
+  if (!visible) {
+    console.warn(
+      `[office-bond-cover] ${worker.name}'s top-up is mined (${res.txHash}) but not yet visible to the RPC — letting the accept try anyway`,
+    )
+  }
   return { covered: true, amountUsd: res.amountUsd, from: res.from, txHash: res.txHash }
 }
+
+/** Poll until the account reads at least `needUsd`, or give up.
+ *
+ *  Bounded and short: this sits inside an accept, and the failure it guards
+ *  costs one wasted accept rather than the job. Returning false is not an
+ *  error — the caller proceeds and the chain decides, which is the same
+ *  behaviour as before bond cover existed. */
+async function waitForVisibleBalance(address: `0x${string}`, needUsd: number): Promise<boolean> {
+  const { usdcBalanceOf } = await import('@/lib/onchain/treasury')
+  const needUnits = Math.round(needUsd * 1e6)
+  for (let attempt = 0; attempt < BALANCE_VISIBILITY_ATTEMPTS; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, BALANCE_VISIBILITY_DELAY_MS))
+    const held = await usdcBalanceOf(address).catch(() => null)
+    if (held !== null && Math.round(held * 1e6) >= needUnits) return true
+  }
+  return false
+}
+
+/** ~9s worst case. Long enough for a lagging node to catch up on Base's 2s
+ *  blocks, short enough that a sweep is not held hostage by one worker. */
+export const BALANCE_VISIBILITY_ATTEMPTS = 5
+export const BALANCE_VISIBILITY_DELAY_MS = 2_200

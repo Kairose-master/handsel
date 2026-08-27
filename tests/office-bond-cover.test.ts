@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { MAX_AUTO_BOND_COVER_USD } from '@/lib/office-bond-cover'
+import {
+  MAX_AUTO_BOND_COVER_USD,
+  BALANCE_VISIBILITY_ATTEMPTS,
+  BALANCE_VISIBILITY_DELAY_MS,
+} from '@/lib/office-bond-cover'
 
 // Bond cover moves the owner's money without the owner asking, so what it is
 // gated on matters more than what it does. These pin the gate rather than the
@@ -97,5 +101,33 @@ describe('the miner lets assigned work through the bond gate', () => {
 
   it('resolves assignment without the reservation TTL', () => {
     expect(mine).toContain('assignmentsByHash')
+  })
+})
+
+describe('waiting for the top-up to be visible', () => {
+  // The first production run proved the transfer is not enough on its own:
+  // the money was mined and in the worker's account, and the accept still
+  // reverted with TransferFailed() because the node simulating it had not
+  // seen that block yet. Same read-after-write race lib/onchain/account.ts
+  // documents for approve-then-spend.
+  it('polls the balance after funding, before returning', () => {
+    expect(codeOnly(readFileSync('lib/office-bond-cover.ts', 'utf8'))).toContain('waitForVisibleBalance')
+  })
+
+  it('waits long enough to cross a few Base blocks, and no longer', () => {
+    const worstCaseMs = (BALANCE_VISIBILITY_ATTEMPTS - 1) * BALANCE_VISIBILITY_DELAY_MS
+    expect(worstCaseMs).toBeGreaterThanOrEqual(6_000)
+    // A sweep must not be held hostage by one worker's lagging node.
+    expect(worstCaseMs).toBeLessThanOrEqual(15_000)
+  })
+
+  it('proceeds anyway when the balance never becomes visible', () => {
+    // Giving up is not an error: the caller falls through to the accept and
+    // the chain decides, which is exactly the behaviour from before cover
+    // existed. Turning a lagging read into a failed claim would make this
+    // feature a net loss.
+    const body = codeOnly(readFileSync('lib/office-bond-cover.ts', 'utf8'))
+    const after = body.slice(body.indexOf('const visible = await waitForVisibleBalance'))
+    expect(after).toContain('covered: true')
   })
 })
