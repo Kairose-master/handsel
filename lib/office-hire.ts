@@ -169,19 +169,11 @@ export async function hireOfficeTemplateFor(
     // Non-fatal, like create_worker_agent's own provisioning: a chain hiccup
     // should not throw away the roster and the plan. The caller is told which
     // roles came out unprovisioned so it can stop before escrowing.
-    let provisioned = false
-    try {
-      const { isAgentAccountConfigured } = await import('@/lib/onchain/config')
-      if (isAgentAccountConfigured()) {
-        const { getAgentAccountAddress } = await import('@/lib/onchain/account')
-        const address = await getAgentAccountAddress(agentId)
-        await db.update(agent).set({ smartAccountAddress: address }).where(eq(agent.id, agentId))
-        const { recalculateCredit } = await import('@/lib/credit-engine')
-        await recalculateCredit(agentId)
-        provisioned = true
-      }
-    } catch (error) {
-      console.error(`[office] hireOfficeTemplate: provisioning failed for role ${role.id}:`, error)
+    const { provisionAgentAccount } = await import('@/lib/agent-provision')
+    const provision = await provisionAgentAccount(userId, agentId)
+    const provisioned = provision.ok
+    if (!provision.ok) {
+      console.error(`[office] hireOfficeTemplate: provisioning failed for role ${role.id}:`, provision)
     }
 
     // Each role resolves its OWN connector, so one office can run several at

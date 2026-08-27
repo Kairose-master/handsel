@@ -280,6 +280,19 @@ export const TOOLS = [
     },
   },
   {
+    name: 'provision_office',
+    description:
+      'Give every agent in an office an on-chain account. An agent without one cannot transact, and auto-mine ' +
+      'refuses it outright — so it cannot claim even the job reserved for it, and that escrow ends up with some ' +
+      'other worker once the reservation lapses. Run this after hire_office and before confirm_delegation if any ' +
+      'role came back without a wallet. Costs gas; changes nothing else.',
+    inputSchema: {
+      type: 'object',
+      properties: { office: { type: 'number', description: 'Office slot (1-3, default 1)' } },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'set_office_source',
     description:
       "Give every role in an office one document to work from — it is appended to each role's brief when you hire, " +

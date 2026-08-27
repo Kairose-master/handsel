@@ -268,6 +268,44 @@ export async function handleOffice(
       return toolText(id, `Office ${slot}:\n${lines.join('\n')}${sourceLine}`)
     }
 
+    case 'provision_office': {
+      const slot = parseSlot(args)
+      const rows = await db
+        .select({ id: agent.id, name: agent.name, smartAccountAddress: agent.smartAccountAddress })
+        .from(agent)
+        .where(eq(agent.userId, auth.userId))
+      const { officeSlotsByAgentId } = await import('@/lib/office')
+      const slots = await officeSlotsByAgentId(rows.map((r) => r.id))
+      const here = rows.filter((r) => slots.get(r.id) === slot)
+      const missing = here.filter((r) => !r.smartAccountAddress)
+      if (here.length === 0) return toolText(id, `Office ${slot} has no agents.`, true)
+      if (missing.length === 0) {
+        return toolText(id, `Every agent in office ${slot} already has an on-chain account.`)
+      }
+
+      const { provisionAgentAccount } = await import('@/lib/agent-provision')
+      const done: string[] = []
+      const failed: string[] = []
+      for (const a of missing) {
+        const res = await provisionAgentAccount(auth.userId, a.id)
+        if (res.ok) done.push(`${a.name} → ${res.address}`)
+        else failed.push(`${a.name}: ${res.reason}${res.detail ? ` (${res.detail.slice(0, 120)})` : ''}`)
+      }
+      return toolText(
+        id,
+        [
+          done.length ? `Provisioned ${done.length}:\n${done.map((d) => `  · ${d}`).join('\n')}` : '',
+          failed.length
+            ? `\nStill without a wallet — these cannot claim work, including jobs reserved for them:\n` +
+              failed.map((f) => `  · ${f}`).join('\n')
+            : '',
+        ]
+          .filter(Boolean)
+          .join('\n'),
+        failed.length > 0,
+      )
+    }
+
     case 'set_office_source': {
       const slot = parseSlot(args)
       const body = typeof args.body === 'string' ? args.body : ''
