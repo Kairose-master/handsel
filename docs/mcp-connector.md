@@ -56,7 +56,7 @@ you: "hire an agent to design a logo, $12" → plan_delegation → your approval
 you: "any open jobs I could do?"           → browse_open_jobs → claim_job → submit_work
 ```
 
-## Tools (37)
+## Tools (38)
 
 ### Orientation
 | tool | what it does |
@@ -120,6 +120,7 @@ templates ship with were probed and answered with no key; see
 | `provision_office` | Give every agent in an office an on-chain account. Without one a role cannot claim even its own reserved job |
 | `withdraw_agent_eth` | **Moves money.** Send an agent's gas ETH back to your saved payout address. Keeps a reserve unless you drain |
 | `fund_agent_usdc` | **Moves money.** Send USDC between two of your own agents. This is how a worker gets the bond it must stake to accept a job — a new agent holding $0 cannot claim anything |
+| `fund_agent_eth` | **Moves money.** Send native ETH (gas) between two of your own agents. Without a paymaster an agent holding no ETH cannot transact at all. Omit the amount to top up to a working balance |
 | `set_office_source` | One document every role in the office reads, injected into each brief at hire time |
 | `wire_office_agent` | Point an agent at a different MCP server/tool, or change its mode, after it was hired |
 | `test_mcp_connector` | Probe a server before trusting a worker to it: is the tool there, which argument will the job arrive in, and does it need parameters a worker cannot supply |

@@ -16,6 +16,7 @@
  * A handler answers only for tools it owns — returning null is what lets the
  * router try the next group.
  */
+import { formatEther } from 'viem'
 import { agent } from '@/lib/db/schema'
 import { db } from '@/lib/db'
 import { eq } from 'drizzle-orm'
@@ -309,9 +310,12 @@ export async function handleOffice(
           const bondBad =
             usd !== null && usd !== undefined && cheapestBond !== null && Math.round(usd * 1e6) < Math.round(cheapestBond * 1e6)
           const money = usd === null || usd === undefined ? 'USDC unreadable' : `$${usd.toFixed(4)} USDC`
-          if (gasBad && bondBad) bits.push(`${money} · CANNOT WORK: no gas and cannot post the $${cheapestBond!.toFixed(4)} bond`)
+          if (gasBad && bondBad)
+            bits.push(
+              `${money} · CANNOT WORK: no gas (fund_agent_eth) and cannot post the $${cheapestBond!.toFixed(4)} bond (fund_agent_usdc)`,
+            )
           else if (bondBad) bits.push(`${money} · CANNOT CLAIM: needs $${cheapestBond!.toFixed(4)} to stake the bond — fund_agent_usdc`)
-          else if (gasBad) bits.push(`${money} · CANNOT TRANSACT: out of gas ETH`)
+          else if (gasBad) bits.push(`${money} · CANNOT TRANSACT: out of gas ETH — fund_agent_eth`)
           else if (cheapestBond === null) bits.push(`${money} · bond requirement unreadable — cannot say if it can claim`)
           else bits.push(`${money} · ready`)
         }
@@ -531,6 +535,70 @@ export async function handleOffice(
         id,
         `Sent $${res.amountUsd.toFixed(4)} USDC from ${res.from} to ${res.to}.\ntx ${res.txHash}\n\n` +
           `${res.to} can now stake bonds and claim work. Accepting a job locks the bond until it settles, then returns it.`,
+      )
+    }
+
+    case 'fund_agent_eth': {
+      const agents = await db.select().from(agent).where(eq(agent.userId, auth.userId))
+      if (agents.length < 2) return toolText(id, 'Funding moves ETH between two of your agents; this account has fewer than two.', true)
+
+      const toId = args.to_agent_id ? String(args.to_agent_id) : null
+      const toName = args.to_agent_name ? String(args.to_agent_name) : null
+      const to = toId
+        ? agents.find((a) => a.id === toId)
+        : toName
+          ? agents.find((a) => a.name.toLowerCase() === toName.toLowerCase())
+          : null
+      if (!to) {
+        return toolText(
+          id,
+          toId
+            ? `No agent with id "${toId}".`
+            : toName
+              ? `No agent named "${toName}".`
+              : 'Say which agent to fund (to_agent_id or to_agent_name).',
+          true,
+        )
+      }
+
+      const { ethBalanceOfWei } = await import('@/lib/onchain/treasury')
+      let from = args.from_agent_id ? agents.find((a) => a.id === String(args.from_agent_id)) : undefined
+      if (args.from_agent_id && !from) return toolText(id, `No agent with id "${String(args.from_agent_id)}".`, true)
+      if (!from) {
+        // Default to whoever can actually pay. Requiring the caller to name a
+        // funder means knowing which wallet holds the gas, which is the thing
+        // they opened this tool to stop tracking.
+        const funded = await Promise.all(
+          agents
+            .filter((a) => a.smartAccountAddress && a.id !== to.id)
+            .map(async (a) => ({
+              a,
+              wei: await ethBalanceOfWei(a.smartAccountAddress as `0x${string}`).catch(() => 0n),
+            })),
+        )
+        funded.sort((x, y) => (y.wei > x.wei ? 1 : y.wei < x.wei ? -1 : 0))
+        from = funded[0]?.a
+        if (!from || funded[0].wei <= 0n) return toolText(id, 'No agent on this account holds any ETH to fund with.', true)
+      }
+
+      const { fundAgentEth, parseEthAmount, ETH_FUNDING_RESERVE_WEI } = await import('@/lib/agent-eth-funding')
+      let requestedWei: bigint | undefined
+      if (args.amount_eth !== undefined) {
+        const parsed = parseEthAmount(String(args.amount_eth))
+        if (parsed === null) return toolText(id, 'amount_eth must be a plain positive decimal, e.g. "0.0002".', true)
+        requestedWei = parsed
+      }
+
+      const res = await fundAgentEth(auth.userId, from.id, to.id, { requestedWei, drain: args.drain === true })
+      if (!res.ok) return toolText(id, res.error, true)
+      const sent = formatEther(BigInt(res.amountWei))
+      return toolText(
+        id,
+        `Sent ${sent} ETH from ${res.from} to ${res.to} (${res.toAddress}).\ntx ${res.txHash}\n\n` +
+          `${res.to} can now pay for its own gas.` +
+          (args.drain === true
+            ? `\n\nDrained: ${res.from} kept nothing and cannot transact again until it is funded.`
+            : `\n\n${formatEther(ETH_FUNDING_RESERVE_WEI)} ETH stayed with ${res.from} so it can still work.`),
       )
     }
 

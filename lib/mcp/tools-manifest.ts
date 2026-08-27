@@ -382,6 +382,29 @@ export const TOOLS = [
     },
   },
   {
+    name: 'fund_agent_eth',
+    description:
+      "MOVES MONEY: sends native ETH — gas money — from one of your agents to another of your agents. Both ends must " +
+      'be yours. Without a paymaster an agent with no ETH cannot transact at all: it cannot claim a job, submit work, ' +
+      'or be paid, however well it is wired. list_my_agents and office_roster both flag which of yours are empty. ' +
+      'Omit the amount to top the destination up to a working balance, which makes repeating the call a no-op rather ' +
+      'than a second transfer. The funding agent keeps a reserve so it can still act; pass drain to override that.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        from_agent_id: { type: 'string', description: 'The agent paying, by id. Defaults to your agent holding the most ETH.' },
+        to_agent_id: { type: 'string', description: 'The agent being funded, by id (preferred)' },
+        to_agent_name: { type: 'string', description: 'The agent being funded, by name' },
+        amount_eth: {
+          type: 'string',
+          description: 'A plain decimal like "0.0002". Omit to send exactly what the destination is short of a working balance.',
+        },
+        drain: { type: 'boolean', description: "Send past the funding agent's reserve. It cannot transact afterwards." },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'test_mcp_connector',
     description:
       'Check an MCP server before trusting a worker to it: does it answer, does it have that tool, which argument ' +
