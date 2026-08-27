@@ -339,6 +339,24 @@ export const TOOLS = [
     },
   },
   {
+    name: 'withdraw_agent_eth',
+    description:
+      "MOVES MONEY: sends an agent's native ETH — the gas money you funded it with — to your account's saved " +
+      'payout address, the same destination USDC withdrawals use. It cannot send anywhere else. A reserve stays ' +
+      'behind by default so the agent can still transact; pass drain only for an agent you are retiring, because ' +
+      'afterwards it cannot act until it is funded again. list_my_agents shows every balance.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Which agent, by id (preferred)' },
+        agent_name: { type: 'string', description: 'Which agent, by name' },
+        amount_eth: { type: 'string', description: 'A plain decimal like "0.001". Omit to send everything above the reserve.' },
+        drain: { type: 'boolean', description: 'Take the reserve too. The agent cannot transact afterwards.' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'test_mcp_connector',
     description:
       'Check an MCP server before trusting a worker to it: does it answer, does it have that tool, which argument ' +

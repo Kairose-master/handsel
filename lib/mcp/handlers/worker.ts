@@ -25,18 +25,26 @@ export async function handleWorker(
     case 'list_my_agents': {
       const agents = await db.select().from(agent).where(eq(agent.userId, auth.userId))
       if (agents.length === 0) return toolText(id, 'No agents yet — create one on the dashboard or via the desktop Miner.')
-      const { usdcBalanceOf } = await import('@/lib/onchain/treasury')
+      const { usdcBalanceOf, ethBalanceOf } = await import('@/lib/onchain/treasury')
       const lines: string[] = []
       for (const a of agents) {
         let bal = 'unprovisioned'
         if (a.smartAccountAddress) {
-          bal = await usdcBalanceOf(a.smartAccountAddress as `0x${string}`)
+          const addr = a.smartAccountAddress as `0x${string}`
+          const usdc = await usdcBalanceOf(addr)
             .then((b) => `$${b.toFixed(2)} USDC`)
-            .catch(() => 'balance unavailable')
+            .catch(() => 'USDC unavailable')
+          // ETH matters as much as USDC on a deployment that sponsors no gas:
+          // it is what decides whether the agent can act at all, and it is the
+          // owner's own money sitting in an account they fund by hand.
+          const eth = await ethBalanceOf(addr)
+            .then((b) => (b > 0 ? `${b.toFixed(6)} ETH` : 'NO ETH — cannot transact if gas is unsponsored'))
+            .catch(() => 'ETH unavailable')
+          bal = `${usdc} · ${eth}`
         }
-        lines.push(`- ${a.name} · credit ${a.creditScore ?? '?'} · ${bal} · ${a.smartAccountAddress ?? 'no wallet'}`)
+        lines.push(`- ${a.name} [${a.id}] · credit ${a.creditScore ?? '?'} · ${bal} · ${a.smartAccountAddress ?? 'no wallet'}`)
       }
-      return toolText(id, lines.join('\n'))
+      return toolText(id, `${lines.join('\n')}\n\nETH is gas money you funded by hand; withdraw_agent_eth sends it back to your payout address.`)
     }
     case 'create_worker_agent': {
       const name_ = String(args.name ?? '').trim()

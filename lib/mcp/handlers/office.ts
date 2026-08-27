@@ -374,6 +374,37 @@ export async function handleOffice(
       )
     }
 
+    case 'withdraw_agent_eth': {
+      const { found, agents, wantedId, wantedName } = await resolveAgent(auth.userId, args)
+      if (!found) {
+        return toolText(
+          id,
+          agents.length === 0 ? 'No agents on this account yet.' : wantedId ? `No agent with id "${wantedId}".` : `No agent named "${wantedName}".`,
+          true,
+        )
+      }
+      const { withdrawAgentEth, parseEthAmount, ETH_WITHDRAW_RESERVE_WEI } = await import('@/lib/agent-eth-withdraw')
+      let requestedWei: bigint | undefined
+      if (args.amount_eth !== undefined) {
+        const parsed = parseEthAmount(String(args.amount_eth))
+        if (parsed === null) return toolText(id, 'amount_eth must be a plain positive decimal, e.g. "0.001".', true)
+        requestedWei = parsed
+      }
+      const res = await withdrawAgentEth(auth.userId, found.id, {
+        requestedWei,
+        drain: args.drain === true,
+      })
+      if (!res.ok) return toolText(id, res.error, true)
+      const sent = Number(res.amountWei) / 1e18
+      return toolText(
+        id,
+        `Sent ${sent} ETH from ${found.name} to your payout address ${res.to}.\ntx ${res.txHash}` +
+          (args.drain === true
+            ? `\n\nDrained: ${found.name} kept nothing and cannot transact again until it is funded.`
+            : `\n\n${Number(ETH_WITHDRAW_RESERVE_WEI) / 1e18} ETH stayed behind so it can still work. Pass drain to take that too.`),
+      )
+    }
+
     case 'test_mcp_connector': {
       const serverUrl = String(args.server_url ?? '').trim()
       const toolName = String(args.tool_name ?? '').trim()

@@ -197,6 +197,10 @@ export type OfficeRosterAgent = {
   mcpToolName: string | null
   /** How this agent uses its tool — see lib/mcp-assist.ts. */
   mcpMode: 'proxy' | 'assisted'
+  /** Native ETH in the agent's account, as ether. Null when the read failed —
+   *  distinct from 0, which means the agent genuinely cannot pay for gas on a
+   *  deployment that sponsors none. */
+  ethBalance: number | null
   /** Whether an Authorization header is stored. The value itself is never
    *  returned — it is encrypted at rest and only decrypted server-side at
    *  dispatch time (app/actions/webhook.ts). */
@@ -236,6 +240,22 @@ export async function officeRoster(slot: number): Promise<OfficeRosterAgent[]> {
   const kept = rows.filter((r) => slotByAgentId.get(r.id) === slot)
   const { getMcpModes } = await import('@/lib/mcp-mode')
   const modeByAgentId = await getMcpModes(kept.filter((r) => r.mcpServerUrl).map((r) => r.id))
+
+  // ETH per provisioned agent. Read together rather than per-row so one slow
+  // RPC doesn't serialise the whole roster, and settled individually so one
+  // failure reports as unknown instead of blanking every balance.
+  const { ethBalanceOf } = await import('@/lib/onchain/treasury')
+  const funded = kept.filter((r) => r.smartAccountAddress)
+  const ethResults = await Promise.allSettled(
+    funded.map((r) => ethBalanceOf(r.smartAccountAddress as `0x${string}`)),
+  )
+  const ethByAgentId = new Map<string, number | null>(
+    funded.map((r, i) => {
+      const res = ethResults[i]
+      return [r.id, res.status === 'fulfilled' ? res.value : null]
+    }),
+  )
+
   return kept
     .map((r) => ({
       id: r.id,
@@ -247,6 +267,7 @@ export async function officeRoster(slot: number): Promise<OfficeRosterAgent[]> {
       mcpToolName: r.mcpToolName,
       hasAuthHeader: Boolean(r.mcpAuthHeaderEnc),
       mcpMode: modeByAgentId.get(r.id) ?? 'proxy',
+      ethBalance: r.smartAccountAddress ? (ethByAgentId.get(r.id) ?? null) : null,
     }))
 }
 

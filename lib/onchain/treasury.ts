@@ -42,6 +42,30 @@ export async function usdcBalanceOf(address: Address): Promise<number> {
   return Number(value) / 10 ** USDC_DECIMALS
 }
 
+/** The agent account's native ETH, in wei.
+ *
+ *  Worth surfacing because on a deployment with no paymaster this is what
+ *  decides whether the agent can act at all: below the floor in
+ *  lib/onchain/account.ts it cannot accept a job, including one already
+ *  escrowed for it. It is also real money the owner put in and, until
+ *  withdrawEth existed, could not take out. */
+export async function ethBalanceOfWei(address: Address): Promise<bigint> {
+  return publicClient().getBalance({ address })
+}
+
+/** Same, as ether. Display only — never round-trip a balance through a float
+ *  to compute a transfer amount. */
+export async function ethBalanceOf(address: Address): Promise<number> {
+  return Number(await ethBalanceOfWei(address)) / 1e18
+}
+
+/** Send native ETH from the agent's smart account. `data: '0x'` with a value
+ *  is a plain transfer; it goes through sendAgentCall so it obeys the same gas
+ *  fuse and lane accounting as every other write. */
+export async function transferEth(agentId: string, to: Address, amountWei: bigint): Promise<Hex> {
+  return sendAgentCall(agentId, { to, data: '0x', value: amountWei })
+}
+
 /** Send USDC from the agent's smart account to any external address. */
 export async function transferUsdc(agentId: string, to: Address, amountUsd: number): Promise<Hex> {
   const data = encodeFunctionData({

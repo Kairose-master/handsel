@@ -1107,6 +1107,25 @@ function OfficeRosterPanel({ slot, refreshKey }: { slot: number; refreshKey: num
                   {a.autoMine && (
                     <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">auto-mine</span>
                   )}
+                  {/* Gas money, shown because on a deployment that sponsors
+                      none this is what decides whether the agent can act — and
+                      it is the owner's own ETH, funded by hand. Zero is a
+                      finding; a failed read is not the same thing and says so. */}
+                  {a.provisioned && a.ethBalance === 0 && (
+                    <span className="rounded bg-destructive/15 px-1.5 py-0.5 text-[10px] text-destructive">
+                      no ETH — cannot transact
+                    </span>
+                  )}
+                  {a.provisioned && a.ethBalance !== null && a.ethBalance > 0 && (
+                    <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-muted-foreground">
+                      {a.ethBalance.toFixed(6)} ETH
+                    </span>
+                  )}
+                  {a.provisioned && a.ethBalance === null && (
+                    <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                      ETH unknown
+                    </span>
+                  )}
                   <span className="ml-auto">
                     {a.mcpServerUrl && a.mcpToolName ? (
                       <span className="inline-flex items-center gap-1 text-xs text-primary">
