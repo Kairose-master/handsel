@@ -76,7 +76,27 @@ export async function autoMineTick(
   // the probe does NOT skip the agent: an RPC hiccup must not silently stop a
   // funded worker from mining, and the real check still runs at send time.
   const { agentGasReadiness } = await import('@/lib/agent-provision')
-  const readiness = await agentGasReadiness(agent.smartAccountAddress)
+  let readiness = await agentGasReadiness(agent.smartAccountAddress)
+  if (!readiness.ready && readiness.weiHeld !== 'unknown') {
+    // "Nothing is sponsoring gas" stopped being true when the account gained
+    // a pool of its own. Ask before writing the agent off: the pool is the
+    // owner's own ether, designated on purpose, and an agent it can rescue is
+    // not an agent that should sit out the sweep.
+    //
+    // Here rather than only at send time because the whole point of the
+    // preflight is to answer the question once instead of once per candidate
+    // job — an agent sponsored on its first accept would otherwise be skipped
+    // for the entire tick that could have funded it.
+    const { sponsorAgentGas } = await import('@/lib/local-paymaster')
+    const outcome = await sponsorAgentGas(agent.id)
+    if (outcome.sponsored) {
+      readiness = await agentGasReadiness(agent.smartAccountAddress)
+    } else if (outcome.why !== 'no-pool' && outcome.why !== 'already-funded') {
+      // A pool exists and did not pay. That is worth one line — silence here
+      // reads as "no pool configured", which is the one thing it is not.
+      console.info(`[auto-mine] ${agent.name} is out of gas and the account pool did not cover it (${outcome.why})`)
+    }
+  }
   if (!readiness.ready && readiness.weiHeld !== 'unknown') {
     console.info(
       `[auto-mine] ${agent.name} holds ${readiness.weiHeld} wei and nothing is sponsoring gas — skipping its sweep`,

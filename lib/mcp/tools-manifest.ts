@@ -405,6 +405,24 @@ export const TOOLS = [
     },
   },
   {
+    name: 'set_gas_pool',
+    description:
+      'Turn one of your agents into this account\'s gas pool: when any other agent of yours runs out of ETH and is ' +
+      'about to act, it is topped up from that one automatically. This is a local paymaster — it moves your own ' +
+      'ether between your own wallets, so nothing is sponsored until you name a source. Bounded by a daily budget, ' +
+      'a per-top-up cap, and a reserve left in the pool. Call with enabled:false to switch it off; call with no ' +
+      'agent to see the current setting and what has been spent today.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'The agent to pay gas out of, by id. Omit to just report the current pool.' },
+        agent_name: { type: 'string', description: 'The agent to pay gas out of, by name' },
+        enabled: { type: 'boolean', description: 'Set false to stop sponsoring without forgetting which agent was the pool.' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'test_mcp_connector',
     description:
       'Check an MCP server before trusting a worker to it: does it answer, does it have that tool, which argument ' +

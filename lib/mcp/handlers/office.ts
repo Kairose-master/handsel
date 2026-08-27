@@ -602,6 +602,73 @@ export async function handleOffice(
       )
     }
 
+    case 'set_gas_pool': {
+      const {
+        getGasPool,
+        setGasPool,
+        disableGasPool,
+        sponsoredInWindow,
+        LOCAL_GAS_WINDOW_BUDGET_WEI,
+        LOCAL_GAS_TARGET_WEI,
+      } = await import('@/lib/local-paymaster')
+
+      const agents = await db.select().from(agent).where(eq(agent.userId, auth.userId))
+      const wantedId = args.agent_id ? String(args.agent_id) : null
+      const wantedName = args.agent_name ? String(args.agent_name) : null
+
+      // No agent named and no explicit disable: this is a read, not a write.
+      if (!wantedId && !wantedName && args.enabled === undefined) {
+        const current = await getGasPool(auth.userId)
+        const spent = await sponsoredInWindow(auth.userId)
+        if (!current) {
+          return toolText(
+            id,
+            'No gas pool set on this account. Name one of your agents and every other agent of yours gets topped up ' +
+              'out of it when it runs out of ETH — your own ether, between your own wallets.',
+          )
+        }
+        const src = agents.find((a) => a.id === current.sourceAgentId)
+        return toolText(
+          id,
+          `Gas pool: ${src?.name ?? current.sourceAgentId} — ${current.enabled ? 'ON' : 'off'}\n` +
+            `Sponsored in the last 24h: ${formatEther(spent)} of ${formatEther(LOCAL_GAS_WINDOW_BUDGET_WEI)} ETH\n` +
+            `Each top-up brings an agent to ${formatEther(LOCAL_GAS_TARGET_WEI)} ETH.`,
+        )
+      }
+
+      if (!wantedId && !wantedName && args.enabled === false) {
+        await disableGasPool(auth.userId)
+        return toolText(id, 'Gas pool switched off. Agents that run out of ETH will stop until you fund them.')
+      }
+
+      const target = wantedId
+        ? agents.find((a) => a.id === wantedId)
+        : agents.find((a) => a.name.toLowerCase() === (wantedName ?? '').toLowerCase())
+      if (!target) {
+        return toolText(id, wantedId ? `No agent with id "${wantedId}".` : `No agent named "${wantedName}".`, true)
+      }
+      if (!target.smartAccountAddress) {
+        return toolText(id, `${target.name} has no on-chain account, so it holds no ETH to pay gas out of.`, true)
+      }
+
+      const enabled = args.enabled !== false
+      await setGasPool(auth.userId, target.id, enabled)
+      if (!enabled) return toolText(id, `Gas pool is ${target.name}, currently switched off.`)
+
+      const { ethBalanceOfWei } = await import('@/lib/onchain/treasury')
+      const held = await ethBalanceOfWei(target.smartAccountAddress as `0x${string}`).catch(() => null)
+      const balanceLine =
+        held === null
+          ? "\n\nCould not read its balance just now."
+          : `\n\n${target.name} holds ${formatEther(held)} ETH. Keep it funded and the rest of the desk keeps working.`
+      return toolText(
+        id,
+        `${target.name} is now this account's gas pool. Any other agent of yours that runs out of ETH is topped up ` +
+          `to ${formatEther(LOCAL_GAS_TARGET_WEI)} out of it, up to ${formatEther(LOCAL_GAS_WINDOW_BUDGET_WEI)} ETH a ` +
+          `day across the whole account.${balanceLine}`,
+      )
+    }
+
     case 'test_mcp_connector': {
       const serverUrl = String(args.server_url ?? '').trim()
       const toolName = String(args.tool_name ?? '').trim()

@@ -501,14 +501,34 @@ export async function sendAgentCalls(
   // be said out loud. Checked here rather than left to the bundler, whose answer
   // to an underfunded sender is an AA21 nobody reads as "fund this address".
   if (!sponsored) {
-    const balance = await publicClient().getBalance({ address })
+    let balance = await publicClient().getBalance({ address })
+    if (balance < AGENT_GAS_FLOOR) {
+      // Before giving up: the OWNER may have filled a pool of their own.
+      //
+      // This is the kernel-mode counterpart of `ensureAgentGas`, and the
+      // distinction it turns on is whose money moves. That function spends the
+      // OPERATOR's ether, which is why it is gated by the budget above and
+      // why it would refuse exactly here. lib/local-paymaster.ts spends the
+      // account's own, from an agent its owner designated on purpose, so this
+      // budget has no claim on it — and a full ERC-4337 paymaster, which this
+      // deployment has no EntryPoint deposit for, is not needed to move ether
+      // between two wallets one person controls.
+      //
+      // Never fatal and never load-bearing: it returns a reason instead of
+      // throwing, and the balance is re-read rather than assumed, so a refusal
+      // or a lagging node falls through to exactly the error below.
+      const { sponsorAgentGas } = await import('@/lib/local-paymaster')
+      const outcome = await sponsorAgentGas(agentId)
+      if (outcome.sponsored) balance = await publicClient().getBalance({ address })
+    }
     if (balance < AGENT_GAS_FLOOR) {
       throw new Error(
         `${verdict.reason}, and the agent cannot self-pay: kernel account ${address} holds ` +
           `${balance} wei, under the ${AGENT_GAS_FLOOR} floor. Either send it a little ETH so it can ` +
-          `fund its own operations, or raise AGENT_GAS_BUDGET_USD / USER_LANE_GAS_BUDGET_USD. ` +
-          `Sponsored gas is the operator's money and this budget is what bounds it, so it is not ` +
-          `topped up automatically here.`,
+          `fund its own operations, set a gas pool on this account so its own agents top each other ` +
+          `up (fund_agent_eth / set_gas_pool), or raise AGENT_GAS_BUDGET_USD / ` +
+          `USER_LANE_GAS_BUDGET_USD. Sponsored gas is the operator's money and this budget is what ` +
+          `bounds it, so it is not topped up automatically here.`,
       )
     }
   }
