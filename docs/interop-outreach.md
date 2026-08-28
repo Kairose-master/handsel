@@ -145,6 +145,20 @@ contract, and nothing has touched RewardVault or `claimTask` since `657b9f7`,
 so PR #12's fix is unabsorbed too. The base rate holds: syncs keep arriving,
 none of them ours.
 
+**Verified 2026-08-28, git-only, both anchors unchanged in substance.**
+SWE-AF: `main` HEAD is still `0c64fe7` — byte-identical to the 08-26/08-27
+checks, so `examples/agent-comparison/` and the README table are unchanged
+by construction (nothing landed at all). taskmarket-contracts: `.gitmodules`
+still absent (thread 1 unabsorbed). Two new syncs since `6584077` —
+`a85cc8d` and `f2bd878` (both 08-27) — land a substantial new feature (a
+"taskmarket hook manifest" schema + validator + `create-taskmarket-hook`
+scaffolding tool + reference hook base classes/tests, 33 files). Checked the
+full diff for `RewardVault`/`claimTask` by name: the only `claimTask` hits
+are new reference-hook tests *calling* the existing function, nothing
+touches its implementation or `RewardVault.sol` itself — PR #12's fix
+remains unabsorbed. Anchors going forward: SWE-AF HEAD `0c64fe7`,
+taskmarket-contracts HEAD `f2bd878`.
+
 ## Inbound, for the first time (2026-08-18)
 
 Everything above is outbound — us contacting other projects. This is the first
