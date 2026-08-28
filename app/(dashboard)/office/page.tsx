@@ -18,7 +18,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { Copy, RefreshCw, Loader2, UserPlus, Building2, Plus, X, Maximize2, Minimize2, Plug, Unplug } from 'lucide-react'
+import { Copy, RefreshCw, Loader2, UserPlus, Building2, Plus, X, Maximize2, Minimize2, Plug, Unplug, Coins, Fuel } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -30,6 +30,7 @@ import {
   myConnectedOffices,
   myOfficeWorld,
   myOfficeTreasury,
+  myCompanyTreasury,
   myOfficeSlots,
   officeHireAgents,
   officeRoster,
@@ -47,7 +48,7 @@ import { setMcpWorker, disconnectMcpWorker } from '@/app/actions/webhook'
 import OfficeWorld from './game/OfficeWorld'
 import { LiveOffice, type Agent } from './game/live-engine'
 import type { Room } from './game/world'
-import type { OfficeTreasuryView } from '@/lib/office-world-data'
+import type { OfficeTreasuryView, CompanyTreasuryView, CompanyGasHealth } from '@/lib/office-world-data'
 import {
   AGENT_TEMPLATES,
   OFFICE_TEMPLATES,
@@ -1278,6 +1279,14 @@ const fmtUsd = (n: number | null) => (n == null ? 'unknown' : `$${n.toFixed(2)}`
 // This never does; it only ever prints one.
 const fmtEth = (weiStr: string | null) => (weiStr == null ? 'unknown' : `${(Number(BigInt(weiStr)) / 1e18).toFixed(4)} ETH`)
 
+// Mirrors lib/local-paymaster.ts's LOCAL_GAS_TARGET_WEI (0.0002 ETH) — the
+// full-tank size the HUD's gas gauge is drawn against. Not imported: that
+// file touches @/lib/db and cannot be bundled into this 'use client' page.
+// If the real constant ever moves, this display-only copy goes stale in the
+// direction of a wrong bar fill, never a wrong number — the numbers
+// themselves all come from the server action's real balances.
+const GAS_TANK_WEI = 200_000_000_000_000n
+
 /** The Treasury room's detail panel — the one room in the diorama with real
  *  money numbers to show, in two scopes that are never allowed to blend:
  *  this office's own agent wallets, and the market contract's own solvency.
@@ -1567,6 +1576,126 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
   )
 }
 
+const GAS_HEALTH_STYLE: Record<CompanyGasHealth, { label: string; dot: string; text: string }> = {
+  ok: { label: 'Fueled', dot: 'bg-success', text: 'text-success' },
+  low: { label: 'Running low', dot: 'bg-warning', text: 'text-warning' },
+  empty: { label: 'Empty', dot: 'bg-destructive', text: 'text-destructive' },
+  unknown: { label: 'Unknown', dot: 'bg-muted-foreground', text: 'text-muted-foreground' },
+  disabled: { label: 'Disabled', dot: 'bg-muted-foreground', text: 'text-muted-foreground' },
+  unconfigured: { label: 'Not set up', dot: 'bg-muted-foreground', text: 'text-muted-foreground' },
+}
+
+/**
+ * Company HQ — the account-wide HUD strip above the per-office diorama.
+ * Not office-scoped (see lib/company-treasury.ts's header for why): every
+ * office's agents combined, plus the account's own local-paymaster gas pool,
+ * which is one per account by design, never one per office.
+ *
+ * A tycoon-sim top bar, not a card: three live stat chips (agents, USDC,
+ * gas), each a real number or an honest "unknown" — never a placeholder
+ * dash pretending to be data.
+ */
+function CompanyHqBar() {
+  const [view, setView] = useState<CompanyTreasuryView | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const load = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      setView(await myCompanyTreasury())
+    } catch (e) {
+      console.error('[office] company treasury read failed:', e)
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    let dead = false
+    const poll = async () => {
+      if (dead) return
+      await load()
+    }
+    poll()
+    // Slower than the roster poll on purpose — this reads every agent's
+    // on-chain balance plus the gas pool source, heavier than a status
+    // snapshot, and a HUD strip does not need second-by-second freshness.
+    const interval = setInterval(poll, 60_000)
+    return () => {
+      dead = true
+      clearInterval(interval)
+    }
+  }, [])
+
+  const gas = view?.gasPool
+  const gasStyle = GAS_HEALTH_STYLE[view?.gasHealth ?? 'unknown']
+  const spendablePct =
+    gas?.configured && gas.spendableWei != null
+      ? Math.min(100, Math.round((Number(BigInt(gas.spendableWei)) / Number(GAS_TANK_WEI)) * 100))
+      : null
+
+  return (
+    <div className="flex flex-wrap items-stretch gap-3 rounded-xl border border-border bg-gradient-to-r from-muted/60 to-muted/20 p-3">
+      <div className="flex min-w-[110px] flex-1 items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
+        <Building2 className="h-5 w-5 text-muted-foreground" />
+        <div>
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Company</div>
+          <div className="text-lg font-bold tabular-nums leading-none">{view ? view.agentCount : '—'} agents</div>
+        </div>
+      </div>
+
+      <div className="flex min-w-[110px] flex-1 items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
+        <Coins className="h-5 w-5 text-warning" />
+        <div>
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">USDC · every office</div>
+          <div className="text-lg font-bold tabular-nums leading-none">{fmtUsd(view?.usdc.usdcTotal ?? null)}</div>
+          {view && view.usdc.walletReadErrors > 0 && <div className="mt-0.5 text-[10px] text-muted-foreground">floor — some wallets unreadable</div>}
+        </div>
+      </div>
+
+      <div className="flex min-w-[160px] flex-[1.4] items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
+        <Fuel className={`h-5 w-5 ${gasStyle.text}`} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Gas pool</div>
+            <span className={`flex items-center gap-1 text-[10px] font-medium ${gasStyle.text}`}>
+              <span className={`h-1.5 w-1.5 rounded-full ${gasStyle.dot}`} />
+              {gasStyle.label}
+            </span>
+          </div>
+          {gas?.configured ? (
+            <>
+              <div className="text-sm font-semibold tabular-nums leading-tight">{fmtEth(gas.spendableWei)} spendable</div>
+              {spendablePct != null && (
+                <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                  <div className={`h-full rounded-full ${gasStyle.dot}`} style={{ width: `${spendablePct}%` }} />
+                </div>
+              )}
+              <div className="mt-0.5 truncate text-[10px] text-muted-foreground">from {gas.sourceAgentName}</div>
+            </>
+          ) : (
+            <div className="text-sm text-muted-foreground">{gas?.configured === false ? 'No source agent set' : 'unknown'}</div>
+          )}
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={load}
+        disabled={loading}
+        aria-label="Refresh company numbers"
+        className="flex items-center justify-center rounded-lg border border-border bg-background px-2 text-muted-foreground hover:text-foreground"
+      >
+        {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+      </button>
+      {error && <p className="w-full text-xs text-destructive">Could not read the chain just now: {error}</p>}
+    </div>
+  )
+}
+
 function OfficeTabs({
   slots,
   slotsError,
@@ -1742,6 +1871,8 @@ export default function OfficePage() {
           Up to {MAX_OFFICE_SLOTS} offices per account — split your agents across them, or run one team.
         </p>
       </div>
+
+      <CompanyHqBar />
 
       <OfficeTabs
         slots={slots}

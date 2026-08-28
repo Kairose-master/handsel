@@ -96,17 +96,46 @@ office." Conflating them would be a quieter version of the environment-
 mislabeling bug this repo already shipped once (a number from the wrong
 scope reads as authoritative right up until someone acts on it).
 
-## What did NOT make it into phase 1/2
+## Phase 3 — Company HQ, the account-wide HUD
+
+The office diorama is scoped to ONE office; the local paymaster
+(`lib/local-paymaster.ts`) was built one level up — one gas pool per
+ACCOUNT, sourced from a single designated agent, because a real
+cross-account paymaster isn't buildable here (see that file's own header)
+but an account rolling its own offices' gas into one pool is. So "the
+company" is this account's every office combined, never other accounts' —
+there is still no platform-wide pool, by design, and the HUD does not
+pretend otherwise.
+
+`lib/company-treasury.ts`'s `buildCompanyTreasury` reads, account-wide (no
+`slot` filter): every agent's USDC and ETH summed (reusing
+`summarizeWalletReads` from the office Treasury work), and the gas pool's
+live state — `account_gas_pool` only stores WHICH agent is the source, not a
+ledger balance, so "the pool" is that agent's real on-chain ETH, read the
+same way as everything else here. `gasPoolHealth` (pure, unit-tested in
+`tests/company-treasury.test.ts`) turns that into one of six states —
+`unconfigured` / `disabled` / `unknown` / `empty` / `low` / `ok` — checked in
+that order: the owner's own choices (not configured, or turned off) outrank
+any balance fact, and an unreadable balance is `unknown`, never guessed into
+"empty" or "ok". The health label is computed server-side and shipped as a
+plain string (`CompanyTreasuryView.gasHealth`) so the `'use client'` HUD
+never needs to import the function that computes it — that function lives
+in a file that touches `@/lib/db` and cannot reach the browser bundle.
+
+`CompanyHqBar` (`app/(dashboard)/office/page.tsx`) is the tycoon-sim top
+strip above the per-office tabs: agent count, USDC across every office, and
+a fuel-gauge for the gas pool (spendable-vs-target bar, colored by health).
+Polled every 60s — heavier than the roster snapshot (every agent's balance
+plus the gas pool source), so slower on purpose.
+
+## What did NOT make it into phases 1–3
 
 Everything past "map current agent states to departments + semantic movement
-+ click-to-inspect, then Treasury's real numbers": semantic zoom levels
-beyond fit/close, artifact objects traveling between rooms independent of
-agent movement, RTS-style multi-select and commands, and a real platform-
-wide GAS number (each account's local-paymaster gas pool — `lib/local-
-paymaster.ts` — is per-user; there is no aggregate across accounts to read,
-so Treasury's gas figure today is this office's own agents' ETH, not "the
-platform's"). Add these as separate, reviewable slices — the taxonomy and
-grid are built to make each one additive, not a rewrite.
++ click-to-inspect, then Treasury's real numbers, then the account-wide HUD":
+semantic zoom levels beyond fit/close, artifact objects traveling between
+rooms independent of agent movement, and RTS-style multi-select and
+commands. Add these as separate, reviewable slices — the taxonomy and grid
+are built to make each one additive, not a rewrite.
 
 ## The grid
 

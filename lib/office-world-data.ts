@@ -160,6 +160,37 @@ export type OfficeTreasuryView = {
   }
 }
 
+/** Client-safe shape of the account-wide "Company HQ" HUD — same reasoning
+ *  and same rule as OfficeTreasuryView above: this is what the 'use client'
+ *  page imports the TYPE from; lib/company-treasury.ts (which touches
+ *  @/lib/db) supplies the VALUE, only ever from a server action. */
+export type CompanyTreasuryView = {
+  agentCount: number
+  usdc: { walletCount: number; usdcTotal: number | null; ethTotalWei: string | null; walletReadErrors: number }
+  gasPool: CompanyGasPoolStatus
+  /** Computed server-side (lib/company-treasury.ts's gasPoolHealth) so the
+   *  'use client' HUD never needs to import that function itself — that
+   *  function lives in a file that touches @/lib/db and cannot be bundled
+   *  for the browser. The client only ever reads this plain string. */
+  gasHealth: CompanyGasHealth
+}
+
+export type CompanyGasHealth = 'unconfigured' | 'disabled' | 'unknown' | 'empty' | 'low' | 'ok'
+
+export type CompanyGasPoolStatus =
+  | { configured: false }
+  | {
+      configured: true
+      enabled: boolean
+      sourceAgentId: string
+      sourceAgentName: string
+      heldWei: string | null
+      spendableWei: string | null
+      spentTodayWei: string | null
+      budgetWei: string
+      reserveWei: string
+    }
+
 const COLOR_PALETTE: Array<[string, string, string]> = [
   ['#6b3d34', '#fff3b0', '#ff8fc0'],
   ['#372b4a', '#c9b8ff', '#c9b8ff'],

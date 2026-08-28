@@ -81,6 +81,7 @@ enforces it.
 | DeFi sandbox (collateral→debt) | `lib/mini-vault.ts`, `contracts/MiniVault.sol` |
 | Bring any external MCP agent in as a worker | `lib/mcp-client.ts`, `docs/external-agents.md` |
 | The office diorama — space=function, not status (9 rooms, real signals, no fabricated activity) | `lib/office-functional-departments.ts`, `app/(dashboard)/office/game/`, `docs/office-departments.md` |
+| Real Treasury numbers (per-office room + account-wide Company HQ gas/USDC HUD) | `lib/office-treasury.ts`, `lib/company-treasury.ts`, `CompanyHqBar` in `app/(dashboard)/office/page.tsx` |
 | **Which real MCP servers actually work as workers** | **`docs/office-connectors.md`** — the four probed, the ones rejected and why, and the measurement behind `[mcp-query]` |
 | Running the office once, end to end | `docs/verify-cloud-options-desk.md` — the exact env this desk needs, what each stage proves, and what is untested |
 | GitHub repo jobs (diff → PR, CI grades, merge pays) | `lib/repo-jobs.ts`, `lib/github-app.ts`, `app/api/github/webhook/`, `docs/github-jobs.md` |

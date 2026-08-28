@@ -23,6 +23,8 @@ import {
 import { MAX_OFFICE_SOURCE_CHARS } from '@/lib/office-source-brief'
 import { buildOfficeSnapshot } from '@/lib/office-world-server'
 import { buildOfficeTreasury, type OfficeTreasuryView } from '@/lib/office-treasury'
+import { buildCompanyTreasury } from '@/lib/company-treasury'
+import type { CompanyTreasuryView } from '@/lib/office-world-data'
 import {
   MAX_OFFICE_SLOTS,
   type HireOfficeTemplateInput,
@@ -101,6 +103,16 @@ export async function myOfficeWorld(slot: number): Promise<OfficeSnapshot> {
 export async function myOfficeTreasury(slot: number): Promise<OfficeTreasuryView> {
   const session = await requireUser()
   return buildOfficeTreasury(session.user.id, slot)
+}
+
+/** The account-wide "Company HQ" HUD — every office's agents combined, plus
+ *  the account's own local-paymaster gas pool (lib/company-treasury.ts).
+ *  Not office-scoped: the gas pool is one per account by design (see that
+ *  file's header), and "the company" means every office this account has,
+ *  never other accounts'. */
+export async function myCompanyTreasury(): Promise<CompanyTreasuryView> {
+  const session = await requireUser()
+  return buildCompanyTreasury(session.user.id)
 }
 
 /** Every office on this account (at least one — slot 1 always exists), for
