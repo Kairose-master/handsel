@@ -19,6 +19,10 @@ describe('artifactFlightsFor', () => {
       kind: 'handoff',
       fromDeptId: 'engineering',
       toDeptId: 'verification',
+      // The real workers ride along so a renderer can track the flight
+      // between the two agents' LIVE positions, not just room centers.
+      fromAgentId: 'worker-a',
+      toAgentId: 'worker-b',
       label: 'API spec → Client impl',
     })
   })

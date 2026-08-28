@@ -32,6 +32,14 @@ export type ArtifactFlight = {
   kind: ArtifactFlightKind
   fromDeptId: string | null // null = lounge (idle bullpen) — still a real, known location
   toDeptId: string | null
+  /** The REAL worker agents on each end — the same ids `deptOf` was keyed
+   *  by, carried through so a renderer can draw the flight between the two
+   *  agents' live positions instead of between room centers. Always set
+   *  (a flight without both known workers is never emitted — see the
+   *  header); a renderer falls back to room centers only when an id isn't
+   *  in its current roster frame. */
+  fromAgentId: string
+  toAgentId: string
   label: string
 }
 
@@ -100,6 +108,8 @@ export function artifactFlightsFor(
         kind,
         fromDeptId,
         toDeptId,
+        fromAgentId: fromAgent,
+        toAgentId: toAgent,
         label: `${title} → ${downstream.title}`,
       })
     }

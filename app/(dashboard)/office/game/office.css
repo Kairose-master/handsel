@@ -784,6 +784,17 @@
 .ag3d-tag.selected { background: var(--hud-cyan); color: #04121a; border-color: var(--hud-cyan); }
 .ag3d-tag em { margin-left: 4px; font-style: normal; color: var(--hud-amber); font-weight: 500; }
 .flight3d-icon { font-size: 15px; line-height: 1; filter: drop-shadow(0 0 4px rgba(79, 216, 255, .8)); }
+.convo3d-ping {
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px;
+  background: var(--hud-panel);
+  border: 1px solid rgba(79, 216, 255, .4);
+  border-radius: 50%;
+  filter: drop-shadow(0 0 4px rgba(79, 216, 255, .6));
+  pointer-events: auto; /* hover tooltip carries the real preview text */
+  cursor: help;
+}
 
 .ag3d-stack { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .ag3d-bubble {
@@ -894,6 +905,11 @@
 .world3d-viewport[data-theme="diorama"] .ag3d-tag.selected { background: var(--yellow); color: var(--ink); border-color: var(--ink); }
 .world3d-viewport[data-theme="diorama"] .ag3d-tag em { color: var(--ink-soft); }
 .world3d-viewport[data-theme="diorama"] .flight3d-icon { filter: drop-shadow(0 1px 1px rgba(74, 43, 60, .45)); }
+.world3d-viewport[data-theme="diorama"] .convo3d-ping {
+  background: #fff;
+  border: 1.5px solid var(--ink);
+  filter: drop-shadow(0 1px 1px rgba(74, 43, 60, .35));
+}
 .world3d-viewport[data-theme="diorama"] .ag3d-bubble {
   border: 1.5px solid var(--ink);
   border-radius: 12px;

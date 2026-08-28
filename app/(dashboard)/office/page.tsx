@@ -67,7 +67,7 @@ import OfficeWorld from './game/OfficeWorld'
 const OfficeWorld3D = dynamic(() => import('./game3d/OfficeWorld3D'), { ssr: false })
 import { LiveOffice, type Agent } from './game/live-engine'
 import type { Room } from './game/world'
-import type { OfficeTreasuryView, CompanyTreasuryView, CompanyGasHealth, ArtifactFlight } from '@/lib/office-world-data'
+import type { OfficeTreasuryView, CompanyTreasuryView, CompanyGasHealth, ArtifactFlight, AgentConversation } from '@/lib/office-world-data'
 import { OFFICE_DEPARTMENTS } from '@/lib/office-world-data'
 import { selectionSummary } from './game/select'
 import {
@@ -1785,6 +1785,7 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
   // snapshot each poll rather than through LiveOffice/tweening: a flight is
   // a fact about the current subtask graph, not a position to interpolate.
   const [flights, setFlights] = useState<ArtifactFlight[]>([])
+  const [conversations, setConversations] = useState<AgentConversation[]>([])
   // Real signal for the 3D HUD's "OPERATIONAL"/"LINK DEGRADED" status dot —
   // never a static badge, since that would be exactly the kind of
   // decoration-pretending-to-be-telemetry this project's "no fake data"
@@ -1839,6 +1840,7 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
     setSelectedRoom(null)
     setMultiSelected([])
     setFlights([])
+    setConversations([])
     setPollHealthy(true)
     setTreasury(null)
     setTreasuryError(null)
@@ -1850,6 +1852,7 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
         setAgents([...engineRef.current.agents])
         setCeoLine(snap.ceoLine)
         setFlights(snap.artifactFlights)
+        setConversations(snap.conversations)
         setPollHealthy(true)
       } catch (error) {
         console.error('[office] snapshot poll failed:', error)
@@ -1966,6 +1969,7 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
               onSelectRoom={handleSelectRoom}
               onSelectMany={handleSelectMany}
               flights={flights}
+              conversations={conversations}
               healthy={pollHealthy}
             />
           ) : (

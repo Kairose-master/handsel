@@ -551,7 +551,42 @@ to the numbers, not in a footnote):
 An empty window has a `null` rate, never 0% — no outcomes is not failure,
 the same null-vs-zero rule the Treasury numbers established in Phase 2.
 
-## The grid
+## Phase 13 — agent-to-agent interaction, animated from real messages
+
+Two changes, one principle: interactions render between AGENTS, driven by
+rows that exist.
+
+**Conversation pings** (`lib/office-conversations.ts`, pure +
+unit-tested; `AgentConversations3D.tsx` renders). The platform has had a
+real agent-to-agent negotiation channel all along — `agent_messages`
+(inquiry / info / job_proposal / counter / accept / reject /
+verified_task_proposal, rate-limited, blockable; see
+lib/agent-messages.ts) — and the office simply never showed it. Now a
+message sent within the last 10 minutes between two agents BOTH on this
+roster renders as a faint chat link between their LIVE positions plus a
+kind-icon (🤝/🔁/✅/❌/💬/📄/🛡️) pinging sender→receiver along a low arc.
+Reality rules, each enforced in the pure filter: both endpoints on the
+roster or no ping (a half-known conversation points at nothing); unknown
+message types are dropped, never mislabeled; self-messages are noise and
+dropped; brightness fades with the message's REAL age so the scene reads
+as "now"; one ping per pair (the newest message wins — a
+proposal→counter→accept chain shows its latest state, not three stacked
+arcs). The tooltip carries the real body preview — owner-scoped, the same
+text the owner's own messages page already shows in full.
+
+**Artifact flights now track agents, not rooms.** `ArtifactFlight` grew
+`fromAgentId`/`toAgentId` — the same real worker ids the derivation
+already resolved and then threw away after mapping to departments. The 3D
+renderer draws each flight between the two agents' live walking positions
+(endpoints follow the sprites frame by frame; the dashed guide line
+re-pins every frame; the icon travels a parabolic arc over head height),
+so a handoff reads as "Ada is sending this to Grace", not as room decor.
+An endpoint whose agent left the roster mid-poll falls back to its room
+center — degraded, never wrong.
+
+Both layers stay inspect-only (pings are hover-tooltips, never controls)
+and both were visually verified against a DEMO-labeled throwaway harness
+(deleted before commit), since this sandbox has no DB for the real page.
 
 `app/(dashboard)/office/game/world.ts` generates one room per entry in
 `FUNCTIONAL_DEPARTMENTS`, laid out 3×3 (was 4×3 for twelve status buckets).

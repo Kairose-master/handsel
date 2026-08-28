@@ -31,11 +31,12 @@ import * as THREE from 'three'
 import type { Agent } from '../game/live-engine'
 import type { Room } from '../game/world'
 import { MIN_SELECT_BOX_PX } from '../game/select'
-import type { ArtifactFlight } from '@/lib/office-world-data'
+import type { ArtifactFlight, AgentConversation } from '@/lib/office-world-data'
 import { CameraRig } from './CameraRig'
 import { RoomMeshes } from './RoomMeshes'
 import { AgentAvatars } from './AgentAvatars'
 import { ArtifactFlights3D } from './ArtifactFlights3D'
+import { AgentConversations3D } from './AgentConversations3D'
 import { TopStatusBar, BottomTelemetryBar } from './HUDBars'
 import { useSceneStore } from './scene-store'
 import { THEMES, THEME_ORDER } from './theme'
@@ -48,6 +49,9 @@ type Props = {
   onSelectRoom?: (room: Room) => void
   onSelectMany?: (ids: string[]) => void
   flights?: ArtifactFlight[]
+  /** Recent agent-to-agent negotiation messages (lib/office-conversations.ts)
+   *  — animated as chat pings between the two agents' live positions. */
+  conversations?: AgentConversation[]
   /** Real signal, not decoration: whether the last snapshot poll (the same
    *  one office/page.tsx already does) actually succeeded. Drives the top
    *  bar's status dot — "OPERATIONAL" is a claim about live data flowing,
@@ -101,6 +105,7 @@ export default function OfficeWorld3D({
   onSelectRoom,
   onSelectMany,
   flights = [],
+  conversations = [],
   healthy = true,
 }: Props) {
   const zoom = useSceneStore((s) => s.zoom)
@@ -215,7 +220,8 @@ export default function OfficeWorld3D({
           {theme.fog && <fog attach="fog" args={[theme.bg, theme.fog[0], theme.fog[1]]} />}
           <RoomMeshes agents={agents} onSelectRoom={handlePickRoom} />
           <AgentAvatars agents={agents} selectedId={selectedId} onSelect={handlePick} />
-          <ArtifactFlights3D flights={flights} />
+          <ArtifactFlights3D flights={flights} agents={agents} />
+          <AgentConversations3D conversations={conversations} agents={agents} />
           <SelectionBridge agents={agents} exposeHitTest={exposeHitTest} />
           {theme.glow && (
             <EffectComposer multisampling={0}>

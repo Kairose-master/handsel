@@ -28,7 +28,7 @@ export async function buildOfficeSnapshot(userId: string, ownerName: string, slo
   const myAgents = everyAgent.filter((a) => slotByAgentId.get(a.id) === slot)
   if (myAgents.length === 0) {
     const ceoLine = everyAgent.length === 0 ? 'No agents yet.' : 'No agents in this office yet.'
-    return { ceoName: ownerName, ceoLine, staff: [], artifactFlights: [] }
+    return { ceoName: ownerName, ceoLine, staff: [], artifactFlights: [], conversations: [] }
   }
   const agentIds = myAgents.map((a) => a.id)
   const addressToAgent = new Map(
@@ -212,11 +212,42 @@ export async function buildOfficeSnapshot(userId: string, ownerName: string, slo
     return artifactFlightsFor(d.id, flightSubtasks, deptOf)
   })
 
+  // Recent agent-to-agent negotiation between THIS roster's agents
+  // (lib/office-conversations.ts is the pure filter; this is just the read).
+  // Same degrade posture as every gather above.
+  let conversations: import('@/lib/office-conversations').AgentConversation[] = []
+  try {
+    const { agentMessage } = await import('@/lib/db/schema')
+    const { conversationsFor, CONVERSATION_WINDOW_MS } = await import('@/lib/office-conversations')
+    const { gte, or } = await import('drizzle-orm')
+    const since = new Date(Date.now() - CONVERSATION_WINDOW_MS)
+    const rows = await db
+      .select({
+        id: agentMessage.id,
+        fromAgentId: agentMessage.fromAgentId,
+        toAgentId: agentMessage.toAgentId,
+        type: agentMessage.type,
+        body: agentMessage.body,
+        createdAt: agentMessage.createdAt,
+      })
+      .from(agentMessage)
+      .where(
+        and(
+          gte(agentMessage.createdAt, since),
+          or(inArray(agentMessage.fromAgentId, agentIds), inArray(agentMessage.toAgentId, agentIds)),
+        ),
+      )
+    conversations = conversationsFor(rows, new Set(agentIds), new Date())
+  } catch (error) {
+    console.error('[office-world] conversation read failed:', error)
+  }
+
   const escrowed = [...jobsByAgent.values()].flat().filter((j) => j.status === 'Accepted' || j.status === 'Submitted').length
   return {
     ceoName: ownerName,
     ceoLine: `${myAgents.length} agent${myAgents.length === 1 ? '' : 's'} · ${escrowed} job${escrowed === 1 ? '' : 's'} in flight`,
     staff,
     artifactFlights,
+    conversations,
   }
 }

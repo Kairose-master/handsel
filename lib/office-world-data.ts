@@ -127,6 +127,9 @@ export { FUNCTIONAL_DEPARTMENTS as OFFICE_DEPARTMENTS } from '@/lib/office-funct
 // to be safe to import directly.
 import type { ArtifactFlight } from '@/lib/office-artifact-flights'
 export type { ArtifactFlight, ArtifactFlightKind } from '@/lib/office-artifact-flights'
+// Same rule for conversations (lib/office-conversations.ts is pure).
+import type { AgentConversation } from '@/lib/office-conversations'
+export type { AgentConversation, ConversationKind } from '@/lib/office-conversations'
 
 export type OfficeStaffMember = {
   id: string
@@ -145,6 +148,10 @@ export type OfficeSnapshot = {
    *  lib/office-artifact-flights.ts's header for exactly what "known" and
    *  "currently" require before a flight is included at all. */
   artifactFlights: ArtifactFlight[]
+  /** Recent agent-to-agent negotiation messages between agents of THIS
+   *  roster (lib/office-conversations.ts — real agent_messages rows inside
+   *  the freshness window, nothing else). */
+  conversations: AgentConversation[]
 }
 
 /**
