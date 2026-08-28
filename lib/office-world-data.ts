@@ -104,40 +104,29 @@ export function resolveRoleConnector(
  *  components. lib/office.ts imports it back. */
 export const MAX_OFFICE_SLOTS = 3
 
-export type OfficeDeptId =
-  | 'disputed'
-  | 'reviewing'
-  | 'working'
-  | 'delegating'
-  | 'credit'
-  | 'settled'
-  | 'governance'
-  | 'mining'
-  | 'external'
-  | 'template'
-  | 'erc8004'
-  | 'capable'
-
-export const OFFICE_DEPARTMENTS: Array<{ id: OfficeDeptId; name: string; short: string; icon: string; blurb: string }> = [
-  { id: 'disputed', name: 'Disputes', short: 'dispute.desk', icon: '⚖️', blurb: 'A job on this agent is in dispute right now.' },
-  { id: 'reviewing', name: 'Review line', short: 'review.line', icon: '🖋️', blurb: 'Working an office-scoped peer review.' },
-  { id: 'working', name: 'Working', short: 'job.desk', icon: '💼', blurb: 'Accepted or Submitted on a real escrowed job.' },
-  { id: 'delegating', name: 'Delegating', short: 'delegate.hq', icon: '📤', blurb: 'Prime on an active delegation, coordinating subtasks.' },
-  { id: 'credit', name: 'Credit', short: 'credit.line', icon: '📊', blurb: 'Has an open credit draw against its score.' },
-  { id: 'settled', name: 'Settled today', short: 'payout.log', icon: '💰', blurb: 'Completed and got paid in the last 24h.' },
-  { id: 'governance', name: 'Governance', short: 'gov.hall', icon: '🗳️', blurb: 'Votes on proposals on the owner\'s behalf.' },
-  { id: 'mining', name: 'Mining', short: 'mining.rig', icon: '⛏️', blurb: 'Auto-claims qualifying open jobs.' },
-  { id: 'external', name: 'External', short: 'mcp.bridge', icon: '🔌', blurb: 'Runs outside the platform — webhook, cloud key, or MCP.' },
-  { id: 'template', name: 'Cloned', short: 'template.hq', icon: '🧬', blurb: 'Built from a purchased or cloned agent template.' },
-  { id: 'erc8004', name: 'Registered', short: 'erc8004.id', icon: '🪪', blurb: 'Has an ERC-8004 identity registry entry.' },
-  { id: 'capable', name: 'Specialist', short: 'capable.lab', icon: '🎨', blurb: 'Declares a capability beyond plain text.' },
-]
+/**
+ * Room taxonomy — re-exported from lib/office-functional-departments.ts
+ * (a pure, DB-free, unit-tested module) rather than declared here directly,
+ * so the derivation logic and the taxonomy it produces can't drift apart.
+ *
+ * This used to be twelve STATUS buckets (disputed/reviewing/working/
+ * delegating/credit/settled/governance/mining/external/template/erc8004/
+ * capable) — an agent's CONDITION, not its function. "Mining" in particular
+ * had become the de facto catch-all: any autoMine agent not otherwise busy
+ * landed there regardless of what kind of work it actually did. Space
+ * communicated status, not function — exactly the mental model the office
+ * redesign exists to replace. See office-functional-departments.ts's header
+ * for the nine functional rooms this became.
+ */
+import type { FunctionalDeptId } from '@/lib/office-functional-departments'
+export type { FunctionalDeptId as OfficeDeptId } from '@/lib/office-functional-departments'
+export { FUNCTIONAL_DEPARTMENTS as OFFICE_DEPARTMENTS } from '@/lib/office-functional-departments'
 
 export type OfficeStaffMember = {
   id: string
   name: string
   role: string
-  deptId: OfficeDeptId | null // null = lounge (idle — nothing else matched)
+  deptId: FunctionalDeptId | null // null = lounge (idle — nothing else matched)
   rank: 'lead' | 'member'
   statusLine: string
 }

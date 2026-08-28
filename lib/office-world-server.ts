@@ -11,9 +11,10 @@
  */
 import { db } from '@/lib/db'
 import { agent, delegation, creditTransaction, agentEvent, jobSpec } from '@/lib/db/schema'
-import { eq, inArray } from 'drizzle-orm'
-import type { OfficeDeptId, OfficeSnapshot, OfficeStaffMember } from '@/lib/office-world-data'
-import { officeSlotsByAgentId } from '@/lib/office'
+import { and, eq, inArray } from 'drizzle-orm'
+import type { OfficeSnapshot, OfficeStaffMember } from '@/lib/office-world-data'
+import { officeSlotsByAgentId, roleIdsByAgentId } from '@/lib/office'
+import { departmentFor, type AgentActivitySignals } from '@/lib/office-functional-departments'
 
 /** Build the real office snapshot for `userId`'s agents in one office
  *  (`slot` — see lib/office.ts's MAX_OFFICE_SLOTS). Never throws — a query
@@ -50,27 +51,37 @@ export async function buildOfficeSnapshot(userId: string, ownerName: string, slo
     console.error('[office-world] job read failed (continuing with empty job state):', error)
   }
 
-  // Which of those specs are office-scoped review jobs (lib/office.ts).
+  // Which of those specs are office-scoped review jobs (lib/office.ts) and
+  // which are GitHub repo jobs (lib/repo-jobs.ts) — one query on the same
+  // spec-hash set answers both, since a functional department needs to tell
+  // "reviewing" from "building" and "adversarial review" from "independent
+  // review" apart, none of which the bare on-chain status says on its own.
   const allHashes = [...new Set([...jobsByAgent.values()].flat().map((j) => j.specHash))]
   const officeHashes = new Set<string>()
+  const repoHashes = new Set<string>()
   if (allHashes.length > 0) {
     try {
       const rows = await db
-        .select({ specHash: jobSpec.specHash, officeOwnerId: jobSpec.officeOwnerId })
+        .select({ specHash: jobSpec.specHash, officeOwnerId: jobSpec.officeOwnerId, repoFullName: jobSpec.repoFullName })
         .from(jobSpec)
         .where(inArray(jobSpec.specHash, allHashes))
-      for (const r of rows) if (r.officeOwnerId) officeHashes.add(r.specHash)
+      for (const r of rows) {
+        if (r.officeOwnerId) officeHashes.add(r.specHash)
+        if (r.repoFullName) repoHashes.add(r.specHash)
+      }
     } catch (error) {
       console.error('[office-world] jobSpec office-scope read failed:', error)
     }
   }
 
+  // Currently coordinating, not "has ever delegated" — a completed or failed
+  // delegation is not a live Strategy Room occupancy.
   const activeDelegationAgents = new Set<string>()
   try {
     const rows = await db
       .select({ primeAgentId: delegation.primeAgentId })
       .from(delegation)
-      .where(inArray(delegation.primeAgentId, agentIds))
+      .where(and(inArray(delegation.primeAgentId, agentIds), eq(delegation.status, 'posted')))
     for (const r of rows) activeDelegationAgents.add(r.primeAgentId)
   } catch (error) {
     console.error('[office-world] delegation read failed:', error)
@@ -101,52 +112,25 @@ export async function buildOfficeSnapshot(userId: string, ownerName: string, slo
     console.error('[office-world] settlement read failed:', error)
   }
 
-  const deptHasLead = new Set<OfficeDeptId>()
-  const staff: OfficeStaffMember[] = myAgents.map((a) => {
-    const jobs = jobsByAgent.get(a.id) ?? []
-    const disputed = jobs.find((j) => j.status === 'Disputed')
-    const reviewing = jobs.find((j) => (j.status === 'Accepted' || j.status === 'Submitted') && officeHashes.has(j.specHash))
-    const working = jobs.find((j) => j.status === 'Accepted' || j.status === 'Submitted')
+  const roleIds = await roleIdsByAgentId(agentIds, slot).catch((error) => {
+    console.error('[office-world] role-id read failed:', error)
+    return new Map<string, string>()
+  })
 
-    let deptId: OfficeDeptId | null = null
-    let statusLine = 'Idle.'
-    if (disputed) {
-      deptId = 'disputed'
-      statusLine = 'A job is in dispute.'
-    } else if (reviewing) {
-      deptId = 'reviewing'
-      statusLine = 'Reviewing a peer\'s work.'
-    } else if (working) {
-      deptId = 'working'
-      statusLine = `On a job — ${working.status.toLowerCase()}.`
-    } else if (activeDelegationAgents.has(a.id)) {
-      deptId = 'delegating'
-      statusLine = 'Coordinating a delegation.'
-    } else if (openDrawAgents.has(a.id)) {
-      deptId = 'credit'
-      statusLine = 'Has drawn credit.'
-    } else if (settledTodayAgents.has(a.id)) {
-      deptId = 'settled'
-      statusLine = 'Settled a job today.'
-    } else if (a.autoVote) {
-      deptId = 'governance'
-      statusLine = 'Auto-voting on proposals.'
-    } else if (a.autoMine) {
-      deptId = 'mining'
-      statusLine = 'Watching the board for open jobs.'
-    } else if (a.runtimeType && a.runtimeType !== 'platform') {
-      deptId = 'external'
-      statusLine = `Runs as ${a.runtimeType}.`
-    } else if (a.customInstructions) {
-      deptId = 'template'
-      statusLine = 'Cloned from a template.'
-    } else if (a.erc8004Id != null) {
-      deptId = 'erc8004'
-      statusLine = `ERC-8004 #${a.erc8004Id}.`
-    } else if ((a.capabilities?.length ?? 0) > 1 || (a.capabilities && !a.capabilities.includes('text'))) {
-      deptId = 'capable'
-      statusLine = `Handles ${(a.capabilities ?? []).join(', ')}.`
+  const deptHasLead = new Set<string>()
+  const staff: OfficeStaffMember[] = myAgents.map((a) => {
+    const signals: AgentActivitySignals = {
+      jobs: (jobsByAgent.get(a.id) ?? []).map((j) => ({ ...j, repoJob: repoHashes.has(j.specHash) })),
+      officeReviewSpecHashes: officeHashes,
+      roleId: roleIds.get(a.id) ?? null,
+      mcpToolName: a.mcpToolName ?? null,
+      isDelegationPrime: activeDelegationAgents.has(a.id),
+      hasCreditDraw: openDrawAgents.has(a.id),
+      settledRecently: settledTodayAgents.has(a.id),
+      autoMine: Boolean(a.autoMine),
+      isExternalRuntime: Boolean(a.runtimeType && a.runtimeType !== 'platform'),
     }
+    const { deptId, statusLine } = departmentFor(signals)
 
     // First agent (in roster order) placed in a department leads it — the
     // "팀장" badge is cosmetic, not a real title; it exists so the room

@@ -8,7 +8,7 @@
  */
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Agent } from './live-engine'
-import { CEO_ROOM, MEETING_ROOM, PROPS, ROOMS, TILE, WORLD_H, WORLD_W, roomOf } from './world'
+import { CEO_ROOM, PROPS, ROOMS, TILE, WORLD_H, WORLD_W, roomOf } from './world'
 
 type Props = {
   agents: Agent[]
@@ -108,10 +108,9 @@ export default function OfficeWorld({ agents, selectedId, follow, onSelect }: Pr
     selectedRef.current = selectedId
   }, [selectedId])
 
-  // Hot room: wherever the approval line has someone right now, else the
-  // busiest dept — a live fact about the current roster, not a script beat.
+  // Hot room: whichever department currently has the most people in it —
+  // a live fact about the current roster, not a script beat.
   const hotRoom = useMemo(() => {
-    if (agents.some((a) => a.deptId === MEETING_ROOM.id)) return MEETING_ROOM.id
     const counts = new Map<string, number>()
     for (const a of agents) {
       if (a.deptId === 'lounge' || a.deptId === 'ceo') continue

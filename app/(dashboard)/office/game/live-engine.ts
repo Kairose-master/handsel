@@ -9,7 +9,7 @@
  * real positions instead of a script's.
  */
 import { findPath } from './pathfinding'
-import { CEO_SEAT, MEETING_SEATS, doorApproach, roomOf, type Pt } from './world'
+import { CEO_SEAT, doorApproach, roomOf, type Pt } from './world'
 import { colorsFor, type OfficeSnapshot } from '@/lib/office-world-data'
 
 export type Facing = 'up' | 'down' | 'left' | 'right'
@@ -47,7 +47,6 @@ const SKIN = ['#ffdcc4', '#f7cdae', '#ffe3cf', '#eec39f']
 
 function seatFor(roomId: string, slot: number): Pt {
   const room = roomOf(roomId)
-  if (roomId === 'meeting') return MEETING_SEATS[slot % MEETING_SEATS.length]
   if (roomId === 'ceo') return CEO_SEAT
   const desks = room.desks
   if (desks.length > 0) return desks[slot % desks.length].seat
@@ -156,7 +155,7 @@ export class LiveOffice {
       // Already there, or unreachable — snap and idle rather than get stuck.
       a.x = seat.x
       a.y = seat.y
-      a.anim = roomId === 'lounge' || roomId === 'meeting' ? 'idle' : 'sit'
+      a.anim = roomId === 'lounge' ? 'idle' : 'sit'
       return
     }
     a.path = path
@@ -175,7 +174,7 @@ export class LiveOffice {
     const step = WALK_SPEED * dtSec
     for (const a of this.agents) {
       if (a.path.length === 0 || a.pathIdx >= a.path.length) {
-        if (a.anim === 'walk') a.anim = a.deptId === 'lounge' || a.deptId === 'meeting' ? 'idle' : 'sit'
+        if (a.anim === 'walk') a.anim = a.deptId === 'lounge' ? 'idle' : 'sit'
         // Gentle "typing" flicker for agents actually mid-task, so a desk
         // doesn't look frozen — cosmetic only, does not affect deptId/status.
         if (a.anim === 'sit' && a.status && /job|review|delegation/i.test(a.status)) {

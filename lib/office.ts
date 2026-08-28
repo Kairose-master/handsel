@@ -319,6 +319,24 @@ export async function officeRoleAgents(agentIds: string[], slot: number): Promis
   return result
 }
 
+/** The reverse of officeRoleAgents: agentId → role_id, for whichever of the
+ *  given agents have one recorded (silently absent otherwise — a missing
+ *  role id is not an error, it just means "no functional-department hint
+ *  from role"). Used by the office diorama to tell a research role from a
+ *  red-team role when both are merely "reviewing" or "working" on-chain. */
+export async function roleIdsByAgentId(agentIds: string[], slot: number): Promise<Map<string, string>> {
+  const result = new Map<string, string>()
+  if (agentIds.length === 0) return result
+  await ensureAgentOfficeSlotTable()
+  const { rows } = await pool.query<{ agent_id: string; role_id: string | null }>(
+    `SELECT agent_id, role_id FROM agent_office_slot
+      WHERE agent_id = ANY($1) AND slot = $2 AND role_id IS NOT NULL`,
+    [agentIds, slot],
+  )
+  for (const row of rows) if (row.role_id) result.set(row.agent_id, row.role_id)
+  return result
+}
+
 /** Every given agent's office slot, defaulting to 1 for any id absent from
  *  the table (never hired into a non-default office). */
 export async function officeSlotsByAgentId(agentIds: string[]): Promise<Map<string, number>> {

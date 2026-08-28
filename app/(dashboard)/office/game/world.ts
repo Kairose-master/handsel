@@ -3,21 +3,25 @@
  * engine. 0 = walkable, 1 = blocked (wall/furniture).
  *
  * Room identities come from `lib/office-world-data.ts`'s OFFICE_DEPARTMENTS —
- * real Handsel states (working, reviewing, delegating, ...), not a fictional
- * company's org chart. The 4x3 = 12 fixed layout is inherited from the
- * reference engine; MEETING_ROOM ("결재" — approval) now genuinely maps onto
- * the reviewTier chain feature instead of a scripted meeting.
+ * the nine FUNCTIONAL rooms (lib/office-functional-departments.ts): what an
+ * agent is doing, not its status. A 3x3 grid, one cell per room, replaces the
+ * previous 4x3 = 12 status-bucket layout. The old MEETING_ROOM ("결재" —
+ * approval line, a bespoke bench layout for the reviewTier chain) is gone as
+ * a separate fixed room: peer review of every kind — approval chains
+ * included — now lives inside the generated Verification Court cell, so
+ * there is exactly one room per function instead of one generated grid plus
+ * a hand-placed extra for the same concept.
  */
 import { OFFICE_DEPARTMENTS } from '@/lib/office-world-data'
 
 export const TILE = 18
-export const COLS = 74
-export const ROWS = 58
+export const COLS = 78
+export const ROWS = 66
 export const WORLD_W = COLS * TILE
 export const WORLD_H = ROWS * TILE
 
 export type Pt = { x: number; y: number }
-export type RoomKind = 'dept' | 'ceo' | 'meeting' | 'lounge'
+export type RoomKind = 'dept' | 'ceo' | 'lounge'
 
 export type Desk = { deskX: number; deskY: number; seat: Pt }
 
@@ -36,19 +40,23 @@ export type Room = {
   loiter: Pt[]
 }
 
-const COL_X = [2, 20, 38, 56]
-const ROW_Y = [17, 31, 45]
-const DEPT_W = 15
-const DEPT_H = 11
+// 3x3 — one cell per functional department (FUNCTIONAL_DEPARTMENTS has
+// exactly nine entries; tests/office-functional-departments.test.ts pins
+// that count, so this grid and the taxonomy it renders cannot silently
+// drift apart in count).
+const COL_X = [2, 28, 54]
+const ROW_Y = [16, 33, 50]
+const DEPT_W = 22
+const DEPT_H = 14
 
 function deptRoom(index: number): Room {
   const meta = OFFICE_DEPARTMENTS[index]
-  const x = COL_X[index % 4]
-  const y = ROW_Y[Math.floor(index / 4)]
-  const desks: Desk[] = [3, 7, 11].map((dx) => ({
+  const x = COL_X[index % 3]
+  const y = ROW_Y[Math.floor(index / 3)]
+  const desks: Desk[] = [4, 10, 16].map((dx) => ({
     deskX: x + dx - 1,
-    deskY: y + 5,
-    seat: { x: x + dx, y: y + 6 },
+    deskY: y + 6,
+    seat: { x: x + dx, y: y + 7 },
   }))
   return {
     id: meta.id,
@@ -61,15 +69,15 @@ function deptRoom(index: number): Room {
     w: DEPT_W,
     h: DEPT_H,
     doors: [
-      { x: x + 7, y },
-      { x: x + 8, y },
+      { x: x + 10, y },
+      { x: x + 11, y },
     ],
     desks,
     loiter: [
-      { x: x + 1, y: y + 8 },
-      { x: x + 5, y: y + 8 },
-      { x: x + 9, y: y + 8 },
-      { x: x + 13, y: y + 3 },
+      { x: x + 2, y: y + 10 },
+      { x: x + 7, y: y + 10 },
+      { x: x + 14, y: y + 10 },
+      { x: x + 19, y: y + 4 },
     ],
   }
 }
@@ -82,84 +90,57 @@ export const CEO_ROOM: Room = {
   kind: 'ceo',
   x: 2,
   y: 2,
-  w: 18,
+  w: 35,
   h: 12,
   doors: [
-    { x: 10, y: 13 },
-    { x: 11, y: 13 },
+    { x: 18, y: 13 },
+    { x: 19, y: 13 },
   ],
-  desks: [{ deskX: 9, deskY: 6, seat: { x: 11, y: 5 } }],
+  desks: [{ deskX: 18, deskY: 6, seat: { x: 20, y: 5 } }],
   loiter: [
     { x: 8, y: 10 },
-    { x: 11, y: 10 },
-    { x: 14, y: 10 },
-    { x: 6, y: 8 },
+    { x: 15, y: 10 },
+    { x: 25, y: 10 },
+    { x: 30, y: 8 },
   ],
 }
 
-export const MEETING_ROOM: Room = {
-  id: 'meeting',
-  name: 'Approval line',
-  short: 'review.hall',
-  icon: '🖋️',
-  kind: 'meeting',
-  x: 23,
-  y: 2,
-  w: 26,
-  h: 12,
-  doors: [
-    { x: 35, y: 13 },
-    { x: 36, y: 13 },
-  ],
-  desks: [],
-  loiter: [
-    { x: 26, y: 10 },
-    { x: 45, y: 10 },
-  ],
-}
-
+// Idle really is a room in this diorama, and that is deliberate: an agent
+// between functions is not "in" any of the nine departments — see
+// lib/office-functional-departments.ts's departmentFor(), whose unmatched
+// case returns `deptId: null` rather than guessing one. This is where
+// `null` renders. It is the one room nothing derives a function from.
 export const LOUNGE_ROOM: Room = {
   id: 'lounge',
   name: 'Idle',
   short: 'lounge.idle',
   icon: '☕',
   kind: 'lounge',
-  x: 52,
+  x: 41,
   y: 2,
-  w: 20,
+  w: 35,
   h: 12,
   doors: [
-    { x: 61, y: 13 },
-    { x: 62, y: 13 },
+    { x: 57, y: 13 },
+    { x: 58, y: 13 },
   ],
   desks: [],
   loiter: [
-    { x: 56, y: 7 },
-    { x: 58, y: 7 },
-    { x: 60, y: 7 },
-    { x: 63, y: 10 },
+    { x: 45, y: 7 },
+    { x: 49, y: 7 },
+    { x: 53, y: 7 },
+    { x: 60, y: 10 },
     { x: 66, y: 6 },
-    { x: 69, y: 8 },
+    { x: 71, y: 8 },
   ],
 }
 
-export const MEETING_SEATS: Pt[] = [
-  { x: 31, y: 5 },
-  { x: 34, y: 5 },
-  { x: 37, y: 5 },
-  { x: 40, y: 5 },
-  { x: 31, y: 9 },
-  { x: 34, y: 9 },
-  { x: 37, y: 9 },
-  { x: 40, y: 9 },
-]
-
-export const CEO_REPORT_SPOT: Pt = { x: 11, y: 9 }
-export const CEO_SEAT: Pt = { x: 11, y: 5 }
-export const ENTRANCE: Pt = { x: 36, y: 57 }
+export const CEO_REPORT_SPOT: Pt = { x: 20, y: 9 }
+export const CEO_SEAT: Pt = { x: 20, y: 5 }
+export const ENTRANCE: Pt = { x: 39, y: 65 }
 
 export const DEPT_ROOMS: Room[] = OFFICE_DEPARTMENTS.map((_, i) => deptRoom(i))
-export const ROOMS: Room[] = [CEO_ROOM, MEETING_ROOM, LOUNGE_ROOM, ...DEPT_ROOMS]
+export const ROOMS: Room[] = [CEO_ROOM, LOUNGE_ROOM, ...DEPT_ROOMS]
 
 export type Prop = {
   kind: 'desk' | 'monitor' | 'table' | 'sofa' | 'coffee' | 'plant' | 'shelf' | 'screen' | 'ceo-desk' | 'rug' | 'cabinet' | 'whiteboard'
@@ -181,22 +162,16 @@ for (const room of DEPT_ROOMS) {
   PROPS.push({ kind: 'cabinet', x: room.x + 12, y: room.y + 8, w: 2, h: 1 })
 }
 
-PROPS.push({ kind: 'ceo-desk', x: 9, y: 6, w: 5, h: 2 })
-PROPS.push({ kind: 'rug', x: 8, y: 9, w: 7, h: 3 })
+PROPS.push({ kind: 'ceo-desk', x: 18, y: 6, w: 5, h: 2 })
+PROPS.push({ kind: 'rug', x: 17, y: 9, w: 7, h: 3 })
 PROPS.push({ kind: 'plant', x: 4, y: 4, w: 1, h: 1 })
-PROPS.push({ kind: 'plant', x: 17, y: 4, w: 1, h: 1 })
+PROPS.push({ kind: 'plant', x: 34, y: 4, w: 1, h: 1 })
 
-PROPS.push({ kind: 'table', x: 31, y: 6, w: 10, h: 3 })
-PROPS.push({ kind: 'screen', x: 28, y: 3, w: 5, h: 1, label: 'REVIEW LINE' })
-PROPS.push({ kind: 'whiteboard', x: 42, y: 3, w: 5, h: 1 })
-PROPS.push({ kind: 'plant', x: 25, y: 11, w: 1, h: 1 })
-PROPS.push({ kind: 'plant', x: 46, y: 11, w: 1, h: 1 })
-
-PROPS.push({ kind: 'sofa', x: 56, y: 5, w: 5, h: 1 })
-PROPS.push({ kind: 'table', x: 62, y: 8, w: 3, h: 2 })
+PROPS.push({ kind: 'sofa', x: 45, y: 5, w: 5, h: 1 })
+PROPS.push({ kind: 'table', x: 60, y: 8, w: 3, h: 2 })
 PROPS.push({ kind: 'coffee', x: 66, y: 4, w: 3, h: 1, label: '☕' })
-PROPS.push({ kind: 'plant', x: 70, y: 11, w: 1, h: 1 })
-PROPS.push({ kind: 'plant', x: 53, y: 11, w: 1, h: 1 })
+PROPS.push({ kind: 'plant', x: 72, y: 11, w: 1, h: 1 })
+PROPS.push({ kind: 'plant', x: 43, y: 11, w: 1, h: 1 })
 
 function buildGrid(): Uint8Array {
   const grid = new Uint8Array(COLS * ROWS)
