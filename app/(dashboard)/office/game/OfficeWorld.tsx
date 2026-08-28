@@ -9,14 +9,40 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Agent } from './live-engine'
 import { CEO_ROOM, PROPS, ROOMS, TILE, WORLD_H, WORLD_W, roomOf, type Room } from './world'
+import { hotRoomOf, roomStatsOf, closeRoomIdFor } from './zoom'
 
 type Props = {
   agents: Agent[]
   selectedId: string | null
-  follow: boolean
+  /** The currently selected ROOM's id, if any (mutually exclusive with
+   *  selectedId at the call site — office/page.tsx clears one when the
+   *  other is picked). Drives 'close' zoom's target when no agent is
+   *  selected. */
+  selectedRoomId: string | null
   onSelect: (agent: Agent) => void
   onSelectRoom?: (room: Room) => void
 }
+
+/**
+ * Semantic zoom (Handsel Office redesign brief §6): what's worth showing
+ * changes with how much of the map is visible, not just how big it looks.
+ *
+ *  - far:    the whole office. Individual agents shrink to color dots —
+ *            identity is not readable at this scale and pretending it is
+ *            would just be tiny illegible text. Rooms instead show what
+ *            IS readable here: how many people, and whether anything in
+ *            that room needs attention.
+ *  - medium: today's original "close" — follows the busiest room, agents
+ *            are full sprites with name tags. Individual activity readable,
+ *            not yet an inspector.
+ *  - close:  tightest zoom, centered on whatever is actually SELECTED (an
+ *            agent's current room, or a clicked room) rather than merely
+ *            the busiest one. This is the zoom tier the detail panel next
+ *            to the canvas already serves data for; the camera now moves
+ *            to match what that panel is showing instead of leaving the
+ *            view pointed somewhere unrelated to the click.
+ */
+type ZoomTier = 'far' | 'medium' | 'close'
 
 type Cam = { x: number; y: number; scale: number }
 
@@ -96,7 +122,7 @@ const PropLayer = memo(function PropLayer() {
   )
 })
 
-export default function OfficeWorld({ agents, selectedId, follow, onSelect, onSelectRoom }: Props) {
+export default function OfficeWorld({ agents, selectedId, selectedRoomId, onSelect, onSelectRoom }: Props) {
   const viewportRef = useRef<HTMLDivElement>(null)
   const stageRef = useRef<HTMLDivElement>(null)
   const agentRefs = useRef(new Map<string, HTMLDivElement>())
@@ -104,7 +130,8 @@ export default function OfficeWorld({ agents, selectedId, follow, onSelect, onSe
   const targetRef = useRef<Cam>({ x: WORLD_W / 2, y: WORLD_H / 2, scale: 0.5 })
   const selectedRef = useRef<string | null>(selectedId)
   const dragRef = useRef({ on: false, px: 0, py: 0, moved: false })
-  const [zoom, setZoom] = useState<'fit' | 'close'>('fit')
+  const [zoom, setZoom] = useState<ZoomTier>('far')
+  const zoomRef = useRef<ZoomTier>(zoom)
   const agentsRef = useRef(agents)
   agentsRef.current = agents
 
@@ -112,32 +139,29 @@ export default function OfficeWorld({ agents, selectedId, follow, onSelect, onSe
     selectedRef.current = selectedId
   }, [selectedId])
 
-  // Hot room: whichever department currently has the most people in it —
-  // a live fact about the current roster, not a script beat.
-  const hotRoom = useMemo(() => {
-    const counts = new Map<string, number>()
-    for (const a of agents) {
-      if (a.deptId === 'lounge' || a.deptId === 'ceo') continue
-      counts.set(a.deptId, (counts.get(a.deptId) ?? 0) + 1)
-    }
-    let best: string | null = null
-    let bestCount = 0
-    for (const [id, n] of counts) {
-      if (n > bestCount) {
-        best = id
-        bestCount = n
-      }
-    }
-    return best
-  }, [agents])
+  useEffect(() => {
+    zoomRef.current = zoom
+  }, [zoom])
 
-  const focus = useMemo(() => {
-    if (hotRoom) {
-      const room = roomOf(hotRoom)
+  // Hot room, per-room far-zoom badges, and close-zoom's target — pure
+  // logic, unit-tested in tests/office-zoom.test.ts without a browser.
+  const hotRoom = useMemo(() => hotRoomOf(agents), [agents])
+  const roomStats = useMemo(() => roomStatsOf(agents), [agents])
+  const closeRoomId = useMemo(
+    () => closeRoomIdFor({ selectedId, selectedRoomId, agents, hotRoom }),
+    [selectedId, selectedRoomId, agents, hotRoom],
+  )
+
+  const focusFor = useCallback((roomId: string | null) => {
+    if (roomId) {
+      const room = roomOf(roomId)
       return { x: (room.x + room.w / 2) * TILE, y: (room.y + room.h / 2) * TILE }
     }
     return { x: CEO_ROOM.x * TILE, y: CEO_ROOM.y * TILE }
-  }, [hotRoom])
+  }, [])
+
+  const mediumFocus = useMemo(() => focusFor(hotRoom), [focusFor, hotRoom])
+  const closeFocus = useMemo(() => focusFor(closeRoomId), [focusFor, closeRoomId])
 
   const register = useCallback((id: string, el: HTMLDivElement | null) => {
     if (el) agentRefs.current.set(id, el)
@@ -146,14 +170,20 @@ export default function OfficeWorld({ agents, selectedId, follow, onSelect, onSe
 
   const onPick = useCallback(
     (agent: Agent) => {
-      if (!dragRef.current.moved) onSelect(agent)
+      if (!dragRef.current.moved) {
+        onSelect(agent)
+        setZoom('close') // an inspect click means "show me this", not "where was I looking"
+      }
     },
     [onSelect],
   )
 
   const onPickRoom = useCallback(
     (room: Room) => {
-      if (!dragRef.current.moved) onSelectRoom?.(room)
+      if (!dragRef.current.moved && onSelectRoom) {
+        onSelectRoom(room)
+        setZoom('close')
+      }
     },
     [onSelectRoom],
   )
@@ -165,19 +195,24 @@ export default function OfficeWorld({ agents, selectedId, follow, onSelect, onSe
     const compute = () => {
       const rect = viewport.getBoundingClientRect()
       const fit = Math.min(rect.width / WORLD_W, rect.height / WORLD_H)
-      if (zoom === 'fit') {
+      if (zoom === 'far') {
         targetRef.current = { x: WORLD_W / 2, y: WORLD_H / 2, scale: fit }
         return
       }
+      if (zoom === 'close') {
+        const scale = Math.max(fit * 3.2, 1.4)
+        targetRef.current = { ...closeFocus, scale }
+        return
+      }
       const scale = Math.max(fit * 1.9, 0.95)
-      targetRef.current = follow && focus ? { ...focus, scale } : { ...targetRef.current, scale }
+      targetRef.current = { ...mediumFocus, scale }
     }
 
     compute()
     const observer = new ResizeObserver(compute)
     observer.observe(viewport)
     return () => observer.disconnect()
-  }, [zoom, follow, focus])
+  }, [zoom, mediumFocus, closeFocus])
 
   useEffect(() => {
     let raf = 0
@@ -198,6 +233,11 @@ export default function OfficeWorld({ agents, selectedId, follow, onSelect, onSe
         if (stage.classList.contains('compact') !== cam.scale < 0.62) {
           stage.classList.toggle('compact', cam.scale < 0.62)
         }
+        // Discrete tier, not a scale threshold like .compact — far zoom is a
+        // deliberate choice (the 🗺️ Far button), not an incidental zoom
+        // level, so agents simplify to dots exactly when that tier is active.
+        const isFar = zoomRef.current === 'far'
+        if (stage.classList.contains('far') !== isFar) stage.classList.toggle('far', isFar)
 
         const picked = selectedRef.current
         for (const agent of agentsRef.current) {
@@ -271,42 +311,53 @@ export default function OfficeWorld({ agents, selectedId, follow, onSelect, onSe
         <div className="world-stage" ref={stageRef} style={{ width: WORLD_W, height: WORLD_H }}>
           <div className="world-floor" />
 
-          {ROOMS.map((room) => (
-            <div
-              key={room.id}
-              className={`rm rm-${room.kind} ${hotRoom === room.id ? 'hot' : ''} ${onSelectRoom ? 'rm-clickable' : ''}`}
-              style={{ left: room.x * TILE, top: room.y * TILE, width: room.w * TILE, height: room.h * TILE }}
-              onPointerUp={() => onPickRoom(room)}
-            >
-              <span className="rm-head">
-                <b>
-                  {room.icon} {room.name}
-                </b>
-              </span>
-              <span className="rm-code">{room.short}</span>
-              {room.doors.map((door) => (
-                <span
-                  key={`${door.x}-${door.y}`}
-                  className="rm-door"
-                  style={{ left: (door.x - room.x) * TILE, top: (door.y - room.y) * TILE }}
-                />
-              ))}
-            </div>
-          ))}
+          {ROOMS.map((room) => {
+            const stats = roomStats.get(room.id)
+            return (
+              <div
+                key={room.id}
+                className={`rm rm-${room.kind} ${hotRoom === room.id ? 'hot' : ''} ${onSelectRoom ? 'rm-clickable' : ''}`}
+                style={{ left: room.x * TILE, top: room.y * TILE, width: room.w * TILE, height: room.h * TILE }}
+                onPointerUp={() => onPickRoom(room)}
+              >
+                <span className="rm-head">
+                  <b>
+                    {room.icon} {room.name}
+                  </b>
+                  {stats && stats.count > 0 && (
+                    <span className={`rm-count ${stats.alert ? 'alert' : ''}`} title={stats.alert ? 'A job here is in dispute' : `${stats.count} here`}>
+                      {stats.alert ? '⚠' : stats.count}
+                    </span>
+                  )}
+                </span>
+                <span className="rm-code">{room.short}</span>
+                {room.doors.map((door) => (
+                  <span
+                    key={`${door.x}-${door.y}`}
+                    className="rm-door"
+                    style={{ left: (door.x - room.x) * TILE, top: (door.y - room.y) * TILE }}
+                  />
+                ))}
+              </div>
+            )
+          })}
 
           <PropLayer />
           <AgentLayer agents={agents} register={register} onPick={onPick} />
         </div>
 
         <div className="world-hud">
-          <button className={zoom === 'fit' ? 'on' : ''} onClick={() => setZoom('fit')}>
-            🗺️ Fit
+          <button className={zoom === 'far' ? 'on' : ''} onClick={() => setZoom('far')}>
+            🗺️ Far
+          </button>
+          <button className={zoom === 'medium' ? 'on' : ''} onClick={() => setZoom('medium')}>
+            🏢 Rooms
           </button>
           <button className={zoom === 'close' ? 'on' : ''} onClick={() => setZoom('close')}>
             🔍 Close
           </button>
         </div>
-        <div className="world-hint">Drag to look around · click an agent for details</div>
+        <div className="world-hint">Drag to look around · click an agent or room for details</div>
       </div>
     </div>
   )

@@ -2,6 +2,38 @@
    LIVE OFFICE — 실시간 게임형 오피스 (globals.css 토큰 사용)
    ═══════════════════════════════════════════════════════════ */
 
+/*
+ * The header comment above claims these tokens come from globals.css.
+ * They never did — every one of them (--ink, --win, --yellow, --mint,
+ * --lav, --pink, --pink-deep, --pink-bg, --pink-line, --shadow, --ink-soft,
+ * --ink-faint) was referenced throughout this file via var() with no
+ * fallback and no definition anywhere in the repo, which makes the
+ * declaring property invalid at computed-value time — not "renders as
+ * black" but "the border/background/shadow does not apply at all." Found
+ * while adding new HUD elements that would have needed the same tokens.
+ * Reconstructed from this file's OWN literal colors where the same shade
+ * already appears hardcoded nearby (e.g. `rgba(74, 43, 60, …)` for the ink
+ * shadow, `#c9b8ff`/`#b8f0dd`/`#ff8fc0`/`#fff3b0` from the agent color
+ * palette in lib/office-world-data.ts) rather than invented fresh, so the
+ * restored theme matches what the surrounding literal colors already imply
+ * it was supposed to be. --hair/--shirt/--accent/--skin are NOT here —
+ * those are correctly set per-agent inline (OfficeWorld.tsx's AgentLayer).
+ */
+:root {
+  --ink: #4a2b3c;
+  --ink-soft: #7a5566;
+  --ink-faint: #b79aa8;
+  --win: #fff8ec;
+  --yellow: #ffd83d;
+  --pink: #ff8fc0;
+  --pink-deep: #ff5fa8;
+  --pink-bg: #ffeef6;
+  --pink-line: #ffd6ea;
+  --lav: #c9b8ff;
+  --mint: #b8f0dd;
+  --shadow: 4px 5px 0 rgba(74, 43, 60, .22);
+}
+
 .live-hero {
   display: flex;
   gap: 18px;
@@ -161,6 +193,22 @@
   font-weight: 900;
   white-space: nowrap;
 }
+.rm-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  margin-left: auto;
+  border-radius: 99px;
+  border: 1.5px solid var(--ink);
+  background: var(--win);
+  font-size: 9px;
+  font-weight: 900;
+  flex: none;
+}
+.rm-count.alert { background: var(--pink-deep); color: #fff; animation: blinkDot .8s steps(2) infinite; }
 .rm-code {
   position: absolute;
   right: 6px;
@@ -390,6 +438,27 @@
 .ag-bar i { display: block; width: 0; height: 100%; background: linear-gradient(90deg, var(--pink), var(--pink-deep)); }
 .compact .ag-tag, .compact .rm-code, .compact .pr-monitor { display: none; }
 .compact .ag-bubble { font-size: 11px; }
+
+/* Far zoom (semantic zoom tier, Handsel Office redesign §6): identity is not
+   readable at this scale, so stop pretending it is — sprites collapse to a
+   single colored dot per agent, and the room head's live occupant count
+   (.rm-count above) becomes the thing that's actually readable here. A
+   discrete tier (.far, toggled on the explicit "🗺️ Far" button) layered on
+   top of .compact's continuous scale-based simplification, not a
+   replacement for it — .compact still applies at this scale too. */
+.far .p-leg, .far .p-arm, .far .p-head, .far .p-hair, .far .p-shadow, .far .ag-bar { display: none; }
+.far .p-torso {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 1.5px solid var(--ink);
+  background: var(--accent);
+  box-shadow: 0 2px 0 rgba(74, 43, 60, .25);
+}
+.far .r-lead .p-torso { box-shadow: 0 2px 0 rgba(74, 43, 60, .25), 0 0 0 2px var(--yellow); }
 
 .world-hud { position: absolute; right: 12px; top: 12px; display: flex; gap: 6px; }
 .world-hud button {

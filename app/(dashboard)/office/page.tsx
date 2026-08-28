@@ -1516,7 +1516,7 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
           <OfficeWorld
             agents={agents}
             selectedId={selected?.id ?? null}
-            follow={false}
+            selectedRoomId={selectedRoom?.id ?? null}
             onSelect={handleSelectAgent}
             onSelectRoom={handleSelectRoom}
           />

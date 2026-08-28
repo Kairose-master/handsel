@@ -128,14 +128,54 @@ a fuel-gauge for the gas pool (spendable-vs-target bar, colored by health).
 Polled every 60s — heavier than the roster snapshot (every agent's balance
 plus the gas pool source), so slower on purpose.
 
-## What did NOT make it into phases 1–3
+## Phase 4 — three real zoom tiers
 
-Everything past "map current agent states to departments + semantic movement
-+ click-to-inspect, then Treasury's real numbers, then the account-wide HUD":
-semantic zoom levels beyond fit/close, artifact objects traveling between
-rooms independent of agent movement, and RTS-style multi-select and
-commands. Add these as separate, reviewable slices — the taxonomy and grid
-are built to make each one additive, not a rewrite.
+The camera used to have two states (`fit`/`close`), and `close` didn't
+actually navigate anywhere the `follow` prop gated it on a value nothing
+ever set to `true` — clicking it just changed scale in place. Three
+genuine tiers now (`app/(dashboard)/office/game/OfficeWorld.tsx`):
+
+- **far** — the whole office at fit scale. Individual agents collapse to a
+  single colored dot (`.far` CSS class, keyed off the explicit tier rather
+  than a scale threshold) — identity is not readable at this scale and
+  showing a name tag nobody can read is not "showing identity," it's
+  clutter. Each room's head badge instead shows what IS real and readable
+  here: a live occupant count, or a pulsing alert glyph if any occupant's
+  status is a genuine dispute (`lib/office-functional-departments.ts`'s own
+  "A job is in dispute" line — never inferred from anything softer).
+- **medium** — the old `close` behavior, renamed: follows the hot room
+  (busiest department), full agent sprites with name tags.
+- **close** — new tier, tightest zoom, centered on whatever is actually
+  SELECTED: the selected agent's CURRENT room (it may have walked since
+  being picked) beats the selected room beats the hot room, so `close`
+  means something even before anything has been clicked. Picking an agent
+  or a room now switches to this tier automatically — an inspect click
+  means "show me this," not "zoom in wherever I happened to be looking."
+
+`hotRoomOf`/`roomStatsOf`/`closeRoomIdFor` (`app/(dashboard)/office/game/
+zoom.ts`) are the pure logic behind all three, unit-tested in
+`tests/office-zoom.test.ts` without a browser — including the case a
+selection can legitimately hit in production: an agent selected earlier
+that has since left the roster, which must fall through to the room/hot-room
+chain rather than throw or freeze the camera on nothing.
+
+**A CSS bug fixed along the way, because the new UI needed it to actually
+render.** `office.css` referenced eleven theme tokens (`--ink`, `--win`,
+`--yellow`, `--mint`, `--lav`, `--pink`, `--pink-deep`, `--pink-bg`,
+`--pink-line`, `--shadow`, `--ink-soft`/`--ink-faint`) via `var()` with no
+fallback and no definition anywhere in the repo — which makes the
+declaring property invalid at computed time, not "renders black." Borders,
+badge backgrounds, and the progress-bar gradient were silently not
+applying. Reconstructed into a `:root` block from the file's own literal
+colors where the same shade already appeared hardcoded nearby, rather than
+invented fresh.
+
+## What did NOT make it into phases 1–4
+
+Artifact objects traveling between rooms independent of agent movement, and
+RTS-style multi-select and commands. Add these as separate, reviewable
+slices — the taxonomy and grid are built to make each one additive, not a
+rewrite.
 
 ## The grid
 
