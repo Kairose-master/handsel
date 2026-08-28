@@ -15,12 +15,35 @@
  */
 import { create } from 'zustand'
 import type { ZoomTier } from './CameraRig'
+import { DEFAULT_THEME_ID, THEMES, type ThemeId } from './theme'
+
+const THEME_STORAGE_KEY = 'handsel-office-3d-theme'
+
+/** Read the visitor's last-picked theme, if any — a per-browser display
+ *  preference, not account data, so localStorage (not a DB column) is the
+ *  right place for it. Guarded: private browsing / blocked storage must
+ *  never crash the scene, just fall back to the shipped default. Safe to
+ *  call at module-eval time here specifically because OfficeWorld3D.tsx is
+ *  always loaded via next/dynamic(..., { ssr: false }) — this module is
+ *  never evaluated server-side, so `window` is always real by the time it
+ *  runs. */
+function loadThemeId(): ThemeId {
+  try {
+    const stored = window.localStorage.getItem(THEME_STORAGE_KEY)
+    if (stored && stored in THEMES) return stored as ThemeId
+  } catch {
+    // ignore — storage may be unavailable (private mode, blocked cookies)
+  }
+  return DEFAULT_THEME_ID
+}
 
 type SceneStore = {
   zoom: ZoomTier
   setZoom: (zoom: ZoomTier) => void
   selectMode: boolean
   setSelectMode: (on: boolean | ((prev: boolean) => boolean)) => void
+  themeId: ThemeId
+  setThemeId: (id: ThemeId) => void
 }
 
 export const useSceneStore = create<SceneStore>((set) => ({
@@ -28,4 +51,13 @@ export const useSceneStore = create<SceneStore>((set) => ({
   setZoom: (zoom) => set({ zoom }),
   selectMode: false,
   setSelectMode: (on) => set((s) => ({ selectMode: typeof on === 'function' ? on(s.selectMode) : on })),
+  themeId: loadThemeId(),
+  setThemeId: (id) => {
+    set({ themeId: id })
+    try {
+      window.localStorage.setItem(THEME_STORAGE_KEY, id)
+    } catch {
+      // best-effort — a theme pick that fails to persist still applies this session
+    }
+  },
 }))

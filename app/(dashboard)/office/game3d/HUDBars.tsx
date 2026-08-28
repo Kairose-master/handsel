@@ -14,6 +14,7 @@ import { OFFICE_DEPARTMENTS } from '@/lib/office-world-data'
 import { roomStatsOf } from '../game/zoom'
 import type { Agent } from '../game/live-engine'
 import type { ArtifactFlight } from '@/lib/office-world-data'
+import type { OfficeTheme } from './theme'
 
 function useClock(): string {
   const [now, setNow] = useState(() => new Date())
@@ -24,11 +25,11 @@ function useClock(): string {
   return now.toLocaleTimeString('en-US', { hour12: false })
 }
 
-export function TopStatusBar({ healthy }: { healthy: boolean }) {
+export function TopStatusBar({ healthy, theme }: { healthy: boolean; theme: OfficeTheme }) {
   const clock = useClock()
   return (
-    <div className="hud3d-top">
-      <span className="hud3d-brand">HANDSEL // OFFICE DECK</span>
+    <div className="hud3d-top" data-theme={theme.id}>
+      <span className="hud3d-brand">{theme.brand}</span>
       <span className="hud3d-status">
         <i className={`hud3d-dot${healthy ? '' : ' down'}`} />
         {healthy ? 'OPERATIONAL' : 'LINK DEGRADED'}

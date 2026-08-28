@@ -784,3 +784,124 @@
 .ag3d-tag.selected { background: var(--hud-cyan); color: #04121a; border-color: var(--hud-cyan); }
 .ag3d-tag em { margin-left: 4px; font-style: normal; color: var(--hud-amber); font-weight: 500; }
 .flight3d-icon { font-size: 15px; line-height: 1; filter: drop-shadow(0 0 4px rgba(79, 216, 255, .8)); }
+
+.ag3d-stack { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.ag3d-bubble {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  max-width: 190px;
+  padding: 4px 8px;
+  border: 1px solid rgba(79, 216, 255, .45);
+  border-radius: 0;
+  background: var(--hud-panel);
+  font-family: var(--hud-mono);
+  font-size: 9px;
+  line-height: 1.35;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--hud-text);
+  white-space: normal;
+  animation: ag3d-bubble-in .35s ease-out;
+}
+.ag3d-bubble-icon { flex: none; font-size: 12px; line-height: 1.35; }
+@keyframes ag3d-bubble-in {
+  from { opacity: 0; transform: translateY(4px) scale(.92); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Pastel Diorama theme (game3d/theme.ts) — the ORIGINAL Phase 1-7 look,
+   restored as a real second option once Phase 8 replaced it wholesale as
+   the only look. Everything above this block is the tactical default (no
+   [data-theme] needed — it's what renders when data-theme="tactical", and
+   what renders if the attribute is ever missing); this block overrides
+   only what actually differs; enough of it is structural (radius, shadow,
+   case, font) rather than just color that a parallel block is clearer than
+   fighting the tactical rules with custom-property overrides. */
+.world3d-frame[data-theme="diorama"],
+.world3d-frame[data-theme="diorama"] .world3d-viewport {
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255, 143, 192, .22), transparent 60%),
+    radial-gradient(circle at 80% 80%, rgba(201, 184, 255, .18), transparent 55%),
+    #23161f;
+  border-color: var(--ink) !important;
+}
+.world3d-frame[data-theme="diorama"] .hud3d-top,
+.world3d-frame[data-theme="diorama"] .hud3d-bottom {
+  background: var(--win);
+  border-color: var(--pink-line);
+  font-family: inherit;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--ink);
+}
+.world3d-frame[data-theme="diorama"] .hud3d-brand { color: var(--pink-deep); }
+.world3d-frame[data-theme="diorama"] .hud3d-value { color: var(--ink); }
+.world3d-frame[data-theme="diorama"] .hud3d-label { color: var(--ink-faint); }
+.world3d-frame[data-theme="diorama"] .hud3d-chip { border: 1.5px solid var(--pink-line); background: #fff; border-radius: 99px; }
+.world3d-frame[data-theme="diorama"] .hud3d-chip b { color: var(--pink-deep); }
+.world3d-frame[data-theme="diorama"] .hud3d-chip.alert { border-color: var(--pink-deep); background: #ffeef6; }
+.world3d-frame[data-theme="diorama"] .hud3d-dot { background: #4bd6a4; box-shadow: none; }
+.world3d-frame[data-theme="diorama"] .hud3d-dot.down { background: var(--pink-deep); box-shadow: none; }
+.world3d-frame[data-theme="diorama"] .hud3d-clock { color: var(--ink-faint); }
+.world3d-frame[data-theme="diorama"] .hud3d-empty { color: var(--ink-faint); }
+
+.world3d-viewport[data-theme="diorama"] .world-hud button {
+  font-family: inherit;
+  font-size: 12px;
+  text-transform: none;
+  letter-spacing: normal;
+  background: #fff;
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  border-radius: 8px;
+  box-shadow: 2px 3px 0 rgba(74, 43, 60, .18);
+}
+.world3d-viewport[data-theme="diorama"] .world-hud button.on { background: var(--yellow); color: var(--ink); }
+.world3d-viewport[data-theme="diorama"] .world-hint {
+  font-family: inherit;
+  text-transform: none;
+  letter-spacing: normal;
+  background: rgba(255, 253, 254, .85);
+  border: none;
+  color: var(--ink-soft);
+}
+.world3d-viewport[data-theme="diorama"] .select-box { border-color: var(--pink-deep); background: rgba(255, 95, 168, .14); }
+
+.world3d-viewport[data-theme="diorama"] .rm3d-label {
+  border: 1.5px solid var(--ink);
+  border-radius: 8px;
+  background: rgba(255, 253, 254, .92);
+  font-family: inherit;
+  font-size: 11px;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--ink);
+  box-shadow: 2px 3px 0 rgba(74, 43, 60, .18);
+}
+.world3d-viewport[data-theme="diorama"] .rm3d-count { background: var(--yellow); color: var(--ink); border-radius: 99px; }
+.world3d-viewport[data-theme="diorama"] .rm3d-count.alert { background: var(--pink-deep); color: #fff; }
+.world3d-viewport[data-theme="diorama"] .ag3d-tag {
+  border: 1.5px solid var(--ink);
+  border-radius: 99px;
+  background: #fff;
+  font-family: inherit;
+  font-size: 10px;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--ink);
+}
+.world3d-viewport[data-theme="diorama"] .ag3d-tag.selected { background: var(--yellow); color: var(--ink); border-color: var(--ink); }
+.world3d-viewport[data-theme="diorama"] .ag3d-tag em { color: var(--ink-soft); }
+.world3d-viewport[data-theme="diorama"] .flight3d-icon { filter: drop-shadow(0 1px 1px rgba(74, 43, 60, .45)); }
+.world3d-viewport[data-theme="diorama"] .ag3d-bubble {
+  border: 1.5px solid var(--ink);
+  border-radius: 12px;
+  background: #fff;
+  font-family: inherit;
+  font-size: 10px;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--ink);
+}
+.world3d-viewport[data-theme="diorama"] .ag3d-bubble-icon { filter: none; }

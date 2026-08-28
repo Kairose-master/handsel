@@ -22,7 +22,16 @@
  *
  * The reactive `agents` prop itself (updates once per snapshot poll) drives
  * what a plain React re-render SHOULD drive: which avatars exist at all,
- * and what their name-tag text currently says.
+ * and what their name-tag/thought-bubble text currently says.
+ *
+ * The thought bubble reuses `agent.speech` — `live-engine.ts`'s
+ * `applySnapshot` already sets this to the agent's REAL `statusLine`
+ * (`office-functional-departments.ts`'s own derived sentence, e.g.
+ * "Building — Accepted on job #12.") for every agent, every poll; the DOM
+ * renderer has always shown it as `.ag-bubble`, this is the same real text
+ * in the 3D scene. The icon next to it is the agent's CURRENT department's
+ * real icon (`FUNCTIONAL_DEPARTMENTS`) — what kind of work the bubble is
+ * describing, not a decorative "idea lightbulb" invented for the occasion.
  */
 import { useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
@@ -30,19 +39,28 @@ import { Html } from '@react-three/drei'
 import * as THREE from 'three'
 import type { Agent, Facing } from '../game/live-engine'
 import { useSceneStore } from './scene-store'
-import { THEME } from './theme'
+import { THEMES, type OfficeTheme } from './theme'
+import { OFFICE_DEPARTMENTS } from '@/lib/office-world-data'
 
 const FACING_YAW: Record<Facing, number> = { down: 0, right: Math.PI / 2, up: Math.PI, left: -Math.PI / 2 }
+
+// Every room an Agent.deptId can actually hold: the nine real departments,
+// plus 'ceo' and 'lounge' — world.ts's own two non-generated rooms. Not a
+// guess: live-engine.ts's applySnapshot sets deptId to exactly one of these.
+const DEPT_ICON: Record<string, string> = { ceo: '🏢', lounge: '☕' }
+for (const d of OFFICE_DEPARTMENTS) DEPT_ICON[d.id] = d.icon
 
 function AgentMesh({
   agent,
   selected,
   far,
+  theme,
   onPick,
 }: {
   agent: Agent
   selected: boolean
   far: boolean
+  theme: OfficeTheme
   onPick: (agent: Agent) => void
 }) {
   const groupRef = useRef<THREE.Group>(null)
@@ -74,7 +92,7 @@ function AgentMesh({
       {selected && (
         <mesh position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
           <ringGeometry args={[0.32, 0.42, 24]} />
-          <meshBasicMaterial color={THEME.cyan} toneMapped={false} />
+          <meshBasicMaterial color={theme.accent} toneMapped={false} />
         </mesh>
       )}
       {far ? (
@@ -90,7 +108,7 @@ function AgentMesh({
         <>
           <mesh position={[0, 0.34, 0]}>
             <boxGeometry args={[0.46, 0.5, 0.28]} />
-            <meshStandardMaterial color={agent.shirt} emissive={agent.shirt} emissiveIntensity={0.35} roughness={0.5} />
+            <meshStandardMaterial color={agent.shirt} emissive={agent.shirt} emissiveIntensity={theme.glow ? 0.35 : 0} roughness={0.5} />
           </mesh>
           <mesh position={[0, 0.68, 0]}>
             <boxGeometry args={[0.32, 0.3, 0.3]} />
@@ -103,16 +121,28 @@ function AgentMesh({
           {agent.rank === 'lead' && (
             <mesh position={[0, 1.02, 0]} rotation={[Math.PI / 2, 0, 0]}>
               <coneGeometry args={[0.12, 0.16, 4]} />
-              <meshStandardMaterial color={THEME.cyan} emissive={THEME.cyan} emissiveIntensity={0.8} toneMapped={false} />
+              <meshStandardMaterial color={theme.accent} emissive={theme.accent} emissiveIntensity={theme.glow ? 0.8 : 0} toneMapped={false} />
             </mesh>
           )}
         </>
       )}
       {!far && (
-        <Html position={[0, 1.05, 0]} center occlude={false}>
-          <div className={`ag3d-tag${selected ? ' selected' : ''}`}>
-            {agent.name}
-            {agent.anim === 'type' && <em>typing…</em>}
+        <Html position={[0, 1.12, 0]} center occlude={false}>
+          <div className="ag3d-stack">
+            {agent.speech && (
+              // key={agent.speech} forces a remount (not a diff-and-patch)
+              // whenever the real status text changes, which is what
+              // restarts the CSS pop-in animation — a genuinely NEW thing
+              // to say gets a fresh bubble, not a silently updated one.
+              <div key={agent.speech} className="ag3d-bubble">
+                <span className="ag3d-bubble-icon">{DEPT_ICON[agent.deptId] ?? '💭'}</span>
+                <span className="ag3d-bubble-text">{agent.speech}</span>
+              </div>
+            )}
+            <div className={`ag3d-tag${selected ? ' selected' : ''}`}>
+              {agent.name}
+              {agent.anim === 'type' && <em>typing…</em>}
+            </div>
           </div>
         </Html>
       )}
@@ -130,10 +160,11 @@ export function AgentAvatars({
   onSelect: (agent: Agent) => void
 }) {
   const zoomFar = useSceneStore((s) => s.zoom === 'far')
+  const theme = THEMES[useSceneStore((s) => s.themeId)]
   return (
     <>
       {agents.map((agent) => (
-        <AgentMesh key={agent.id} agent={agent} selected={agent.id === selectedId} far={zoomFar} onPick={onSelect} />
+        <AgentMesh key={agent.id} agent={agent} selected={agent.id === selectedId} far={zoomFar} theme={theme} onPick={onSelect} />
       ))}
     </>
   )

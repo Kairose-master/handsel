@@ -1,33 +1,107 @@
 /**
- * Tactical-telemetry palette for the R3F office (redesign brief: "dark +
- * neon glow sci-fi command center", picked over the pastel diorama tone
- * the DOM renderer keeps). One accent does the structural work (cyan —
- * every normal room, line, and label), red is reserved for exactly one
- * meaning (a real dispute, or the busiest/"hot" room) so it still reads as
- * an alert instead of decoration, matching the "one accent, used with
- * intent" discipline the reference command-center look depends on.
+ * The 3D office's own visual identity is a CHOICE, not a fixed look —
+ * exactly the point of this file existing as a registry instead of one
+ * constant. `game3d/` used to hard-code one palette at a time (first the
+ * DOM renderer's pastel tones reused wholesale, then Phase 8's tactical
+ * rewrite replacing them outright); a user preference (`scene-store.ts`'s
+ * `themeId`, persisted per-browser) now picks which registered theme
+ * actually renders, and every game3d/ component reads colors from the
+ * ACTIVE theme rather than importing a single hard-coded palette.
  *
- * Scoped entirely to `.world3d-viewport`/`game3d/` — the DOM renderer's own
- * pastel `--pink`/`--mint`/`--lav` tokens (office.css's `:root` block) are
- * untouched, so the "🖼️ Classic view" toggle still looks exactly as it did.
+ * Two presets ship today — `tactical` (dark, neon-glow command center) and
+ * `diorama` (the original pastel miniature-office look, restored here
+ * rather than left to bit-rot once tactical became the default). Both are
+ * real, complete themes, not one "real" theme and one afterthought — this
+ * is the seed of a template gallery, not a toggle with a fake second
+ * option. Adding a third preset is: one more entry in `THEMES`, no
+ * changes to the components that consume it.
  */
-export const THEME = {
+export type ThemeId = 'tactical' | 'diorama'
+
+export type OfficeTheme = {
+  id: ThemeId
+  label: string
+  brand: string
+  /** Whether emissive materials + bloom post-processing are meaningful for
+   *  this look. Tactical rooms are "lit panels"; diorama rooms are flat
+   *  pastel fills — turning bloom on for the latter would just wash it out. */
+  glow: boolean
+
+  bg: string
+  floorDept: string
+  floorCeo: string
+  floorLounge: string
+  floorLine: string // grid-texture line color (tactical) — flat floors ignore it
+  wall: string
+  wallGlowCyan: string
+  wallGlowAmber: string
+  wallGlowRed: string
+  door: string
+
+  text: string
+  accent: string
+  accentDim: string
+  danger: string
+  warn: string
+  ok: string
+
+  ambient: { color: string; intensity: number }
+  directional: { color: string; intensity: number }
+  fog: [near: number, far: number] | null
+}
+
+const TACTICAL: OfficeTheme = {
+  id: 'tactical',
+  label: 'Tactical Command',
+  brand: 'HANDSEL // OFFICE DECK',
+  glow: true,
   bg: '#070a0f',
   floorDept: '#0d131c',
   floorCeo: '#121a2c',
   floorLounge: '#0d1a1a',
+  floorLine: 'rgba(79,216,255,0.28)',
   wall: '#05070a',
   wallGlowCyan: '#0e3a4a',
   wallGlowAmber: '#4a350e',
   wallGlowRed: '#4a0e0e',
   door: '#4fd8ff',
+  text: '#dff4ff',
+  accent: '#4fd8ff',
+  accentDim: '#1c6b85',
+  danger: '#ff3b3b',
+  warn: '#ffb84f',
+  ok: '#57ffb0',
+  ambient: { color: '#1c6b85', intensity: 0.35 },
+  directional: { color: '#dff4ff', intensity: 0.6 },
+  fog: [60, 160],
+}
 
-  phosphor: '#dff4ff',
-  cyan: '#4fd8ff',
-  cyanDim: '#1c6b85',
-  red: '#ff3b3b',
-  amber: '#ffb84f',
-  green: '#57ffb0',
+const DIORAMA: OfficeTheme = {
+  id: 'diorama',
+  label: 'Pastel Diorama',
+  brand: 'Handsel Office',
+  glow: false,
+  bg: '#23161f',
+  floorDept: '#fffdfe',
+  floorCeo: '#ffeff6',
+  floorLounge: '#eefaf4',
+  floorLine: 'transparent',
+  wall: '#4a2b3c',
+  wallGlowCyan: '#4a2b3c', // no emissive glow when !glow — same as base wall color
+  wallGlowAmber: '#4a2b3c',
+  wallGlowRed: '#4a2b3c',
+  door: '#ffd83d',
+  text: '#4a2b3c',
+  accent: '#ff8fc0',
+  accentDim: '#ffd6ea',
+  danger: '#ff5fa8',
+  warn: '#ffd83d',
+  ok: '#b8f0dd',
+  ambient: { color: '#ffffff', intensity: 0.85 },
+  directional: { color: '#fff3e0', intensity: 0.9 },
+  fog: null,
+}
 
-  agentSkinDim: '#2a3038', // fallback if an agent's real palette needs a neutral base
-} as const
+export const THEMES: Record<ThemeId, OfficeTheme> = { tactical: TACTICAL, diorama: DIORAMA }
+export const DEFAULT_THEME_ID: ThemeId = 'tactical'
+export const THEME_ORDER: ThemeId[] = ['tactical', 'diorama']

@@ -16,14 +16,17 @@ import { Html, Line } from '@react-three/drei'
 import * as THREE from 'three'
 import type { ArtifactFlight } from '@/lib/office-world-data'
 import { focusTileFor } from './CameraRig'
-import { THEME } from './theme'
+import { THEMES, type OfficeTheme } from './theme'
+import { useSceneStore } from './scene-store'
 
 const FLIGHT_ICON: Record<ArtifactFlight['kind'], string> = { handoff: '📦', review: '🧾', synthesis: '🧩' }
-const FLIGHT_COLOR: Record<ArtifactFlight['kind'], string> = { handoff: THEME.cyan, review: THEME.amber, synthesis: THEME.green }
+function flightColor(theme: OfficeTheme, kind: ArtifactFlight['kind']): string {
+  return kind === 'handoff' ? theme.accent : kind === 'review' ? theme.warn : theme.ok
+}
 const FLIGHT_DURATION_S = 2.4
 const FLIGHT_HEIGHT = 1.1 // above the floor, clear of agent avatars
 
-function FlightMesh({ flight }: { flight: ArtifactFlight }) {
+function FlightMesh({ flight, theme }: { flight: ArtifactFlight; theme: OfficeTheme }) {
   const from = useMemo(() => focusTileFor(flight.fromDeptId), [flight.fromDeptId])
   const to = useMemo(() => focusTileFor(flight.toDeptId), [flight.toDeptId])
   const a = useMemo(() => new THREE.Vector3(from.x, FLIGHT_HEIGHT, from.z), [from])
@@ -49,7 +52,7 @@ function FlightMesh({ flight }: { flight: ArtifactFlight }) {
     <>
       <Line
         points={[a, b]}
-        color={FLIGHT_COLOR[flight.kind]}
+        color={flightColor(theme, flight.kind)}
         dashed
         dashSize={0.4}
         gapSize={0.3}
@@ -70,10 +73,11 @@ function FlightMesh({ flight }: { flight: ArtifactFlight }) {
 }
 
 export function ArtifactFlights3D({ flights }: { flights: ArtifactFlight[] }) {
+  const theme = THEMES[useSceneStore((s) => s.themeId)]
   return (
     <>
       {flights.map((f) => (
-        <FlightMesh key={f.id} flight={f} />
+        <FlightMesh key={f.id} flight={f} theme={theme} />
       ))}
     </>
   )

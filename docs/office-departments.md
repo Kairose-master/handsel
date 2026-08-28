@@ -322,7 +322,7 @@ account traffic is deliberately its first real-data test — the toggle
 exists so that's a choice a user makes, not a risk shipped silently as
 "the" renderer.
 
-## What did NOT make it into phases 1–7
+## What did NOT make it into phases 1–7 (checkpoint — see Phase 9/10 below for what moved since)
 
 Any RTS *command* — assign objective, move budget, hire — issued from a
 selection or a flight. Multi-select's own module (`select.ts`) is
@@ -398,6 +398,70 @@ outputs that fidelity, and the product is a live data-driven scene, not a
 static illustration — a perfect one-off render would misrepresent what
 ships. This phase is the honest version of "as close as a real-time
 WebGL scene, backed only by real numbers, can get."
+
+## Phase 9 — a real theme registry, not one fixed look
+
+The follow-up ask was explicit: don't lock the office to one designer's
+taste — offer a hub/template system so people can pick (eventually build)
+their own look, "Unreal or Unity, doesn't matter." The engine swap is the
+one part of that not taken literally: this product's own earlier reasoning
+(the original redesign brief, before any of Phases 1–8 existed) already
+rejected Unity/Unreal for exactly this surface — "이건 게임 제작이 아니라
+웹 기반 agent observability UI" (this is a web-based observability UI, not
+game production), and nothing about wanting *choice* of look changes that
+math: embedding either engine means a separate game-server + streaming
+pipeline, off Vercel entirely, to skin a UI that already renders correctly
+in a browser tab. What the ask actually needs — a real place to pick a
+look, and more than one real look to pick from — is what this phase built,
+on the same R3F stack, node for node.
+
+`game3d/theme.ts` is no longer one exported `THEME` constant; it's a
+`THEMES` registry (`Record<ThemeId, OfficeTheme>`) plus a `THEME_ORDER` for
+a picker to iterate. Every game3d/ component that used to import the
+constant now reads the ACTIVE theme from `scene-store.ts`'s new
+`themeId`/`setThemeId` (persisted to `localStorage` — a per-browser display
+preference, not account data, so it isn't a DB column) — the "🎨 [ THEME
+NAME ]" HUD button cycles it. Two real presets ship, not one real theme and
+a placeholder second option:
+
+- **`tactical`** (default) — Phase 8's dark, bloom-lit command-center look.
+- **`diorama`** — the ORIGINAL Phase 1–7 pastel miniature-office look,
+  restored rather than left to bit-rot once tactical became the default.
+  Bloom is off (`theme.glow: false`); room walls, HUD chrome, and every
+  Html label switch to the exact rounded/soft-shadow/warm styling the DOM
+  renderer's own aesthetic used, via `office.css`'s
+  `.world3d-frame[data-theme="diorama"]` / `.world3d-viewport[data-theme=
+  "diorama"]` override block — a parallel rule set rather than CSS-variable
+  swaps, because the two looks differ structurally (corner radius, font,
+  case, shadow), not just in color.
+
+This is the *seed* of the hub the ask describes, stated honestly: adding a
+third preset is one more `OfficeTheme` object in the registry plus one CSS
+override block — no changes to any component that consumes it. A full
+community-template marketplace (upload, browse, moderate, remix someone
+else's theme) is a real backend feature (storage, review, versioning) this
+phase does not build; the registry is the part that had to exist first for
+that to ever be more than a mockup.
+
+## Phase 10 — real thought bubbles, not decoration
+
+The other half of the same ask: agents should visibly show *what they're
+actually doing*, with an icon and text that describe the real work, not a
+generic "thinking…" prop. `AgentAvatars.tsx` already had the data for
+this and simply hadn't rendered it in 3D — `live-engine.ts`'s
+`applySnapshot` sets `agent.speech` to the office's real, derived
+`statusLine` (`office-functional-departments.ts`'s own sentence, e.g.
+"Building — Accepted on job #12.", "A job is in dispute — under
+adjudication.") for every agent, every poll; the DOM renderer has shown
+this as `.ag-bubble` since Phase 1. The 3D scene now shows the identical
+real text in a bubble above each agent, paired with that agent's CURRENT
+department's real icon (`FUNCTIONAL_DEPARTMENTS`, keyed off `agent.deptId`
+— 🔎 while researching, 🛠️ while building, ⚖️ while under review, and so
+on) — the icon names the real kind of work the sentence next to it is
+about, not a generic "💡 idea" glyph doing no real labeling. A bubble
+remounts (`key={agent.speech}`) and replays its pop-in animation whenever
+the underlying text actually changes — genuinely new content gets a fresh
+bubble, not a silently-updated one.
 
 ## The grid
 

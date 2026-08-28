@@ -38,7 +38,7 @@ import { AgentAvatars } from './AgentAvatars'
 import { ArtifactFlights3D } from './ArtifactFlights3D'
 import { TopStatusBar, BottomTelemetryBar } from './HUDBars'
 import { useSceneStore } from './scene-store'
-import { THEME } from './theme'
+import { THEMES, THEME_ORDER } from './theme'
 
 type Props = {
   agents: Agent[]
@@ -107,6 +107,9 @@ export default function OfficeWorld3D({
   const setZoom = useSceneStore((s) => s.setZoom)
   const selectMode = useSceneStore((s) => s.selectMode)
   const setSelectMode = useSceneStore((s) => s.setSelectMode)
+  const themeId = useSceneStore((s) => s.themeId)
+  const setThemeId = useSceneStore((s) => s.setThemeId)
+  const theme = THEMES[themeId]
 
   const dragRef = useRef({ px: 0, py: 0, moved: false })
   const selectDragRef = useRef(false)
@@ -179,11 +182,17 @@ export default function OfficeWorld3D({
     }, 0)
   }
 
+  const cycleTheme = () => {
+    const i = THEME_ORDER.indexOf(themeId)
+    setThemeId(THEME_ORDER[(i + 1) % THEME_ORDER.length])
+  }
+
   return (
-    <div className="world-frame world3d-frame">
-      <TopStatusBar healthy={healthy} />
+    <div className="world-frame world3d-frame" data-theme={themeId}>
+      <TopStatusBar healthy={healthy} theme={theme} />
       <div
         className={`world-viewport world3d-viewport ${selectMode ? 'select-mode' : ''}`}
+        data-theme={themeId}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -193,18 +202,26 @@ export default function OfficeWorld3D({
         <Canvas shadows dpr={[1, 1.8]} gl={{ antialias: true }}>
           <OrthographicCamera makeDefault near={0.1} far={2000} zoom={1} />
           <CameraRig agents={agents} selectedId={selectedId} selectedRoomId={selectedRoomId} />
-          <ambientLight intensity={0.35} color={THEME.cyanDim} />
-          <directionalLight position={[30, 60, 20]} intensity={0.6} castShadow shadow-mapSize={[1024, 1024]} color="#dff4ff" />
-          <hemisphereLight args={[THEME.cyanDim, THEME.wall, 0.4]} />
-          <color attach="background" args={[THEME.bg]} />
-          <fog attach="fog" args={[THEME.bg, 60, 160]} />
+          <ambientLight intensity={theme.ambient.intensity} color={theme.ambient.color} />
+          <directionalLight
+            position={[30, 60, 20]}
+            intensity={theme.directional.intensity}
+            castShadow
+            shadow-mapSize={[1024, 1024]}
+            color={theme.directional.color}
+          />
+          <hemisphereLight args={[theme.accentDim, theme.wall, theme.glow ? 0.4 : 0.6]} />
+          <color attach="background" args={[theme.bg]} />
+          {theme.fog && <fog attach="fog" args={[theme.bg, theme.fog[0], theme.fog[1]]} />}
           <RoomMeshes agents={agents} onSelectRoom={handlePickRoom} />
           <AgentAvatars agents={agents} selectedId={selectedId} onSelect={handlePick} />
           <ArtifactFlights3D flights={flights} />
           <SelectionBridge agents={agents} exposeHitTest={exposeHitTest} />
-          <EffectComposer multisampling={0}>
-            <Bloom luminanceThreshold={0.15} luminanceSmoothing={0.3} intensity={0.85} mipmapBlur radius={0.7} />
-          </EffectComposer>
+          {theme.glow && (
+            <EffectComposer multisampling={0}>
+              <Bloom luminanceThreshold={0.15} luminanceSmoothing={0.3} intensity={0.85} mipmapBlur radius={0.7} />
+            </EffectComposer>
+          )}
         </Canvas>
 
         {selectBox && (
@@ -234,6 +251,9 @@ export default function OfficeWorld3D({
               [ SELECT ]
             </button>
           )}
+          <button title={`Theme: ${theme.label} — click to cycle`} onClick={cycleTheme}>
+            [ 🎨 {theme.label.toUpperCase()} ]
+          </button>
         </div>
         <div className="world-hint">
           {selectMode ? '>>> DRAG TO BOX-SELECT MULTIPLE AGENTS' : '>>> DRAG TO PAN · CLICK AN AGENT OR ROOM FOR DETAIL'}

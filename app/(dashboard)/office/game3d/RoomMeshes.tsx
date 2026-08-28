@@ -16,13 +16,16 @@ import { Html } from '@react-three/drei'
 import { ROOMS, type Room } from '../game/world'
 import { roomStatsOf, hotRoomOf } from '../game/zoom'
 import type { Agent } from '../game/live-engine'
-import { THEME } from './theme'
+import { THEMES, type OfficeTheme } from './theme'
+import { useSceneStore } from './scene-store'
 import { gridTexture } from './gridTexture'
 
 const WALL_H = 1.3
 const WALL_T = 0.12
 
-const FLOOR_COLOR: Record<Room['kind'], string> = { dept: THEME.floorDept, ceo: THEME.floorCeo, lounge: THEME.floorLounge }
+function floorColorFor(theme: OfficeTheme, kind: Room['kind']): string {
+  return kind === 'ceo' ? theme.floorCeo : kind === 'lounge' ? theme.floorLounge : theme.floorDept
+}
 
 /** One wall box per boundary tile that ISN'T a door — simple, and cheap
  *  enough at this room count (~11 rooms) not to need instancing yet. */
@@ -44,23 +47,28 @@ function RoomMesh({
   room,
   stat,
   hot,
+  theme,
   onSelectRoom,
 }: {
   room: Room
   stat: { count: number; alert: boolean } | undefined
   hot: boolean
+  theme: OfficeTheme
   onSelectRoom?: (room: Room) => void
 }) {
   const segs = useMemo(() => wallSegments(room), [room])
   const cx = room.x + room.w / 2
   const cz = room.y + room.h / 2
   const floorTex = useMemo(() => {
-    const tex = gridTexture(FLOOR_COLOR[room.kind], 'rgba(79,216,255,0.28)')
+    const tex = gridTexture(floorColorFor(theme, room.kind), theme.floorLine)
     const t = tex.clone()
     t.needsUpdate = true
     t.repeat.set(room.w, room.h)
     return t
-  }, [room])
+  }, [room, theme])
+
+  const wallEmissive = stat?.alert ? theme.wallGlowRed : hot ? theme.wallGlowAmber : theme.wallGlowCyan
+  const wallEmissiveIntensity = theme.glow ? (stat?.alert ? 1.8 : hot ? 1.1 : 0.55) : 0
 
   return (
     <group>
@@ -78,18 +86,13 @@ function RoomMesh({
       {segs.map((s, i) => (
         <mesh key={i} position={[s.x, WALL_H / 2, s.z]}>
           <boxGeometry args={[WALL_T + 0.9, WALL_H, WALL_T + 0.9]} />
-          <meshStandardMaterial
-            color={THEME.wall}
-            emissive={stat?.alert ? THEME.wallGlowRed : hot ? THEME.wallGlowAmber : THEME.wallGlowCyan}
-            emissiveIntensity={stat?.alert ? 1.8 : hot ? 1.1 : 0.55}
-            roughness={0.6}
-          />
+          <meshStandardMaterial color={theme.wall} emissive={wallEmissive} emissiveIntensity={wallEmissiveIntensity} roughness={0.6} />
         </mesh>
       ))}
       {room.doors.map((d, i) => (
         <mesh key={i} position={[d.x + 0.5, 0.02, d.y + 0.5]} rotation={[-Math.PI / 2, 0, 0]}>
           <planeGeometry args={[1, 0.6]} />
-          <meshBasicMaterial color={THEME.door} toneMapped={false} />
+          <meshBasicMaterial color={theme.door} toneMapped={false} />
         </mesh>
       ))}
       <Html position={[cx, WALL_H + 0.4, room.y]} center occlude={false}>
@@ -107,12 +110,13 @@ function RoomMesh({
 }
 
 export function RoomMeshes({ agents, onSelectRoom }: { agents: Agent[]; onSelectRoom?: (room: Room) => void }) {
+  const theme = THEMES[useSceneStore((s) => s.themeId)]
   const stats = useMemo(() => roomStatsOf(agents), [agents])
   const hotRoom = useMemo(() => hotRoomOf(agents), [agents])
   return (
     <>
       {ROOMS.map((room) => (
-        <RoomMesh key={room.id} room={room} stat={stats.get(room.id)} hot={room.id === hotRoom} onSelectRoom={onSelectRoom} />
+        <RoomMesh key={room.id} room={room} stat={stats.get(room.id)} hot={room.id === hotRoom} theme={theme} onSelectRoom={onSelectRoom} />
       ))}
     </>
   )
