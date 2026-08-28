@@ -146,6 +146,14 @@
     #23161f;
 }
 .world-viewport:active { cursor: grabbing; }
+.world-viewport.select-mode, .world-viewport.select-mode:active { cursor: crosshair; }
+.select-box {
+  position: absolute;
+  z-index: 500;
+  border: 1.5px dashed var(--pink-deep);
+  background: rgba(255, 95, 168, .14);
+  pointer-events: none;
+}
 .world-stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
 .world-floor {
   position: absolute;

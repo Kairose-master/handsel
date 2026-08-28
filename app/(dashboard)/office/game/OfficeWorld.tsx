@@ -10,6 +10,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Agent } from './live-engine'
 import { CEO_ROOM, PROPS, ROOMS, TILE, WORLD_H, WORLD_W, roomOf, type Room } from './world'
 import { hotRoomOf, roomStatsOf, closeRoomIdFor } from './zoom'
+import { screenBoxToWorldBox, agentsInWorldBox, MIN_SELECT_BOX_PX } from './select'
 
 type Props = {
   agents: Agent[]
@@ -21,6 +22,11 @@ type Props = {
   selectedRoomId: string | null
   onSelect: (agent: Agent) => void
   onSelectRoom?: (room: Room) => void
+  /** RTS-style box multi-select (redesign brief §9): an inspect-only group
+   *  pick, independent of onSelect/onSelectRoom's single-target selection —
+   *  see select.ts's header for why it stays inspect-only. Optional: a
+   *  caller that doesn't pass this simply never sees the "🔲 Select" tool. */
+  onSelectMany?: (ids: string[]) => void
 }
 
 /**
@@ -122,7 +128,7 @@ const PropLayer = memo(function PropLayer() {
   )
 })
 
-export default function OfficeWorld({ agents, selectedId, selectedRoomId, onSelect, onSelectRoom }: Props) {
+export default function OfficeWorld({ agents, selectedId, selectedRoomId, onSelect, onSelectRoom, onSelectMany }: Props) {
   const viewportRef = useRef<HTMLDivElement>(null)
   const stageRef = useRef<HTMLDivElement>(null)
   const agentRefs = useRef(new Map<string, HTMLDivElement>())
@@ -134,6 +140,16 @@ export default function OfficeWorld({ agents, selectedId, selectedRoomId, onSele
   const zoomRef = useRef<ZoomTier>(zoom)
   const agentsRef = useRef(agents)
   agentsRef.current = agents
+
+  // RTS box multi-select — a distinct tool, not a modifier on the default
+  // drag, because the default drag already means "pan the camera" and the
+  // two must never both fire off the same gesture. selectBox is SCREEN-space
+  // (relative to the viewport) purely for drawing the rectangle overlay;
+  // the world-space conversion (select.ts's screenBoxToWorldBox) only
+  // happens once, on release.
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectBox, setSelectBox] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null)
+  const selectDragRef = useRef({ on: false })
 
   useEffect(() => {
     selectedRef.current = selectedId
@@ -273,9 +289,25 @@ export default function OfficeWorld({ agents, selectedId, selectedRoomId, onSele
 
   const onPointerDown = (e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest('.world-hud')) return
+    if (selectMode) {
+      const rect = viewportRef.current?.getBoundingClientRect()
+      if (!rect) return
+      const x = e.clientX - rect.left
+      const y = e.clientY - rect.top
+      selectDragRef.current.on = true
+      setSelectBox({ x0: x, y0: y, x1: x, y1: y })
+      return
+    }
     dragRef.current = { on: true, px: e.clientX, py: e.clientY, moved: false }
   }
   const onPointerMove = (e: React.PointerEvent) => {
+    if (selectMode) {
+      if (!selectDragRef.current.on) return
+      const rect = viewportRef.current?.getBoundingClientRect()
+      if (!rect) return
+      setSelectBox((box) => (box ? { ...box, x1: e.clientX - rect.left, y1: e.clientY - rect.top } : box))
+      return
+    }
     const drag = dragRef.current
     if (!drag.on) return
     const dx = e.clientX - drag.px
@@ -291,6 +323,23 @@ export default function OfficeWorld({ agents, selectedId, selectedRoomId, onSele
     }
   }
   const onPointerUp = () => {
+    if (selectMode) {
+      if (selectDragRef.current.on) {
+        selectDragRef.current.on = false
+        setSelectBox((box) => {
+          if (box) {
+            const rect = viewportRef.current?.getBoundingClientRect()
+            const big = Math.abs(box.x1 - box.x0) >= MIN_SELECT_BOX_PX || Math.abs(box.y1 - box.y0) >= MIN_SELECT_BOX_PX
+            if (rect && big) {
+              const worldBox = screenBoxToWorldBox(box, rect.width, rect.height, camRef.current)
+              onSelectMany?.(agentsInWorldBox(agentsRef.current, worldBox))
+            }
+          }
+          return null
+        })
+      }
+      return
+    }
     dragRef.current.on = false
     window.setTimeout(() => {
       dragRef.current.moved = false
@@ -300,7 +349,7 @@ export default function OfficeWorld({ agents, selectedId, selectedRoomId, onSele
   return (
     <div className="world-frame">
       <div
-        className="world-viewport"
+        className={`world-viewport ${selectMode ? 'select-mode' : ''}`}
         ref={viewportRef}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -346,6 +395,18 @@ export default function OfficeWorld({ agents, selectedId, selectedRoomId, onSele
           <AgentLayer agents={agents} register={register} onPick={onPick} />
         </div>
 
+        {selectBox && (
+          <div
+            className="select-box"
+            style={{
+              left: Math.min(selectBox.x0, selectBox.x1),
+              top: Math.min(selectBox.y0, selectBox.y1),
+              width: Math.abs(selectBox.x1 - selectBox.x0),
+              height: Math.abs(selectBox.y1 - selectBox.y0),
+            }}
+          />
+        )}
+
         <div className="world-hud">
           <button className={zoom === 'far' ? 'on' : ''} onClick={() => setZoom('far')}>
             🗺️ Far
@@ -356,8 +417,15 @@ export default function OfficeWorld({ agents, selectedId, selectedRoomId, onSele
           <button className={zoom === 'close' ? 'on' : ''} onClick={() => setZoom('close')}>
             🔍 Close
           </button>
+          {onSelectMany && (
+            <button className={selectMode ? 'on' : ''} onClick={() => setSelectMode((v) => !v)}>
+              🔲 Select
+            </button>
+          )}
         </div>
-        <div className="world-hint">Drag to look around · click an agent or room for details</div>
+        <div className="world-hint">
+          {selectMode ? 'Drag a box to select multiple agents' : 'Drag to look around · click an agent or room for details'}
+        </div>
       </div>
     </div>
   )

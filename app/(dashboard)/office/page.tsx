@@ -49,6 +49,8 @@ import OfficeWorld from './game/OfficeWorld'
 import { LiveOffice, type Agent } from './game/live-engine'
 import type { Room } from './game/world'
 import type { OfficeTreasuryView, CompanyTreasuryView, CompanyGasHealth } from '@/lib/office-world-data'
+import { OFFICE_DEPARTMENTS } from '@/lib/office-world-data'
+import { selectionSummary } from './game/select'
 import {
   AGENT_TEMPLATES,
   OFFICE_TEMPLATES,
@@ -1368,11 +1370,61 @@ function TreasuryPanel({
   )
 }
 
+// Room id -> display label for the two rooms that aren't in the generated
+// nine (the owner's room and the idle bullpen) — everything else comes
+// straight from the real department list so a tenth room added there shows
+// up here for free.
+const DEPT_LABEL: Record<string, { name: string; icon: string }> = {
+  lounge: { name: 'Idle', icon: '🛋️' },
+  ceo: { name: "Owner's room", icon: '👑' },
+}
+for (const dept of OFFICE_DEPARTMENTS) DEPT_LABEL[dept.id] = { name: dept.name, icon: dept.icon }
+
+/**
+ * The RTS box-select summary — inspect only (select.ts's own header explains
+ * why: no aggregate here ever authorizes an action). Shows what a dragged
+ * box actually caught: how many agents, and which real departments they're
+ * currently in.
+ */
+function MultiSelectPanel({ agents, onClear }: { agents: Agent[]; onClear: () => void }) {
+  const summary = selectionSummary(agents)
+  return (
+    <div className="mt-3 rounded-md border border-border bg-muted/50 p-3 text-sm">
+      <div className="flex items-center justify-between">
+        <div className="font-semibold">
+          🔲 {summary.count} agent{summary.count === 1 ? '' : 's'} selected
+        </div>
+        <Button type="button" size="sm" variant="ghost" onClick={onClear} className="h-7 px-2 text-xs">
+          Clear
+        </Button>
+      </div>
+      <ul className="mt-2 space-y-1">
+        {[...summary.byDept.entries()].map(([deptId, count]) => {
+          const label = DEPT_LABEL[deptId] ?? { name: deptId, icon: '•' }
+          return (
+            <li key={deptId} className="flex items-center justify-between text-muted-foreground">
+              <span>
+                {label.icon} {label.name}
+              </span>
+              <span className="tabular-nums">{count}</span>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
 function OfficeWorldPanel({ slot }: { slot: number }) {
   const engineRef = useRef(new LiveOffice())
   const [agents, setAgents] = useState<Agent[]>([])
   const [selected, setSelected] = useState<Agent | null>(null)
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null)
+  // RTS box multi-select — independent of the single agent/room selection
+  // above, not a replacement for it: this is an inspect-only group summary
+  // (select.ts's own header explains why it stops there), so it coexists
+  // rather than fighting the existing detail panel for the same state.
+  const [multiSelected, setMultiSelected] = useState<Agent[]>([])
   const [treasury, setTreasury] = useState<OfficeTreasuryView | null>(null)
   const [treasuryLoading, setTreasuryLoading] = useState(false)
   const [treasuryError, setTreasuryError] = useState<string | null>(null)
@@ -1412,6 +1464,7 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
     setAgents([])
     setSelected(null)
     setSelectedRoom(null)
+    setMultiSelected([])
     setTreasury(null)
     setTreasuryError(null)
     const poll = async () => {
@@ -1454,17 +1507,27 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
     }
   }
 
-  // One detail panel, one selection at a time: picking an agent clears any
-  // selected room and vice versa, so the panel below never has to decide
-  // which of two conflicting things to show.
+  // One detail panel, one selection at a time: picking an agent, a room, or
+  // a box-selected group clears whichever of the other two was showing, so
+  // the panel below never has to decide which of several conflicting things
+  // to show.
   const handleSelectAgent = (agent: Agent) => {
     setSelectedRoom(null)
+    setMultiSelected([])
     setSelected(agent)
   }
   const handleSelectRoom = (room: Room) => {
     setSelected(null)
+    setMultiSelected([])
     setSelectedRoom(room)
     if (room.id === 'treasury') void loadTreasury()
+  }
+  const handleSelectMany = (ids: string[]) => {
+    if (ids.length === 0) return // an empty drag selected nothing — leave whatever was showing alone
+    setSelected(null)
+    setSelectedRoom(null)
+    const idSet = new Set(ids)
+    setMultiSelected(agents.filter((a) => idSet.has(a.id)))
   }
 
   useEffect(() => {
@@ -1519,6 +1582,7 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
             selectedRoomId={selectedRoom?.id ?? null}
             onSelect={handleSelectAgent}
             onSelectRoom={handleSelectRoom}
+            onSelectMany={handleSelectMany}
           />
           <button
             type="button"
@@ -1555,6 +1619,7 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
             onRefresh={loadTreasury}
           />
         )}
+        {multiSelected.length > 0 && <MultiSelectPanel agents={multiSelected} onClear={() => setMultiSelected([])} />}
       </CardContent>
       <HireStaffDialog
         open={hiring}

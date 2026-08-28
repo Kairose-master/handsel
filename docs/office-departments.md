@@ -170,12 +170,46 @@ applying. Reconstructed into a `:root` block from the file's own literal
 colors where the same shade already appeared hardcoded nearby, rather than
 invented fresh.
 
-## What did NOT make it into phases 1–4
+## Phase 5 — RTS box multi-select, inspect-only
+
+The redesign brief asks for RTS control principles (click, multi-select,
+inspect) with an explicit caution attached: **do not implement irreversible
+commands without confirmation and backend authorization.** This phase builds
+the multi-select half of that and stops there on purpose — no command of any
+kind is wired to a selection, box-drawn or otherwise.
+
+`app/(dashboard)/office/game/select.ts` is the pure layer, unit-tested in
+`tests/office-select.test.ts` without a browser:
+
+- `screenToWorld`/`screenBoxToWorldBox` invert the exact transform the paint
+  loop uses to place the camera (`translate3d(rect.width/2 - cam.x*cam.scale,
+  …) scale(cam.scale)`), so a box drawn around what's visibly on screen
+  selects what's actually there — not a stale or guessed camera position.
+- `agentsInWorldBox` hit-tests against the same point the paint loop draws
+  each agent's sprite at, for the same reason.
+- `selectionSummary` is the only thing a selection produces: a count and a
+  per-department breakdown. It cannot authorize anything — there is no
+  function anywhere in this file, or called from it, that changes state.
+
+`OfficeWorld.tsx` adds an opt-in "🔲 Select" tool, additive to the existing
+click-to-inspect single selection rather than a replacement for it: normal
+clicks and panning are unaffected until the tool is toggled on, and turning
+it on swaps the pointer handlers to track a screen-space drag box instead of
+panning the camera. Releasing the drag (if it clears a minimum size — a
+6px accidental jiggle is a missed click, not a deliberate box) converts the
+box to world space and reports the caught agent ids up to the page, which
+resolves them against the live roster and shows `MultiSelectPanel` — the
+same "one detail panel at a time" rule as single-agent/single-room selection
+applies here too: picking a box clears whichever of the other two was
+showing, and vice versa.
+
+## What did NOT make it into phases 1–5
 
 Artifact objects traveling between rooms independent of agent movement, and
-RTS-style multi-select and commands. Add these as separate, reviewable
-slices — the taxonomy and grid are built to make each one additive, not a
-rewrite.
+any RTS *command* — assign objective, move budget, hire — issued from a
+selection. Multi-select's own module (`select.ts`) is deliberately built so
+that adding a command later is a new, reviewable function that takes a
+`SelectionSummary`, not a change to the selection logic itself.
 
 ## The grid
 
