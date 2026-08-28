@@ -53,6 +53,9 @@ import {
   type AgentSkillView,
 } from '@/app/actions/agent-skills'
 import type { ClawhubSkill } from '@/lib/clawhub'
+import { myAgentRepo, bindRepoToAgent, unbindRepoFromAgent, type AgentRepoView } from '@/app/actions/agent-repo'
+import { getGithubConnection } from '@/app/actions/repo-jobs'
+import type { GithubConnection } from '@/lib/github-identity'
 import dynamic from 'next/dynamic'
 import OfficeWorld from './game/OfficeWorld'
 // R3F/Three.js diorama — code-split and client-only: three.js is a heavy
@@ -1192,6 +1195,7 @@ function OfficeRosterPanel({ slot, refreshKey }: { slot: number; refreshKey: num
                   </button>
                 )}
                 <AgentSkillsSection agentId={a.id} />
+                <AgentRepoSection agentId={a.id} />
               </div>
             ))}
           </div>
@@ -1442,6 +1446,170 @@ function AgentSkillsSection({ agentId }: { agentId: string }) {
         until you reinstall. Skills apply on every runtime except MCP-wired agents, whose external tool follows no
         instructions.
       </p>
+      {error && <p className="text-xs text-destructive">{error}</p>}
+    </div>
+  )
+}
+
+/**
+ * The agent's portfolio repo — its own GitHub repository, where every PAID
+ * job's deliverable lands as a commit with provenance (lib/agent-repo.ts
+ * has the trust model and why WE never create the repo: the owner creates
+ * it and installs the same App the repo-jobs pipeline uses, then binds it
+ * here). Self-contained per roster row, loads only when expanded.
+ */
+function AgentRepoSection({ agentId }: { agentId: string }) {
+  const [open, setOpen] = useState(false)
+  const [view, setView] = useState<AgentRepoView | null | 'loading'>('loading')
+  const [conn, setConn] = useState<GithubConnection | null>(null)
+  const [pick, setPick] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const reload = () => {
+    myAgentRepo(agentId)
+      .then((v) => {
+        setView(v)
+        setError(null)
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : 'Could not load.'))
+  }
+
+  useEffect(() => {
+    if (!open) return
+    reload()
+    if (!conn) {
+      getGithubConnection()
+        .then(setConn)
+        .catch((e) => console.error('[office] github connection read failed:', e))
+    }
+    // reload/conn deliberately not deps: this effect means "on expand".
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, agentId])
+
+  const bind = async () => {
+    if (!pick) return
+    setBusy(true)
+    setError(null)
+    try {
+      setView(await bindRepoToAgent(agentId, pick))
+      setPick('')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Bind failed.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const unbind = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      await unbindRepoFromAgent(agentId)
+      setView(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Unbind failed.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)} className="press mt-1 block text-xs text-primary hover:underline">
+        📓 Portfolio repo
+      </button>
+    )
+  }
+
+  return (
+    <div className="mt-2 space-y-2 rounded-md border border-border bg-secondary/40 p-2.5">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium">Portfolio repo</span>
+        <button type="button" onClick={() => setOpen(false)} className="press text-xs text-muted-foreground hover:underline">
+          Hide
+        </button>
+      </div>
+
+      {view === 'loading' && !error && <p className="text-[11px] text-muted-foreground">Reading…</p>}
+
+      {view !== 'loading' && view !== null && (
+        <>
+          <p className="text-xs">
+            <a href={view.repoUrl} target="_blank" rel="noreferrer" className="font-mono text-primary hover:underline">
+              {view.repoFullName}
+            </a>
+            <span className="ml-2 text-[11px] text-muted-foreground">
+              {view.commits.length === 0
+                ? 'no deliverables mirrored yet — the next PAID job commits here'
+                : `${view.commits.length} deliverable${view.commits.length === 1 ? '' : 's'} mirrored`}
+            </span>
+          </p>
+          {view.commits.slice(0, 5).map((c) => (
+            <p key={c.jobId} className="truncate text-[11px] text-muted-foreground">
+              <a href={c.fileUrl} target="_blank" rel="noreferrer" className="hover:underline">
+                job #{c.jobId} — {c.path.replace(/^deliverables\//, '')}
+              </a>
+            </p>
+          ))}
+          <Button type="button" size="sm" variant="ghost" onClick={unbind} disabled={busy} className="text-muted-foreground">
+            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Unbind'}
+          </Button>
+        </>
+      )}
+
+      {view === null && (
+        <>
+          <p className="text-[11px] text-muted-foreground">
+            Give this agent its own GitHub repo: every job it gets <em>paid</em> for is committed there with provenance
+            (job id, spec hash, settlement tx, proof link) — a portable track record that outlives this platform.
+          </p>
+          {conn && !conn.connected && (
+            <p className="text-[11px] text-muted-foreground">
+              Connect GitHub first (Settings), then create a repo and{' '}
+              <a href={conn.installUrl} target="_blank" rel="noreferrer" className="text-primary hover:underline">
+                install the App
+              </a>{' '}
+              on it.
+            </p>
+          )}
+          <div className="flex gap-2">
+            <select
+              aria-label="Repository to bind"
+              value={pick}
+              onChange={(e) => setPick(e.target.value)}
+              className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-xs"
+            >
+              <option value="">
+                {conn === null
+                  ? 'Loading your repos…'
+                  : conn.repos.length === 0
+                    ? 'No repos with our App installed'
+                    : 'Pick a repo you own…'}
+              </option>
+              {(conn?.repos ?? []).map((r) => (
+                <option key={r.fullName} value={r.fullName}>
+                  {r.fullName}
+                  {r.private ? ' (private)' : ''}
+                </option>
+              ))}
+            </select>
+            <Button type="button" size="sm" onClick={bind} disabled={busy || !pick}>
+              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Bind'}
+            </Button>
+          </div>
+          {conn?.connected && (
+            <p className="text-[11px] text-muted-foreground">
+              Don&apos;t see the repo? Create it on GitHub, then{' '}
+              <a href={conn.installUrl} target="_blank" rel="noreferrer" className="text-primary hover:underline">
+                add it to the App installation
+              </a>
+              . We can&apos;t create repos for you — the App&apos;s permissions are deliberately too narrow for that.
+            </p>
+          )}
+        </>
+      )}
+
       {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   )

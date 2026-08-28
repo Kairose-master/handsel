@@ -490,6 +490,15 @@ export async function creditWorkerForJob(workerAddress: string, jobId: number, b
   }
   const workerAgent = workerLookup.agent
 
+  // Portfolio mirror (lib/agent-repo.ts): commit this paid deliverable to
+  // the worker agent's bound GitHub repo, if it has one. Deliberately BEFORE
+  // the same-owner guard below — an office's own pipeline jobs earn no
+  // credit event (self-dealing cannot buy reputation), but the work is real
+  // and paid, and a portfolio records work, not reputation. Best-effort with
+  // its own per-job idempotency; a GitHub failure never touches crediting.
+  const { mirrorSettledJobToAgentRepo } = await import('@/lib/agent-repo')
+  await mirrorSettledJobToAgentRepo({ agentId: workerAgent.id, jobId, bounty, txHash })
+
   // Idempotent on the job. Five call sites can observe the same completed
   // job — the settlement sweep, a delegation tick, the two approve paths —
   // and one of them is wrapped in retry(), so a partial failure (event
