@@ -332,6 +332,73 @@ logic itself; the same is true of artifact flights, which never do
 anything beyond reporting what's already real. Free click-and-drag panning
 in the 3D view (see Phase 7) is the other known gap.
 
+## Phase 8 — the 3D view's own visual language: tactical telemetry
+
+The 3D view's Phase 7 launch reused the DOM renderer's pastel diorama
+colors (pink/mint/lavender) for its rooms and labels — a reasonable
+starting point, but a mismatch once a real reference direction landed:
+"dark, neon-glow, sci-fi command center," closer to a tactical HUD than a
+miniature toy office. `game3d/theme.ts` is the resulting palette, kept
+`game3d/`-only — the DOM renderer's tokens (`office.css`'s pastel `:root`
+block) are untouched, so the "🖼️ Classic view" toggle still looks exactly
+as it always has.
+
+The palette follows one real discipline, not just "make it dark": **one
+accent does the structural work, a second is reserved for one meaning.**
+Cyan is every normal room, wall glow, line, and label. Red is reserved
+for a real dispute (`roomStatsOf`'s own `alert`, the same signal the DOM
+renderer's far-zoom badge already used) — never for "this room is merely
+busy." An earlier pass conflated the two (the *hot* room, i.e. busiest,
+briefly rendered in the same red as a dispute), which is exactly the kind
+of ambiguity the tactical-command aesthetic depends on not having: red has
+to mean "look here, something is wrong," or it means nothing the next time
+it appears. The hot room now glows amber instead — active, not alarming —
+and only an actual `alert` turns a room's walls red.
+
+What actually changed:
+
+- **Materials**: room floors are a small canvas-generated "blueprint grid"
+  texture (`gridTexture.ts`, cached per base/line color pair, no imported
+  asset) instead of a flat pastel fill; walls are dark boxes with an
+  `emissive` tint (cyan / amber-if-hot / red-if-disputed) so they read as
+  lit panels rather than solid color; doors are a bright cyan strip.
+- **Bloom**: `@react-three/postprocessing`'s `<Bloom>` picks up every
+  `emissive`/`toneMapped={false}` surface — wall glow, door strips, the
+  selection ring, artifact-flight lines and icons, an agent's own
+  hire-time shirt color — and gives the scene the soft glow the reference
+  has. Nothing is emissive "for the glow alone"; every glowing surface was
+  already carrying a real signal (a wall's alert state, a selection, a
+  flight in progress).
+- **Two new HUD bars** (`HUDBars.tsx`), framing the scene top and bottom,
+  styled per the `industrial-brutalist-ui` skill's "tactical telemetry"
+  mode (monospace, uppercase, sharp corners, bracketed labels) — chosen
+  over its "Swiss industrial print" mode, which is a light-background
+  aesthetic and would have fought the dark scene. Top bar: a live clock
+  (genuinely real — the viewer's own clock, ticking) and an
+  "OPERATIONAL"/"LINK DEGRADED" status dot wired to a REAL signal — a new
+  `healthy` prop, set from whether `office/page.tsx`'s own snapshot poll
+  (the same one that already existed) most recently succeeded or threw.
+  Bottom bar: agent count, a chip per department with a live occupant count
+  (`roomStatsOf` again — third caller of the same pure function, one
+  source of truth), how many artifact flights are currently in the air,
+  and how many rooms are currently alerting. **No CPU/memory/task-velocity
+  gauges** — the reference image's "SYSTEM METRICS" row has no Handsel
+  equivalent, and inventing one (even a plausible-looking sparkline) is
+  exactly the "no fake data, ever" rule this project has enforced from its
+  first line. The row simply doesn't exist here; every slot that DOES
+  exist is a number `roomStatsOf`/`agents.length`/`flights.length`/the poll
+  boolean already produce.
+- HUD buttons and hint text restyled to match (`[ FAR ]`, `[ ROOMS ]`,
+  `[ CLOSE ]`, `[ SELECT ]`) — scoped to `.world3d-viewport` so the DOM
+  renderer's own buttons are untouched.
+
+Not attempted: literal photorealistic parity with a reference *image*.
+There is no image-generation skill or tool in this environment that
+outputs that fidelity, and the product is a live data-driven scene, not a
+static illustration — a perfect one-off render would misrepresent what
+ships. This phase is the honest version of "as close as a real-time
+WebGL scene, backed only by real numbers, can get."
+
 ## The grid
 
 `app/(dashboard)/office/game/world.ts` generates one room per entry in

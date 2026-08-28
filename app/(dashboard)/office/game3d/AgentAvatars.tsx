@@ -30,6 +30,7 @@ import { Html } from '@react-three/drei'
 import * as THREE from 'three'
 import type { Agent, Facing } from '../game/live-engine'
 import { useSceneStore } from './scene-store'
+import { THEME } from './theme'
 
 const FACING_YAW: Record<Facing, number> = { down: 0, right: Math.PI / 2, up: Math.PI, left: -Math.PI / 2 }
 
@@ -73,7 +74,7 @@ function AgentMesh({
       {selected && (
         <mesh position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
           <ringGeometry args={[0.32, 0.42, 24]} />
-          <meshBasicMaterial color="#ff5fa8" />
+          <meshBasicMaterial color={THEME.cyan} toneMapped={false} />
         </mesh>
       )}
       {far ? (
@@ -83,26 +84,26 @@ function AgentMesh({
         // more, and costs one draw call instead of four.
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.3, 0]}>
           <circleGeometry args={[0.24, 12]} />
-          <meshBasicMaterial color={agent.shirt} />
+          <meshBasicMaterial color={agent.shirt} toneMapped={false} />
         </mesh>
       ) : (
         <>
           <mesh position={[0, 0.34, 0]}>
             <boxGeometry args={[0.46, 0.5, 0.28]} />
-            <meshStandardMaterial color={agent.shirt} />
+            <meshStandardMaterial color={agent.shirt} emissive={agent.shirt} emissiveIntensity={0.35} roughness={0.5} />
           </mesh>
           <mesh position={[0, 0.68, 0]}>
             <boxGeometry args={[0.32, 0.3, 0.3]} />
-            <meshStandardMaterial color={agent.skin} />
+            <meshStandardMaterial color={agent.skin} roughness={0.7} />
           </mesh>
           <mesh position={[0, 0.85, -0.06]}>
             <boxGeometry args={[0.34, 0.14, 0.2]} />
-            <meshStandardMaterial color={agent.hair} />
+            <meshStandardMaterial color={agent.hair} roughness={0.7} />
           </mesh>
           {agent.rank === 'lead' && (
             <mesh position={[0, 1.02, 0]} rotation={[Math.PI / 2, 0, 0]}>
               <coneGeometry args={[0.12, 0.16, 4]} />
-              <meshStandardMaterial color="#ffd83d" />
+              <meshStandardMaterial color={THEME.cyan} emissive={THEME.cyan} emissiveIntensity={0.8} toneMapped={false} />
             </mesh>
           )}
         </>

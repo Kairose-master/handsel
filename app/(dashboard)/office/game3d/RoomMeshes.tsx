@@ -16,13 +16,13 @@ import { Html } from '@react-three/drei'
 import { ROOMS, type Room } from '../game/world'
 import { roomStatsOf, hotRoomOf } from '../game/zoom'
 import type { Agent } from '../game/live-engine'
+import { THEME } from './theme'
+import { gridTexture } from './gridTexture'
 
 const WALL_H = 1.3
 const WALL_T = 0.12
 
-const FLOOR_COLOR: Record<Room['kind'], string> = { dept: '#fffdfe', ceo: '#ffeff6', lounge: '#eefaf4' }
-const WALL_COLOR = '#4a2b3c' // --ink
-const DOOR_COLOR = '#ffd83d' // --yellow
+const FLOOR_COLOR: Record<Room['kind'], string> = { dept: THEME.floorDept, ceo: THEME.floorCeo, lounge: THEME.floorLounge }
 
 /** One wall box per boundary tile that ISN'T a door — simple, and cheap
  *  enough at this room count (~11 rooms) not to need instancing yet. */
@@ -54,6 +54,13 @@ function RoomMesh({
   const segs = useMemo(() => wallSegments(room), [room])
   const cx = room.x + room.w / 2
   const cz = room.y + room.h / 2
+  const floorTex = useMemo(() => {
+    const tex = gridTexture(FLOOR_COLOR[room.kind], 'rgba(79,216,255,0.28)')
+    const t = tex.clone()
+    t.needsUpdate = true
+    t.repeat.set(room.w, room.h)
+    return t
+  }, [room])
 
   return (
     <group>
@@ -66,18 +73,23 @@ function RoomMesh({
         }}
       >
         <planeGeometry args={[room.w, room.h]} />
-        <meshStandardMaterial color={FLOOR_COLOR[room.kind]} />
+        <meshStandardMaterial map={floorTex} roughness={0.85} metalness={0.1} />
       </mesh>
       {segs.map((s, i) => (
         <mesh key={i} position={[s.x, WALL_H / 2, s.z]}>
           <boxGeometry args={[WALL_T + 0.9, WALL_H, WALL_T + 0.9]} />
-          <meshStandardMaterial color={hot ? '#ff5fa8' : WALL_COLOR} />
+          <meshStandardMaterial
+            color={THEME.wall}
+            emissive={stat?.alert ? THEME.wallGlowRed : hot ? THEME.wallGlowAmber : THEME.wallGlowCyan}
+            emissiveIntensity={stat?.alert ? 1.8 : hot ? 1.1 : 0.55}
+            roughness={0.6}
+          />
         </mesh>
       ))}
       {room.doors.map((d, i) => (
         <mesh key={i} position={[d.x + 0.5, 0.02, d.y + 0.5]} rotation={[-Math.PI / 2, 0, 0]}>
           <planeGeometry args={[1, 0.6]} />
-          <meshBasicMaterial color={DOOR_COLOR} />
+          <meshBasicMaterial color={THEME.door} toneMapped={false} />
         </mesh>
       ))}
       <Html position={[cx, WALL_H + 0.4, room.y]} center occlude={false}>

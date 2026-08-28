@@ -26,6 +26,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Canvas, useThree } from '@react-three/fiber'
 import { OrthographicCamera } from '@react-three/drei'
+import { EffectComposer, Bloom } from '@react-three/postprocessing'
 import * as THREE from 'three'
 import type { Agent } from '../game/live-engine'
 import type { Room } from '../game/world'
@@ -35,7 +36,9 @@ import { CameraRig } from './CameraRig'
 import { RoomMeshes } from './RoomMeshes'
 import { AgentAvatars } from './AgentAvatars'
 import { ArtifactFlights3D } from './ArtifactFlights3D'
+import { TopStatusBar, BottomTelemetryBar } from './HUDBars'
 import { useSceneStore } from './scene-store'
+import { THEME } from './theme'
 
 type Props = {
   agents: Agent[]
@@ -45,6 +48,12 @@ type Props = {
   onSelectRoom?: (room: Room) => void
   onSelectMany?: (ids: string[]) => void
   flights?: ArtifactFlight[]
+  /** Real signal, not decoration: whether the last snapshot poll (the same
+   *  one office/page.tsx already does) actually succeeded. Drives the top
+   *  bar's status dot — "OPERATIONAL" is a claim about live data flowing,
+   *  never a static badge. Defaults true so a caller that hasn't wired the
+   *  poll's success/failure through yet doesn't show a false alarm. */
+  healthy?: boolean
 }
 
 type ScreenBox = { x0: number; y0: number; x1: number; y1: number }
@@ -84,7 +93,16 @@ function SelectionBridge({ agents, exposeHitTest }: { agents: Agent[]; exposeHit
   return null
 }
 
-export default function OfficeWorld3D({ agents, selectedId, selectedRoomId, onSelect, onSelectRoom, onSelectMany, flights = [] }: Props) {
+export default function OfficeWorld3D({
+  agents,
+  selectedId,
+  selectedRoomId,
+  onSelect,
+  onSelectRoom,
+  onSelectMany,
+  flights = [],
+  healthy = true,
+}: Props) {
   const zoom = useSceneStore((s) => s.zoom)
   const setZoom = useSceneStore((s) => s.setZoom)
   const selectMode = useSceneStore((s) => s.selectMode)
@@ -162,7 +180,8 @@ export default function OfficeWorld3D({ agents, selectedId, selectedRoomId, onSe
   }
 
   return (
-    <div className="world-frame">
+    <div className="world-frame world3d-frame">
+      <TopStatusBar healthy={healthy} />
       <div
         className={`world-viewport world3d-viewport ${selectMode ? 'select-mode' : ''}`}
         onPointerDown={onPointerDown}
@@ -174,13 +193,18 @@ export default function OfficeWorld3D({ agents, selectedId, selectedRoomId, onSe
         <Canvas shadows dpr={[1, 1.8]} gl={{ antialias: true }}>
           <OrthographicCamera makeDefault near={0.1} far={2000} zoom={1} />
           <CameraRig agents={agents} selectedId={selectedId} selectedRoomId={selectedRoomId} />
-          <ambientLight intensity={0.75} />
-          <directionalLight position={[30, 60, 20]} intensity={0.9} castShadow shadow-mapSize={[1024, 1024]} />
-          <color attach="background" args={['#23161f']} />
+          <ambientLight intensity={0.35} color={THEME.cyanDim} />
+          <directionalLight position={[30, 60, 20]} intensity={0.6} castShadow shadow-mapSize={[1024, 1024]} color="#dff4ff" />
+          <hemisphereLight args={[THEME.cyanDim, THEME.wall, 0.4]} />
+          <color attach="background" args={[THEME.bg]} />
+          <fog attach="fog" args={[THEME.bg, 60, 160]} />
           <RoomMeshes agents={agents} onSelectRoom={handlePickRoom} />
           <AgentAvatars agents={agents} selectedId={selectedId} onSelect={handlePick} />
           <ArtifactFlights3D flights={flights} />
           <SelectionBridge agents={agents} exposeHitTest={exposeHitTest} />
+          <EffectComposer multisampling={0}>
+            <Bloom luminanceThreshold={0.15} luminanceSmoothing={0.3} intensity={0.85} mipmapBlur radius={0.7} />
+          </EffectComposer>
         </Canvas>
 
         {selectBox && (
@@ -197,24 +221,25 @@ export default function OfficeWorld3D({ agents, selectedId, selectedRoomId, onSe
 
         <div className="world-hud">
           <button className={zoom === 'far' ? 'on' : ''} onClick={() => setZoom('far')}>
-            🗺️ Far
+            [ FAR ]
           </button>
           <button className={zoom === 'medium' ? 'on' : ''} onClick={() => setZoom('medium')}>
-            🏢 Rooms
+            [ ROOMS ]
           </button>
           <button className={zoom === 'close' ? 'on' : ''} onClick={() => setZoom('close')}>
-            🔍 Close
+            [ CLOSE ]
           </button>
           {onSelectMany && (
             <button className={selectMode ? 'on' : ''} onClick={() => setSelectMode((v) => !v)}>
-              🔲 Select
+              [ SELECT ]
             </button>
           )}
         </div>
         <div className="world-hint">
-          {selectMode ? 'Drag a box to select multiple agents' : 'Drag to look around · click an agent or room for details'}
+          {selectMode ? '>>> DRAG TO BOX-SELECT MULTIPLE AGENTS' : '>>> DRAG TO PAN · CLICK AN AGENT OR ROOM FOR DETAIL'}
         </div>
       </div>
+      <BottomTelemetryBar agents={agents} flights={flights} />
     </div>
   )
 }

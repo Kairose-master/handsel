@@ -16,9 +16,10 @@ import { Html, Line } from '@react-three/drei'
 import * as THREE from 'three'
 import type { ArtifactFlight } from '@/lib/office-world-data'
 import { focusTileFor } from './CameraRig'
+import { THEME } from './theme'
 
 const FLIGHT_ICON: Record<ArtifactFlight['kind'], string> = { handoff: '📦', review: '🧾', synthesis: '🧩' }
-const FLIGHT_COLOR: Record<ArtifactFlight['kind'], string> = { handoff: '#c9b8ff', review: '#ff5fa8', synthesis: '#b8f0dd' }
+const FLIGHT_COLOR: Record<ArtifactFlight['kind'], string> = { handoff: THEME.cyan, review: THEME.amber, synthesis: THEME.green }
 const FLIGHT_DURATION_S = 2.4
 const FLIGHT_HEIGHT = 1.1 // above the floor, clear of agent avatars
 
@@ -46,7 +47,17 @@ function FlightMesh({ flight }: { flight: ArtifactFlight }) {
 
   return (
     <>
-      <Line points={[a, b]} color={FLIGHT_COLOR[flight.kind]} dashed dashSize={0.4} gapSize={0.3} lineWidth={1.5} transparent opacity={0.55} />
+      <Line
+        points={[a, b]}
+        color={FLIGHT_COLOR[flight.kind]}
+        dashed
+        dashSize={0.4}
+        gapSize={0.3}
+        lineWidth={1.5}
+        transparent
+        opacity={0.6}
+        toneMapped={false}
+      />
       <group ref={groupRef}>
         <Html center occlude={false}>
           <div className="flight3d-icon" title={flight.label}>

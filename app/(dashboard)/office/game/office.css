@@ -647,23 +647,113 @@
   .world-viewport { height: 58vh; }
 }
 
-/* R3F office diorama (game3d/) — HTML overlays projected from the 3D scene
-   via Drei's <Html>. The scene itself (rooms, agents, flights) is real
-   geometry; these are the "readable text" layer on top of it, same role
-   the DOM renderer's .rm-head/.ag-tag/.artifact-dot played. */
+/* R3F office diorama (game3d/) — tactical-telemetry theme (redesign brief:
+   "dark + neon glow sci-fi command center", chosen over the DOM renderer's
+   pastel diorama tone). Deliberately its OWN visual language: monospace,
+   sharp corners, one structural accent (cyan) with red reserved for a real
+   alert (a dispute, or the busiest room) — see game3d/theme.ts's header for
+   why. Every class below is exclusive to game3d/ (the "3d" suffix existed
+   from the start precisely so these could diverge from the DOM renderer's
+   .rm-head/.ag-tag/.artifact-dot without any collision), so none of this
+   touches the "🖼️ Classic view" toggle's own look. */
+:root {
+  --hud-bg: #070a0f;
+  --hud-panel: rgba(7, 10, 15, .9);
+  --hud-cyan: #4fd8ff;
+  --hud-cyan-dim: #1c6b85;
+  --hud-red: #ff3b3b;
+  --hud-amber: #ffb84f;
+  --hud-green: #57ffb0;
+  --hud-text: #dff4ff;
+  --hud-mono: ui-monospace, "JetBrains Mono", "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+}
+
+.world3d-frame {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--hud-bg);
+  border-color: #123241 !important;
+}
+.world3d-frame .world3d-viewport {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+  background: var(--hud-bg);
+}
 .world3d-viewport canvas { display: block; }
+
+.hud3d-top, .hud3d-bottom {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 12px;
+  background: var(--hud-bg);
+  font-family: var(--hud-mono);
+  font-size: 11px;
+  letter-spacing: .06em;
+  color: var(--hud-text);
+  text-transform: uppercase;
+}
+.hud3d-top { border-bottom: 1px solid rgba(79, 216, 255, .35); }
+.hud3d-bottom { border-top: 1px solid rgba(79, 216, 255, .35); flex-wrap: wrap; }
+.hud3d-brand { font-weight: 700; color: var(--hud-cyan); }
+.hud3d-status { display: flex; align-items: center; gap: 8px; color: var(--hud-green); }
+.hud3d-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--hud-green); box-shadow: 0 0 6px var(--hud-green); }
+.hud3d-dot.down { background: var(--hud-red); box-shadow: 0 0 6px var(--hud-red); animation: blinkDot .8s steps(2) infinite; }
+.hud3d-clock { margin-left: 10px; color: #7fa3b3; font-variant-numeric: tabular-nums; }
+.hud3d-stat { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 62px; }
+.hud3d-stat.alert .hud3d-value { color: var(--hud-red); }
+.hud3d-label { font-size: 9px; color: #5c7f8c; }
+.hud3d-value { font-size: 15px; font-weight: 700; color: var(--hud-text); font-variant-numeric: tabular-nums; }
+.hud3d-depts { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; justify-content: center; }
+.hud3d-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border: 1px solid rgba(79, 216, 255, .4); background: rgba(79, 216, 255, .06); }
+.hud3d-chip b { color: var(--hud-cyan); }
+.hud3d-chip.alert { border-color: var(--hud-red); background: rgba(255, 59, 59, .08); }
+.hud3d-chip.alert b { color: var(--hud-red); }
+.hud3d-empty { color: #5c7f8c; }
+
+.world3d-viewport.world-viewport { background: var(--hud-bg); }
+.world3d-viewport .world-hud { top: 8px; right: 8px; }
+.world3d-viewport .world-hud button {
+  font-family: var(--hud-mono);
+  font-size: 10px;
+  letter-spacing: .05em;
+  background: var(--hud-panel);
+  color: var(--hud-cyan);
+  border: 1px solid rgba(79, 216, 255, .5);
+  border-radius: 0;
+  padding: 5px 9px;
+}
+.world3d-viewport .world-hud button.on { background: var(--hud-cyan); color: #04121a; }
+.world3d-viewport .world-hint {
+  font-family: var(--hud-mono);
+  color: #5c7f8c;
+  background: var(--hud-panel);
+  border: 1px solid rgba(79, 216, 255, .25);
+  letter-spacing: .04em;
+}
+.world3d-viewport.select-mode, .world3d-viewport.select-mode:active { cursor: crosshair; }
+.world3d-viewport .select-box { border-color: var(--hud-cyan); background: rgba(79, 216, 255, .12); }
+
 .rm3d-label {
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 3px 8px;
-  border: 1.5px solid var(--ink);
-  border-radius: 8px;
-  background: rgba(255, 253, 254, .92);
+  border: 1px solid rgba(79, 216, 255, .5);
+  border-radius: 0;
+  background: var(--hud-panel);
+  font-family: var(--hud-mono);
   font-size: 11px;
   font-weight: 700;
+  letter-spacing: .04em;
+  color: var(--hud-text);
   white-space: nowrap;
-  box-shadow: 2px 3px 0 rgba(74, 43, 60, .18);
+  text-transform: uppercase;
+  box-shadow: 0 0 10px rgba(79, 216, 255, .15);
 }
 .rm3d-count {
   display: inline-flex;
@@ -672,20 +762,25 @@
   min-width: 16px;
   height: 16px;
   padding: 0 4px;
-  border-radius: 99px;
-  background: var(--yellow);
+  border-radius: 0;
+  background: var(--hud-cyan);
+  color: #04121a;
   font-size: 10px;
 }
-.rm3d-count.alert { background: var(--pink-deep); color: #fff; animation: blinkDot .8s steps(2) infinite; }
+.rm3d-count.alert { background: var(--hud-red); color: #fff; animation: blinkDot .8s steps(2) infinite; }
 .ag3d-tag {
   padding: 1px 7px;
-  border: 1.5px solid var(--ink);
-  border-radius: 99px;
-  background: #fff;
-  font-size: 10px;
+  border: 1px solid rgba(79, 216, 255, .45);
+  border-radius: 0;
+  background: var(--hud-panel);
+  font-family: var(--hud-mono);
+  font-size: 9px;
   font-weight: 700;
+  letter-spacing: .04em;
+  color: var(--hud-text);
   white-space: nowrap;
+  text-transform: uppercase;
 }
-.ag3d-tag.selected { background: var(--yellow); }
-.ag3d-tag em { margin-left: 4px; font-style: normal; color: var(--ink-soft); font-weight: 500; }
-.flight3d-icon { font-size: 15px; line-height: 1; filter: drop-shadow(0 1px 1px rgba(74, 43, 60, .45)); }
+.ag3d-tag.selected { background: var(--hud-cyan); color: #04121a; border-color: var(--hud-cyan); }
+.ag3d-tag em { margin-left: 4px; font-style: normal; color: var(--hud-amber); font-weight: 500; }
+.flight3d-icon { font-size: 15px; line-height: 1; filter: drop-shadow(0 0 4px rgba(79, 216, 255, .8)); }

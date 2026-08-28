@@ -1438,6 +1438,11 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
   // snapshot each poll rather than through LiveOffice/tweening: a flight is
   // a fact about the current subtask graph, not a position to interpolate.
   const [flights, setFlights] = useState<ArtifactFlight[]>([])
+  // Real signal for the 3D HUD's "OPERATIONAL"/"LINK DEGRADED" status dot —
+  // never a static badge, since that would be exactly the kind of
+  // decoration-pretending-to-be-telemetry this project's "no fake data"
+  // rule exists to rule out.
+  const [pollHealthy, setPollHealthy] = useState(true)
   const [treasury, setTreasury] = useState<OfficeTreasuryView | null>(null)
   const [treasuryLoading, setTreasuryLoading] = useState(false)
   const [treasuryError, setTreasuryError] = useState<string | null>(null)
@@ -1487,6 +1492,7 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
     setSelectedRoom(null)
     setMultiSelected([])
     setFlights([])
+    setPollHealthy(true)
     setTreasury(null)
     setTreasuryError(null)
     const poll = async () => {
@@ -1497,8 +1503,10 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
         setAgents([...engineRef.current.agents])
         setCeoLine(snap.ceoLine)
         setFlights(snap.artifactFlights)
+        setPollHealthy(true)
       } catch (error) {
         console.error('[office] snapshot poll failed:', error)
+        if (!dead) setPollHealthy(false)
       }
     }
     poll()
@@ -1611,6 +1619,7 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
               onSelectRoom={handleSelectRoom}
               onSelectMany={handleSelectMany}
               flights={flights}
+              healthy={pollHealthy}
             />
           ) : (
             <OfficeWorld
