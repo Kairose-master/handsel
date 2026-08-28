@@ -646,3 +646,46 @@
   .live-counts { order: 10; }
   .world-viewport { height: 58vh; }
 }
+
+/* R3F office diorama (game3d/) — HTML overlays projected from the 3D scene
+   via Drei's <Html>. The scene itself (rooms, agents, flights) is real
+   geometry; these are the "readable text" layer on top of it, same role
+   the DOM renderer's .rm-head/.ag-tag/.artifact-dot played. */
+.world3d-viewport canvas { display: block; }
+.rm3d-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border: 1.5px solid var(--ink);
+  border-radius: 8px;
+  background: rgba(255, 253, 254, .92);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: 2px 3px 0 rgba(74, 43, 60, .18);
+}
+.rm3d-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 99px;
+  background: var(--yellow);
+  font-size: 10px;
+}
+.rm3d-count.alert { background: var(--pink-deep); color: #fff; animation: blinkDot .8s steps(2) infinite; }
+.ag3d-tag {
+  padding: 1px 7px;
+  border: 1.5px solid var(--ink);
+  border-radius: 99px;
+  background: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.ag3d-tag.selected { background: var(--yellow); }
+.ag3d-tag em { margin-left: 4px; font-style: normal; color: var(--ink-soft); font-weight: 500; }
+.flight3d-icon { font-size: 15px; line-height: 1; filter: drop-shadow(0 1px 1px rgba(74, 43, 60, .45)); }

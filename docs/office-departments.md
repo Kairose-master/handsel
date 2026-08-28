@@ -247,14 +247,90 @@ midpoint instead). Both are `pointer-events: none`: a flight is something to
 notice, not something to click — this room stays consistent with the
 inspect-only posture Phase 5 already established for multi-select.
 
-## What did NOT make it into phases 1–6
+## Phase 7 — a real R3F renderer, opt-in
+
+`app/(dashboard)/office/game3d/` is a second, semi-3D renderer for the exact
+same diorama — React Three Fiber / Three.js instead of DOM+CSS, an
+isometric orthographic camera instead of a `translate3d`/`scale` transform,
+procedural box geometry instead of sprite CSS. Nothing about the DATA layer
+changed to build it: `game/world.ts` (room/grid/prop layout),
+`game/live-engine.ts` (`LiveOffice`, the real-snapshot-driven tick/pathing
+loop), `game/zoom.ts` (`hotRoomOf`/`roomStatsOf`/`closeRoomIdFor`),
+`game/select.ts` (`MIN_SELECT_BOX_PX`, `selectionSummary`), and
+`lib/office-artifact-flights.ts` are all reused UNCHANGED — this phase is
+purely a second presentation layer over data that was already real.
+
+- `CameraRig.tsx` drives the camera BY HAND (`camera.position`/`lookAt`/
+  `zoom` set directly every frame from one lerped look-at point) rather
+  than through Drei's OrbitControls/MapControls. An earlier version used
+  MapControls for free user panning; its internal spherical-coordinate
+  reconstruction fought a per-frame externally-driven target and collapsed
+  the camera toward the origin after a few dozen frames — reproducible,
+  not worth chasing into a third-party controls library's internals for a
+  diorama that never needs free rotation or dollying anyway. The manual
+  version is the DOM renderer's own `camRef`/`targetRef` lerp, applied to a
+  real transform instead of a CSS one — provably correct because it's the
+  same technique already shipping. The trade: no free click-and-drag
+  panning yet (the three zoom tiers plus click-to-focus cover real
+  navigation without it) — a real gap, not a hidden one.
+- `RoomMeshes.tsx` builds each room from a floor plane and a wall ring with
+  real gaps at its real door tiles (one box per non-door boundary tile —
+  simple, and cheap enough at nine rooms not to need instancing yet), and a
+  Drei `<Html>` label reusing `roomStatsOf`'s exact count/alert badge — one
+  source of truth for what a room's badge says, two renderers drawing it.
+- `AgentAvatars.tsx` builds each agent from box primitives colored with its
+  real hire-time palette (`colorsFor`, shared with the DOM renderer). A
+  mesh's position/rotation is written directly inside its own `useFrame`
+  from the closed-over `Agent` object — never React state — because
+  `LiveOffice.tick()` (still running in `page.tsx`'s own
+  `requestAnimationFrame` loop, completely unchanged) mutates that exact
+  object in place every frame; the DOM renderer skipped React for its own
+  60fps path for the identical reason.
+- `ArtifactFlights3D.tsx` draws `lib/office-artifact-flights.ts`'s flights
+  as a dashed line plus a looping icon between two room centers — same
+  two-part treatment as the DOM renderer's `.artifact-line`/`.artifact-dot`.
+- Box multi-select still works, via a different mechanism than the DOM
+  renderer's coordinate inversion: `Vector3.project(camera)` turns each
+  agent's live world position into normalized device coordinates, which a
+  `SelectionBridge` component (living inside `<Canvas>`, where the real
+  camera object exists) exposes to the outer drag-handling code as a plain
+  hit-test function.
+- **A real Drei gotcha, found building this**: `<Html distanceFactor={N}>`
+  scales completely differently for an orthographic camera than a
+  perspective one — `objectScale()` returns `camera.zoom` directly for
+  orthographic cameras (not a distance-based fraction), so a
+  perspective-camera-shaped `distanceFactor` value multiplied by a zoom in
+  the 6–40 range blew every label up to `zoom * distanceFactor`× its real
+  size — the actual first broken render was a screen full of single
+  enormous letters, one room label rendered a thousand pixels wide. Fixed
+  by dropping `distanceFactor` entirely: without it Html renders at a
+  constant on-screen size regardless of camera zoom, which reads better for
+  small text labels anyway than having them shrink into illegibility at
+  `far` zoom.
+
+**Opt-in, not a replacement.** `office/page.tsx` renders either engine
+behind a "🧊 3D view" / "🖼️ Classic view" toggle (default: classic), both
+fed the identical `agents`/`selection`/`flights` props and both reporting
+picks through the identical callbacks — swapping engines is one ternary at
+the call site. The DOM renderer has six phases and a full pure-function test
+suite behind it, verified against a real account in earlier sessions; the
+3D renderer's rendering layer (as opposed to the data layer underneath it,
+which is the same code) has only been visually verified against mock data
+in a throwaway harness (this sandbox has no DB, so there was no way to
+watch it against a real account's actual roster before shipping). Real
+account traffic is deliberately its first real-data test — the toggle
+exists so that's a choice a user makes, not a risk shipped silently as
+"the" renderer.
+
+## What did NOT make it into phases 1–7
 
 Any RTS *command* — assign objective, move budget, hire — issued from a
 selection or a flight. Multi-select's own module (`select.ts`) is
 deliberately built so that adding a command later is a new, reviewable
 function that takes a `SelectionSummary`, not a change to the selection
 logic itself; the same is true of artifact flights, which never do
-anything beyond reporting what's already real.
+anything beyond reporting what's already real. Free click-and-drag panning
+in the 3D view (see Phase 7) is the other known gap.
 
 ## The grid
 

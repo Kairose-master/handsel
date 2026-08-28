@@ -45,7 +45,15 @@ import {
   type ConnectedOffice,
 } from '@/app/actions/office'
 import { setMcpWorker, disconnectMcpWorker } from '@/app/actions/webhook'
+import dynamic from 'next/dynamic'
 import OfficeWorld from './game/OfficeWorld'
+// R3F/Three.js diorama — code-split and client-only: three.js is a heavy
+// bundle nobody should pay for until they actually opt into the 3D view
+// (the toggle below defaults to the DOM renderer), and <Canvas> touches
+// WebGL/window during its first mount, which next/dynamic's ssr:false
+// keeps off the server render entirely rather than relying on Canvas's own
+// SSR guard.
+const OfficeWorld3D = dynamic(() => import('./game3d/OfficeWorld3D'), { ssr: false })
 import { LiveOffice, type Agent } from './game/live-engine'
 import type { Room } from './game/world'
 import type { OfficeTreasuryView, CompanyTreasuryView, CompanyGasHealth, ArtifactFlight } from '@/lib/office-world-data'
@@ -1439,6 +1447,14 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
   const [pollTrigger, setPollTrigger] = useState(0)
   const stageRef = useRef<HTMLDivElement | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  // R3F diorama is opt-in, not a replacement — it shares the exact same
+  // props/callbacks as the DOM renderer (both take agents/selection/
+  // flights and report the same picks back), so this toggle is the only
+  // thing that changes between them. Defaults to the DOM renderer, which
+  // has years of production traffic behind it; the 3D view is new and
+  // this sandbox has no real account data to test it against end-to-end,
+  // so real users are its first real-data test, by choice, not omission.
+  const [use3D, setUse3D] = useState(false)
 
   // Track the real state rather than assuming our own toggle won — Esc and
   // the browser's own control both exit without going through the button.
@@ -1559,6 +1575,9 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
           <p className="text-xs text-muted-foreground">{ceoLine || 'Loading your agents…'}</p>
         </div>
         <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => setUse3D((v) => !v)}>
+            {use3D ? '🖼️ Classic view' : '🧊 3D view'}
+          </Button>
           <Link href="/office/orders">
             <Button size="sm" variant="outline">
               Paper orders
@@ -1583,15 +1602,27 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
           style={{ height: 480 }}
           className="relative overflow-hidden rounded-lg border border-border [&:fullscreen]:h-screen [&:fullscreen]:rounded-none"
         >
-          <OfficeWorld
-            agents={agents}
-            selectedId={selected?.id ?? null}
-            selectedRoomId={selectedRoom?.id ?? null}
-            onSelect={handleSelectAgent}
-            onSelectRoom={handleSelectRoom}
-            onSelectMany={handleSelectMany}
-            flights={flights}
-          />
+          {use3D ? (
+            <OfficeWorld3D
+              agents={agents}
+              selectedId={selected?.id ?? null}
+              selectedRoomId={selectedRoom?.id ?? null}
+              onSelect={handleSelectAgent}
+              onSelectRoom={handleSelectRoom}
+              onSelectMany={handleSelectMany}
+              flights={flights}
+            />
+          ) : (
+            <OfficeWorld
+              agents={agents}
+              selectedId={selected?.id ?? null}
+              selectedRoomId={selectedRoom?.id ?? null}
+              onSelect={handleSelectAgent}
+              onSelectRoom={handleSelectRoom}
+              onSelectMany={handleSelectMany}
+              flights={flights}
+            />
+          )}
           <button
             type="button"
             onClick={toggleFullscreen}

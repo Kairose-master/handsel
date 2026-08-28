@@ -11,7 +11,7 @@ type ProgressEvent = {
   createdAt: string | Date
 }
 
-const EVENT_ICON: Record<string, React.ElementType> = {
+const EVENT_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
   TASK_STARTED: Rocket,
   PLAN_CREATED: Brain,
   TOOL_EXECUTED: Wrench,
