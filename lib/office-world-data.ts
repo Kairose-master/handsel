@@ -1239,4 +1239,176 @@ export const OFFICE_TEMPLATES: OfficeTemplate[] = [
       },
     ],
   },
+  {
+    // The marketing office, promoted from a hand-hired desk to a template —
+    // and shaped by the one thing this platform can add to marketing that a
+    // single copywriting model cannot: an ESCROW-ENFORCED claim check. Most
+    // marketing copy fails in exactly one way — claims stronger than their
+    // evidence — and most "review" of it is the author re-reading their own
+    // work. Here the copywriter's bounty is held until an independent agent
+    // rules on every factual claim, and a REVISE goes back to the copywriter
+    // with the note (the same revision round-trip the diligence desk uses).
+    // Hype dies in escrow, not in a style guide.
+    //
+    // The distributor's settlement split makes it a real agent-to-agent
+    // economy: when the launch kit settles, cuts of that bounty move
+    // on-chain to the copywriter and positioning analyst whose material it
+    // repackaged — royalties, not a metaphor.
+    id: 'growth-studio',
+    name: 'Growth Studio',
+    blurb:
+      'Marketing whose claims survive a fact check. One agent researches what is actually defensible about the ' +
+      'product, a copywriter turns it into launch copy, an independent claim red-team holds the copy’s escrow ' +
+      'until every factual statement is either sourced or clearly labeled aspiration, and a distributor packages ' +
+      'the approved copy per channel — paying the writers a cut when it settles.',
+    flowSummary:
+      'Positioning (researches, sources) → Copywriter (drafts) ⇄ Claim Red-Team (escrow-gated APPROVE/REVISE) → Distributor (channel kit; splits 15% to the copywriter, 10% to positioning).',
+    exampleScope:
+      'Handsel (https://ai-agent-credit-dashboard.vercel.app) — a labor market where AI agents hire, pay, and ' +
+      'extend credit to other AI agents: on-chain escrow, independent grading, pay-only-on-pass, a signed proof ' +
+      'per deliverable, and a credit score earned from real settled work. Audience: developers building AI agents ' +
+      'and people following the agent-economy space. Goal: a launch-style post and landing copy that make the ' +
+      'strongest claims the evidence actually supports, and not one claim more.',
+    scopeLabel: 'What are we promoting? (product, link, audience, goal — the more specific the better)',
+    roles: [
+      {
+        id: 'positioning',
+        name: 'Positioning Analyst',
+        blurb: 'Researches what is true and defensible about the product before anyone writes a word.',
+        colorIndex: 4,
+        customInstructions:
+          'You research positioning, not adjectives. Establish from real sources what the product verifiably does, ' +
+          'who else does something similar and how this differs, and which claims the evidence actually supports — ' +
+          'each with its source URL. Sort your findings into DEFENSIBLE (sourced, checkable), ASPIRATIONAL (the ' +
+          'product intends it but it is not demonstrated), and DO-NOT-CLAIM (contradicted or unverifiable). A ' +
+          'short list of strong defensible claims is worth more than a long list of maybes — downstream, a ' +
+          'red-team will strike anything you overstated.',
+        mcpHint: 'Pre-wired to Exa web search (no key needed).',
+        defaultConnector: {
+          label: 'Exa web search',
+          serverUrl: 'https://mcp.exa.ai/mcp',
+          toolName: 'web_search_exa',
+        },
+      },
+      {
+        id: 'copywriter',
+        name: 'Copywriter',
+        blurb: 'Writes the launch copy — every factual claim traceable to the positioning brief.',
+        colorIndex: 0,
+        customInstructions:
+          'You write marketing copy under one constraint that outranks style: every factual claim in your copy ' +
+          'must trace to a DEFENSIBLE finding in the positioning brief, and anything from its ASPIRATIONAL list ' +
+          'must read as intent ("built to", "designed for"), never as accomplished fact. Specific beats ' +
+          'superlative — "escrow releases only on a passing grade" sells harder than "revolutionary". Your copy ' +
+          'goes to an independent claim red-team that holds your bounty until it passes; a claim you cannot point ' +
+          'to a source for will come back to you with a note, so write as if every sentence will be checked, ' +
+          'because it will.',
+        mcpHint: 'None needed — this role works from the positioning brief, not live data of its own.',
+      },
+      {
+        id: 'claim-check',
+        name: 'Claim Red-Team',
+        blurb: 'Holds the copy’s escrow until every factual claim is sourced or clearly labeled aspiration.',
+        colorIndex: 7,
+        customInstructions:
+          'You review marketing copy adversarially, and you are the reason this desk is trustworthy. Go claim by ' +
+          'claim: a factual claim must trace to a DEFENSIBLE positioning finding (re-check the source yourself ' +
+          'when in doubt); an aspirational statement must be worded as intent, not fact; a superlative must be ' +
+          'either substantiated or struck. You are not editing for taste — voice and style are the copywriter’s ' +
+          'call, truthfulness is yours. Finding a claim to send back is a successful outcome of your job, not a ' +
+          'failure of politeness.',
+        mcpHint: 'The same web-search tool as Positioning — re-checking a source needs independent access to it.',
+        defaultConnector: {
+          label: 'Exa web search',
+          serverUrl: 'https://mcp.exa.ai/mcp',
+          toolName: 'web_search_exa',
+        },
+      },
+      {
+        id: 'distributor',
+        name: 'Distribution Planner',
+        blurb: 'Turns the approved copy into a per-channel launch kit — and pays the writers a cut when it settles.',
+        colorIndex: 8,
+        customInstructions:
+          'You package APPROVED copy for real channels — you never rewrite claims, only reshape length, tone and ' +
+          'format per channel. Produce a concrete launch kit: which channels, in what order, what each post says ' +
+          '(adapted from the approved copy, with each channel’s length and norms respected), and what to watch ' +
+          'to know if it worked. If the red-team’s review struck something, it stays struck in every variant — ' +
+          'reintroducing a rejected claim in a "shorter version" is the failure mode you exist to prevent.',
+        mcpHint: 'None needed — this role works from the approved upstream deliverables.',
+      },
+    ],
+    pipeline: [
+      {
+        roleId: 'positioning',
+        title: 'Positioning — what can we defensibly claim about {scope}',
+        brief:
+          'Research the product below with your search tool and produce a positioning brief:\n\n{scope}\n\n' +
+          'Sort every finding into DEFENSIBLE (with source URL), ASPIRATIONAL (intended, not demonstrated), or ' +
+          'DO-NOT-CLAIM (contradicted or unverifiable). Name the closest alternatives and the sharpest honest ' +
+          'differentiator. Do not write copy — write the ground truth copy will be held to.',
+        acceptanceCriteria:
+          'Every finding is sorted DEFENSIBLE / ASPIRATIONAL / DO-NOT-CLAIM; every DEFENSIBLE finding carries a ' +
+          'source URL; at least one named alternative is compared honestly.',
+        dependsOnRoleIds: [],
+        bountyWeight: 2,
+      },
+      {
+        roleId: 'copywriter',
+        title: 'Launch copy — claims no stronger than the evidence',
+        brief:
+          'Write the launch copy for the scope using the positioning brief above: a launch-style announcement post ' +
+          'and short landing-page copy (headline, subhead, three benefit blocks, call to action). Every factual ' +
+          'claim traces to a DEFENSIBLE finding; ASPIRATIONAL items may appear only worded as intent; DO-NOT-CLAIM ' +
+          'items appear nowhere. An independent red-team will check every sentence before your bounty releases.',
+        acceptanceCriteria:
+          'Contains a launch post and landing copy; every factual claim is traceable to a DEFENSIBLE positioning ' +
+          'finding; no DO-NOT-CLAIM item appears; aspirational statements are worded as intent, not accomplished fact.',
+        dependsOnRoleIds: ['positioning'],
+        bountyWeight: 2,
+      },
+      {
+        roleId: 'claim-check',
+        title: 'Claim check — hype dies in escrow',
+        brief:
+          'Review the launch copy above claim by claim. Reply APPROVE or REVISE on the first line with a one-line ' +
+          'reason. Look for: a factual claim with no DEFENSIBLE finding behind it, an aspirational statement ' +
+          'worded as accomplished fact, a struck or DO-NOT-CLAIM item smuggled back in, and a superlative with ' +
+          'nothing under it. If you send it back, quote the exact sentence at fault and say what wording the ' +
+          'evidence would support.',
+        acceptanceCriteria:
+          'Replies APPROVE or REVISE on the first line with a reason, and any REVISE quotes the exact sentence at ' +
+          'fault and the wording the evidence supports rather than asking for restraint in general.',
+        dependsOnRoleIds: ['copywriter'],
+        // The copy's escrow is held until this passes; a REVISE goes back to
+        // the copywriter with the note — up to MAX_REVISION_ROUNDS.
+        reviewOfRoleId: 'copywriter',
+        bountyWeight: 1,
+      },
+      {
+        roleId: 'distributor',
+        title: 'Launch kit — the approved copy, per channel',
+        brief:
+          'Package the copy above into a concrete launch kit: channels in order, the adapted post for each ' +
+          '(respecting each channel’s length and norms), and what to watch to know whether it worked. The copy ' +
+          'you received already survived an independent claim check — reshape its form per channel, never its ' +
+          'strength: no variant may state a claim more strongly than the copy does, and nothing absent from the ' +
+          'copy may be added as fact.',
+        acceptanceCriteria:
+          'Names concrete channels in a stated order with an adapted post for each; no variant strengthens a claim ' +
+          'beyond the upstream copy or adds a factual claim absent from it; ends with what to measure.',
+        // Only the copywriter — and that is already the approval gate: a
+        // reviewed step's output is RELEASED (lib/delegation.ts, doneOutputs)
+        // only when its reviewer APPROVEs, so this step cannot start, or see
+        // the copy, until the claim check passes. Depending on the review
+        // step itself would be a first-in-any-template edge for no added
+        // guarantee.
+        dependsOnRoleIds: ['copywriter'],
+        // Royalties, on-chain: when the kit settles, the writers whose
+        // material it repackaged get their cut of THIS bounty.
+        splitBpsByRoleId: { copywriter: 1500, positioning: 1000 },
+        bountyWeight: 1,
+      },
+    ],
+  },
 ]
