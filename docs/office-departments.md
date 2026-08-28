@@ -70,17 +70,43 @@ codebase, not partially, not under another name. See the exploration this
 phase started from if you need the full accounting of what's real vs.
 aspirational; don't invent a room for either without backend work first.
 
-## What did NOT make it into phase 1
+## Phase 2 — Treasury's real numbers
+
+Occupancy (who stands in the room) and the room's DISPLAYED numbers are two
+separate reads, on purpose. `lib/office-treasury.ts` fetches, on demand (the
+room is clicked, not polled with the roster — the reads are heavier: every
+office agent's wallet plus the market contract):
+
+- **This office** — every agent's real USDC and ETH balance, summed
+  (`lib/onchain/treasury.ts`'s existing `usdcBalanceOf`/`ethBalanceOfWei`,
+  the same reads `office_roster` already does per-agent). A wallet that
+  can't be read is `null`-and-counted (`walletReadErrors`), never folded
+  into the sum as zero — see `summarizeWalletReads`'s own tests for the
+  exact null/zero/partial rules.
+- **The whole market** — `escrowSolvency()` (owed/held/surplus) and the
+  protocol fee (`feeBps`/`flatFee`/`feeRecipient`/its unwithdrawn balance),
+  read straight from `LaborMarketV2` via three new wrapper functions in
+  `lib/onchain/labor-v2.ts` (`escrowSolvencyOf`, `totalEscrowedOf`,
+  `feeConfigOf`) — the ABI already had these; nothing called them from any
+  dashboard before this.
+
+The two scopes are never blended into one number, and the panel labels each
+one explicitly — "this office" vs. "the whole market, not just this
+office." Conflating them would be a quieter version of the environment-
+mislabeling bug this repo already shipped once (a number from the wrong
+scope reads as authoritative right up until someone acts on it).
+
+## What did NOT make it into phase 1/2
 
 Everything past "map current agent states to departments + semantic movement
-+ click-to-inspect" (the original brief's own phase-1 scope): semantic zoom
-levels beyond fit/close, artifact objects traveling between rooms
-independent of agent movement, RTS-style multi-select and commands, and a
-real platform-wide Treasury number (escrow solvency / total-escrowed reads
-exist on `LaborMarketV2` — `lib/onchain/labor-v2-artifact.ts`'s ABI — but
-aren't wired to any UI yet; today's Treasury room uses the per-agent credit-
-draw signal only). Add these as separate, reviewable slices — the taxonomy
-and grid are built to make each one additive, not a rewrite.
++ click-to-inspect, then Treasury's real numbers": semantic zoom levels
+beyond fit/close, artifact objects traveling between rooms independent of
+agent movement, RTS-style multi-select and commands, and a real platform-
+wide GAS number (each account's local-paymaster gas pool — `lib/local-
+paymaster.ts` — is per-user; there is no aggregate across accounts to read,
+so Treasury's gas figure today is this office's own agents' ETH, not "the
+platform's"). Add these as separate, reviewable slices — the taxonomy and
+grid are built to make each one additive, not a rewrite.
 
 ## The grid
 

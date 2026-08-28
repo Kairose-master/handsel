@@ -394,6 +394,74 @@ export async function withdrawableOf(who: Address): Promise<number> {
   return fromUnits(raw as bigint)
 }
 
+export type EscrowSolvency = { owedUsd: number; heldUsd: number; surplusUsd: number }
+
+/**
+ * The market's own solvency, straight from the contract: what it owes across
+ * every open job (`owed`), what it actually holds in USDC (`held`), and the
+ * difference (`surplus` — protocol fees accrued and not yet withdrawn, in a
+ * healthy market; negative would mean the contract cannot pay out everything
+ * it owes, which should be structurally impossible and is exactly why this
+ * is worth reading rather than assuming).
+ *
+ * `null` for "not configured" or "could not read" — never 0. A Treasury
+ * room reporting $0 owed because the RPC hiccuped would read as "the market
+ * is empty," which is a different, false claim from "we don't know."
+ */
+export async function escrowSolvencyOf(): Promise<EscrowSolvency | null> {
+  const address = onchainEnv.laborMarketAddress
+  if (!address) return null
+  try {
+    const [owed, held, surplus] = (await publicClient().readContract({
+      ...market(),
+      functionName: 'escrowSolvency',
+    })) as readonly [bigint, bigint, bigint]
+    return { owedUsd: fromUnits(owed), heldUsd: fromUnits(held), surplusUsd: fromUnits(surplus) }
+  } catch (error) {
+    console.error('[labor-v2] escrowSolvency read failed:', error)
+    return null
+  }
+}
+
+/** Every dollar currently escrowed across every open job on this market —
+ *  the number a "how much money is in flight right now" readout wants.
+ *  Redundant with `escrowSolvencyOf().owedUsd` (same contract state, one
+ *  fewer word returned) — kept as its own call so a caller that only needs
+ *  this one number doesn't decode the other two for nothing. */
+export async function totalEscrowedOf(): Promise<number | null> {
+  const address = onchainEnv.laborMarketAddress
+  if (!address) return null
+  try {
+    const raw = (await publicClient().readContract({ ...market(), functionName: 'totalEscrowed' })) as bigint
+    return fromUnits(raw)
+  } catch (error) {
+    console.error('[labor-v2] totalEscrowed read failed:', error)
+    return null
+  }
+}
+
+export type FeeConfig = { feeBps: number; flatFeeUsd: number; feeRecipient: Address }
+
+/** The protocol's own cut, and where it goes. Immutable on-chain per
+ *  docs/fee-withdrawal.md — nobody, including this platform, can change
+ *  `feeRecipient` after deploy, so reading it is always reading the truth,
+ *  never a stale config value. */
+export async function feeConfigOf(): Promise<FeeConfig | null> {
+  const address = onchainEnv.laborMarketAddress
+  if (!address) return null
+  try {
+    const [feeBps, flatFee, feeRecipient] = await Promise.all([
+      publicClient().readContract({ ...market(), functionName: 'feeBps' }),
+      publicClient().readContract({ ...market(), functionName: 'flatFee' }),
+      publicClient().readContract({ ...market(), functionName: 'feeRecipient' }),
+    ])
+    return { feeBps: Number(feeBps), flatFeeUsd: fromUnits(flatFee as bigint), feeRecipient: feeRecipient as Address }
+  } catch (error) {
+    console.error('[labor-v2] fee config read failed:', error)
+    return null
+  }
+}
+
 /** Collect it. Settlement credits rather than transfers, so without this call
  *  an agent's earnings are a number in a mapping and never tokens it holds. */
 export async function withdraw(agentId: string): Promise<Hex> {

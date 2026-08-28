@@ -29,6 +29,7 @@ import {
   visitOffice,
   myConnectedOffices,
   myOfficeWorld,
+  myOfficeTreasury,
   myOfficeSlots,
   officeHireAgents,
   officeRoster,
@@ -45,6 +46,8 @@ import {
 import { setMcpWorker, disconnectMcpWorker } from '@/app/actions/webhook'
 import OfficeWorld from './game/OfficeWorld'
 import { LiveOffice, type Agent } from './game/live-engine'
+import type { Room } from './game/world'
+import type { OfficeTreasuryView } from '@/lib/office-world-data'
 import {
   AGENT_TEMPLATES,
   OFFICE_TEMPLATES,
@@ -1269,10 +1272,101 @@ function ConnectorEditor({
   )
 }
 
+const fmtUsd = (n: number | null) => (n == null ? 'unknown' : `$${n.toFixed(2)}`)
+// Display only — matches lib/onchain/treasury.ts's own ethBalanceOf comment:
+// never round-trip a balance through a float to compute a transfer amount.
+// This never does; it only ever prints one.
+const fmtEth = (weiStr: string | null) => (weiStr == null ? 'unknown' : `${(Number(BigInt(weiStr)) / 1e18).toFixed(4)} ETH`)
+
+/** The Treasury room's detail panel — the one room in the diorama with real
+ *  money numbers to show, in two scopes that are never allowed to blend:
+ *  this office's own agent wallets, and the market contract's own solvency.
+ *  See lib/office-treasury.ts's header for why the split is load-bearing. */
+function TreasuryPanel({
+  room,
+  occupants,
+  view,
+  loading,
+  error,
+  onRefresh,
+}: {
+  room: Room
+  occupants: number
+  view: OfficeTreasuryView | null
+  loading: boolean
+  error: string | null
+  onRefresh: () => void
+}) {
+  return (
+    <div className="mt-3 rounded-md border border-border bg-muted/50 p-3 text-sm">
+      <div className="flex items-center justify-between">
+        <div className="font-semibold">
+          {room.icon} {room.name}
+        </div>
+        <Button type="button" size="sm" variant="ghost" onClick={onRefresh} disabled={loading} className="h-7 px-2 text-xs">
+          {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+        </Button>
+      </div>
+      <div className="text-muted-foreground">{occupants} here right now — an agent with an open credit draw.</div>
+      {error && <p className="mt-2 text-xs text-destructive">Could not read the chain just now: {error}</p>}
+      {view && (
+        <div className="mt-2 space-y-3">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">This office</div>
+            <dl className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1">
+              <dt className="text-muted-foreground">Agents / wallets</dt>
+              <dd className="text-right tabular-nums">
+                {view.office.agentCount} / {view.office.walletCount}
+              </dd>
+              <dt className="text-muted-foreground">USDC held</dt>
+              <dd className="text-right tabular-nums">{fmtUsd(view.office.usdcTotal)}</dd>
+              <dt className="text-muted-foreground">ETH held (gas)</dt>
+              <dd className="text-right tabular-nums">{fmtEth(view.office.ethTotalWei)}</dd>
+            </dl>
+            {view.office.walletReadErrors > 0 && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                {view.office.walletReadErrors} wallet read{view.office.walletReadErrors === 1 ? '' : 's'} failed this pass — totals above are a
+                floor, not the full picture.
+              </p>
+            )}
+          </div>
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              The whole market — not just this office
+            </div>
+            {view.market.solvency ? (
+              <dl className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1">
+                <dt className="text-muted-foreground">Owed across open jobs</dt>
+                <dd className="text-right tabular-nums">{fmtUsd(view.market.solvency.owedUsd)}</dd>
+                <dt className="text-muted-foreground">Held in the contract</dt>
+                <dd className="text-right tabular-nums">{fmtUsd(view.market.solvency.heldUsd)}</dd>
+                <dt className="text-muted-foreground">Surplus (accrued fees)</dt>
+                <dd className="text-right tabular-nums">{fmtUsd(view.market.solvency.surplusUsd)}</dd>
+              </dl>
+            ) : (
+              <p className="mt-1 text-xs text-muted-foreground">Could not read the market contract.</p>
+            )}
+            {view.market.fee && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Protocol fee {(view.market.fee.feeBps / 100).toFixed(2)}% + {fmtUsd(view.market.fee.flatFeeUsd)} flat · unwithdrawn balance{' '}
+                {fmtUsd(view.market.fee.balanceUsd)}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function OfficeWorldPanel({ slot }: { slot: number }) {
   const engineRef = useRef(new LiveOffice())
   const [agents, setAgents] = useState<Agent[]>([])
   const [selected, setSelected] = useState<Agent | null>(null)
+  const [selectedRoom, setSelectedRoom] = useState<Room | null>(null)
+  const [treasury, setTreasury] = useState<OfficeTreasuryView | null>(null)
+  const [treasuryLoading, setTreasuryLoading] = useState(false)
+  const [treasuryError, setTreasuryError] = useState<string | null>(null)
   const [ceoLine, setCeoLine] = useState('')
   const [hiring, setHiring] = useState(false)
   const [hiringTemplate, setHiringTemplate] = useState(false)
@@ -1308,6 +1402,9 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
     engineRef.current = new LiveOffice()
     setAgents([])
     setSelected(null)
+    setSelectedRoom(null)
+    setTreasury(null)
+    setTreasuryError(null)
     const poll = async () => {
       try {
         const snap = await myOfficeWorld(slot)
@@ -1326,6 +1423,40 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
       clearInterval(interval)
     }
   }, [slot, pollTrigger])
+
+  // Treasury is the one room with real numbers to fetch — on-chain reads
+  // across every agent wallet plus the market contract, too heavy to poll
+  // continuously alongside the roster snapshot. Loaded directly from the
+  // click handler (not a useEffect keyed on the selected room) because
+  // `ROOMS` is a module-level constant: clicking the same room twice passes
+  // the identical object reference, and a useEffect keyed on that reference
+  // would never re-fire on a second click — "click again to refresh" needs
+  // the fetch to run on every click, not on every reference CHANGE.
+  const loadTreasury = async () => {
+    setTreasuryLoading(true)
+    setTreasuryError(null)
+    try {
+      setTreasury(await myOfficeTreasury(slot))
+    } catch (error) {
+      console.error('[office] treasury read failed:', error)
+      setTreasuryError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setTreasuryLoading(false)
+    }
+  }
+
+  // One detail panel, one selection at a time: picking an agent clears any
+  // selected room and vice versa, so the panel below never has to decide
+  // which of two conflicting things to show.
+  const handleSelectAgent = (agent: Agent) => {
+    setSelectedRoom(null)
+    setSelected(agent)
+  }
+  const handleSelectRoom = (room: Room) => {
+    setSelected(null)
+    setSelectedRoom(room)
+    if (room.id === 'treasury') void loadTreasury()
+  }
 
   useEffect(() => {
     let raf = 0
@@ -1373,7 +1504,13 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
           style={{ height: 480 }}
           className="relative overflow-hidden rounded-lg border border-border [&:fullscreen]:h-screen [&:fullscreen]:rounded-none"
         >
-          <OfficeWorld agents={agents} selectedId={selected?.id ?? null} follow={false} onSelect={setSelected} />
+          <OfficeWorld
+            agents={agents}
+            selectedId={selected?.id ?? null}
+            follow={false}
+            onSelect={handleSelectAgent}
+            onSelectRoom={handleSelectRoom}
+          />
           <button
             type="button"
             onClick={toggleFullscreen}
@@ -1388,6 +1525,26 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
             <div className="font-semibold">{selected.name}</div>
             <div className="text-muted-foreground">{selected.status}</div>
           </div>
+        )}
+        {selectedRoom && selectedRoom.id !== 'treasury' && (
+          <div className="mt-3 rounded-md border border-border bg-muted/50 p-3 text-sm">
+            <div className="font-semibold">
+              {selectedRoom.icon} {selectedRoom.name}
+            </div>
+            <div className="text-muted-foreground">
+              {agents.filter((a) => a.deptId === selectedRoom.id).length} here right now.
+            </div>
+          </div>
+        )}
+        {selectedRoom?.id === 'treasury' && (
+          <TreasuryPanel
+            room={selectedRoom}
+            occupants={agents.filter((a) => a.deptId === 'treasury').length}
+            view={treasury}
+            loading={treasuryLoading}
+            error={treasuryError}
+            onRefresh={loadTreasury}
+          />
         )}
       </CardContent>
       <HireStaffDialog

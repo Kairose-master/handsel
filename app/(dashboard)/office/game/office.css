@@ -136,13 +136,10 @@
   box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .8), 4px 5px 0 rgba(74, 43, 60, .22);
 }
 .rm-ceo { background: #ffeff6; }
-.rm-meeting { background: #f4f0ff; }
 .rm-lounge { background: #eefaf4; }
-.rm.working { background: #fffaf0; }
-.rm.done { background: #f2fdf8; }
-.rm.approval { background: #fff0f7; }
-.rm.blocked { background: #f6f4fb; }
 .rm.hot { animation: roomPulse 1.6s ease-in-out infinite; }
+.rm-clickable { cursor: pointer; }
+.rm-clickable:hover { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .8), 4px 5px 0 rgba(74, 43, 60, .22), 0 0 0 2px var(--pink-deep); }
 @keyframes roomPulse {
   0%, 100% { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .8), 0 0 0 0 rgba(255, 95, 168, .5); }
   50% { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .8), 0 0 0 8px rgba(255, 95, 168, 0); }

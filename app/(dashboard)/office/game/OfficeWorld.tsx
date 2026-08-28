@@ -8,13 +8,14 @@
  */
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Agent } from './live-engine'
-import { CEO_ROOM, PROPS, ROOMS, TILE, WORLD_H, WORLD_W, roomOf } from './world'
+import { CEO_ROOM, PROPS, ROOMS, TILE, WORLD_H, WORLD_W, roomOf, type Room } from './world'
 
 type Props = {
   agents: Agent[]
   selectedId: string | null
   follow: boolean
   onSelect: (agent: Agent) => void
+  onSelectRoom?: (room: Room) => void
 }
 
 type Cam = { x: number; y: number; scale: number }
@@ -34,7 +35,10 @@ const AgentLayer = memo(function AgentLayer({
         <div
           key={agent.id}
           ref={(el) => register(agent.id, el)}
-          onPointerUp={() => onPick(agent)}
+          onPointerUp={(e) => {
+            e.stopPropagation() // an agent click is an agent pick, not also the room it stands in
+            onPick(agent)
+          }}
           style={
             {
               '--hair': agent.hair,
@@ -92,7 +96,7 @@ const PropLayer = memo(function PropLayer() {
   )
 })
 
-export default function OfficeWorld({ agents, selectedId, follow, onSelect }: Props) {
+export default function OfficeWorld({ agents, selectedId, follow, onSelect, onSelectRoom }: Props) {
   const viewportRef = useRef<HTMLDivElement>(null)
   const stageRef = useRef<HTMLDivElement>(null)
   const agentRefs = useRef(new Map<string, HTMLDivElement>())
@@ -145,6 +149,13 @@ export default function OfficeWorld({ agents, selectedId, follow, onSelect }: Pr
       if (!dragRef.current.moved) onSelect(agent)
     },
     [onSelect],
+  )
+
+  const onPickRoom = useCallback(
+    (room: Room) => {
+      if (!dragRef.current.moved) onSelectRoom?.(room)
+    },
+    [onSelectRoom],
   )
 
   useEffect(() => {
@@ -263,8 +274,9 @@ export default function OfficeWorld({ agents, selectedId, follow, onSelect }: Pr
           {ROOMS.map((room) => (
             <div
               key={room.id}
-              className={`rm rm-${room.kind} ${hotRoom === room.id ? 'hot' : ''}`}
+              className={`rm rm-${room.kind} ${hotRoom === room.id ? 'hot' : ''} ${onSelectRoom ? 'rm-clickable' : ''}`}
               style={{ left: room.x * TILE, top: room.y * TILE, width: room.w * TILE, height: room.h * TILE }}
+              onPointerUp={() => onPickRoom(room)}
             >
               <span className="rm-head">
                 <b>

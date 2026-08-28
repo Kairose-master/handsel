@@ -137,6 +137,29 @@ export type OfficeSnapshot = {
   staff: OfficeStaffMember[]
 }
 
+/**
+ * Client-safe shape of the Treasury room's real numbers — declared here
+ * (never imported from lib/office-treasury.ts or lib/onchain/labor-v2.ts
+ * directly) for the same reason OfficeSnapshot lives here rather than in
+ * office-world-server.ts: those files import @/lib/db, which drags in `pg`,
+ * which cannot be bundled for the browser. The 'use client' office page
+ * imports the TYPE from here and the VALUE from a server action
+ * (myOfficeTreasury) — never the other way around.
+ */
+export type OfficeTreasuryView = {
+  office: {
+    agentCount: number
+    walletCount: number
+    usdcTotal: number | null
+    ethTotalWei: string | null
+    walletReadErrors: number
+  }
+  market: {
+    solvency: { owedUsd: number; heldUsd: number; surplusUsd: number } | null
+    fee: { feeBps: number; flatFeeUsd: number; feeRecipient: string; balanceUsd: number | null } | null
+  }
+}
+
 const COLOR_PALETTE: Array<[string, string, string]> = [
   ['#6b3d34', '#fff3b0', '#ff8fc0'],
   ['#372b4a', '#c9b8ff', '#c9b8ff'],

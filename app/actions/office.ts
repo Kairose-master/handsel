@@ -22,6 +22,7 @@ import {
 } from '@/lib/office'
 import { MAX_OFFICE_SOURCE_CHARS } from '@/lib/office-source-brief'
 import { buildOfficeSnapshot } from '@/lib/office-world-server'
+import { buildOfficeTreasury, type OfficeTreasuryView } from '@/lib/office-treasury'
 import {
   MAX_OFFICE_SLOTS,
   type HireOfficeTemplateInput,
@@ -88,6 +89,18 @@ export async function myConnectedOffices(): Promise<ConnectedOffice[]> {
 export async function myOfficeWorld(slot: number): Promise<OfficeSnapshot> {
   const session = await requireUser()
   return buildOfficeSnapshot(session.user.id, session.user.name ?? 'Owner', slot)
+}
+
+/** The real Treasury numbers for one of my offices — this office's own
+ *  agent wallets summed, plus the market contract's own solvency and fee
+ *  balance (lib/office-treasury.ts). Fetched on demand (Treasury room
+ *  selected), not polled with the rest of the snapshot — on-chain balance
+ *  reads across every agent wallet plus the market contract are heavier
+ *  than the roster poll and only matter while someone is actually looking
+ *  at the room. */
+export async function myOfficeTreasury(slot: number): Promise<OfficeTreasuryView> {
+  const session = await requireUser()
+  return buildOfficeTreasury(session.user.id, slot)
 }
 
 /** Every office on this account (at least one — slot 1 always exists), for
