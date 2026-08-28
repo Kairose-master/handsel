@@ -7,7 +7,7 @@ import { after } from 'next/server'
 import { resolveCallbackAuth, callbackSecretMatches } from '@/lib/webhook'
 import {
   planDelegation,
-  postDelegationJobs,
+  confirmDelegationJobs,
   tickDelegation,
   subtaskViews,
   type DelegationSubtask,
@@ -178,27 +178,16 @@ async function opPlan(
 
 async function opConfirm(userId: string, body: { id?: unknown }) {
   const id = String(body?.id ?? '')
-  const [row] = await db.select().from(delegation).where(eq(delegation.id, id))
-  if (!row || row.userId !== userId) return Response.json({ error: 'Delegation not found' }, { status: 404 })
-  if (row.status !== 'planned') return Response.json({ error: 'Already confirmed' }, { status: 400 })
-
-  try {
-    const subtasks = await postDelegationJobs(row.primeAgentId, Number(row.budgetUsd), row.subtasks as DelegationSubtask[], row.autoVerify, row.task)
-    await db
-      .update(delegation)
-      .set({ status: 'posted', subtasks, error: null, updatedAt: new Date() })
-      .where(eq(delegation.id, id))
-    return Response.json({ posted: subtasks.length })
-  } catch (error) {
-    // Partial posting is possible — persist what DID post so a retried
-    // confirm skips those (same recovery contract as the server action).
-    const message = error instanceof Error ? error.message : String(error)
-    await db
-      .update(delegation)
-      .set({ subtasks: row.subtasks, error: message, updatedAt: new Date() })
-      .where(eq(delegation.id, id))
-    return Response.json({ error: message }, { status: 500 })
+  // The actual post — including the re-check-under-lease that makes a double
+  // click or a retried request post once, not twice — lives in
+  // lib/delegation.ts's confirmDelegationJobs, shared with the server action
+  // and the MCP tool of the same name.
+  const result = await confirmDelegationJobs(id, userId)
+  if (!result.ok) {
+    const notFound = /not found/i.test(result.error)
+    return Response.json({ error: result.error }, { status: notFound ? 404 : 400 })
   }
+  return Response.json({ posted: result.subtasks.length })
 }
 
 async function opDiscard(userId: string, body: { id?: unknown }) {

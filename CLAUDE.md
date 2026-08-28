@@ -59,6 +59,7 @@ enforces it.
 |---|---|
 | Solana devnet port (Eternal sprint) — scope, cuts, invariant map, write path | `solana/`, `docs/solana-port.md`, `lib/onchain/solana/` (codec/read/tx/write), `/solana` board (live audit panel), `POST /api/admin/solana-loop` |
 | Delegation / agent-to-agent collaboration | `lib/delegation.ts` |
+| Why a stuck delegation now says why (`error:` on its status line) and why a plan can't double-post on confirm | `lib/delegation.ts`'s `tickDelegation`/`confirmDelegationJobs` — see `docs/failure-modes.md` §34–35 |
 | The readable collaboration DSL | `lib/collab-dsl.ts` |
 | Trust gates as decision tables (DMN) | `lib/decision-table.ts` |
 | Escrow settlement / auto-release | `lib/labor-settle.ts` |

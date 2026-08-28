@@ -936,6 +936,81 @@ export async function postDelegationJobs(
   return subtasks
 }
 
+/** How long a confirm holds the floor. Covers posting every root subtask in
+ *  one plan — more on-chain calls than a single tick's wave advance, so
+ *  longer than DELEGATION_TICK_LEASE_MS; still short enough that a crashed
+ *  confirm doesn't strand a retry for long. */
+export const DELEGATION_CONFIRM_LEASE_MS = 3 * 60_000
+
+export type ConfirmDelegationResult =
+  | { ok: true; subtasks: DelegationSubtask[] }
+  | { ok: false; error: string }
+
+/**
+ * The one path that turns a reviewed plan into escrowed jobs — shared by the
+ * MCP tool and the `/delegate` server action, which used to each carry their
+ * own copy of "check status is 'planned', post, flip to 'posted'".
+ *
+ * That copy was a check-then-act race with no lock between the two halves:
+ * two confirms arriving close together (a double click, a client retry after
+ * a slow response, the same request replayed) could both read 'planned'
+ * before either write landed, and both would call postDelegationJobs — every
+ * root subtask escrowed TWICE. This is exactly the shape DELEGATION_TICK_LEASE_MS
+ * exists for on the tick side (docs/failure-modes.md §32): idempotence per
+ * call does not compose into idempotence under concurrency. Posting has the
+ * same property and had no lease at all.
+ *
+ * The lease is re-checked from a FRESH read of the row, not the one taken
+ * before acquiring it — the loser of the race must see whatever the winner
+ * already wrote, not stale 'planned' state captured before the lock.
+ */
+export async function confirmDelegationJobs(dlgId: string, ownerId: string): Promise<ConfirmDelegationResult> {
+  const [row] = await db.select().from(delegation).where(eq(delegation.id, dlgId))
+  if (!row || row.userId !== ownerId) return { ok: false, error: 'Delegation not found on this account.' }
+  if (row.status !== 'planned') return { ok: false, error: `Delegation is already ${row.status}.` }
+
+  const { acquireOpsLease, releaseOpsLease } = await import('@/lib/ops-lease')
+  const leaseName = `delegation-confirm:${dlgId}`
+  if (!(await acquireOpsLease(leaseName, DELEGATION_CONFIRM_LEASE_MS))) {
+    return { ok: false, error: 'This plan is already being confirmed (a concurrent request got there first) — check delegation_status in a moment rather than retrying.' }
+  }
+  // Declared outside the try: postDelegationJobs mutates this array's
+  // elements in place (st.onchainJobId, st.specHash) as each subtask posts,
+  // so even a mid-loop throw leaves partial progress sitting on this
+  // reference — the catch block below needs the same reference, not the
+  // pre-mutation snapshot.
+  let mutableSubtasks: DelegationSubtask[] | undefined
+  try {
+    const [fresh] = await db.select().from(delegation).where(eq(delegation.id, dlgId))
+    if (!fresh) return { ok: false, error: 'Delegation not found on this account.' }
+    if (fresh.status !== 'planned') return { ok: false, error: `Delegation is already ${fresh.status}.` }
+    mutableSubtasks = fresh.subtasks as DelegationSubtask[]
+    const subtasks = await postDelegationJobs(
+      fresh.primeAgentId,
+      Number(fresh.budgetUsd),
+      mutableSubtasks,
+      fresh.autoVerify,
+      fresh.task,
+    )
+    await db.update(delegation).set({ status: 'posted', subtasks, error: null, updatedAt: new Date() }).where(eq(delegation.id, dlgId))
+    return { ok: true, subtasks }
+  } catch (error) {
+    // Partial posting is possible (posted 2 of 4, then a tx failed) — persist
+    // what DID post so a retry skips those (postDelegationJobs's own
+    // onchainJobId !== undefined guard) and the status view stays truthful.
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(`[delegation] ${dlgId}: confirm failed:`, error)
+    await db
+      .update(delegation)
+      .set({ ...(mutableSubtasks ? { subtasks: mutableSubtasks } : {}), error: message, updatedAt: new Date() })
+      .where(eq(delegation.id, dlgId))
+      .catch((writeError) => console.error(`[delegation] ${dlgId}: could not even record the confirm failure:`, writeError))
+    return { ok: false, error: message }
+  } finally {
+    await releaseOpsLease(leaseName)
+  }
+}
+
 const VERIFIER_SYSTEM = `You are an independent reviewer for an AI-agent labor market. Judge whether the submitted output satisfies the acceptance criteria. Be strict but fair: the criteria are the contract — do not invent extra requirements, and do not excuse clear failures. Output ONLY a JSON object {"pass": boolean, "reason": "one sentence"}.`
 
 async function verifySubmission(
@@ -1151,6 +1226,23 @@ export async function tickDelegation(
   if (!(await acquireOpsLease(leaseName, DELEGATION_TICK_LEASE_MS))) return
   try {
     await tickDelegationLocked(row, jobsShared)
+  } catch (error) {
+    // Every caller of tickDelegation swallows what this throws
+    // (`.catch(() => {})`, by design — one delegation's fault must not stop
+    // the sweep over the rest). That used to mean an exception here left
+    // NO record anywhere: the delegation stayed 'posted' with every waiting
+    // subtask held back forever, and there was nothing to read to find out
+    // why — not a log line tied to the row, not this exact column, which
+    // has existed on the schema the whole time and was never once written.
+    // A stuck delegation should say why it's stuck.
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(`[delegation] ${row.id}: tick failed, holding at last good state:`, error)
+    await db
+      .update(delegation)
+      .set({ error: message, updatedAt: new Date() })
+      .where(eq(delegation.id, row.id))
+      .catch((writeError) => console.error(`[delegation] ${row.id}: could not even record the tick failure:`, writeError))
+    throw error
   } finally {
     await releaseOpsLease(leaseName)
   }
@@ -1748,6 +1840,7 @@ async function tickDelegationLocked(
         status: 'completed',
         subtasks,
         finalOutput: assembleFinalOutput(row.task, subtasks),
+        error: null,
         updatedAt: new Date(),
       })
       .where(eq(delegation.id, row.id))
@@ -1756,7 +1849,13 @@ async function tickDelegationLocked(
     await logPlatformEvent('DELEGATION_COMPLETED', `Delegated task finished — ${delivered}/${workSubtasks.length} parts delivered${integFailed}`)
     await recordOrchestrationOutcome(row, delivered, workSubtasks.length, Boolean(integration?.failed))
   } else if (changed) {
-    await db.update(delegation).set({ subtasks, updatedAt: new Date() }).where(eq(delegation.id, row.id))
+    await db.update(delegation).set({ subtasks, error: null, updatedAt: new Date() }).where(eq(delegation.id, row.id))
+  } else if (row.error) {
+    // Nothing moved this tick, but the function ran to completion without
+    // throwing — whatever tripped the LAST tick's catch above is no longer
+    // tripping. A stale reason is worse than none: it points at a fault that
+    // may already be gone.
+    await db.update(delegation).set({ error: null, updatedAt: new Date() }).where(eq(delegation.id, row.id))
   }
 }
 

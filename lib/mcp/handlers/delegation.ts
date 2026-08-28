@@ -14,7 +14,7 @@ import { agent, delegation } from '@/lib/db/schema'
 import { db } from '@/lib/db'
 import { desc, eq } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
-import { planDelegation, postDelegationJobs, tickDelegation, subtaskViews, delegationCost, type DelegationSubtask } from '@/lib/delegation'
+import { planDelegation, confirmDelegationJobs, tickDelegation, subtaskViews, delegationCost } from '@/lib/delegation'
 import { toolText, type McpToolContext } from '../rpc'
 
 export async function handleDelegation(
@@ -65,21 +65,10 @@ export async function handleDelegation(
     }
     case 'confirm_delegation': {
       const dlgId = String(args.delegation_id ?? '')
-      const [row] = await db.select().from(delegation).where(eq(delegation.id, dlgId))
-      if (!row || row.userId !== auth.userId) return toolText(id, 'Delegation not found on this account.', true)
-      if (row.status !== 'planned') return toolText(id, `Delegation is already ${row.status}.`, true)
-      try {
-        const subtasks = await postDelegationJobs(row.primeAgentId, Number(row.budgetUsd), row.subtasks as DelegationSubtask[], row.autoVerify)
-        await db
-          .update(delegation)
-          .set({ status: 'posted', subtasks, error: null, updatedAt: new Date() })
-          .where(eq(delegation.id, dlgId))
-        return toolText(id, `Posted ${subtasks.length} escrowed jobs. Track with delegation_status.`)
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        await db.update(delegation).set({ error: message, updatedAt: new Date() }).where(eq(delegation.id, dlgId))
-        return toolText(id, `Posting failed: ${message}`, true)
-      }
+      const result = await confirmDelegationJobs(dlgId, auth.userId)
+      return result.ok
+        ? toolText(id, `Posted ${result.subtasks.length} escrowed jobs. Track with delegation_status.`)
+        : toolText(id, result.error, true)
     }
     case 'delegation_status': {
       const rows = await db

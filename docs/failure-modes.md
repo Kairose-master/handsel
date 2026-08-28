@@ -1743,6 +1743,17 @@ different ids. `backfillJobIds` repairs a *lost* id; it does not merge a
 *duplicated* post, and the second escrow has to be cancelled or expired
 deliberately.
 
+**A second instance, same session, different half of the pipeline.** This fix
+covers subtasks that post through `tickDelegation`'s held-back wave — anything
+with `dependsOn`. A root subtask (no `dependsOn`) posts immediately from
+`postDelegationJobs`, called by `confirm_delegation`/`confirmDelegation`/
+`opConfirm` — three separate call sites, none of which this lease touches. A
+Research Desk's `Research` step (no dependencies — it's the first subtask in
+its pipeline) showed exactly the same symptom: two completed, paid jobs for
+one spec, this time absorbed by an auto-mining agent (§35) rather than
+stranded. Same invariant, uncovered surface — see §35's own fix
+(`confirmDelegationJobs`) rather than assuming this section's lease covers it.
+
 ## Diagnostic surfaces
 
 Check these before reading code:
@@ -1819,6 +1830,98 @@ the second urgent.
 the length of what the reviewer was actually handed before you check the work.
 And for any escrow that released "too easily", grep for a *second* path to the
 same release — the gate may be intact in the path you are reading.
+
+## 34. A stuck delegation had nowhere to say why it was stuck
+
+**Symptom.** A Research Desk delegation: Research completed and paid, Verification
+completed and paid, and "Final answer" simply never posted — across many minutes
+of polling `delegation_status`, with no error visible anywhere.
+
+**Root cause.** `tickDelegation` (`lib/delegation.ts`) is called from five
+places, and every one of them calls it as `tickDelegation(row, jobs).catch(() =>
+{})` — deliberately, so one delegation's fault can't stop the sweep over the
+rest. But that means an exception anywhere inside `tickDelegationLocked` —
+the whole per-subtask read/settle/advance body — left **no record at all**.
+Not a log tied to the row, not a flag anywhere a caller could see. The
+delegation just sat at `status: 'posted'` forever, indistinguishable from one
+that was progressing normally but slowly.
+
+The sharper detail: `delegation` already has an `error` column
+(`lib/db/schema.ts`), and the MCP status line already prints it —
+`` (row.error ? `\n   error: ${row.error}` : '') `` has been in
+`lib/mcp/handlers/delegation.ts` the whole time. Nothing ever wrote to it. The
+display existed; only the write did not.
+
+**Fix.** `tickDelegation` now catches around `tickDelegationLocked`, records
+the message to `delegation.error`, logs it server-side, and re-throws — so
+every existing caller keeps its current swallow-and-retry behavior exactly,
+and the lease still releases in `finally`. A clean tick clears a stale
+`error`: on the terminal-completion write, on the changed-subtasks write, and
+— because a tick that changes nothing this time may still be the first CLEAN
+tick after a fault that is now gone — as its own branch when neither of those
+ran but `row.error` was set. A stale reason pointing at a fault that already
+cleared is worse than none.
+
+This does not explain what threw on this particular run — that requires
+whatever server log line `console.error` produced, which this session's tools
+could not reach. What it fixes is that the NEXT time this happens, `error:` on
+the delegation's own status line says so, instead of a silence indistinguishable
+from "still working on it."
+
+**Where to look first.** A delegation subtask stuck on `…` with its
+dependencies all `Completed`: read `error:` on that delegation's line before
+assuming it's just slow. If it's still blank on a fresh poll, it really is
+either lag or a fault this fix doesn't yet name — check the newest tick's
+server log for that delegation id.
+
+## 35. Confirming a plan twice escrowed its root subtask twice
+
+**Symptom.** Chasing §34's stuck delegation surfaced a second, independent
+defect on the very first subtask: two on-chain jobs, both `Completed` and
+paid, for the identical `Research` spec. Unlike §32, this was not
+`tickDelegation`'s held-back wave — `Research` has no `dependsOn`, so it posts
+immediately at confirm time, not on a later tick.
+
+**Cause.** `postDelegationJobs` was called from three independent places —
+the MCP tool `confirm_delegation`, the `/delegate` server action's
+`confirmDelegation`, and `opConfirm` in the delegations API route — each
+carrying its own copy of the same four steps: read the row, check
+`status === 'planned'`, post every root subtask, write `status: 'posted'`.
+Nothing held the lock between the check and the act. Two confirms close
+together — a double click, a client retry after a slow response, the same
+request replayed — could both read `'planned'` before either write landed,
+and both would call `postDelegationJobs`, escrowing every root subtask twice.
+
+This is §32's exact invariant (`lib/ops-lease.ts`: idempotence per call does
+not compose into idempotence under concurrency) on a surface the §32 fix never
+touched. `postDelegationJobs` already tolerates a *sequential* retry — its own
+`onchainJobId !== undefined` guard skips a subtask that already posted — but
+that guard reads state written by an EARLIER completed call. It does nothing
+for two calls that both start from a read taken before either wrote anything.
+
+**Who caused it, this time.** Not established — this instance predates the
+session's involvement with this delegation. It may as easily have been a
+retried request from a flaky connection as two literal clicks; the fix does
+not depend on knowing which.
+
+**Fix.** `confirmDelegationJobs` in `lib/delegation.ts` — one function, shared
+by all three call sites, replacing each one's own copy. It takes a lease
+(`delegation-confirm:${dlgId}`, distinct from the tick's own
+`delegation-tick:${dlgId}` — different operations on the same row, no reason
+for one to block the other) and, critically, re-reads the row **after**
+acquiring it before checking `status`. The read used to decide "is this plan
+still takeable" must happen inside the lock; a read taken before acquiring it
+can already be stale by the time the lock is granted, which would have made
+the lease decorative. Partial-posting recovery is preserved exactly as it was
+in all three originals: `postDelegationJobs` mutates its subtask array in
+place as each one posts, so even a mid-loop throw leaves that progress on the
+reference the catch block writes back.
+
+**Where to look first.** Two `Completed` jobs for one root subtask's spec,
+with no `dependsOn` on either side (if `dependsOn` is present, that's §32
+instead — different wave, different fix). Check whether the delegation's
+`confirm` was ever called twice close together before assuming the wave
+scheduler duplicated it.
 
 ## Invariants these fixes encode
 
@@ -1923,3 +2026,13 @@ Keep these true, and this class of bug stays dead:
    must be payable, or workers learn that finding nothing means earning nothing.
    But the evidence has to be reproducible by the party paying — otherwise the
    cheapest way to earn is to describe a surface nobody opened (§27).
+32. **A caller that must swallow an error is not a reason to leave it
+   unrecorded.** `.catch(() => {})` at a call site is a decision about
+   propagation, not about memory — write the fault to something the next
+   read can see before deciding not to re-raise it further (§34).
+33. **A check-then-act guard belongs to the operation, not to whichever caller
+   got a lease first.** Three call sites carried three copies of "read
+   status, verify it's takeable, act" with nothing atomic between the read
+   and the act — fixing the lease in one and leaving the other two to keep
+   their own unguarded copy would have fixed nothing. Centralize the guarded
+   operation and have every caller go through it (§32, §35).

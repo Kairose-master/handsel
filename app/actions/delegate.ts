@@ -15,7 +15,7 @@ import { revalidatePath } from 'next/cache'
 import { after } from 'next/server'
 import {
   planDelegation,
-  postDelegationJobs,
+  confirmDelegationJobs,
   tickDelegation,
   subtaskViews,
   delegationCost,
@@ -80,39 +80,21 @@ export async function createDelegationPlan(input: {
 }
 
 /** Step 2: the owner confirmed the reviewed plan — post the jobs for real.
- *  This is the moment money moves (escrow per subtask, prime's wallet). */
+ *  This is the moment money moves (escrow per subtask, prime's wallet).
+ *
+ *  requireOwnedDelegation still gates entry (throws on missing/not-yours, this
+ *  action's existing contract); the actual post — including the re-check and
+ *  lease that make a double click or a retried request post once, not twice —
+ *  lives in lib/delegation.ts's confirmDelegationJobs, shared with the MCP
+ *  tool of the same name so the race isn't fixed in one caller and not the
+ *  other. */
 export async function confirmDelegation(id: string) {
   const userId = await requireUser()
-  const row = await requireOwnedDelegation(id, userId)
-  if (row.status !== 'planned') return { error: 'Already confirmed' }
-
-  try {
-    const subtasks = await postDelegationJobs(
-      row.primeAgentId,
-      Number(row.budgetUsd),
-      row.subtasks as DelegationSubtask[],
-      row.autoVerify,
-      row.task,
-    )
-    await db
-      .update(delegation)
-      .set({ status: 'posted', subtasks, error: null, updatedAt: new Date() })
-      .where(eq(delegation.id, id))
-    revalidatePath('/delegate')
-    return { posted: subtasks.length }
-  } catch (error) {
-    // Partial posting is possible (posted 2 of 4, then a tx failed) —
-    // persist what DID post so a retry of confirm skips those and the
-    // status view stays truthful. Error returned, not thrown: thrown
-    // server-action errors get masked in production.
-    const message = error instanceof Error ? error.message : String(error)
-    console.error('[confirmDelegation]', error)
-    await db
-      .update(delegation)
-      .set({ subtasks: row.subtasks, error: message, updatedAt: new Date() })
-      .where(eq(delegation.id, id))
-    return { error: message }
-  }
+  await requireOwnedDelegation(id, userId)
+  const result = await confirmDelegationJobs(id, userId)
+  if (!result.ok) return { error: result.error }
+  revalidatePath('/delegate')
+  return { posted: result.subtasks.length }
 }
 
 /** Discard a plan that was never confirmed (nothing was escrowed). */
