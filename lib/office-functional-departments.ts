@@ -12,14 +12,18 @@
  * These nine rooms are the functional read of the SAME underlying signals —
  * what real capability the agent is currently exercising: research,
  * synthesis/coordination, building, adversarial review, independent
- * verification, ledger writes, board discovery, treasury, or the market
- * boundary. Two are honest best-effort substitutes rather than the thing the
- * original design doc names, and both are called out where derived
- * (`memory`, `skills`) — see their comments below. Nothing here invents an
- * activity: every rule reads a real row (a live job, a delegation, an
- * agentEvent, a role id, an MCP tool binding). An agent that matches nothing
- * has no department, by design — see docFor(null): permanent identity and
- * current activity are different dimensions, and idle is not a room.
+ * verification, ledger writes, skill installs, treasury, or the market
+ * boundary. One (`memory`) is an honest best-effort substitute rather than
+ * the thing the original design doc names, called out where derived; the
+ * Skill Gym, which shipped as "reserved, not populated" for the same
+ * reason, is now driven by a REAL event — lib/agent-skills.ts's owner
+ * installs, which change what the agent is told on every job (skill
+ * EVALUATION still doesn't exist, and no rule here claims it). Nothing
+ * here invents an activity: every rule reads a real row (a live job, a
+ * delegation, an agentEvent, a skill install, a role id, an MCP tool
+ * binding). An agent that matches nothing has no department, by design —
+ * see docFor(null): permanent identity and current activity are different
+ * dimensions, and idle is not a room.
  */
 
 export type FunctionalDeptId =
@@ -46,7 +50,7 @@ export const FUNCTIONAL_DEPARTMENTS: Array<{
   { id: 'qa', name: 'QA / Red Team', short: 'qa.redteam', icon: '🧨', blurb: 'An adversarial peer review — attacking a deliverable before it settles.' },
   { id: 'verification', name: 'Verification Court', short: 'verify.court', icon: '⚖️', blurb: 'An independent peer review, or a job under dispute — evidence and verdict, not production.' },
   { id: 'memory', name: 'Memory Archive', short: 'memory.log', icon: '🗄️', blurb: 'Just settled a job — writing the outcome into the credit ledger.' },
-  { id: 'skills', name: 'Skill Gym', short: 'skill.gym', icon: '🏋️', blurb: 'Browsing ClawHub for a capability to bring in.' },
+  { id: 'skills', name: 'Skill Gym', short: 'skill.gym', icon: '🏋️', blurb: 'Just had a new ClawHub skill installed — a real change to what it is told on every job.' },
   { id: 'treasury', name: 'Treasury', short: 'treasury.vault', icon: '💰', blurb: 'Has an open credit draw against its score.' },
   { id: 'market', name: 'Market', short: 'market.gate', icon: '🌐', blurb: 'Watching the open board, or running outside the platform — the boundary with the outside economy.' },
 ]
@@ -74,6 +78,12 @@ export type AgentActivitySignals = {
   hasCreditDraw: boolean
   /** True iff this agent has an agentEvent row in the last 24h. */
   settledRecently: boolean
+  /** Name of a skill installed on this agent in the last 24h (lib/agent-
+   *  skills.ts — a real owner action that changes what the agent is told on
+   *  every subsequent job), or null. The signal that finally populates the
+   *  Skill Gym, which docs/office-departments.md carried as "reserved, not
+   *  populated" until installs became real. */
+  recentSkillInstall: string | null
   /** agent.autoMine */
   autoMine: boolean
   /** agent.runtimeType !== 'platform' */
@@ -120,6 +130,17 @@ export function departmentFor(s: AgentActivitySignals): DepartmentAssignment {
 
   if (s.hasCreditDraw) {
     return { deptId: 'treasury', statusLine: 'Has drawn credit.' }
+  }
+
+  // A real install event, not inferred activity: the owner installed a
+  // skill document that now joins this agent's every job brief
+  // (lib/agent-skills.ts → lib/agent-tasks.ts). Placed above the
+  // settled-recently fallback because acquiring a capability is the more
+  // specific fact about what just changed for this agent; both fade after
+  // 24h. Skill EVALUATION still doesn't exist — the line claims the
+  // install, nothing more.
+  if (s.recentSkillInstall) {
+    return { deptId: 'skills', statusLine: `Installed the "${s.recentSkillInstall}" skill.` }
   }
 
   // A best-effort substitute — no real memory-retrieval subsystem exists yet.

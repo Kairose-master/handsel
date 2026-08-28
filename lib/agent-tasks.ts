@@ -108,9 +108,28 @@ export async function runAgentTask(input: {
   const { agent, task, callbackUrl } = input
   const taskId = `task-${nanoid(10)}`
 
-  const effectiveTask = agent.customInstructions
-    ? `${agent.customInstructions}\n\n---\n\nTask: ${task}`
-    : task
+  // Installed skills (lib/agent-skills.ts) join the brief through the same
+  // choke point customInstructions always used. Skipped for 'mcp' runtime —
+  // there the task may collapse to a bare [mcp-query] argument for one
+  // external tool that follows no instructions, so an instruction document
+  // is noise by construction (see agent-skills.ts's header). A failed skill
+  // read degrades to "no skills" rather than failing the dispatch: skills
+  // enhance a job, they must never be the reason it didn't start.
+  let skillsBlock = ''
+  if (agent.runtimeType !== 'mcp') {
+    try {
+      const { skillsForPrompt, renderSkillsBlock } = await import('@/lib/agent-skills')
+      skillsBlock = renderSkillsBlock(await skillsForPrompt(agent.id))
+    } catch (error) {
+      console.error('[agent-tasks] skill read failed (dispatching without skills):', error)
+    }
+  }
+  const { composeEffectiveTask } = await import('@/lib/agent-skills')
+  const effectiveTask = composeEffectiveTask({
+    customInstructions: agent.customInstructions ?? null,
+    skillsBlock,
+    task,
+  })
 
   // 'local' agents are pull-based: their worker process polls
   // /api/worker/poll and claims queued tasks — we never connect to them

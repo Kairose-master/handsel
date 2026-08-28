@@ -45,6 +45,14 @@ import {
   type ConnectedOffice,
 } from '@/app/actions/office'
 import { setMcpWorker, disconnectMcpWorker } from '@/app/actions/webhook'
+import {
+  myAgentSkills,
+  installSkillOnAgent,
+  uninstallSkillFromAgent,
+  browseInstallableSkills,
+  type AgentSkillView,
+} from '@/app/actions/agent-skills'
+import type { ClawhubSkill } from '@/lib/clawhub'
 import dynamic from 'next/dynamic'
 import OfficeWorld from './game/OfficeWorld'
 // R3F/Three.js diorama — code-split and client-only: three.js is a heavy
@@ -1183,6 +1191,7 @@ function OfficeRosterPanel({ slot, refreshKey }: { slot: number; refreshKey: num
                     {a.mcpServerUrl ? 'Change connector' : 'Connect a tool'}
                   </button>
                 )}
+                <AgentSkillsSection agentId={a.id} />
               </div>
             ))}
           </div>
@@ -1279,6 +1288,161 @@ function ConnectorEditor({
           </Button>
         )}
       </div>
+    </div>
+  )
+}
+
+/**
+ * Installed skills for one agent — a real install, not a badge: the skill's
+ * full ClawHub document is snapshotted server-side and joins this agent's
+ * every job brief from the next dispatch on (lib/agent-skills.ts has the
+ * whole trust model). Self-contained per roster row: loads only when
+ * expanded, since most visits never open it.
+ */
+function AgentSkillsSection({ agentId }: { agentId: string }) {
+  const [open, setOpen] = useState(false)
+  const [skills, setSkills] = useState<AgentSkillView[] | null>(null)
+  const [max, setMax] = useState(5)
+  const [candidates, setCandidates] = useState<ClawhubSkill[] | null>(null)
+  const [pick, setPick] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const reload = () => {
+    myAgentSkills(agentId)
+      .then(({ skills, max }) => {
+        setSkills(skills)
+        setMax(max)
+        setError(null)
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : 'Could not load skills.'))
+  }
+
+  useEffect(() => {
+    if (!open) return
+    reload()
+    if (!candidates) {
+      browseInstallableSkills()
+        .then(setCandidates)
+        .catch((e) => {
+          // The install picker degrades; the installed list still works.
+          console.error('[office] clawhub browse failed:', e)
+          setCandidates([])
+        })
+    }
+    // reload/candidates deliberately not deps: this effect means "on expand".
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, agentId])
+
+  const install = async () => {
+    if (!pick) return
+    setBusy(true)
+    setError(null)
+    try {
+      await installSkillOnAgent(agentId, pick)
+      setPick('')
+      reload()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Install failed.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const uninstall = async (slug: string) => {
+    setBusy(true)
+    setError(null)
+    try {
+      await uninstallSkillFromAgent(agentId, slug)
+      reload()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Uninstall failed.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)} className="press mt-1 block text-xs text-primary hover:underline">
+        🏋️ Skills
+      </button>
+    )
+  }
+
+  const installedSlugs = new Set((skills ?? []).map((s) => s.slug))
+  const pickable = (candidates ?? []).filter((c) => !installedSlugs.has(c.slug))
+
+  return (
+    <div className="mt-2 space-y-2 rounded-md border border-border bg-secondary/40 p-2.5">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium">
+          Installed skills{skills ? ` — ${skills.length}/${max}` : ''}
+        </span>
+        <button type="button" onClick={() => setOpen(false)} className="press text-xs text-muted-foreground hover:underline">
+          Hide
+        </button>
+      </div>
+      {skills === null && !error && <p className="text-[11px] text-muted-foreground">Reading…</p>}
+      {skills?.length === 0 && (
+        <p className="text-[11px] text-muted-foreground">
+          None yet. An installed skill&apos;s full ClawHub document joins this agent&apos;s every job brief — it changes what
+          the agent is actually told to do, from the next job on.
+        </p>
+      )}
+      {skills?.map((s) => (
+        <div key={s.slug} className="flex items-start gap-2">
+          <div className="min-w-0 flex-1">
+            <a href={s.url} target="_blank" rel="noreferrer" className="text-xs font-medium hover:underline">
+              {s.name}
+            </a>
+            <span className="ml-1.5 font-mono text-[10px] text-muted-foreground">
+              {s.slug}
+              {s.version ? `@${s.version}` : ''}
+            </span>
+            {s.truncated && (
+              <span className="ml-1.5 rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">doc truncated</span>
+            )}
+            {s.summary && <p className="truncate text-[11px] text-muted-foreground">{s.summary}</p>}
+          </div>
+          <button
+            type="button"
+            onClick={() => uninstall(s.slug)}
+            disabled={busy}
+            className="press text-xs text-muted-foreground hover:text-destructive"
+            aria-label={`Uninstall ${s.name}`}
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      ))}
+      <div className="flex gap-2">
+        <select
+          aria-label="Skill to install"
+          value={pick}
+          onChange={(e) => setPick(e.target.value)}
+          className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-xs"
+        >
+          <option value="">
+            {candidates === null ? 'Loading ClawHub…' : pickable.length === 0 ? 'No installable skills found' : 'Pick a ClawHub skill…'}
+          </option>
+          {pickable.map((c) => (
+            <option key={c.slug} value={c.slug}>
+              {c.name}
+              {c.version ? ` (${c.version})` : ''}
+            </option>
+          ))}
+        </select>
+        <Button type="button" size="sm" onClick={install} disabled={busy || !pick || (skills !== null && skills.length >= max)}>
+          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Install'}
+        </Button>
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        Installing snapshots the skill&apos;s document as it is today — a later ClawHub edit never changes this agent
+        until you reinstall. Skills apply on every runtime except MCP-wired agents, whose external tool follows no
+        instructions.
+      </p>
+      {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   )
 }

@@ -80,6 +80,7 @@ enforces it.
 | On-chain reads/writes | `lib/onchain/*` |
 | DeFi sandbox (collateral→debt) | `lib/mini-vault.ts`, `contracts/MiniVault.sol` |
 | Bring any external MCP agent in as a worker | `lib/mcp-client.ts`, `docs/external-agents.md` |
+| Install a ClawHub skill onto an agent (document snapshot → every job brief) | `lib/agent-skills.ts`, `app/actions/agent-skills.ts`, Phase 11 in `docs/office-departments.md` |
 | The office diorama — space=function, not status (9 rooms, real signals, no fabricated activity); two renderers (DOM/CSS default, R3F/Three.js opt-in toggle) share the same data layer | `lib/office-functional-departments.ts`, `app/(dashboard)/office/game/`, `app/(dashboard)/office/game3d/`, `docs/office-departments.md` |
 | Real Treasury numbers (per-office room + account-wide Company HQ gas/USDC HUD) | `lib/office-treasury.ts`, `lib/company-treasury.ts`, `CompanyHqBar` in `app/(dashboard)/office/page.tsx` |
 | **Which real MCP servers actually work as workers** | **`docs/office-connectors.md`** — the four probed, the ones rejected and why, and the measurement behind `[mcp-query]` |

@@ -125,6 +125,16 @@ export async function buildOfficeSnapshot(userId: string, ownerName: string, slo
     return new Map<string, string>()
   })
 
+  // Skill Gym's signal: a real install in the last 24h (lib/agent-skills.ts).
+  // Same failure posture as every other gather here — an unreadable table
+  // means the signal is absent this pass, never a broken page.
+  const recentSkillInstalls = await import('@/lib/agent-skills')
+    .then((m) => m.recentSkillInstallByAgentIds(agentIds, 24 * 60 * 60 * 1000))
+    .catch((error) => {
+      console.error('[office-world] skill-install read failed:', error)
+      return new Map<string, string>()
+    })
+
   const deptHasLead = new Set<string>()
   const staff: OfficeStaffMember[] = myAgents.map((a) => {
     const signals: AgentActivitySignals = {
@@ -135,6 +145,7 @@ export async function buildOfficeSnapshot(userId: string, ownerName: string, slo
       isDelegationPrime: activeDelegationAgents.has(a.id),
       hasCreditDraw: openDrawAgents.has(a.id),
       settledRecently: settledTodayAgents.has(a.id),
+      recentSkillInstall: recentSkillInstalls.get(a.id) ?? null,
       autoMine: Boolean(a.autoMine),
       isExternalRuntime: Boolean(a.runtimeType && a.runtimeType !== 'platform'),
     }

@@ -26,15 +26,16 @@ Mining room" regardless of what they actually did. Space communicated
 | QA / Red Team | An office-scoped peer-review job whose role id matches `/red.?team\|adversarial\|attack/i`. |
 | Verification Court | A disputed job (highest priority of all nine), or an office-scoped peer-review job that ISN'T red-team-shaped. |
 | Memory Archive | An `agentEvent` row in the last 24h, with nothing more specific live. **Best-effort substitute** — see below. |
-| Skill Gym | Defined on the floor plan; **nothing populates it today** — no skill install/eval subsystem exists (see below). |
+| Skill Gym | A ClawHub skill installed on this agent in the last 24h (`lib/agent-skills.ts`) — a real owner action that changes what the agent is told on every subsequent job. Populated for real since Phase 11; **evaluation still doesn't exist** (see below). |
 | Treasury | Has ever drawn against its own credit line (`creditTransaction.fromAgentId`). |
 | Market | `autoMine`, or a non-`platform` `runtimeType` — the boundary with the outside economy. |
 
 Priority order (most specific/urgent wins, exactly like the taxonomy it
 replaces): disputed → office review (QA or Verification, by role) → live job
 (Research or Engineering) → delegation prime (Strategy) → credit draw
-(Treasury) → recent settlement (Memory) → autoMine/external (Market) → no
-department at all (idle — the Lounge room, not one of the nine).
+(Treasury) → recent skill install (Skill Gym) → recent settlement (Memory) →
+autoMine/external (Market) → no department at all (idle — the Lounge room,
+not one of the nine).
 
 `departmentFor()` in `lib/office-functional-departments.ts` is the single pure
 function that decides this — unit-tested (`tests/office-functional-
@@ -45,10 +46,10 @@ rows, `agent_office_slot.role_id` via the new `roleIdsByAgentId`) and hands
 them to the pure function. Adding a tenth room or changing a rule means
 editing that one file and its tests — never the rendering layer.
 
-## Two honest substitutes, not the real thing
+## One honest substitute, and one room that graduated
 
-Two rooms exist on the floor plan because the redesign brief asked for them,
-and **neither has the backend it names** as of this phase:
+Two rooms shipped in Phase 1 with less backend than their names claimed,
+each labeled as such. One is still a substitute; the other became real:
 
 - **Memory Archive** wants "memory retrieval, precedent search, invariant
   extraction." None of that exists. What's real is the credit-scoring event
@@ -57,18 +58,17 @@ and **neither has the backend it names** as of this phase:
   *"wrote to the credit ledger,"* never "retrieved." If a real memory
   subsystem is built later, this room is where it plugs in; until then it
   shows a true, smaller thing rather than a false, bigger one.
-- **Skill Gym** wants skill discovery/install/evaluation. Only discovery
-  exists (`lib/clawhub.ts`, read-only registry browsing), and it isn't wired
-  into agent activity at all — no agent's *current function* is ever "in"
-  Skill Gym today. The room is reserved, not populated. Populating it
-  honestly needs either wiring ClawHub browsing into a real event, or
-  building the skill-install/eval backend the brief actually describes.
+- **Skill Gym** shipped as "reserved, not populated" — discovery existed
+  (`lib/clawhub.ts`, read-only) and nothing else. Since Phase 11 (below),
+  skill INSTALLATION is real: an owner installs a ClawHub skill's actual
+  document onto their agent, that document joins the agent's every job
+  brief, and the install event is what places the agent in this room.
+  Skill **evaluation** (did the install measurably improve outcomes?) still
+  does not exist, and nothing in the room's copy claims it does.
 
-Two other things the original design brief named — OmniRoute (model routing)
-and true skill installation/evaluation — do not exist anywhere in this
-codebase, not partially, not under another name. See the exploration this
-phase started from if you need the full accounting of what's real vs.
-aspirational; don't invent a room for either without backend work first.
+OmniRoute (model routing), named in the original design brief, still does
+not exist anywhere in this codebase, not partially, not under another name —
+don't invent a room for it without backend work first.
 
 ## Phase 2 — Treasury's real numbers
 
@@ -462,6 +462,57 @@ about, not a generic "💡 idea" glyph doing no real labeling. A bubble
 remounts (`key={agent.speech}`) and replays its pop-in animation whenever
 the underlying text actually changes — genuinely new content gets a fresh
 bubble, not a silently-updated one.
+
+## Phase 11 — skill installs that actually change the agent
+
+The feature the Skill Gym waited for. `lib/agent-skills.ts` (its header is
+the full spec — trust model included) lets an owner install a ClawHub
+skill onto one of their own agents, and makes the install REAL through one
+verified fact: ClawHub's detail API (`GET /api/v1/skills/{slug}`) returns
+the skill's complete instruction document (the SKILL.md), confirmed
+against the live API before any code was written. Install snapshots that
+document into a self-migrating `agent_skill` table (the
+`agent_office_slot` raw-SQL pattern), and `lib/agent-tasks.ts`'s
+`runAgentTask` injects every installed skill into the agent's effective
+task text — through the same single choke point `customInstructions`
+always used, which every runtime's dispatch already reads. From the next
+job on, the agent is literally told different things. That is the line
+between a capability and a badge.
+
+The composition is pinned, not vibes: `composeEffectiveTask` is pure and
+its no-skills output is byte-identical to the old inline
+`customInstructions` format (tests assert the exact string), so every
+pre-existing agent dispatches exactly as before. `renderSkillsBlock` is
+pure too — names the authority ("this agent's owner installed"), pins each
+skill `slug@version`, and discloses any truncation in platform-authored
+text (`lib/brief-excerpt.ts`'s rule: silent cuts are the defect).
+
+Deliberate boundaries, each stated where it's enforced:
+
+- **Owner-only**: every mutating call re-checks `agent.userId` — peers and
+  requesters cannot install onto your agent. The consent model is Claude's
+  own skill model: installing IS granting instruction power, and the
+  explicit install action is the gate.
+- **Snapshot-at-install**: the stored document is the one the owner
+  installed. Upstream ClawHub edits never silently change an agent;
+  reinstalling is the only upgrade path, and it is again an owner action.
+- **Bounded**: 24,000 chars per skill (cut disclosed), 5 skills per agent —
+  the brief cannot grow without bound.
+- **`mcp` runtime excluded**: that dispatch path may reduce the task to a
+  bare `[mcp-query]` argument for an external tool that follows no
+  instructions — injecting a document there is noise by construction.
+- **Degrades, never blocks**: a failed skill-table read at dispatch logs
+  and sends the task without skills. Skills enhance a job; they are never
+  the reason it didn't start.
+
+The office UI (`AgentSkillsSection` in the Staff & connectors roster)
+installs/uninstalls per agent with a ClawHub picker; the diorama places an
+agent in the Skill Gym for 24h after a real install
+(`recentSkillInstall` in `departmentFor`'s cascade, above the
+settled-recently fallback, below money/job signals — tests pin the
+ordering). Still NOT built, still not claimed: skill evaluation. Whether
+an installed skill improves pass rate is a settled-outcomes-per-skill
+question this phase does not answer, and no status line pretends to.
 
 ## The grid
 

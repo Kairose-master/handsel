@@ -9,6 +9,7 @@ const base: AgentActivitySignals = {
   isDelegationPrime: false,
   hasCreditDraw: false,
   settledRecently: false,
+  recentSkillInstall: null,
   autoMine: false,
   isExternalRuntime: false,
 }
@@ -139,6 +140,32 @@ describe('departmentFor — priority order', () => {
 
   it('a credit draw outranks having settled recently', () => {
     expect(departmentFor({ ...base, hasCreditDraw: true, settledRecently: true }).deptId).toBe('treasury')
+  })
+
+  it('a recent skill install, nothing else live, goes to the Skill Gym — the room is finally populated by a real event', () => {
+    const a = departmentFor({ ...base, recentSkillInstall: 'PDF Toolkit' })
+    expect(a.deptId).toBe('skills')
+    expect(a.statusLine).toContain('PDF Toolkit')
+    // The line claims the install only — evaluation doesn't exist, so no
+    // "trained"/"improved"/"mastered" language may sneak in.
+    expect(a.statusLine.toLowerCase()).not.toMatch(/train|improv|master|evaluat/)
+  })
+
+  it('a skill install outranks the settled-recently fallback (more specific fact about what changed)', () => {
+    expect(departmentFor({ ...base, recentSkillInstall: 'X', settledRecently: true }).deptId).toBe('skills')
+  })
+
+  it('a credit draw outranks a skill install — money state beats capability news', () => {
+    expect(departmentFor({ ...base, recentSkillInstall: 'X', hasCreditDraw: true }).deptId).toBe('treasury')
+  })
+
+  it('a live job outranks a skill install', () => {
+    const s: AgentActivitySignals = {
+      ...base,
+      recentSkillInstall: 'X',
+      jobs: [{ status: 'Accepted', specHash: 'h1', repoJob: false }],
+    }
+    expect(departmentFor(s).deptId).toBe('engineering')
   })
 
   it('settled recently, nothing else live, goes to Memory Archive', () => {
