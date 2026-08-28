@@ -1408,6 +1408,7 @@ function AgentSkillsSection({ agentId }: { agentId: string }) {
               <span className="ml-1.5 rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">doc truncated</span>
             )}
             {s.summary && <p className="truncate text-[11px] text-muted-foreground">{s.summary}</p>}
+            {s.eval && <p className="font-mono text-[10px] tabular-nums text-muted-foreground">{skillEvalLine(s.eval)}</p>}
           </div>
           <button
             type="button"
@@ -1444,11 +1445,25 @@ function AgentSkillsSection({ agentId }: { agentId: string }) {
       <p className="text-[11px] text-muted-foreground">
         Installing snapshots the skill&apos;s document as it is today — a later ClawHub edit never changes this agent
         until you reinstall. Skills apply on every runtime except MCP-wired agents, whose external tool follows no
-        instructions.
+        instructions. Graded numbers compare independently graded outcomes before vs. after the install —
+        correlation across time, not causation, and skills installed close together share an after-window.
       </p>
       {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   )
+}
+
+/** One compact line for a skill's before/after graded record — counts are
+ *  always shown; the delta only when both windows clear the sample gate
+ *  (lib/skill-eval.ts, whose header carries the caveats the panel repeats). */
+function skillEvalLine(e: NonNullable<AgentSkillView['eval']>): string {
+  const w = (s: { passed: number; total: number }) => `${s.passed}/${s.total}`
+  const base = `graded ${w(e.before)} before · ${w(e.after)} after`
+  if (e.verdict === 'measured' && e.deltaPoints !== null) {
+    const sign = e.deltaPoints > 0 ? '+' : ''
+    return `${base} · Δ${sign}${e.deltaPoints.toFixed(1)}pt`
+  }
+  return `${base} — need ≥${e.minPerWindow} each side for a comparison`
 }
 
 /**

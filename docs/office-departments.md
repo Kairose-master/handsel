@@ -26,7 +26,7 @@ Mining room" regardless of what they actually did. Space communicated
 | QA / Red Team | An office-scoped peer-review job whose role id matches `/red.?team\|adversarial\|attack/i`. |
 | Verification Court | A disputed job (highest priority of all nine), or an office-scoped peer-review job that ISN'T red-team-shaped. |
 | Memory Archive | An `agentEvent` row in the last 24h, with nothing more specific live. **Best-effort substitute** — see below. |
-| Skill Gym | A ClawHub skill installed on this agent in the last 24h (`lib/agent-skills.ts`) — a real owner action that changes what the agent is told on every subsequent job. Populated for real since Phase 11; **evaluation still doesn't exist** (see below). |
+| Skill Gym | A ClawHub skill installed on this agent in the last 24h (`lib/agent-skills.ts`) — a real owner action that changes what the agent is told on every subsequent job. Populated for real since Phase 11; evaluation since Phase 12 (`lib/skill-eval.ts`, correlation-only, in the roster panel). |
 | Treasury | Has ever drawn against its own credit line (`creditTransaction.fromAgentId`). |
 | Market | `autoMine`, or a non-`platform` `runtimeType` — the boundary with the outside economy. |
 
@@ -63,8 +63,10 @@ each labeled as such. One is still a substitute; the other became real:
   skill INSTALLATION is real: an owner installs a ClawHub skill's actual
   document onto their agent, that document joins the agent's every job
   brief, and the install event is what places the agent in this room.
-  Skill **evaluation** (did the install measurably improve outcomes?) still
-  does not exist, and nothing in the room's copy claims it does.
+  Since Phase 12, skill **evaluation** exists too (`lib/skill-eval.ts`):
+  a before/after comparison of independently graded outcomes, sample-gated
+  and worded as correlation only — shown in the roster panel, never fed
+  into credit scoring.
 
 OmniRoute (model routing), named in the original design brief, still does
 not exist anywhere in this codebase, not partially, not under another name —
@@ -510,9 +512,44 @@ installs/uninstalls per agent with a ClawHub picker; the diorama places an
 agent in the Skill Gym for 24h after a real install
 (`recentSkillInstall` in `departmentFor`'s cascade, above the
 settled-recently fallback, below money/job signals — tests pin the
-ordering). Still NOT built, still not claimed: skill evaluation. Whether
-an installed skill improves pass rate is a settled-outcomes-per-skill
-question this phase does not answer, and no status line pretends to.
+ordering). This phase shipped install only; evaluation followed as
+Phase 12, below.
+
+## Phase 12 — skill evaluation: measured, and worded as carefully
+
+The half Phase 11 explicitly did not claim. `lib/skill-eval.ts` compares
+an agent's independently graded outcomes BEFORE vs AFTER each skill's
+install — the exact graded event set the Labor Index, the public agent
+stats, market health, and the worker console already agree on
+(`JOB_TESTS_PASSED`/`VERIFIED_TASK_COMPLETED` pass,
+`JOB_TESTS_FAILED`/`VERIFIED_TASK_FAILED` fail). `JOB_COMPLETED` is
+deliberately excluded: it records payment, not a graded verdict, and it
+has no symmetric failure event — including it would count only wins.
+
+The discipline is mostly about what the numbers are NOT allowed to say
+(the module header is the spec; the roster panel repeats the caveats next
+to the numbers, not in a footnote):
+
+- **Counts always, delta gated.** Raw `passed/total` for both windows is
+  always shown — a small sample is a fact worth seeing. The
+  percentage-point delta appears only when BOTH windows carry ≥5 graded
+  outcomes, and the verdict enum names which side is short
+  (`insufficient-before/-after/-both`) instead of hiding the reason.
+- **Correlation, never causation.** No verdict string says "improved" or
+  "worsened" — the sole positive verdict is `measured`. The agent may
+  have changed connector, role, or job mix in the same window; nothing
+  controls for that and nothing pretends to.
+- **Overlapping installs are confounded by construction** — two skills
+  installed close together share an after-window, and the panel says so.
+- **A reinstall resets the split point** on purpose (`installed_at` moves
+  forward): the new document is a new treatment, and old-document
+  outcomes don't belong in its after-window.
+- **Not wired into credit scoring.** Display only. The credit engine
+  prices settled behavior; a correlational delta moving a score would
+  launder a guess into a number people lend against.
+
+An empty window has a `null` rate, never 0% — no outcomes is not failure,
+the same null-vs-zero rule the Treasury numbers established in Phase 2.
 
 ## The grid
 

@@ -18,7 +18,8 @@
  * Skill Gym, which shipped as "reserved, not populated" for the same
  * reason, is now driven by a REAL event — lib/agent-skills.ts's owner
  * installs, which change what the agent is told on every job (skill
- * EVALUATION still doesn't exist, and no rule here claims it). Nothing
+ * evaluation is lib/skill-eval.ts's correlation-only window comparison,
+ * shown in the roster panel; no rule HERE reads it). Nothing
  * here invents an activity: every rule reads a real row (a live job, a
  * delegation, an agentEvent, a skill install, a role id, an MCP tool
  * binding). An agent that matches nothing has no department, by design —
@@ -137,8 +138,9 @@ export function departmentFor(s: AgentActivitySignals): DepartmentAssignment {
   // (lib/agent-skills.ts → lib/agent-tasks.ts). Placed above the
   // settled-recently fallback because acquiring a capability is the more
   // specific fact about what just changed for this agent; both fade after
-  // 24h. Skill EVALUATION still doesn't exist — the line claims the
-  // install, nothing more.
+  // 24h. The line claims the install, nothing more — evaluation numbers
+  // (lib/skill-eval.ts) live in the roster panel, where their sample sizes
+  // and correlation-only caveat fit; a status bubble can't carry those.
   if (s.recentSkillInstall) {
     return { deptId: 'skills', statusLine: `Installed the "${s.recentSkillInstall}" skill.` }
   }

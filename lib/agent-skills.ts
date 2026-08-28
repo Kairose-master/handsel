@@ -42,9 +42,12 @@
  *    silent truncation is the defect), and installs per agent are capped,
  *    so the prompt cannot grow without bound.
  *
- * What still does NOT exist: skill *evaluation* (does an installed skill
- * measurably improve pass rate?). That needs settled-job outcome data per
- * skill and is not built; nothing here claims it is.
+ * Evaluation lives next door in lib/skill-eval.ts: a before/after window
+ * comparison of the agent's independently graded outcomes, split at
+ * installed_at, delta gated on sample size, worded as correlation only —
+ * its header carries the caveats. Reinstalling moves installed_at forward
+ * on purpose: the new document is a new treatment and its "after" window
+ * starts clean.
  */
 import { pool, db } from '@/lib/db'
 import { agent } from '@/lib/db/schema'
