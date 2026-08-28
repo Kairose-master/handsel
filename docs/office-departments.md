@@ -203,13 +203,58 @@ same "one detail panel at a time" rule as single-agent/single-room selection
 applies here too: picking a box clears whichever of the other two was
 showing, and vice versa.
 
-## What did NOT make it into phases 1–5
+## Phase 6 — artifact flights: objects traveling between rooms
 
-Artifact objects traveling between rooms independent of agent movement, and
-any RTS *command* — assign objective, move budget, hire — issued from a
-selection. Multi-select's own module (`select.ts`) is deliberately built so
-that adding a command later is a new, reviewable function that takes a
-`SelectionSummary`, not a change to the selection logic itself.
+The redesign brief's last remaining item, and the one flagged from the start
+as the riskiest: it names "REALITY BEFORE ANIMATION" as a hard rule, and a
+deliverable flying across the office is exactly the kind of thing that's
+easy to fake convincingly. This phase draws a flight ONLY when every fact
+behind it is real and currently checkable — see
+`lib/office-artifact-flights.ts`'s own header for the full list, summarized:
+
+- the upstream subtask has a real delivered output, not failed;
+- the downstream subtask hasn't produced its own output yet — once it has,
+  the handoff is done, and the flight disappears on the very next poll;
+- **both** workers resolve to a real agent in *this* office with a real,
+  currently-known department. A subtask worked by someone else's agent, or
+  not yet claimed by anyone, has no known destination — it is left out
+  rather than pointed at the nearest plausible room (Strategy, say, since
+  the prime is "coordinating" it) — a plausible guess is still a guess.
+
+Three flight kinds are drawn — one per real handoff primitive
+`docs/collaboration.md` already describes, nothing new invented: `dependsOn`
+(handoff, 📦), `reviewOf` (review, 🧾), `synthesizes` (synthesis, 🧩).
+`artifactFlightsFor()` is pure and unit-tested
+(`tests/office-artifact-flights.test.ts`, 13 cases) against a subtask list
+and a plain `agentId → deptId` map — no database, no delegation internals
+beyond the handful of fields it actually reads.
+
+`lib/office-world-server.ts`'s `buildOfficeSnapshot` is the only caller: it
+already fetches this office's `posted` delegations for the Strategy Room
+occupancy check, so the subtasks come along in that same query rather than
+a second one. A subtask's worker is either reserved up front
+(`assignedAgentId`, set only by office-template pipelines) or resolved by
+one batched `job_specs.worker_agent_id` lookup, by `specHash`, for every
+subtask that lacks it — real once a worker has actually accepted the job,
+never invented before then.
+
+Rendering (`OfficeWorld.tsx`'s `ArtifactLayer`) draws each flight as a
+static dashed line between the two rooms' centers — so the handoff reads
+even for someone not watching at the right instant — plus a small icon that
+loops along it continuously via a CSS keyframe (`translate` between two
+fixed points, honoring `prefers-reduced-motion` by holding still at the
+midpoint instead). Both are `pointer-events: none`: a flight is something to
+notice, not something to click — this room stays consistent with the
+inspect-only posture Phase 5 already established for multi-select.
+
+## What did NOT make it into phases 1–6
+
+Any RTS *command* — assign objective, move budget, hire — issued from a
+selection or a flight. Multi-select's own module (`select.ts`) is
+deliberately built so that adding a command later is a new, reviewable
+function that takes a `SelectionSummary`, not a change to the selection
+logic itself; the same is true of artifact flights, which never do
+anything beyond reporting what's already real.
 
 ## The grid
 

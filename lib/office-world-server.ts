@@ -15,6 +15,8 @@ import { and, eq, inArray } from 'drizzle-orm'
 import type { OfficeSnapshot, OfficeStaffMember } from '@/lib/office-world-data'
 import { officeSlotsByAgentId, roleIdsByAgentId } from '@/lib/office'
 import { departmentFor, type AgentActivitySignals } from '@/lib/office-functional-departments'
+import { artifactFlightsFor, type FlightSubtask } from '@/lib/office-artifact-flights'
+import type { DelegationSubtask } from '@/lib/delegation'
 
 /** Build the real office snapshot for `userId`'s agents in one office
  *  (`slot` — see lib/office.ts's MAX_OFFICE_SLOTS). Never throws — a query
@@ -26,7 +28,7 @@ export async function buildOfficeSnapshot(userId: string, ownerName: string, slo
   const myAgents = everyAgent.filter((a) => slotByAgentId.get(a.id) === slot)
   if (myAgents.length === 0) {
     const ceoLine = everyAgent.length === 0 ? 'No agents yet.' : 'No agents in this office yet.'
-    return { ceoName: ownerName, ceoLine, staff: [] }
+    return { ceoName: ownerName, ceoLine, staff: [], artifactFlights: [] }
   }
   const agentIds = myAgents.map((a) => a.id)
   const addressToAgent = new Map(
@@ -75,14 +77,20 @@ export async function buildOfficeSnapshot(userId: string, ownerName: string, slo
   }
 
   // Currently coordinating, not "has ever delegated" — a completed or failed
-  // delegation is not a live Strategy Room occupancy.
+  // delegation is not a live Strategy Room occupancy. Subtasks come along in
+  // the same query (not a second one) for the artifact-flight pass below —
+  // it needs the actual handoff/review/synthesis graph, not just who's prime.
   const activeDelegationAgents = new Set<string>()
+  const activeDelegations: { id: string; subtasks: unknown }[] = []
   try {
     const rows = await db
-      .select({ primeAgentId: delegation.primeAgentId })
+      .select({ id: delegation.id, primeAgentId: delegation.primeAgentId, subtasks: delegation.subtasks })
       .from(delegation)
       .where(and(inArray(delegation.primeAgentId, agentIds), eq(delegation.status, 'posted')))
-    for (const r of rows) activeDelegationAgents.add(r.primeAgentId)
+    for (const r of rows) {
+      activeDelegationAgents.add(r.primeAgentId)
+      activeDelegations.push({ id: r.id, subtasks: r.subtasks })
+    }
   } catch (error) {
     console.error('[office-world] delegation read failed:', error)
   }
@@ -151,10 +159,53 @@ export async function buildOfficeSnapshot(userId: string, ownerName: string, slo
     }
   })
 
+  // Artifact flights (redesign brief: objects traveling between rooms,
+  // independent of agent movement) — derived from the SAME delegations
+  // already fetched above, resolved against the SAME department each staff
+  // member was just placed in. A subtask's worker is either reserved
+  // up front (assignedAgentId — office-template pipelines) or only known
+  // once accepted (jobSpec.workerAgentId, by specHash); either way it's a
+  // real row, never guessed.
+  const deptOf = new Map(staff.map((s) => [s.id, s.deptId]))
+  const specHashesNeedingWorker = new Set<string>()
+  for (const d of activeDelegations) {
+    if (!Array.isArray(d.subtasks)) continue
+    for (const st of d.subtasks as DelegationSubtask[]) {
+      if (!st.assignedAgentId && st.specHash) specHashesNeedingWorker.add(st.specHash)
+    }
+  }
+  const workerBySpecHash = new Map<string, string | null>()
+  if (specHashesNeedingWorker.size > 0) {
+    try {
+      const rows = await db
+        .select({ specHash: jobSpec.specHash, workerAgentId: jobSpec.workerAgentId })
+        .from(jobSpec)
+        .where(inArray(jobSpec.specHash, [...specHashesNeedingWorker]))
+      for (const r of rows) workerBySpecHash.set(r.specHash, r.workerAgentId)
+    } catch (error) {
+      console.error('[office-world] artifact-flight worker read failed:', error)
+    }
+  }
+
+  const artifactFlights = activeDelegations.flatMap((d) => {
+    if (!Array.isArray(d.subtasks)) return []
+    const flightSubtasks: FlightSubtask[] = (d.subtasks as DelegationSubtask[]).map((st) => ({
+      title: st.title,
+      output: st.output,
+      failed: st.failed,
+      dependsOn: st.dependsOn,
+      reviewOf: st.reviewOf,
+      synthesizes: st.synthesizes,
+      workerAgentId: st.assignedAgentId ?? (st.specHash ? (workerBySpecHash.get(st.specHash) ?? null) : null),
+    }))
+    return artifactFlightsFor(d.id, flightSubtasks, deptOf)
+  })
+
   const escrowed = [...jobsByAgent.values()].flat().filter((j) => j.status === 'Accepted' || j.status === 'Submitted').length
   return {
     ceoName: ownerName,
     ceoLine: `${myAgents.length} agent${myAgents.length === 1 ? '' : 's'} · ${escrowed} job${escrowed === 1 ? '' : 's'} in flight`,
     staff,
+    artifactFlights,
   }
 }

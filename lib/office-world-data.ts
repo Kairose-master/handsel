@@ -121,6 +121,12 @@ export const MAX_OFFICE_SLOTS = 3
 import type { FunctionalDeptId } from '@/lib/office-functional-departments'
 export type { FunctionalDeptId as OfficeDeptId } from '@/lib/office-functional-departments'
 export { FUNCTIONAL_DEPARTMENTS as OFFICE_DEPARTMENTS } from '@/lib/office-functional-departments'
+// office-artifact-flights.ts is pure (no @/lib/db import) — its types are
+// re-exported here anyway, matching every other type in this file, so the
+// client engine never has to remember which server-adjacent module happens
+// to be safe to import directly.
+import type { ArtifactFlight } from '@/lib/office-artifact-flights'
+export type { ArtifactFlight, ArtifactFlightKind } from '@/lib/office-artifact-flights'
 
 export type OfficeStaffMember = {
   id: string
@@ -135,6 +141,10 @@ export type OfficeSnapshot = {
   ceoName: string
   ceoLine: string
   staff: OfficeStaffMember[]
+  /** Deliverables currently traveling between two known rooms — see
+   *  lib/office-artifact-flights.ts's header for exactly what "known" and
+   *  "currently" require before a flight is included at all. */
+  artifactFlights: ArtifactFlight[]
 }
 
 /**

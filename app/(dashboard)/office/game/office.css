@@ -154,6 +154,35 @@
   background: rgba(255, 95, 168, .14);
   pointer-events: none;
 }
+/* Artifact flights — a real deliverable currently traveling between two
+   known rooms (office-artifact-flights.ts). The line marks the handoff
+   exists at all; the looping dot is what actually reads as "moving" from
+   across the room, at any zoom tier. Both are pointer-events:none — a
+   flight is a fact to notice, never a thing to click. */
+.artifact-lines { position: absolute; left: 0; top: 0; z-index: 40; pointer-events: none; overflow: visible; }
+.artifact-line { stroke-width: 2; stroke-dasharray: 6 5; opacity: .5; }
+.artifact-line-handoff { stroke: var(--lav); }
+.artifact-line-review { stroke: var(--pink-deep); }
+.artifact-line-synthesis { stroke: var(--mint); }
+.artifact-dot {
+  position: absolute;
+  z-index: 41;
+  transform: translate(-50%, -50%);
+  font-size: 15px;
+  line-height: 1;
+  pointer-events: none;
+  filter: drop-shadow(0 1px 1px rgba(74, 43, 60, .45));
+  animation: artifact-fly 2.4s ease-in-out infinite;
+}
+@keyframes artifact-fly {
+  0% { transform: translate(-50%, -50%); opacity: 0; }
+  12% { opacity: 1; }
+  88% { opacity: 1; }
+  100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .artifact-dot { animation: none; opacity: 1; transform: translate(calc(-50% + var(--dx) / 2), calc(-50% + var(--dy) / 2)); }
+}
 .world-stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
 .world-floor {
   position: absolute;

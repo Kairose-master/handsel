@@ -48,7 +48,7 @@ import { setMcpWorker, disconnectMcpWorker } from '@/app/actions/webhook'
 import OfficeWorld from './game/OfficeWorld'
 import { LiveOffice, type Agent } from './game/live-engine'
 import type { Room } from './game/world'
-import type { OfficeTreasuryView, CompanyTreasuryView, CompanyGasHealth } from '@/lib/office-world-data'
+import type { OfficeTreasuryView, CompanyTreasuryView, CompanyGasHealth, ArtifactFlight } from '@/lib/office-world-data'
 import { OFFICE_DEPARTMENTS } from '@/lib/office-world-data'
 import { selectionSummary } from './game/select'
 import {
@@ -1425,6 +1425,11 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
   // (select.ts's own header explains why it stops there), so it coexists
   // rather than fighting the existing detail panel for the same state.
   const [multiSelected, setMultiSelected] = useState<Agent[]>([])
+  // Real deliverables currently traveling between two known rooms — see
+  // lib/office-artifact-flights.ts's header. Comes straight off the
+  // snapshot each poll rather than through LiveOffice/tweening: a flight is
+  // a fact about the current subtask graph, not a position to interpolate.
+  const [flights, setFlights] = useState<ArtifactFlight[]>([])
   const [treasury, setTreasury] = useState<OfficeTreasuryView | null>(null)
   const [treasuryLoading, setTreasuryLoading] = useState(false)
   const [treasuryError, setTreasuryError] = useState<string | null>(null)
@@ -1465,6 +1470,7 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
     setSelected(null)
     setSelectedRoom(null)
     setMultiSelected([])
+    setFlights([])
     setTreasury(null)
     setTreasuryError(null)
     const poll = async () => {
@@ -1474,6 +1480,7 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
         engineRef.current.applySnapshot(snap)
         setAgents([...engineRef.current.agents])
         setCeoLine(snap.ceoLine)
+        setFlights(snap.artifactFlights)
       } catch (error) {
         console.error('[office] snapshot poll failed:', error)
       }
@@ -1583,6 +1590,7 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
             onSelect={handleSelectAgent}
             onSelectRoom={handleSelectRoom}
             onSelectMany={handleSelectMany}
+            flights={flights}
           />
           <button
             type="button"

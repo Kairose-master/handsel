@@ -11,6 +11,7 @@ import type { Agent } from './live-engine'
 import { CEO_ROOM, PROPS, ROOMS, TILE, WORLD_H, WORLD_W, roomOf, type Room } from './world'
 import { hotRoomOf, roomStatsOf, closeRoomIdFor } from './zoom'
 import { screenBoxToWorldBox, agentsInWorldBox, MIN_SELECT_BOX_PX } from './select'
+import type { ArtifactFlight } from '@/lib/office-world-data'
 
 type Props = {
   agents: Agent[]
@@ -27,7 +28,59 @@ type Props = {
    *  see select.ts's header for why it stays inspect-only. Optional: a
    *  caller that doesn't pass this simply never sees the "🔲 Select" tool. */
   onSelectMany?: (ids: string[]) => void
+  /** Deliverables currently traveling between two known rooms (redesign
+   *  brief: artifact objects moving independent of agent movement) — optional
+   *  and purely additive, same as onSelectMany. */
+  flights?: ArtifactFlight[]
 }
+
+const FLIGHT_ICON: Record<ArtifactFlight['kind'], string> = { handoff: '📦', review: '🧾', synthesis: '🧩' }
+
+function roomCenterPx(deptId: string | null): { x: number; y: number } {
+  const room = ROOMS.find((r) => r.id === (deptId ?? 'lounge'))
+  if (!room) return { x: 0, y: 0 }
+  return { x: (room.x + room.w / 2) * TILE, y: (room.y + room.h / 2) * TILE }
+}
+
+/** Renders each real flight as a static connecting line (the handoff exists,
+ *  whether or not the eye catches the animated dot) plus a small icon that
+ *  loops along it — motion here illustrates a fact already established by
+ *  office-artifact-flights.ts, it never invents one of its own. */
+const ArtifactLayer = memo(function ArtifactLayer({ flights }: { flights: ArtifactFlight[] }) {
+  if (flights.length === 0) return null
+  return (
+    <>
+      <svg className="artifact-lines" width={WORLD_W} height={WORLD_H}>
+        {flights.map((f) => {
+          const from = roomCenterPx(f.fromDeptId)
+          const to = roomCenterPx(f.toDeptId)
+          return <line key={f.id} x1={from.x} y1={from.y} x2={to.x} y2={to.y} className={`artifact-line artifact-line-${f.kind}`} />
+        })}
+      </svg>
+      {flights.map((f) => {
+        const from = roomCenterPx(f.fromDeptId)
+        const to = roomCenterPx(f.toDeptId)
+        return (
+          <span
+            key={f.id}
+            className="artifact-dot"
+            title={f.label}
+            style={
+              {
+                left: from.x,
+                top: from.y,
+                '--dx': `${to.x - from.x}px`,
+                '--dy': `${to.y - from.y}px`,
+              } as React.CSSProperties
+            }
+          >
+            {FLIGHT_ICON[f.kind]}
+          </span>
+        )
+      })}
+    </>
+  )
+})
 
 /**
  * Semantic zoom (Handsel Office redesign brief §6): what's worth showing
@@ -128,7 +181,7 @@ const PropLayer = memo(function PropLayer() {
   )
 })
 
-export default function OfficeWorld({ agents, selectedId, selectedRoomId, onSelect, onSelectRoom, onSelectMany }: Props) {
+export default function OfficeWorld({ agents, selectedId, selectedRoomId, onSelect, onSelectRoom, onSelectMany, flights = [] }: Props) {
   const viewportRef = useRef<HTMLDivElement>(null)
   const stageRef = useRef<HTMLDivElement>(null)
   const agentRefs = useRef(new Map<string, HTMLDivElement>())
@@ -392,6 +445,7 @@ export default function OfficeWorld({ agents, selectedId, selectedRoomId, onSele
           })}
 
           <PropLayer />
+          <ArtifactLayer flights={flights} />
           <AgentLayer agents={agents} register={register} onPick={onPick} />
         </div>
 
