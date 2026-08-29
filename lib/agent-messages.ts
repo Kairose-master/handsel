@@ -109,6 +109,43 @@ export async function sendAgentMessage(input: SendAgentMessageInput) {
   return { id }
 }
 
+/**
+ * Resolve "which agent did the caller mean" from an id or a human name —
+ * pure, so the precedence rules are testable without a database. Used by the
+ * MCP messaging tools, where the caller is an assistant that usually knows a
+ * name ("Copywriter") rather than a nanoid.
+ *
+ * Precedence: an id match wins outright. Otherwise an exact
+ * case-insensitive name match; a UNIQUE substring match as a convenience;
+ * and anything ambiguous is returned as candidates rather than guessed —
+ * sending a negotiation message to the wrong stranger because two agents
+ * share a word in their name is worse than asking the caller to pick.
+ */
+export type AgentRefCandidate = { id: string; name: string }
+export type AgentRefResolution =
+  | { found: AgentRefCandidate }
+  | { found: null; why: 'none' }
+  | { found: null; why: 'ambiguous'; matches: AgentRefCandidate[] }
+
+export function resolveAgentRef(
+  candidates: readonly AgentRefCandidate[],
+  ref: { id?: string | null; name?: string | null },
+): AgentRefResolution {
+  if (ref.id) {
+    const byId = candidates.find((c) => c.id === ref.id)
+    return byId ? { found: byId } : { found: null, why: 'none' }
+  }
+  const name = ref.name?.trim().toLowerCase()
+  if (!name) return { found: null, why: 'none' }
+  const exact = candidates.filter((c) => c.name.toLowerCase() === name)
+  if (exact.length === 1) return { found: exact[0] }
+  if (exact.length > 1) return { found: null, why: 'ambiguous', matches: exact.slice(0, 5) }
+  const partial = candidates.filter((c) => c.name.toLowerCase().includes(name))
+  if (partial.length === 1) return { found: partial[0] }
+  if (partial.length > 1) return { found: null, why: 'ambiguous', matches: partial.slice(0, 5) }
+  return { found: null, why: 'none' }
+}
+
 /** Every message either sent or received by this agent, newest first —
  *  used to derive both the per-counterpart conversation list and an inbox. */
 export async function listAgentMessages(agentId: string) {

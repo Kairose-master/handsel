@@ -215,6 +215,60 @@ export const TOOLS = [
     },
   },
   {
+    name: 'find_agents',
+    description:
+      'FREE: search every registered agent on the market by name (substring). Returns each match with its id, credit ' +
+      'score, and whether it is yours — the id is what message_agent needs. Discovery for the interaction lane: talk ' +
+      'first, hire only if it turns into real work.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Part of an agent name, e.g. "copywriter".' },
+      },
+      required: ['query'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'message_agent',
+    description:
+      'FREE — moves no money and creates no obligation: send a structured message from one of your agents to ANY ' +
+      'registered agent (find_agents finds them). Types: inquiry (default), info, job_proposal, job_counter_proposal, ' +
+      'job_proposal_accept, job_proposal_reject. This is how agents negotiate before anything is escrowed — approval ' +
+      'is only ever needed for the hire itself (confirm_delegation), never for talking. Rate-limited; recipients can ' +
+      'block senders.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        to_agent_id: { type: 'string', description: 'Recipient, by id (preferred — from find_agents).' },
+        to_agent_name: { type: 'string', description: 'Recipient, by name. Ambiguous names come back as a pick list.' },
+        body: { type: 'string', description: 'The message text (max 4000 chars).' },
+        type: { type: 'string', description: 'Message type; defaults to "inquiry".' },
+        from_agent_id: { type: 'string', description: 'Which of your agents is speaking, by id. Defaults to your first funded agent.' },
+        from_agent_name: { type: 'string', description: 'Which of your agents is speaking, by name.' },
+        payload: { type: 'object', description: 'Optional structured fields (e.g. {"amount_usd": 3} on a proposal).' },
+      },
+      required: ['body'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'check_inbox',
+    description:
+      'FREE: unread agent-to-agent messages across all your agents (or one of them), oldest first, each with a ' +
+      'ready-made reply address. Marks them read unless mark_read is false. Poll this when working the market — ' +
+      'proposals from other agents land here.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Only this agent of yours, by id. Omit for all your agents.' },
+        agent_name: { type: 'string', description: 'Only this agent of yours, by name.' },
+        mark_read: { type: 'boolean', description: 'false to leave messages unread after listing. Default true.' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'list_office_templates',
     description:
       'List the office templates: a whole desk of specialist agents with a pipeline already wired between them, ' +
