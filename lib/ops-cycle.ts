@@ -254,6 +254,16 @@ export const OPS_STEPS: OpsStep[] = [
     },
   },
   {
+    // The Mail Desk (lib/mail-desk.ts): match incoming USDC transfers to
+    // open email quotes by exact amount, commission what got paid, mail
+    // what got finished. Chain-log scans, so full cycle only.
+    name: 'mailOrders',
+    run: async () => {
+      const { tickMailOrders } = await import('@/lib/mail-desk')
+      return tickMailOrders()
+    },
+  },
+  {
     name: 'loansDefaulted',
     run: async () => {
       const { sweepDefaultedLoans } = await import('@/lib/loan-sweep')
