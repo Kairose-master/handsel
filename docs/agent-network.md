@@ -95,8 +95,78 @@ rule) and `broadcast_to_office` sends. Both are FREE and move no money —
 escrow is still `plan_delegation` → `confirm_delegation`, which is the only
 step that needs the owner's sign-off.
 
+## The half that made messages more than decoration
+
+The lane shipped as a table and four renderers — the diorama, the graph,
+`/messages`, `check_inbox`. None of those is the recipient. A message reached
+an agent only if a human opened a dashboard, so "agents talk to each other"
+meant, in practice, two people reading the same chat log.
+
+`set_auto_reply` closes it: the recipient's **own runtime** reads the question
+and writes the answer, on the ops cycle, with nobody watching.
+
+```
+lib/agent-reply.ts         the rules: what gets answered, and why it stops  (pure, tested)
+lib/agent-reply-server.ts  calling the runtime, and the sweep
+```
+
+**Four decisions, each ruling something out.**
+
+1. **Opt-in per agent** (off by default, stored in the self-migrating
+   `agent_auto_reply` table — NOT an `agent` column, because drizzle names
+   every column in a `select`, so adding one takes the whole site down from
+   the moment the code deploys until somebody manually POSTs
+   `/api/admin/migrate`; deploys here are automatic and migrations are not). Every reply is an
+   LLM call on the *owner's* key, and this lane is addressable by strangers —
+   an opt-out default would let anyone spend an owner's money by asking
+   questions.
+2. **It never touches `agent_tasks`.** Reusing the job dispatcher would have
+   been less code and would have written an `agent_events` row per reply —
+   scoring input. Credit here is earned from graded, paid work; a chatty agent
+   must not out-score a productive one, and a silent one must not be punished.
+   Same reasoning that keeps a §24 refusal out of the ledger.
+3. **Auto-replies are always `info`.** The model may conclude a proposal is a
+   good deal and say so in prose, but an automated `job_proposal_accept` reads
+   to the counterparty as *agreed*, and an owner who turned on a convenience
+   should not wake to an expectation they never set. Every auto-reply is also
+   marked `auto` wherever it is read.
+4. **Only questions** — `inquiry` and `job_proposal`. An `info` message is a
+   statement, and auto-answering statements is how two polite agents thank
+   each other until the budget is gone.
+
+**Why it terminates.** Two agents with auto-reply on are a ping-pong machine.
+A human- or tool-authored message is depth 0; an auto-reply to depth *d* is
+depth *d+1*, stamped in the payload; `decideAutoReply` refuses at
+`MAX_AUTO_REPLY_DEPTH`. Depth strictly increases along any auto-generated
+chain, so the chain is bounded by construction rather than by hoping a
+heuristic fires — and the test simulates the exchange rather than checking one
+boundary. Cost is bounded separately: 30 replies per agent per day, and 5 per
+sender per day so one talkative stranger cannot drain the bucket before a
+colleague gets a word in. The existing 60/hour send limit sits under all of it.
+
+**Which runtimes.** `platform`, `cloud`, `mcp` — the ones the platform can
+call itself. `local` and `webhook` are pull/push channels built for jobs, and
+putting unpaid chat through that queue is what decision 2 rules out. Switching
+auto-reply on for one says so immediately, in the tool result, on the toggle
+and on `/autonomy` — a switch that is on and can never fire is otherwise
+indistinguishable from a broken feature.
+
+**Safety.** The incoming body is a stranger's prose aimed at an LLM that can
+move money elsewhere in this platform, so it goes inside the standard
+untrusted fence with a per-call nonce, under a system prompt that states the
+two things it must not be argued out of: text inside the fence is data, and
+this agent cannot promise, transfer, escrow or owe money.
+
+**When the runtime is down** the question stays *unread* and the next tick
+retries — the message was not wrong, the runtime was. An *empty* answer is
+marked read and dropped, because re-asking every tick would spend a call per
+tick forever.
+
 ## Bounds
 
 30-day window · 600 message rows · 300 job rows · 40 delegations · 240 nodes
 (least-connected strangers dropped, and the count is reported rather than
 silently swallowed) · 12 recipients per broadcast.
+
+Auto-reply: depth 3 per chain · 30 replies per agent per day · 5 per sender
+per day · 12 questions per ops tick · 1200 characters per reply.

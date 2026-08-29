@@ -40,6 +40,13 @@ import { buildAgentNetwork, NETWORK_WINDOW_DAYS } from '@/lib/agent-network-serv
 import { broadcastFromAgent } from '@/lib/agent-broadcast-server'
 import { BROADCAST_SCOPES, summarizeBroadcast, type BroadcastScope } from '@/lib/agent-broadcast'
 import { agentNodeId } from '@/lib/agent-network'
+import {
+  ANSWERABLE_RUNTIMES,
+  MAX_AUTO_REPLIES_PER_DAY,
+  MAX_AUTO_REPLIES_PER_SENDER_PER_DAY,
+  MAX_AUTO_REPLY_DEPTH,
+  isAutoReply,
+} from '@/lib/agent-reply'
 
 const ambiguityLine = (matches: AgentRefCandidate[]) =>
   matches.map((m) => `  · ${m.name} [${m.id}]`).join('\n')
@@ -207,7 +214,9 @@ export async function handleMessages(
 
       const lines = unread.map(
         (m) =>
-          `- [${m.type}] ${nameOf.get(m.fromAgentId) ?? m.fromAgentId} → ${nameOf.get(m.toAgentId) ?? m.toAgentId} ` +
+          // An auto-reply is marked, always: a machine's courtesy must never
+          // read as its owner's word.
+          `- [${m.type}${isAutoReply(m.payload) ? ' · auto' : ''}] ${nameOf.get(m.fromAgentId) ?? m.fromAgentId} → ${nameOf.get(m.toAgentId) ?? m.toAgentId} ` +
           `(${m.createdAt.toISOString().slice(0, 16)}): ${m.body.length > 200 ? m.body.slice(0, 200) + '…' : m.body}` +
           `\n  reply: message_agent {from_agent_id:"${m.toAgentId}", to_agent_id:"${m.fromAgentId}"}`,
       )
@@ -330,6 +339,50 @@ export async function handleMessages(
         id,
         `${from.found.name} broadcast to "${rawScope}". ${summarizeBroadcast(result)}\n${detail}\n\n` +
           `Free — nothing moved and nothing is owed. Replies land in check_inbox.`,
+      )
+    }
+
+    case 'set_auto_reply': {
+      const wanted = String(args.agent_id ?? args.agent_name ?? '')
+      const enabled = args.enabled === true
+      const mine = await db
+        .select({ id: agent.id, name: agent.name, runtimeType: agent.runtimeType })
+        .from(agent)
+        .where(eq(agent.userId, auth.userId))
+      if (mine.length === 0) return toolText(id, 'This account has no agents yet — create_worker_agent first.', true)
+      const res = resolveAgentRef(mine, {
+        id: args.agent_id ? String(args.agent_id) : null,
+        name: args.agent_name ? String(args.agent_name) : null,
+      })
+      if (!res.found) {
+        return toolText(
+          id,
+          'why' in res && res.why === 'ambiguous'
+            ? `Several of your agents match "${wanted}" — pick one by id:\n${ambiguityLine(res.matches)}`
+            : `No agent of yours matches "${wanted}".`,
+          true,
+        )
+      }
+      const target = mine.find((a) => a.id === res.found!.id)!
+      const { setAutoReplyFlag } = await import('@/lib/agent-reply-server')
+      await setAutoReplyFlag(target.id, enabled)
+
+      if (!enabled) return toolText(id, `${target.name} will no longer answer messages by itself.`)
+
+      // Say so NOW rather than letting the owner discover from silence that
+      // the switch they flipped can never fire (invariant 34).
+      const answerable = (ANSWERABLE_RUNTIMES as readonly string[]).includes(target.runtimeType ?? '')
+      return toolText(
+        id,
+        `${target.name} now answers agent messages by itself.\n` +
+          (answerable
+            ? ''
+            : `⚠️ Its runtime is "${target.runtimeType}", which the platform cannot call for a reply — ` +
+              `${ANSWERABLE_RUNTIMES.join('/')} runtimes can. The switch is on but nothing will fire until you rewire it.\n`) +
+          `Only questions (inquiry, job_proposal) are answered, never statements. Replies go out as "info" and are ` +
+          `marked auto — an automated message never accepts a job or promises money. Bounded: at most ` +
+          `${MAX_AUTO_REPLY_DEPTH} messages deep per chain, ${MAX_AUTO_REPLIES_PER_DAY} replies a day, ` +
+          `${MAX_AUTO_REPLIES_PER_SENDER_PER_DAY} per sender. Each reply is an LLM call on your key.`,
       )
     }
 

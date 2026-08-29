@@ -264,6 +264,17 @@ export const OPS_STEPS: OpsStep[] = [
     },
   },
   {
+    // The free lane's missing half (lib/agent-reply.ts): every unread
+    // QUESTION addressed to an agent whose owner turned auto-reply on gets
+    // answered by that agent's own runtime. An LLM call per reply, so cron
+    // only — never on visitor traffic.
+    name: 'agentReplies',
+    run: async () => {
+      const { tickAgentReplies } = await import('@/lib/agent-reply-server')
+      return tickAgentReplies()
+    },
+  },
+  {
     name: 'loansDefaulted',
     run: async () => {
       const { sweepDefaultedLoans } = await import('@/lib/loan-sweep')

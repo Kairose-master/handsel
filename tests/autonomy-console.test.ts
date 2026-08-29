@@ -64,6 +64,7 @@ describe('isAnythingActive', () => {
     deployment: { realMoney: false, chainName: 'Base Sepolia' },
     gasPool: null,
     autoMine: { enabled: 0, total: 3 },
+    autoReply: { enabled: 0, answerable: 0, total: 3 },
     offices: [],
     log: [],
   }
@@ -128,4 +129,14 @@ describe('isAnythingActive', () => {
     })
     expect(isAnythingActive({ ...base, offices: [allowed] })).toBe(true)
   })
+  it('counts an agent answering messages by itself as active', () => {
+    expect(isAnythingActive({ ...base, autoReply: { enabled: 1, answerable: 1, total: 3 } })).toBe(true)
+  })
+
+  it('does NOT count auto-reply switched on for a runtime nothing can call', () => {
+    // Same distinction lineage's allowedHere draws: a green light over a
+    // switch that can never fire tells the owner the opposite of the truth.
+    expect(isAnythingActive({ ...base, autoReply: { enabled: 2, answerable: 0, total: 3 } })).toBe(false)
+  })
+
 })

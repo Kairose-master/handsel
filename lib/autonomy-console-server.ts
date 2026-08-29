@@ -16,6 +16,8 @@
  * checking what is running by itself is often checking it precisely because
  * something is wrong.
  */
+import { ANSWERABLE_RUNTIMES } from '@/lib/agent-reply'
+import { autoReplyFlags } from '@/lib/agent-reply-server'
 import { db } from '@/lib/db'
 import { agent } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
@@ -31,10 +33,19 @@ import {
 
 export async function buildAutonomyView(userId: string): Promise<AutonomyView> {
   const [agents, slots] = await Promise.all([
-    db.select({ id: agent.id, name: agent.name, autoMine: agent.autoMine }).from(agent).where(eq(agent.userId, userId)),
+    db
+      .select({
+        id: agent.id,
+        name: agent.name,
+        autoMine: agent.autoMine,
+        runtimeType: agent.runtimeType,
+      })
+      .from(agent)
+      .where(eq(agent.userId, userId)),
     listOfficeSlots(userId),
   ])
   const nameOf = new Map(agents.map((a) => [a.id, a.name]))
+  const answering = await autoReplyFlags(agents.map((a) => a.id))
 
   const { isRealMoney, CHAIN } = await chainFacts()
 
@@ -78,6 +89,13 @@ export async function buildAutonomyView(userId: string): Promise<AutonomyView> {
     deployment: { realMoney: isRealMoney, chainName: CHAIN },
     gasPool,
     autoMine: { enabled: agents.filter((a) => a.autoMine).length, total: agents.length },
+    autoReply: {
+      enabled: answering.size,
+      answerable: agents.filter(
+        (a) => answering.has(a.id) && (ANSWERABLE_RUNTIMES as readonly string[]).includes(a.runtimeType ?? ''),
+      ).length,
+      total: agents.length,
+    },
     offices,
     log,
   }

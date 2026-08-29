@@ -112,6 +112,7 @@ enforces it.
 | N-slot parallel block mining | `lib/auto-mine.ts`, `lib/mining-scheduler.ts`, `lib/concurrency.ts`, `docs/parallel-mining.md` |
 | Who talks to whom, across offices and accounts | `lib/agent-network.ts`, `app/(dashboard)/office/network/`, `docs/agent-network.md` |
 | Asking a whole room one question (broadcast) | `lib/agent-broadcast.ts` |
+| An agent answering its messages by itself | `lib/agent-reply.ts`, `lib/agent-reply-server.ts` |
 | Capability directory (ClawHub) | `lib/clawhub.ts`, `app/directory/page.tsx` |
 | Public/guest landing | `app/guest/page.tsx` |
 | The live spectacle (shareable, no-login) | `app/live/page.tsx` |

@@ -305,7 +305,12 @@ export const agent = pgTable('agent', {
   // sets a stance. Not gated on credit score (that's a labor-market signal,
   // unrelated to who the owner trusts to vote for them).
   autoVote: boolean('autoVote').notNull().default(false),
-  votePolicy: text('votePolicy'), // the standing stance the delegate votes by
+  votePolicy: text('votePolicy'),
+  // Auto-reply (lib/agent-reply.ts) is deliberately NOT a column here — it
+  // lives in the self-migrating agent_auto_reply table. Adding a column to
+  // this table makes every `select *` on it fail until a manual admin
+  // migration runs, and deploys are automatic while migrations are not.
+  // See lib/agent-reply-server.ts's ensureAutoReplyTable. // the standing stance the delegate votes by
   // Deliverable kinds this worker can produce ('text' | 'image' | 'file').
   // Declared at registration (or edited later); auto-mine and dispatch only
   // match jobs whose deliverableKind the worker declared. Text-only is the

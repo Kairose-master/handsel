@@ -25,11 +25,17 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { Loader2, RefreshCw, Send, Radio, Network, Inbox, Building2, Users, Briefcase } from 'lucide-react'
+import { Loader2, RefreshCw, Send, Radio, Network, Inbox, Building2, Users, Briefcase, Bot } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { useI18n } from '@/lib/i18n'
-import { broadcastFromGraph, myAgentNetwork, sendFromGraph, type NetworkView } from '@/app/actions/agent-network'
+import {
+  broadcastFromGraph,
+  myAgentNetwork,
+  sendFromGraph,
+  setAutoReplyForAgent,
+  type NetworkView,
+} from '@/app/actions/agent-network'
 import { BROADCAST_SCOPES, type BroadcastScope } from '@/lib/agent-broadcast'
 import { layoutNetwork, type NetworkEdge, type NetworkNode } from '@/lib/agent-network'
 import { EDGE_COLOR, LIVE_PULSE_MS, NetworkCanvas } from './NetworkCanvas'
@@ -141,6 +147,11 @@ export default function NetworkPage() {
 
   const labelOf = useCallback((id: string) => nodes.find((n) => n.id === id)?.label ?? id, [nodes])
 
+  const sender = useMemo(
+    () => (view?.myAgents ?? []).find((a) => a.id === senderId) ?? null,
+    [view, senderId],
+  )
+
   /* You can only address an agent, and never one of your own — messaging
      yourself is rejected downstream anyway, and offering it is noise. */
   const targetAgentId =
@@ -173,6 +184,28 @@ export default function NetworkPage() {
     }
     setBody('')
     setFlash(res.summary)
+    void load()
+  }
+
+  const toggleAutoReply = async () => {
+    if (!sender) return
+    setSending(true)
+    setFlash(null)
+    const res = await setAutoReplyForAgent(sender.id, !sender.autoReply)
+    setSending(false)
+    if ('error' in res) {
+      setFlash(res.error)
+      return
+    }
+    // Say it plainly when the switch is on but the runtime can never be
+    // called — otherwise the owner learns it from silence.
+    setFlash(
+      !sender.autoReply
+        ? res.answerable
+          ? t('network.autoReply.on', { name: sender.name })
+          : t('network.autoReply.onButUnreachable', { name: sender.name })
+        : t('network.autoReply.off', { name: sender.name }),
+    )
     void load()
   }
 
@@ -348,6 +381,26 @@ export default function NetworkPage() {
                         ? t('network.compose.sendTo', { name: selected?.label ?? '' })
                         : t('network.compose.pickTarget')}
                     </Button>
+                  </div>
+
+                  <div className="space-y-2 border-t border-border/60 pt-2">
+                    <p className="text-xs text-muted-foreground">{t('network.autoReply.help')}</p>
+                    <button
+                      type="button"
+                      onClick={() => void toggleAutoReply()}
+                      disabled={sending || !sender}
+                      className="flex w-full items-center gap-2 rounded-md border border-border px-2 py-1.5 text-left text-xs hover:bg-secondary disabled:opacity-50"
+                    >
+                      <Bot className="size-4 shrink-0 text-muted-foreground" />
+                      <span className="truncate">
+                        {sender?.autoReply ? t('network.autoReply.isOn') : t('network.autoReply.isOff')}
+                      </span>
+                      <span
+                        className={`ml-auto inline-block h-2 w-2 shrink-0 rounded-full ${
+                          sender?.autoReply ? (sender.answerable ? 'bg-success' : 'bg-warning') : 'bg-muted-foreground/40'
+                        }`}
+                      />
+                    </button>
                   </div>
 
                   <div className="space-y-2 border-t border-border/60 pt-2">

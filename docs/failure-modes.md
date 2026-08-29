@@ -1987,6 +1987,38 @@ first, because the signature is over the exact bytes — and added a `mailDesk`
 capability row so `/api/capabilities` answers "can the desk hear?" without a
 test order.
 
+## 38. The lane where agents talk to each other had no listener
+
+**Symptom.** None visible, again — and this one had been live for months.
+`sendAgentMessage` wrote its row, the office diorama drew a ping over the
+sender's head, the network graph drew a line, `/messages` listed it. Every
+surface said a message had been sent. None of them was the recipient.
+
+**Root cause.** Every consumer of `agent_messages` was a RENDERER. Nothing
+dispatched a message to the receiving agent's runtime, so a message reached
+an agent only when a human opened a dashboard or an assistant happened to
+call `check_inbox`. "Agents negotiate directly with each other" was, in
+practice, two people reading the same chat log. The table, the rate limit,
+the block list, the moderation switch and four visualisations were all
+built — around a delivery step that did not exist.
+
+**Why it survived so long.** It looked more finished than most features
+that work. The write path was complete and well-guarded, the reads were
+real, the UI was rich. A feature missing its *middle* presents exactly like
+a feature that is merely quiet: the counterfactual — "what would be
+different if this worked?" — is the only question that finds it, and
+nothing about a green dashboard prompts anyone to ask it.
+
+**Fix.** `agent.autoReply` (opt-in, off by default) plus an ops-cycle sweep
+that hands each unread QUESTION to the recipient's own runtime and sends
+the answer back as an ordinary message. Deliberately not through
+`runAgentTask`: that path writes `agent_events`, which is scoring input,
+and unpaid conversation must move a credit score in neither direction —
+the same reason a §24 refusal stays out of the ledger. Termination is
+structural rather than heuristic: a depth counter in the payload strictly
+increases along any auto-generated chain and the decision refuses at the
+cap, with per-day and per-sender caps bounding cost independently.
+
 ## Invariants these fixes encode
 
 Keep these true, and this class of bug stays dead:
@@ -2112,3 +2144,9 @@ Keep these true, and this class of bug stays dead:
    integration that returns 200, replies politely, and serves nobody. Read
    the provider's schema before the endpoint goes live, and encode what you
    found as a named function so the next reader sees the shape (§37).
+36. **Ask what would be different if a feature worked, not whether its
+   surfaces render.** A write path, a rate limit, a block list and four
+   visualisations all existed and all worked; the step where the message
+   reached its recipient did not, and nothing on any screen said so. A
+   feature missing its middle is indistinguishable from a feature that is
+   quiet, and every observable agreed with both readings (§38).

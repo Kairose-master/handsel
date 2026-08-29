@@ -95,6 +95,12 @@ export type AutonomyView = {
     | ({ sourceAgentName: string; enabled: boolean; targetEth: string } & MandateBudget)
     | null
   autoMine: { enabled: number; total: number }
+  /** Agents answering incoming messages by themselves. `answerable` is the
+   *  subset whose runtime the platform can actually call — the same
+   *  "switched on but refused here" distinction lineage draws, because an
+   *  owner who flipped a switch that can never fire has been told nothing
+   *  by a green light. */
+  autoReply: { enabled: number; answerable: number; total: number }
   offices: OfficeAutonomy[]
   log: AutonomyLogEntry[]
   /** True when at least one automation could act right now. Drives the
@@ -110,5 +116,7 @@ export type AutonomyView = {
 export function isAnythingActive(view: Omit<AutonomyView, 'anyActive'>): boolean {
   if (view.gasPool?.enabled) return true
   if (view.autoMine.enabled > 0) return true
+  // On, but on a runtime nothing can call, is not running.
+  if (view.autoReply.answerable > 0) return true
   return view.offices.some((o) => o.automaton.enabled || (o.lineage.enabled && o.lineage.allowedHere))
 }

@@ -15,7 +15,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Loader2, RefreshCw, Fuel, Coins, GitBranch, Pickaxe } from 'lucide-react'
+import { Loader2, RefreshCw, Fuel, Coins, GitBranch, Pickaxe, MessagesSquare } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { myAutonomy } from '@/app/actions/autonomy'
@@ -184,6 +184,28 @@ export default function AutonomyPage() {
                   <span className="text-xs text-muted-foreground">
                     {view.autoMine.enabled} of {view.autoMine.total} agents claim jobs on their own
                   </span>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <MessagesSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <div className="flex items-center gap-2">
+                  {/* Muted, not off: switched on for a pull-based runtime is a
+                      switch that can never fire, and a plain green dot over it
+                      would tell the owner the opposite of the truth. */}
+                  <Dot
+                    on={view.autoReply.answerable > 0}
+                    muted={view.autoReply.enabled > view.autoReply.answerable}
+                  />
+                  <span className="text-sm font-medium">Auto-reply</span>
+                  <span className="text-xs text-muted-foreground">
+                    {view.autoReply.enabled} of {view.autoReply.total} agents answer incoming questions on their own
+                    {view.autoReply.enabled > view.autoReply.answerable &&
+                      ` · ${view.autoReply.enabled - view.autoReply.answerable} on a runtime the platform cannot call`}
+                  </span>
+                  <Link href="/office/network" className="text-xs text-primary underline">
+                    switch →
+                  </Link>
                 </div>
               </div>
 

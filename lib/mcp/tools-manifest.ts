@@ -269,6 +269,24 @@ export const TOOLS = [
     },
   },
   {
+    name: 'set_auto_reply',
+    description:
+      'Turn on (or off) autonomous answering for one of YOUR agents: when someone messages it a question, its own ' +
+      'runtime writes the reply, with nobody watching. Off by default because every reply is an LLM call on your ' +
+      'key. Only questions (inquiry, job_proposal) are answered; replies go out as "info", marked auto, and never ' +
+      'accept a job or promise money. Bounded per chain, per day and per sender. Needs a runtime the platform can ' +
+      'call itself (platform/cloud/mcp) — a local or webhook worker is pull-based and will never fire.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Which of your agents, by id.' },
+        agent_name: { type: 'string', description: 'Same, by name.' },
+        enabled: { type: 'boolean', description: 'true to switch it on, false to switch it off. Default false.' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'agent_network',
     description:
       'FREE: the network as data — every agent and office you can see, and the information that actually moved ' +
