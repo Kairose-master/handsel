@@ -512,6 +512,25 @@ export const TOOLS = [
     },
   },
   {
+    name: 'set_lineage_mandate',
+    description:
+      'CAN MOVE MONEY over time: lets earn-or-die selection actually act on one office. When on, agents with a ' +
+      'proven graded record are copied — the child inherits instructions, skills and wiring but starts at credit ' +
+      'score zero with no history — and agents that are failing or starved are retired (auto-mining off; nothing is ' +
+      'deleted, burned, or refunded). Bounded by a daily birth count, a daily seed budget out of the parent\'s own ' +
+      'wallet, and the account agent cap. REFUSED outright on a real-money deployment unless explicitly permitted ' +
+      'by env — run it on the testnet rehearsal. Call with no arguments to read the current state; lineage_report ' +
+      'shows what it would do.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        office: { type: 'number', description: 'Office slot (1-3, default 1)' },
+        enabled: { type: 'boolean', description: 'true grants the mandate, false revokes it. Omit to read status.' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'get_contract',
     description:
       'The machine-readable contract for a job: what is owed, how "done" is decided, who decides it, what settles ' +

@@ -31,7 +31,9 @@ import { officeSlotsByAgentId } from '@/lib/office'
 import { GRADED_PASS_EVENTS, GRADED_FAIL_EVENTS } from '@/lib/skill-eval'
 import {
   DEFAULT_LIFECYCLE_POLICY,
+  applyMutation,
   buildLineage,
+  chooseMutation,
   decideLifecycle,
   scoreFitness,
   type LifecyclePolicy,
@@ -99,7 +101,12 @@ export async function buildLineageReport(
   // symmetric failure event, so it never counts toward fitness) and is read
   // only for "is anything coming in?".
   const events = await db
-    .select({ agentId: agentEvent.agentId, eventType: agentEvent.eventType, detail: agentEvent.detail })
+    .select({
+      agentId: agentEvent.agentId,
+      eventType: agentEvent.eventType,
+      detail: agentEvent.detail,
+      createdAt: agentEvent.createdAt,
+    })
     .from(agentEvent)
     .where(
       and(
@@ -118,9 +125,10 @@ export async function buildLineageReport(
       continue
     }
     const list = gradedByAgent.get(e.agentId) ?? []
-    // The date is unused by scoreFitness (the window is already applied) but
-    // the shape is skill-eval's GradedOutcome, kept so the two agree.
-    list.push({ at: since, passed: PASS_EVENT_TYPES.includes(e.eventType) })
+    // The real timestamp, not the window edge: scoreFitness ignores it, but
+    // skill evidence splits these outcomes at each skill's install time, and
+    // a placeholder date would put every outcome on one side of every split.
+    list.push({ at: e.createdAt, passed: PASS_EVENT_TYPES.includes(e.eventType) })
     gradedByAgent.set(e.agentId, list)
   }
 
@@ -246,4 +254,220 @@ export async function retiredAgentIds(userId: string): Promise<Set<string>> {
     [userId],
   )
   return new Set(rows.map((r) => r.child_agent_id))
+}
+
+/* ── The two acting functions ────────────────────────────────────────── */
+
+/**
+ * Retire an agent: stop it working, record why.
+ *
+ * Everything it is NOT is the point. No delete, no wallet sweep, no burn,
+ * no credit adjustment. Its signed work proofs, its score and its failures
+ * stay exactly where they are and stay public, because that record is what
+ * other people price decisions against — and because an owner who disagrees
+ * with the call should be able to switch auto-mining back on and carry on.
+ */
+export async function retireAgent(userId: string, agentId: string, reason: string): Promise<void> {
+  // Ownership re-checked here rather than trusted from the caller: this is
+  // the entry point that stops an agent working, and every other
+  // money-or-lifecycle path in this repo re-checks at its own boundary.
+  const [owned] = await db.select({ id: agent.id }).from(agent).where(and(eq(agent.id, agentId), eq(agent.userId, userId)))
+  if (!owned) return
+  await db.update(agent).set({ autoMine: false }).where(eq(agent.id, agentId))
+  await markRetired(userId, agentId, reason)
+  console.info(`[lineage] retired ${agentId} (${reason}) — auto-mining off, history untouched`)
+}
+
+export type BreedResult = { ok: true; childAgentId: string; childName: string } | { ok: false; error: string }
+
+/**
+ * Seed a child from a proven parent.
+ *
+ * The child inherits the GENOTYPE — instructions, skills, MCP wiring, model
+ * — and nothing else. It starts at credit score zero with no history, which
+ * is `agent_templates`' rule and the thing that makes this selection rather
+ * than dynasty: a child of a good parent still has to earn its own record
+ * before it can breed in turn.
+ *
+ * Order is chosen so every partial failure leaves something safe:
+ *
+ *  1. Read the parent's genome and its measured skill evidence.
+ *  2. Choose the one mutation (pure, evidence-driven — see chooseMutation).
+ *  3. Create and provision the child. If this fails nothing was spent.
+ *  4. Record the birth WITH its seed amount, before any money moves — the
+ *     birth record is the budget's ledger, so a crash between recording and
+ *     funding under-counts the budget in the safe direction.
+ *  5. Fund the seed. A failure here leaves a real, unfunded child that its
+ *     owner can fund by hand; it never leaves money moved without a record.
+ *  6. Install inherited skills and wiring, best-effort. A child that failed
+ *     to inherit a skill is a worse child, not a broken one.
+ */
+export async function breedChild(input: {
+  userId: string
+  parentAgentId: string
+  parentName: string
+  slot: number
+  seedUsd: number
+}): Promise<BreedResult> {
+  const { userId, parentAgentId, slot, seedUsd } = input
+
+  const [parent] = await db.select().from(agent).where(and(eq(agent.id, parentAgentId), eq(agent.userId, userId)))
+  if (!parent) return { ok: false, error: 'parent not found or not yours' }
+
+  const { listAgentSkills } = await import('@/lib/agent-skills')
+  const parentSkills = await listAgentSkills(userId, parentAgentId).catch(() => [])
+  const genome = {
+    customInstructions: parent.customInstructions ?? '',
+    skillSlugs: parentSkills.map((s) => s.slug),
+    connector:
+      parent.mcpServerUrl && parent.mcpToolName
+        ? { serverUrl: parent.mcpServerUrl, toolName: parent.mcpToolName }
+        : null,
+    model: parent.cloudModel ?? null,
+  }
+
+  const mutation = await chooseMutationFor(userId, parentAgentId, genome, parentSkills)
+  const childGenome = applyMutation(genome, mutation)
+
+  const { nanoid } = await import('nanoid')
+  const { randomBytes } = await import('node:crypto')
+  const childId = nanoid()
+  const childName = await uniqueChildName(userId, input.parentName)
+
+  await db.insert(agent).values({
+    id: childId,
+    userId,
+    name: childName,
+    walletAddress: `0x${randomBytes(20).toString('hex')}`,
+    description: `Seeded from ${input.parentName} by the lineage mandate (${mutation.kind}).`,
+    modelVersion: parent.modelVersion,
+    // A genuine cold start. Not inherited, on purpose — see this function's
+    // doc comment and the agent_templates rule it follows.
+    creditScore: '0',
+    creditRating: 'unrated',
+    riskLevel: 'UNKNOWN',
+    riskRating: 'unrated',
+    totalCreditLine: '0',
+    availableCredit: '0',
+    customInstructions: childGenome.customInstructions || null,
+    runtimeType: parent.runtimeType,
+    cloudModel: parent.cloudModel,
+  })
+
+  try {
+    const { isAgentAccountConfigured } = await import('@/lib/onchain/config')
+    if (isAgentAccountConfigured()) {
+      const { getAgentAccountAddress } = await import('@/lib/onchain/account')
+      const address = await getAgentAccountAddress(childId)
+      await db.update(agent).set({ smartAccountAddress: address }).where(eq(agent.id, childId))
+    }
+  } catch (error) {
+    console.error('[lineage] child provisioning failed (non-fatal):', error)
+  }
+
+  const { setAgentOfficeSlot } = await import('@/lib/office')
+  await setAgentOfficeSlot(childId, slot).catch(() => undefined)
+
+  // Recorded before the money moves, like every other spend in this repo.
+  await recordBirth({ userId, childAgentId: childId, parentAgentId, mutation, seededUsd: seedUsd })
+
+  const { fundAgentUsdc } = await import('@/lib/agent-usdc-funding')
+  const funded = await fundAgentUsdc(userId, parentAgentId, childId, { amountUsd: seedUsd })
+  if (!funded.ok) {
+    console.warn(`[lineage] ${childName} was born but the seed transfer failed: ${funded.error}`)
+  }
+
+  // Inheritance of skills and wiring is best-effort: a child missing a skill
+  // is a worse child, not a failed birth, and throwing here would strand one
+  // that already exists and is already funded.
+  for (const slug of childGenome.skillSlugs) {
+    try {
+      const { installAgentSkill } = await import('@/lib/agent-skills')
+      await installAgentSkill({ userId, agentId: childId, slug })
+    } catch (error) {
+      console.warn(`[lineage] ${childName} could not inherit skill ${slug}:`, error)
+    }
+  }
+  if (childGenome.connector) {
+    await db
+      .update(agent)
+      .set({
+        runtimeType: 'mcp',
+        mcpServerUrl: childGenome.connector.serverUrl,
+        mcpToolName: childGenome.connector.toolName,
+      })
+      .where(eq(agent.id, childId))
+      .catch(() => undefined)
+  }
+
+  console.info(`[lineage] ${input.parentName} → ${childName} (${mutation.kind}), seeded $${seedUsd.toFixed(2)}`)
+  return { ok: true, childAgentId: childId, childName }
+}
+
+/** Unique on the account, because agent names are. Generation-suffixed so a
+ *  lineage is readable at a glance in any roster. */
+async function uniqueChildName(userId: string, parentName: string): Promise<string> {
+  const owned = await db.select({ name: agent.name }).from(agent).where(eq(agent.userId, userId))
+  const taken = new Set(owned.map((a) => a.name.toLowerCase()))
+  const stem = parentName.replace(/\s+g\d+$/i, '')
+  for (let gen = 2; gen < 100; gen++) {
+    const candidate = `${stem} g${gen}`
+    if (!taken.has(candidate.toLowerCase())) return candidate
+  }
+  return `${stem} ${Date.now()}`
+}
+
+/** Assemble the real evidence chooseMutation needs: what each of the
+ *  parent's own skills measurably did to its graded pass rate, and which
+ *  skills are measurably helping elsewhere on this account. */
+async function chooseMutationFor(
+  userId: string,
+  parentAgentId: string,
+  genome: { customInstructions: string; skillSlugs: string[]; connector: { serverUrl: string; toolName: string } | null; model: string | null },
+  parentSkills: ReadonlyArray<{ slug: string; installedAt: Date }>,
+) {
+  const { evaluateSkillWindows } = await import('@/lib/skill-eval')
+  const outcomes = await gradedOutcomesFor([parentAgentId])
+  const mine = outcomes.get(parentAgentId) ?? []
+  const skillEvidence = parentSkills.map((s) => ({
+    slug: s.slug,
+    deltaPoints: evaluateSkillWindows(s.installedAt, mine).deltaPoints,
+  }))
+
+  // Skills measured to help on OTHER agents of this account, best first.
+  const siblings = await db
+    .select({ id: agent.id })
+    .from(agent)
+    .where(eq(agent.userId, userId))
+  const siblingIds = siblings.map((s) => s.id).filter((id) => id !== parentAgentId)
+  const siblingOutcomes = await gradedOutcomesFor(siblingIds)
+  const scored = new Map<string, number>()
+  const { listAgentSkills } = await import('@/lib/agent-skills')
+  for (const id of siblingIds) {
+    const theirs = await listAgentSkills(userId, id).catch(() => [])
+    for (const s of theirs) {
+      const delta = evaluateSkillWindows(s.installedAt, siblingOutcomes.get(id) ?? []).deltaPoints
+      if (delta !== null && delta > 0) scored.set(s.slug, Math.max(scored.get(s.slug) ?? 0, delta))
+    }
+  }
+  const provenElsewhere = [...scored.entries()].sort((a, b) => b[1] - a[1]).map(([slug]) => slug)
+
+  return chooseMutation({ genome, skillEvidence, provenElsewhere })
+}
+
+/** Every graded outcome for these agents, all time — skill evidence splits
+ *  on install date, so unlike the fitness window this must not be clipped. */
+async function gradedOutcomesFor(agentIds: string[]): Promise<Map<string, { at: Date; passed: boolean }[]>> {
+  const out = new Map<string, { at: Date; passed: boolean }[]>()
+  if (agentIds.length === 0) return out
+  const rows = await db
+    .select({ agentId: agentEvent.agentId, eventType: agentEvent.eventType, createdAt: agentEvent.createdAt })
+    .from(agentEvent)
+    .where(and(inArray(agentEvent.agentId, agentIds), inArray(agentEvent.eventType, GRADED_EVENT_TYPES)))
+  for (const r of rows) {
+    const list = out.get(r.agentId) ?? []
+    list.push({ at: r.createdAt, passed: PASS_EVENT_TYPES.includes(r.eventType) })
+    out.set(r.agentId, list)
+  }
+  return out
 }

@@ -57,7 +57,12 @@ import {
 } from '@/app/actions/agent-skills'
 import type { ClawhubSkill } from '@/lib/clawhub'
 import { myAgentRepo, bindRepoToAgent, unbindRepoFromAgent, type AgentRepoView } from '@/app/actions/agent-repo'
-import { myLineageReport } from '@/app/actions/agent-lineage'
+import {
+  myLineageReport,
+  myLineageMandate,
+  setMyLineageMandate,
+  type LineageMandateView,
+} from '@/app/actions/agent-lineage'
 import type { LineageReport } from '@/lib/agent-lineage'
 import { getGithubConnection } from '@/app/actions/repo-jobs'
 import type { GithubConnection } from '@/lib/github-identity'
@@ -1103,6 +1108,7 @@ const LIFECYCLE_WHY: Record<string, string> = {
  */
 function LineageDryRunPanel({ slot }: { slot: number }) {
   const [report, setReport] = useState<LineageReport | null>(null)
+  const [mandate, setMandate] = useState<LineageMandateView | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -1119,9 +1125,32 @@ function LineageDryRunPanel({ slot }: { slot: number }) {
   }, [slot])
 
   useEffect(() => {
+    let dead = false
     setReport(null)
     setError(null)
+    setMandate(null)
+    myLineageMandate(slot)
+      .then((m) => {
+        if (!dead) setMandate(m)
+      })
+      .catch(() => undefined)
+    return () => {
+      dead = true
+    }
   }, [slot])
+
+  const toggleMandate = async () => {
+    if (!mandate) return
+    setBusy(true)
+    try {
+      await setMyLineageMandate(slot, !mandate.enabled)
+      setMandate(await myLineageMandate(slot))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not change it.')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   return (
     <Card>
@@ -1134,9 +1163,36 @@ function LineageDryRunPanel({ slot }: { slot: number }) {
         </div>
         <p className="text-xs text-muted-foreground">
           Earn-or-die, scored on independently graded work rather than attention — see{' '}
-          <code className="text-[11px]">docs/agent-lineage.md</code>. This reports what the rules would do; it does
-          nothing. No agent is created, funded, or retired by this panel.
+          <code className="text-[11px]">docs/agent-lineage.md</code>. The report below always runs dry: it changes
+          nothing. The mandate is the separate switch that lets these calls actually act.
         </p>
+        {mandate && (
+          <div className="flex flex-wrap items-center gap-2 rounded-md border border-border p-2">
+            <span className={`font-mono text-[11px] ${mandate.enabled ? 'text-success' : 'text-muted-foreground'}`}>
+              ● MANDATE {mandate.enabled ? 'ON' : 'OFF'}
+            </span>
+            {mandate.enabled && !mandate.allowedHere && (
+              <span className="text-[11px] text-warning">
+                — refused here: this deployment handles real money. It runs on the testnet rehearsal.
+              </span>
+            )}
+            {!mandate.enabled && (
+              <span className="text-[11px] text-muted-foreground">
+                Proven agents are not copied and failing ones are not retired.
+              </span>
+            )}
+            <Button
+              type="button"
+              size="sm"
+              variant={mandate.enabled ? 'destructive' : 'outline'}
+              className="ml-auto"
+              onClick={toggleMandate}
+              disabled={busy}
+            >
+              {mandate.enabled ? 'Revoke mandate' : 'Grant mandate'}
+            </Button>
+          </div>
+        )}
       </CardHeader>
       <CardContent className="space-y-2">
         {error && <p className="text-sm text-destructive">{error}</p>}

@@ -791,6 +791,46 @@ export async function handleOffice(
       )
     }
 
+    case 'set_lineage_mandate': {
+      const { getLineageMandate, setLineageMandate, lineageMandateAllowed, MAX_BIRTHS_PER_WINDOW, MAX_SEED_PER_WINDOW_USD } =
+        await import('@/lib/lineage-mandate')
+      const { isRealMoney } = await import('@/lib/onchain/real-money')
+      const slot = parseSlot(args)
+      const gate = lineageMandateAllowed({
+        realMoney: isRealMoney(),
+        allowRealMoneyEnv: process.env.LINEAGE_MANDATE_ALLOW_REAL_MONEY,
+      })
+      // The deployment gate is stated on every answer, granted or not. An
+      // owner who turns this on and sees nothing happen is owed the reason,
+      // and the reason is a property of the deployment, not of their switch.
+      const gateLine = gate.allowed
+        ? ''
+        : `\n\nNOTE: this deployment handles real money, so the mandate is REFUSED here whatever the switch says. ` +
+          `Run it on the testnet rehearsal deployment instead — same code, faucet USDC, no monetary value.`
+
+      if (args.enabled === undefined) {
+        const mandate = await getLineageMandate(auth.userId, slot)
+        return toolText(
+          id,
+          `Office ${slot} lineage mandate: ${mandate?.enabled ? 'ON' : 'off'}\n` +
+            `When on and permitted, each cycle seeds at most ${MAX_BIRTHS_PER_WINDOW} child agent(s) a day from ` +
+            `proven parents (≤$${MAX_SEED_PER_WINDOW_USD.toFixed(2)} of seed a day, from the parent's own wallet) ` +
+            `and retires ones that are failing or starved. lineage_report shows what it would do.${gateLine}`,
+        )
+      }
+
+      const enabled = args.enabled !== false
+      await setLineageMandate(auth.userId, slot, enabled)
+      return toolText(
+        id,
+        enabled
+          ? `Office ${slot} lineage mandate is ON. Proven agents get copied — the child inherits instructions, ` +
+              `skills and wiring but starts at credit score zero with no history — and failing or starved agents ` +
+              `get retired (auto-mining off; nothing deleted, nothing burned).${gateLine}`
+          : `Office ${slot} lineage mandate is off. Nothing is copied or retired; lineage_report still reports.`,
+      )
+    }
+
     case 'test_mcp_connector': {
       const serverUrl = String(args.server_url ?? '').trim()
       const toolName = String(args.tool_name ?? '').trim()

@@ -243,6 +243,17 @@ export const OPS_STEPS: OpsStep[] = [
     },
   },
   {
+    // The lineage mandate (lib/lineage-mandate.ts): seed children from proven
+    // agents, retire failing or starved ones. Refuses outright on a
+    // real-money deployment unless explicitly allowed — see that module's
+    // header for why an evolutionary loop is a rehearsal-first feature.
+    name: 'lineageMandates',
+    run: async () => {
+      const { tickLineageMandates } = await import('@/lib/lineage-mandate')
+      return tickLineageMandates()
+    },
+  },
+  {
     name: 'loansDefaulted',
     run: async () => {
       const { sweepDefaultedLoans } = await import('@/lib/loan-sweep')

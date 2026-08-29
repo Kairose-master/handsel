@@ -245,6 +245,58 @@ export function decideLifecycle(input: {
   return { action: 'hold', why: 'healthy' }
 }
 
+/* ── Choosing the variation ──────────────────────────────────────────── */
+
+/** One installed skill and what it measurably did to the agent's graded pass
+ *  rate (lib/skill-eval.ts). `deltaPoints` is null when either window was too
+ *  thin to compare — which is most of the time, and must read as "unknown",
+ *  never as "no effect". */
+export type SkillEvidence = { slug: string; deltaPoints: number | null }
+
+/**
+ * Pick the child's one heritable difference from its parent. Pure.
+ *
+ * Deliberately NOT stochastic, which is the visible break from Spore.fun
+ * (whose offspring got random tweaks to posting cadence, prompt style and
+ * liquidity thresholds). Random variation needs cheap trials to pay off:
+ * you take many draws, most are worse, selection cleans up. Here a trial
+ * costs a real seeded wallet and takes days of graded work to evaluate, and
+ * the market's volume means most agents never reach a measurable sample at
+ * all. Under those economics random drift is indistinguishable from noise
+ * with an invoice attached.
+ *
+ * So variation is introduced only where something was actually measured:
+ *
+ *  1. Prune what is measurably hurting — the worst skill with a MEASURED
+ *     negative delta.
+ *  2. Otherwise adopt what is measurably helping elsewhere on the account —
+ *     the best-performing skill this genome lacks, if there is a free slot.
+ *  3. Otherwise change nothing. No evidence, no mutation: the same rule the
+ *     lifecycle decision follows, for the same reason.
+ *
+ * The honest name for this is hill-climbing on measured evidence rather than
+ * a genetic algorithm. It still has heredity, variation and selection; what
+ * it gives up is exploration of the space evidence has not reached yet.
+ */
+export function chooseMutation(input: {
+  genome: AgentGenome
+  /** The parent's own installed skills and their measured deltas. */
+  skillEvidence: readonly SkillEvidence[]
+  /** Slugs measured to help on OTHER agents of this account, best first. */
+  provenElsewhere: readonly string[]
+}): Mutation {
+  const harmful = input.skillEvidence
+    .filter((s) => s.deltaPoints !== null && s.deltaPoints < 0)
+    .sort((a, b) => (a.deltaPoints as number) - (b.deltaPoints as number))
+  if (harmful.length > 0) return { kind: 'drop-skill', slug: harmful[0].slug }
+
+  if (input.genome.skillSlugs.length < MAX_GENOME_SKILLS) {
+    const missing = input.provenElsewhere.find((slug) => !input.genome.skillSlugs.includes(slug))
+    if (missing) return { kind: 'add-skill', slug: missing }
+  }
+  return { kind: 'none' }
+}
+
 /* ── Lineage shape ───────────────────────────────────────────────────── */
 
 export type LineageRow = {

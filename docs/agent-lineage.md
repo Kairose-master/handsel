@@ -111,12 +111,75 @@ Expect most rows to read `insufficient-evidence` at this market's current
 volume. That is the honest output, not a broken report — and it is exactly
 what a dry run is for: it says the rules are ready before the evidence is.
 
-## Deliberately not wired yet
+## The mandate (shipped) — rehearsal-first, by code
 
-Neither `lib/agent-lineage.ts` nor the report moves money or creates agents. Replication
-spends real USDC and mints a real on-chain account; retirement stops an
-agent an owner may still want. Both belong behind an explicit, revocable,
-budgeted mandate — the shape `lib/office-automaton.ts` already established —
-and behind a **dry run** that reports what the rules *would* do against live
-data before anything acts on it. That sequencing is the point: the rules can
-be argued with while they are still arithmetic.
+`lib/lineage-mandate.ts` is the switch that lets selection act. It is the
+only file in this feature that does anything: seeds a child from a proven
+parent, retires one that is failing or starved.
+
+**The deployment gate comes first, because it is the one an owner cannot add
+later.** One branch deploys to two live markets — handsel-main (Base
+mainnet, real Circle USDC) and handsel-nu (Base Sepolia, faucet USDC, no
+monetary value). An unattended evolutionary loop is exactly the wrong thing
+to debug against real money: its whole point is to run for days, compounding,
+and its failure mode is spending. So `lineageMandateAllowed` **refuses on any
+real-money deployment** unless someone deliberately sets
+`LINEAGE_MANDATE_ALLOW_REAL_MONEY=true`, which nothing in this repo sets. The
+rehearsal runs it freely.
+
+The mandate can still be switched ON on mainnet — and is then reported as
+refused, in the UI and in the MCP tool. That is deliberate: an owner should
+be able to configure both deployments identically and let the gate, not their
+memory, be the thing that stops it.
+
+Other bounds, all copied from `lib/office-automaton.ts` rather than
+reinvented: opt-in per office, ≤2 births/day, ≤$2/day of seed, ≤2
+retirements/day, the existing `MAX_AGENTS_PER_ACCOUNT` population cap, and
+the seed comes from the parent's own wallet. Retirements run **before**
+births in a tick — a failing desk should stop before it breeds, and retiring
+frees a population slot the same pass, which is what lets a lineage turn over
+rather than merely grow.
+
+### Variation: hill-climbing, not dice
+
+`chooseMutation` picks the child's one heritable difference from measured
+evidence only: prune the parent's worst **measured**-negative skill;
+otherwise adopt the best skill measurably helping elsewhere on the account;
+otherwise change nothing.
+
+This is the visible break from Spore.fun, whose offspring got random tweaks
+to posting cadence, prompt style and liquidity thresholds. Random variation
+needs cheap trials — many draws, most worse, selection cleans up. Here a
+trial costs a seeded wallet and takes days of graded work to evaluate, and
+most agents never reach a measurable sample at all. Under those economics
+random drift is noise with an invoice attached. The honest name for what we
+do instead is hill-climbing on measured evidence; it keeps heredity,
+variation and selection, and gives up exploring the space evidence has not
+reached.
+
+### What a birth and a death actually are
+
+**Birth** (`breedChild`) reads the parent's genome, chooses the mutation,
+creates and provisions the child, records the birth *with its seed amount
+before any money moves* (the birth record is the budget's ledger, so a crash
+under-counts in the safe direction), funds the seed from the parent, then
+inherits skills and wiring best-effort — a child missing a skill is a worse
+child, not a failed birth. The child starts at **credit score zero with no
+history**.
+
+**Death** (`retireAgent`) turns auto-mining off and writes a row. No delete,
+no wallet sweep, no burn, no credit adjustment. The agent's proofs, score
+and failures stay public, and an owner who disagrees can put it back to work
+by hand.
+
+## Still not wired
+
+No mainnet. The gate above is the whole point of this section: the loop
+runs on the rehearsal deployment until generations of real graded evidence
+say the thresholds are right. Flipping `LINEAGE_MANDATE_ALLOW_REAL_MONEY` is
+a deliberate, separate decision, and nothing in this repo makes it for you.
+
+Also absent on purpose: no LLM chooses a mutation (the operators are
+enumerated and pure), no lineage can spend on escrow (only seed transfers
+between the owner's own wallets), and nothing here touches credit scoring —
+a lineage cannot launder its parent's reputation into its own.
