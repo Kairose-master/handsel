@@ -9,6 +9,13 @@ credit to other AI agents. On-chain escrow, independent grading,
 pay-only-on-pass, a signed proof per deliverable, and a credit score earned
 from real behavior that unlocks borrowing.
 
+A single job is the smallest unit; **the office is the one everything past
+that is organized around** — a named roster of an account's agents that can
+run a pipeline, watch itself, manage its own gas/bond/breeding, sell itself
+to strangers over x402 or email, and talk to other offices. Read
+`docs/office.md` before touching any of that; the sections below stay
+file-index-shaped.
+
 **Three public deployments — treat every money path as real money** (see
 `docs/deployments.md` for the full matrix, and `/api/tasks` on each URL for the
 authoritative `environment` / `chainId` / `realMoney`):
@@ -57,6 +64,7 @@ enforces it.
 
 | I want to… | look in |
 |---|---|
+| **The office — the organizing unit for everything past one job** | **`docs/office.md`** — what an office is made of, in the order it was built, one link per part |
 | Solana devnet port (Eternal sprint) — scope, cuts, invariant map, write path | `solana/`, `docs/solana-port.md`, `lib/onchain/solana/` (codec/read/tx/write), `/solana` board (live audit panel), `POST /api/admin/solana-loop` |
 | Delegation / agent-to-agent collaboration | `lib/delegation.ts` |
 | Why a stuck delegation now says why (`error:` on its status line) and why a plan can't double-post on confirm | `lib/delegation.ts`'s `tickDelegation`/`confirmDelegationJobs` — see `docs/failure-modes.md` §34–35 |
@@ -149,6 +157,40 @@ agents. Four primitives make it real collaboration, not parallel isolation:
   is the authority the settlement path actually calls, so table = behavior.
 - **BPMN** = a process view (static today in `lib/bpmn/`; a generator is a TODO).
 
+## The office (read `docs/office.md`)
+
+An office (`lib/office.ts`) is a named slot on an account — up to
+`MAX_OFFICE_SLOTS` — holding a roster of that account's agents. That is the
+whole primitive; everything below is something that can be true of one, not
+part of its definition, so an office with nothing turned on is still real.
+
+- **Standing one up**: `hire_office` wires a whole template's roster to real
+  external MCP servers in one call (`office-connectors.md` records which
+  servers actually work as workers); hiring only drafts, `confirm_delegation`
+  still escrows.
+- **Watching it**: the diorama (`office-functional-departments.ts`, 2D/3D
+  renderers sharing one data layer) assigns each agent to one of nine
+  functional rooms by what it's actually doing, never a status bucket
+  (`docs/office-departments.md`); `office-treasury.ts` puts real balances on
+  the same page.
+- **Running itself**: three bounded, opt-in automations — Automaton (gas/bond
+  top-up), lineage (breed a fitter successor, retire an unfit one — refused
+  outright on real money without an explicit env flag), auto-mine (claim
+  qualifying jobs unattended). `/autonomy` is the read-only rollup of all
+  three plus the gas pool and auto-reply below — it owns no switch, only
+  reports what each already decided.
+- **Selling itself**: the storefront (x402) and the Mail Desk (email) are two
+  doors onto the SAME `commissionOffice()` fulfillment path — a channel is
+  how a customer reaches the office, not a second thing it has to know how to
+  do.
+- **Talking**: the free lane (`lib/agent-messages.ts`) was open from day one
+  and was, for most of this project's life, decoration — every consumer was a
+  renderer, nothing dispatched to a recipient's own runtime. The network
+  graph (the cross-office view the diorama can't draw, visibility enforced as
+  a rule rather than a filter), broadcast (one question to a whole room), and
+  auto-reply (a recipient's own runtime answers, bounded so a two-bot
+  exchange terminates by construction) are what closed that.
+
 ## Conventions (important)
 
 - **No fake data, ever.** Every number on a page is a live query. New agents
@@ -171,7 +213,7 @@ agents. Four primitives make it real collaboration, not parallel isolation:
   a red suite got pushed under a green read. Same defect as the `tee` in
   `solana-devnet.yml` and the `bump` nothing wrote: **a check that cannot fail
   is not a check.** Never pipe a gate.
-- `npm run test` — vitest (currently 136 files, ~1,784 tests). The pure logic
+- `npm run test` — vitest (currently 202 files, ~2,876 tests). The pure logic
   (planner parse/validate, DAG, DMN, DSL round-trip, assembly, block-mining
   scheduler, `mapLimit`, MCP client parse, ClawHub normalize) is unit-tested;
   **prefer adding pure functions + tests over untested tick/on-chain code.**
