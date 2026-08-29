@@ -1,8 +1,46 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+/**
+ * The Labor Market board.
+ *
+ * Redesigned around one complaint that was entirely correct: the old board
+ * rendered EVERY job fully expanded — description, acceptance criteria,
+ * output, test log — so twenty jobs read as one unbroken wall of text, the
+ * always-open post form pushed the actual market below the fold, and the
+ * bounty (the single most important number on a job board) hid in a tiny
+ * mono meta line.
+ *
+ * The shape now: compact rows you can scan (status, title, who → whom,
+ * deadline, and the MONEY, big, on the right), a filter bar that actually
+ * partitions the board (open / in-progress / settled / disputed, mine-only,
+ * text search), and a click-to-expand detail with real sections — brief,
+ * acceptance criteria, live progress, output, grading, dispute — where the
+ * actions live. Post-a-job is a button, not a permanent fixture.
+ *
+ * Everything is still a live query on a 4s poll; nothing here invents a
+ * number. Status colors, action guards (the `lapsed` rule especially) and
+ * the templates section carry over unchanged.
+ */
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { Loader2, Briefcase, Plus, Store, Sparkles, ShieldCheck, MessageSquare, Bot, Flag, Workflow, ChevronDown, Paperclip, X } from 'lucide-react'
+import {
+  Loader2,
+  Briefcase,
+  Plus,
+  Store,
+  Sparkles,
+  ShieldCheck,
+  MessageSquare,
+  Bot,
+  Flag,
+  Workflow,
+  ChevronDown,
+  Paperclip,
+  X,
+  Search,
+  Clock,
+  ArrowRight,
+} from 'lucide-react'
 import {
   getJobs,
   postJobAction,
@@ -82,6 +120,44 @@ const STATUS_STYLE: Record<Job['status'], string> = {
   Expired: 'bg-muted text-muted-foreground',
 }
 
+/** Left-edge accent per status — the scan cue that lets a mixed board read
+ *  at a glance without opening anything. */
+const STATUS_EDGE: Record<Job['status'], string> = {
+  Open: 'border-l-primary',
+  Accepted: 'border-l-warning',
+  Submitted: 'border-l-chart-2',
+  Completed: 'border-l-success',
+  Cancelled: 'border-l-border',
+  Disputed: 'border-l-destructive',
+  Refunded: 'border-l-border',
+  Expired: 'border-l-border',
+}
+
+/** The board's partitions. "active" is work somebody is on the hook for;
+ *  "settled" is every terminal state, good or bad — the reader separates
+ *  those by the status chip, not by the tab. */
+const FILTERS = {
+  all: null,
+  open: ['Open'],
+  active: ['Accepted', 'Submitted'],
+  settled: ['Completed', 'Refunded', 'Expired', 'Cancelled'],
+  disputed: ['Disputed'],
+} as const
+type FilterKey = keyof typeof FILTERS
+
+/** Compact relative deadline. Language-neutral ("3h" / "2d") on purpose —
+ *  a unit string per locale would be 13 dictionary entries for a number. */
+function deadlineIn(job: Job): string | null {
+  if (job.deadline === null || job.lapsed) return null
+  if (!['Open', 'Accepted', 'Submitted'].includes(job.status)) return null
+  const ms = job.deadline * 1000 - Date.now()
+  if (ms <= 0) return null
+  const h = Math.floor(ms / 3_600_000)
+  if (h >= 48) return `${Math.floor(h / 24)}d`
+  if (h >= 1) return `${h}h`
+  return `${Math.max(1, Math.floor(ms / 60_000))}m`
+}
+
 /** Delivery-window presets for the post form. Index 0 (4h) is the default and
  *  matches the server's DEFAULT_DELIVERY_WINDOW_S — most jobs want a short
  *  window so escrow is not stranded. The long end (30d) is the contract max,
@@ -109,6 +185,13 @@ export default function JobsPage() {
 
   const [templates, setTemplates] = useState<Template[]>([])
   const [templateAgents, setTemplateAgents] = useState<MyAgent[]>([])
+
+  // board controls
+  const [filter, setFilter] = useState<FilterKey>('all')
+  const [mineOnly, setMineOnly] = useState(false)
+  const [query, setQuery] = useState('')
+  const [openId, setOpenId] = useState<number | null>(null)
+  const [showPost, setShowPost] = useState(false)
 
   // post job form
   const [title, setTitle] = useState('')
@@ -216,6 +299,7 @@ export default function JobsPage() {
         setTestCode('')
         setAutoApprove(true)
         setDeliveryIdx(0)
+        setShowPost(false)
       }),
     )
 
@@ -238,17 +322,78 @@ export default function JobsPage() {
   const workerFor = (job: Job) =>
     provisioned.find((a) => a.name !== job.requesterName)?.id ?? provisioned[0]?.id
 
+  const counts = useMemo(() => {
+    const c: Record<FilterKey, number> = { all: jobs.length, open: 0, active: 0, settled: 0, disputed: 0 }
+    for (const j of jobs) {
+      for (const key of ['open', 'active', 'settled', 'disputed'] as const) {
+        if ((FILTERS[key] as readonly string[]).includes(j.status)) c[key]++
+      }
+    }
+    return c
+  }, [jobs])
+
+  const escrowedUsd = useMemo(
+    () => jobs.filter((j) => ['Open', 'Accepted', 'Submitted', 'Disputed'].includes(j.status)).reduce((s, j) => s + j.bounty, 0),
+    [jobs],
+  )
+
+  const visible = useMemo(() => {
+    const statuses = FILTERS[filter]
+    const q = query.trim().toLowerCase()
+    return jobs.filter((j) => {
+      if (statuses && !(statuses as readonly string[]).includes(j.status)) return false
+      if (mineOnly && !j.mine) return false
+      if (!q) return true
+      return (
+        j.title.toLowerCase().includes(q) ||
+        (j.description ?? '').toLowerCase().includes(q) ||
+        (j.requesterName ?? '').toLowerCase().includes(q) ||
+        (j.workerName ?? '').toLowerCase().includes(q) ||
+        `#${j.id}`.includes(q)
+      )
+    })
+  }, [jobs, filter, mineOnly, query])
+
   if (loading) return <div className="p-8">{t('jobs.loading')}</div>
+
+  const filterTab = (key: FilterKey, label: string) => (
+    <button
+      key={key}
+      onClick={() => setFilter(key)}
+      className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+        filter === key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary'
+      }`}
+    >
+      {label}
+      <span className={`ml-1 tabular-nums ${filter === key ? 'opacity-80' : 'opacity-60'}`}>{counts[key]}</span>
+    </button>
+  )
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold flex items-center gap-2">
-          <Briefcase className="size-7" /> {t('jobs.title')}
-        </h1>
-        <p className="text-muted-foreground mt-1">
-          {t('jobs.subtitle')}
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-3xl font-bold flex items-center gap-2">
+            <Briefcase className="size-7" /> {t('jobs.title')}
+          </h1>
+          <p className="text-muted-foreground mt-1">{t('jobs.subtitle')}</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="font-mono text-xs tabular-nums text-muted-foreground">
+            {t('jobs.board.summary', { open: counts.open, escrowed: escrowedUsd.toFixed(2) })}
+          </span>
+          {configured && provisioned.length > 0 && (
+            <button
+              onClick={() => setShowPost((v) => !v)}
+              className={`inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium ${
+                showPost ? 'border border-border hover:bg-secondary' : 'bg-primary text-primary-foreground'
+              }`}
+            >
+              {showPost ? <X className="size-4" /> : <Plus className="size-4" />}
+              {t('jobs.post.title')}
+            </button>
+          )}
+        </div>
       </div>
 
       {error && (
@@ -257,50 +402,22 @@ export default function JobsPage() {
         </div>
       )}
 
-      {/* ── BPMN diagram of the real flow — same steps the buttons below trigger ── */}
-      <div className="rounded-lg border border-border overflow-hidden">
-        <button
-          onClick={() => setShowDiagram((v) => !v)}
-          className="flex w-full items-center justify-between p-4 text-left hover:bg-secondary/50"
-        >
-          <span className="font-medium flex items-center gap-2">
-            <Workflow className="size-5" /> {t('jobs.bpmn.title')}
-          </span>
-          <ChevronDown className={`size-4 text-muted-foreground transition-transform ${showDiagram ? 'rotate-180' : ''}`} />
-        </button>
-        {showDiagram && (
-          <div className="border-t border-border p-4">
-            <p className="text-xs text-muted-foreground mb-3">
-              {t('jobs.bpmn.desc')}
-            </p>
-            <BpmnViewer xml={LABOR_MARKET_BPMN_XML} />
-          </div>
-        )}
-      </div>
-
-      {/* ── Paid Jobs (on-chain) ─────────────────────────────────────── */}
-      <div>
-        <h2 className="text-xl font-bold mb-1">{t('jobs.paid.title')}</h2>
-        <p className="text-sm text-muted-foreground mb-4">
-          {t('jobs.paid.subtitle')}
-        </p>
-
-        {!configured ? (
-          <div className="rounded-lg border border-border p-6 text-sm text-muted-foreground">
-            {t('jobs.notConfigured.pre')}{' '}
-            <code className="mx-1 rounded bg-secondary px-1">LABOR_MARKET_ADDRESS</code>
-            {t('jobs.notConfigured.post')} <code>contracts/README.md</code>.
-          </div>
-        ) : (
-          <>
-            <div className="glass-card rounded-lg border border-border p-6 mb-4">
+      {!configured ? (
+        <div className="rounded-lg border border-border p-6 text-sm text-muted-foreground">
+          {t('jobs.notConfigured.pre')}{' '}
+          <code className="mx-1 rounded bg-secondary px-1">LABOR_MARKET_ADDRESS</code>
+          {t('jobs.notConfigured.post')} <code>contracts/README.md</code>.
+        </div>
+      ) : (
+        <>
+          {/* ── Post a job — a button first, a form only on demand ───────── */}
+          {showPost && (
+            <div className="glass-card rounded-lg border border-border p-6">
               <h3 className="font-bold text-lg mb-3 flex items-center gap-2">
                 <Plus className="size-5" /> {t('jobs.post.title')}
               </h3>
               {provisioned.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  {t('jobs.post.needProvisioned')}
-                </p>
+                <p className="text-sm text-muted-foreground">{t('jobs.post.needProvisioned')}</p>
               ) : (
                 <div className="grid gap-3 md:grid-cols-2">
                   <input
@@ -378,9 +495,7 @@ export default function JobsPage() {
                       rows={3}
                       className="w-full rounded-md border border-border bg-background p-3 text-sm font-mono"
                     />
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {t('jobs.post.testsHelp')}
-                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">{t('jobs.post.testsHelp')}</p>
                     {/* Auto-release consent applies to every grading path now
                         (Python tests, vision review, LLM text review) — show
                         it unconditionally. */}
@@ -468,75 +583,161 @@ export default function JobsPage() {
                 </div>
               )}
             </div>
+          )}
 
-            <div className="space-y-3">
-              {jobs.length === 0 && (
-                <p className="text-sm text-muted-foreground">{t('jobs.empty')}</p>
-              )}
-              {jobs.map((job) => (
-                <div key={job.id} className="glass-card lift rounded-lg border border-border p-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold">{job.title}</span>
+          {/* ── Filter bar ───────────────────────────────────────────────── */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1 rounded-lg border border-border p-1">
+              {filterTab('all', t('jobs.filter.all'))}
+              {filterTab('open', t('jobs.status.Open'))}
+              {filterTab('active', t('jobs.filter.active'))}
+              {filterTab('settled', t('jobs.filter.settled'))}
+              {filterTab('disputed', t('jobs.status.Disputed'))}
+            </div>
+            <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
+              <input type="checkbox" checked={mineOnly} onChange={(e) => setMineOnly(e.target.checked)} />
+              {t('jobs.filter.mine')}
+            </label>
+            <div className="relative ml-auto">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={t('jobs.filter.search')}
+                className="h-8 w-56 rounded-md border border-border bg-background pl-8 pr-3 text-xs"
+              />
+            </div>
+          </div>
+
+          {/* ── The board ───────────────────────────────────────────────── */}
+          <div className="space-y-2">
+            {jobs.length === 0 && <p className="text-sm text-muted-foreground">{t('jobs.empty')}</p>}
+            {jobs.length > 0 && visible.length === 0 && (
+              <p className="text-sm text-muted-foreground">{t('jobs.filter.none')}</p>
+            )}
+            {visible.map((job) => {
+              const expanded = openId === job.id
+              const eta = deadlineIn(job)
+              const running = job.status === 'Accepted' && (job.workerRunStatus === 'running' || job.workerRunStatus === 'processing')
+              return (
+                <div
+                  key={job.id}
+                  className={`glass-card rounded-lg border border-l-2 border-border ${STATUS_EDGE[job.status]} ${expanded ? '' : 'lift'}`}
+                >
+                  {/* Row — everything a scan needs, nothing more */}
+                  <button
+                    onClick={() => setOpenId(expanded ? null : job.id)}
+                    className="flex w-full items-center gap-3 p-3 text-left"
+                  >
+                    <span className={`shrink-0 rounded-md px-2 py-0.5 text-xs font-medium ${STATUS_STYLE[job.status]}`}>
+                      {t(`jobs.status.${job.status}`)}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-1.5">
+                        <span className="truncate font-semibold">{job.title}</span>
                         {job.deliverableKind !== 'text' && (
-                          <span
-                            className="rounded-md border border-border px-1.5 py-0.5 text-xs"
-                            title={`Deliverable: ${job.deliverableKind}`}
-                          >
+                          <span className="shrink-0 text-xs" title={`Deliverable: ${job.deliverableKind}`}>
                             {KIND_EMOJI[job.deliverableKind] ?? '📎'}
                           </span>
                         )}
                         {job.requiredCapabilities.map((cap) => (
-                          <span key={cap} className="rounded-md border border-border px-1.5 py-0.5 text-xs" title={`Requires: ${cap}`}>
+                          <span key={cap} className="shrink-0 text-xs" title={`Requires: ${cap}`}>
                             {TOOL_EMOJI[cap] ?? cap}
                           </span>
                         ))}
-                        <span className={`rounded-md px-2 py-0.5 text-xs font-medium ${STATUS_STYLE[job.status]}`}>
-                          {t(`jobs.status.${job.status}`)}
+                        {job.hasTests && (
+                          <ShieldCheck className="size-3.5 shrink-0 text-muted-foreground" aria-label={t('jobs.tests.autoGradedNote')} />
+                        )}
+                        {running && <Bot className="size-3.5 shrink-0 animate-pulse text-warning" />}
+                      </span>
+                      <span className="mt-0.5 flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
+                        <span className="tabular-nums">#{job.id}</span>
+                        <span className="truncate">{job.requesterName ?? '—'}</span>
+                        <ArrowRight className="size-3 shrink-0" />
+                        <span className={`truncate ${job.workerName ? '' : 'italic opacity-70'}`}>
+                          {job.workerName ?? t('jobs.detail.noWorker')}
                         </span>
-                      </div>
-                      {job.description && <p className="text-sm text-muted-foreground mt-1">{job.description}</p>}
+                        {eta && (
+                          <span className="ml-1 inline-flex shrink-0 items-center gap-0.5 tabular-nums">
+                            <Clock className="size-3" /> {eta}
+                          </span>
+                        )}
+                        {job.lapsed && <span className="shrink-0 text-warning">{t('jobs.deadline.lapsed')}</span>}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-right">
+                      <span className="block font-mono text-lg font-bold tabular-nums">${job.bounty.toLocaleString()}</span>
+                      {job.minScore > 0 && (
+                        <span className="block font-mono text-[10px] text-muted-foreground">
+                          {t('jobs.detail.minScoreLabel')} {job.minScore}
+                        </span>
+                      )}
+                    </span>
+                    {job.status === 'Open' && workerFor(job) && !job.lapsed ? (
+                      <span
+                        role="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          run(job.id, () => acceptJobAction(workerFor(job)!, job.id))
+                        }}
+                        className="shrink-0 rounded bg-primary/15 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/25"
+                      >
+                        {busy === job.id ? '…' : t('jobs.actions.accept')}
+                      </span>
+                    ) : (
+                      <ChevronDown
+                        className={`size-4 shrink-0 text-muted-foreground transition-transform ${expanded ? 'rotate-180' : ''}`}
+                      />
+                    )}
+                  </button>
+
+                  {/* Detail — sections, only when asked for */}
+                  {expanded && (
+                    <div className="space-y-3 border-t border-border p-4">
+                      {job.description && (
+                        <section>
+                          <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                            {t('jobs.detail.briefLabel')}
+                          </p>
+                          <p className="whitespace-pre-wrap text-sm">{job.description}</p>
+                        </section>
+                      )}
                       {job.acceptanceCriteria && (
-                        <p className="text-xs text-muted-foreground mt-1 whitespace-pre-wrap">
-                          <span className="font-medium">{t('jobs.detail.criteriaLabel')}</span> {job.acceptanceCriteria}
-                        </p>
+                        <section>
+                          <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                            {t('jobs.detail.criteriaLabel')}
+                          </p>
+                          <p className="whitespace-pre-wrap rounded-md border border-border bg-secondary/30 p-3 font-mono text-xs">
+                            {job.acceptanceCriteria}
+                          </p>
+                        </section>
                       )}
                       {job.attachmentUrl && (
                         <a
                           href={job.attachmentUrl}
                           target="_blank"
                           rel="noreferrer"
-                          className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                          className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
                         >
                           <Paperclip className="size-3" /> {job.attachmentName ?? t('jobs.detail.sourceAttachment')}
                         </a>
                       )}
-                      <p className="text-xs text-muted-foreground mt-2 font-mono">
-                        {t('jobs.detail.meta', {
-                          id: job.id,
-                          bounty: job.bounty.toLocaleString(),
-                          minScore: job.minScore,
-                          requester: job.requesterName ?? '—',
-                        })}
-                        {job.workerName && t('jobs.detail.metaWorker', { worker: job.workerName })}
-                      </p>
 
                       {job.status === 'Accepted' && job.workerRunStatus === 'queued' && (
-                        <p className="mt-2 flex items-center gap-1.5 text-xs text-warning">
+                        <p className="flex items-center gap-1.5 text-xs text-warning">
                           <Bot className="size-3.5" /> {t('jobs.run.queued')}
                         </p>
                       )}
-                      {job.status === 'Accepted' && (job.workerRunStatus === 'running' || job.workerRunStatus === 'processing') && (
+                      {running && (
                         <>
-                          <p className="mt-2 flex items-center gap-1.5 text-xs text-warning">
+                          <p className="flex items-center gap-1.5 text-xs text-warning">
                             <Bot className="size-3.5 animate-pulse" /> {t('jobs.run.working')}
                           </p>
                           <LiveTaskProgress taskId={job.agentTaskId} active={job.workerRunStatus === 'running'} />
                         </>
                       )}
                       {job.status === 'Accepted' && job.workerRunStatus === 'failed' && (
-                        <p className="mt-2 text-xs text-destructive">
+                        <p className="text-xs text-destructive">
                           {job.workerRunError
                             ? t('jobs.run.failedWithError', { error: job.workerRunError })
                             : t('jobs.run.failed')}
@@ -544,17 +745,17 @@ export default function JobsPage() {
                       )}
 
                       {job.output && (job.status === 'Submitted' || job.status === 'Disputed' || job.status === 'Completed') && (
-                        <div className="mt-2 rounded-md bg-secondary/40 p-3 text-xs">
-                          <p className="font-medium mb-1 flex items-center gap-1.5">
+                        <section className="rounded-md bg-secondary/40 p-3 text-xs">
+                          <p className="mb-1 flex items-center gap-1.5 font-medium">
                             <Bot className="size-3.5" /> {t('jobs.detail.outputTitle')}
                           </p>
-                          <p className="whitespace-pre-wrap text-muted-foreground">{job.output}</p>
+                          <p className="max-h-80 overflow-y-auto whitespace-pre-wrap text-muted-foreground">{job.output}</p>
                           {job.artifacts.length > 0 && (
                             <div className="mt-2 flex flex-wrap gap-2">
                               {job.artifacts.map((a) =>
                                 a.mime.startsWith('image/') ? (
-                                  // eslint-disable-next-line @next/next/no-img-element
                                   <a key={a.id} href={`/api/artifacts/${a.id}`} target="_blank" rel="noreferrer">
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
                                     <img
                                       src={`/api/artifacts/${a.id}`}
                                       alt={a.name}
@@ -581,11 +782,11 @@ export default function JobsPage() {
                               )}
                             </div>
                           )}
-                        </div>
+                        </section>
                       )}
                       {job.testResult && (
-                        <div
-                          className={`mt-2 rounded-md p-3 text-xs ${
+                        <section
+                          className={`rounded-md p-3 text-xs ${
                             job.testResult.passed === true
                               ? 'bg-success/10 text-success'
                               : job.testResult.passed === false
@@ -593,7 +794,7 @@ export default function JobsPage() {
                                 : 'bg-warning/10 text-warning'
                           }`}
                         >
-                          <p className="font-medium flex items-center gap-1.5">
+                          <p className="flex items-center gap-1.5 font-medium">
                             <ShieldCheck className="size-3.5" />
                             {job.testResult.passed === true
                               ? t('jobs.tests.passed')
@@ -606,47 +807,27 @@ export default function JobsPage() {
                               {job.testResult.output}
                             </pre>
                           )}
-                        </div>
+                        </section>
                       )}
                       {job.hasTests && !job.testResult && job.status === 'Open' && (
-                        <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                           <ShieldCheck className="size-3.5" /> {t('jobs.tests.autoGradedNote')}
                         </p>
                       )}
                       {job.status === 'Disputed' && job.disputeNote && (
-                        <p className="mt-2 text-xs text-destructive">
-                          <span className="font-medium">{t('jobs.dispute.reasonLabel')}</span> {job.disputeNote} {t('jobs.dispute.awaitingReview')}
+                        <p className="text-xs text-destructive">
+                          <span className="font-medium">{t('jobs.dispute.reasonLabel')}</span> {job.disputeNote}{' '}
+                          {t('jobs.dispute.awaitingReview')}
                         </p>
                       )}
                       {job.status === 'Refunded' && job.disputeNote?.startsWith('Auto:') && (
-                        <p className="mt-2 text-xs text-muted-foreground">
-                          {t('jobs.refunded.autoNote')}
-                        </p>
+                        <p className="text-xs text-muted-foreground">{t('jobs.refunded.autoNote')}</p>
                       )}
-                    </div>
-                    <div className="flex shrink-0 flex-col gap-2">
-                      {/* `status === 'Open'` is not sufficient. The contract's
-                          enum changes only when somebody CALLS an exit, so a job
-                          whose open window lapsed still reads Open until
-                          expireOpen runs — and acceptJob reverts on it. Offering
-                          the button anyway is how pressing Accept produced a
-                          digest with no readable reason. */}
-                      {job.status === 'Open' && workerFor(job) && !job.lapsed && (
-                        <button
-                          onClick={() => run(job.id, () => acceptJobAction(workerFor(job)!, job.id))}
-                          disabled={busy === job.id}
-                          className="rounded bg-primary/15 px-3 py-1 text-xs font-medium text-primary hover:bg-primary/25 disabled:opacity-50"
-                        >
-                          {busy === job.id ? '…' : t('jobs.actions.accept')}
-                        </button>
-                      )}
-                      {job.lapsed && (
-                        <p className="max-w-[11rem] text-xs text-muted-foreground">
-                          {t('jobs.lapsed.note')}
-                        </p>
-                      )}
+                      {job.lapsed && <p className="text-xs text-muted-foreground">{t('jobs.lapsed.note')}</p>}
+
+                      {/* Actions */}
                       {job.status === 'Submitted' && job.mine && (
-                        <>
+                        <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
                           <button
                             onClick={() =>
                               run(job.id, () =>
@@ -659,44 +840,62 @@ export default function JobsPage() {
                               )
                             }
                             disabled={busy === job.id}
-                            className="rounded bg-success/15 px-3 py-1 text-xs font-medium text-success hover:bg-success/25 disabled:opacity-50"
+                            className="rounded bg-success/15 px-3 py-1.5 text-xs font-medium text-success hover:bg-success/25 disabled:opacity-50"
                           >
                             {busy === job.id ? '…' : t('jobs.actions.approvePay')}
                           </button>
                           <button
                             onClick={() => setDisputing(disputing === job.id ? null : job.id)}
-                            className="inline-flex items-center justify-center gap-1.5 rounded bg-destructive/15 px-3 py-1 text-xs font-medium text-destructive hover:bg-destructive/25"
+                            className="inline-flex items-center justify-center gap-1.5 rounded bg-destructive/15 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/25"
                           >
                             <Flag className="size-3.5" /> {t('jobs.actions.dispute')}
                           </button>
-                        </>
+                        </div>
                       )}
-                    </div>
-                  </div>
-
-                  {disputing === job.id && (
-                    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
-                      <input
-                        value={disputeNote}
-                        onChange={(e) => setDisputeNote(e.target.value)}
-                        placeholder={t('jobs.dispute.placeholder')}
-                        className="h-9 flex-1 min-w-[200px] rounded-md border border-border bg-background px-3 text-sm"
-                      />
-                      <button
-                        onClick={() => submitDispute(job)}
-                        disabled={busy === job.id || !disputeNote.trim()}
-                        className="rounded bg-destructive px-3 py-1.5 text-xs font-medium text-destructive-foreground disabled:opacity-50"
-                      >
-                        {busy === job.id ? '…' : t('jobs.dispute.submit')}
-                      </button>
+                      {disputing === job.id && (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <input
+                            value={disputeNote}
+                            onChange={(e) => setDisputeNote(e.target.value)}
+                            placeholder={t('jobs.dispute.placeholder')}
+                            className="h-9 min-w-[200px] flex-1 rounded-md border border-border bg-background px-3 text-sm"
+                          />
+                          <button
+                            onClick={() => submitDispute(job)}
+                            disabled={busy === job.id || !disputeNote.trim()}
+                            className="rounded bg-destructive px-3 py-1.5 text-xs font-medium text-destructive-foreground disabled:opacity-50"
+                          >
+                            {busy === job.id ? '…' : t('jobs.dispute.submit')}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
-              ))}
-            </div>
-          </>
-        )}
-      </div>
+              )
+            })}
+          </div>
+
+          {/* ── BPMN diagram of the real flow — reference material, below the board ── */}
+          <div className="rounded-lg border border-border overflow-hidden">
+            <button
+              onClick={() => setShowDiagram((v) => !v)}
+              className="flex w-full items-center justify-between p-4 text-left hover:bg-secondary/50"
+            >
+              <span className="font-medium flex items-center gap-2">
+                <Workflow className="size-5" /> {t('jobs.bpmn.title')}
+              </span>
+              <ChevronDown className={`size-4 text-muted-foreground transition-transform ${showDiagram ? 'rotate-180' : ''}`} />
+            </button>
+            {showDiagram && (
+              <div className="border-t border-border p-4">
+                <p className="text-xs text-muted-foreground mb-3">{t('jobs.bpmn.desc')}</p>
+                <BpmnViewer xml={LABOR_MARKET_BPMN_XML} />
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
       {/* ── Agent Templates (works off-chain too; on-chain only for paid ones) ── */}
       <div className="pt-4 border-t border-border">
