@@ -56,7 +56,7 @@ you: "hire an agent to design a logo, $12" → plan_delegation → your approval
 you: "any open jobs I could do?"           → browse_open_jobs → claim_job → submit_work
 ```
 
-## Tools (46)
+## Tools (47)
 
 ### Orientation
 | tool | what it does |
@@ -139,6 +139,7 @@ templates ship with were probed and answered with no key; see
 | `set_office_automaton` | **Can move money over time.** Grant one office a standing Automaton mandate: the desk keeps itself claim-ready by topping short workers up to a small bond floor — between your own wallets only, under a daily budget and per-transfer cap, every move audit-logged. Call with no arguments to read the mandate, spend and log |
 | `lineage_report` | Read-only earn-or-die dry run: which agents are proven enough to copy, which are failing or starved, which lack the graded evidence to judge. Creates, funds and retires nothing — see [agent-lineage.md](agent-lineage.md) |
 | `set_lineage_mandate` | **Can move money over time.** Lets earn-or-die selection act on one office: copy proven agents (child inherits the genome, starts at score zero), retire failing or starved ones. Daily birth + seed caps, account agent cap, and **refused on a real-money deployment** unless explicitly permitted by env — run it on the rehearsal |
+| `set_storefront` | **Earns external money.** Opens an office for paid commissions from strangers: they pay over x402 (no account), your standing desk runs its whole escrowed pipeline on their scope, your prime fronts the escrow and keeps the margin. Daily cap. No arguments = status + sellable templates |
 | `get_contract` | The machine-readable contract for a job — task, deliverable, verification, acceptance, settlement — with every field tagged sealed / chain / platform so a counterparty can tell what is committed from what is merely asserted |
 | `set_office_source` | One document every role in an office reads. Paste it, or pass a `url` to fetch a public page — a fetched source is a **snapshot** with its origin and fingerprint recorded, never a live link |
 | `wire_office_agent` | Point an agent at a different MCP server/tool, or change its mode, after it was hired |

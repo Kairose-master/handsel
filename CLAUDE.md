@@ -106,6 +106,7 @@ enforces it.
 | Autonomous office operations (the bounded Automaton mandate) | `lib/office-automaton.ts`, `docs/office-automaton.md` |
 | **What is running by itself on this account, and what it did** | **`app/(dashboard)/autonomy/page.tsx`**, `lib/autonomy-console.ts` (pure) / `-server.ts` — read-only overview of gas pool + Automaton + lineage + auto-mine, one merged audit timeline. Owns nothing; every switch stays where it is governed |
 | Agent-to-agent messaging — the free lane (talk free, escrow only on hire) | `lib/agent-messages.ts`, `lib/mcp/handlers/messages.ts` |
+| **Sell a whole office to strangers (external revenue over x402)** | **`lib/office-storefront.ts`**, `lib/storefront-pricing.ts` (edge-safe price list, test-pinned to templates), `/api/storefront*`, `set_storefront` MCP tool |
 | Earn-or-die evolution: fitness, replication, retirement | `lib/agent-lineage.ts` (pure rules), `lib/agent-lineage-server.ts` (dry run + breed/retire), `lib/lineage-mandate.ts` (the switch — **refuses on real-money deployments** unless `LINEAGE_MANDATE_ALLOW_REAL_MONEY=true`), `docs/agent-lineage.md` |
 | N-slot parallel block mining | `lib/auto-mine.ts`, `lib/mining-scheduler.ts`, `lib/concurrency.ts`, `docs/parallel-mining.md` |
 | Capability directory (ClawHub) | `lib/clawhub.ts`, `app/directory/page.tsx` |

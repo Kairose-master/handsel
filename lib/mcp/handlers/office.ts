@@ -831,6 +831,59 @@ export async function handleOffice(
       )
     }
 
+    case 'set_storefront': {
+      const { STOREFRONT_COMMISSIONS, commissionPricing, MAX_COMMISSIONS_PER_DAY } = await import('@/lib/storefront-pricing')
+      const { openStorefront, closeStorefront, enabledStorefronts, commissionsToday } = await import('@/lib/office-storefront')
+      const slot = parseSlot(args)
+      const templateId = args.template_id ? String(args.template_id) : null
+
+      // No template and no enabled argument: a read of everything.
+      if (!templateId && args.enabled === undefined) {
+        const open = await enabledStorefronts()
+        const mine = open.filter((s) => s.userId === auth.userId)
+        const catalogue = STOREFRONT_COMMISSIONS.map(
+          (c) => `  · ${c.templateId} — client pays $${c.priceUsd.toFixed(2)}, pipeline escrows $${c.budgetUsd.toFixed(2)}`,
+        ).join('\n')
+        return toolText(
+          id,
+          (mine.length
+            ? `Your open storefronts:\n${mine.map((s) => `  · ${s.templateId} (office ${s.slot}) since ${s.openedAt.slice(0, 10)}`).join('\n')}`
+            : 'You have no open storefronts.') +
+            `\n\nTemplates sellable to external clients (x402, ≤${MAX_COMMISSIONS_PER_DAY}/day each):\n${catalogue}\n\n` +
+            `Open one with {template_id, office, enabled:true}. The office's standing desk serves every commission; ` +
+            `its prime fronts the pipeline escrow and keeps the margin.`,
+        )
+      }
+      if (!templateId) return toolText(id, 'template_id is required to open or close a storefront.', true)
+      const pricing = commissionPricing(templateId)
+      if (!pricing) {
+        return toolText(id, `"${templateId}" is not on the commission list. Sellable: ${STOREFRONT_COMMISSIONS.map((c) => c.templateId).join(', ')}`, true)
+      }
+
+      if (args.enabled === false) {
+        await closeStorefront(auth.userId, slot, templateId)
+        return toolText(id, `Storefront closed: ${templateId} (office ${slot}). Paid commissions already escrowed keep running.`)
+      }
+
+      // Opening needs a prime — default to the caller's first funded agent,
+      // same precedence as everywhere else in this connector.
+      const { found } = await resolveAgent(auth.userId, args)
+      if (!found?.smartAccountAddress) {
+        return toolText(id, 'No provisioned agent to act as the storefront prime — it fronts every commissioned pipeline.', true)
+      }
+      const res = await openStorefront(auth.userId, slot, templateId, found.id)
+      if ('error' in res) return toolText(id, res.error, true)
+      const used = await commissionsToday(templateId)
+      return toolText(
+        id,
+        `Storefront OPEN: ${templateId} (office ${slot}), served by its standing desk, ${found.name} fronting the ` +
+          `$${pricing.budgetUsd.toFixed(2)} pipeline per commission. External clients pay $${pricing.priceUsd.toFixed(2)} ` +
+          `over x402 at POST /api/storefront/${templateId}/commission — no account needed on their side. ` +
+          `${MAX_COMMISSIONS_PER_DAY - used} commission(s) left today. Keep the prime funded and auto-mine on; ` +
+          `the desk does the rest.`,
+      )
+    }
+
     case 'test_mcp_connector': {
       const serverUrl = String(args.server_url ?? '').trim()
       const toolName = String(args.tool_name ?? '').trim()

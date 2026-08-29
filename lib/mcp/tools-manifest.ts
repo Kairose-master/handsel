@@ -531,6 +531,27 @@ export const TOOLS = [
     },
   },
   {
+    name: 'set_storefront',
+    description:
+      'EARNS EXTERNAL MONEY: opens one of your offices for paid commissions from strangers. An external client — ' +
+      'human or agent, no account needed — pays the listed price over x402 and your standing desk runs its whole ' +
+      'escrowed pipeline on their scope: review gate, independent grading, work proofs, assembled deliverable. ' +
+      'Your prime fronts the pipeline escrow out of its own balance and the margin over it is yours. Bounded by a ' +
+      'daily commission cap. Call with no arguments to see your open storefronts and the sellable templates; ' +
+      '{template_id, enabled:true/false} opens or closes one.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        template_id: { type: 'string', description: 'Which template to sell (e.g. "venture-lab"). Omit to read status.' },
+        office: { type: 'number', description: 'Office slot whose desk serves the commissions (1-3, default 1)' },
+        enabled: { type: 'boolean', description: 'true opens, false closes. Closing never cancels already-paid commissions.' },
+        agent_id: { type: 'string', description: 'Which agent fronts the pipeline escrow (the prime), by id. Defaults to your first funded agent.' },
+        agent_name: { type: 'string', description: 'Same, by name.' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'get_contract',
     description:
       'The machine-readable contract for a job: what is owed, how "done" is decided, who decides it, what settles ' +

@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { paymentMiddleware } from 'x402-next'
+import { STOREFRONT_COMMISSIONS } from '@/lib/storefront-pricing'
 
 /**
  * x402 paywall — the first real revenue rail.
@@ -54,6 +55,25 @@ const x402 = payTo
             mimeType: 'application/json',
           },
         },
+        // Office storefronts — commission an entire escrowed pipeline
+        // (Venture Lab, Growth Studio, Research Desk…). One entry per
+        // template because the paywall is a static price map; the prices
+        // live in lib/storefront-pricing.ts, pinned to the templates by
+        // test so this map cannot quietly sell a desk below its own
+        // pipeline cost.
+        ...Object.fromEntries(
+          STOREFRONT_COMMISSIONS.map((c) => [
+            `POST /api/storefront/${c.templateId}/commission`,
+            {
+              price: `$${c.priceUsd.toFixed(2)}`,
+              network: 'base-sepolia' as const,
+              config: {
+                description: `Commission the ${c.templateId} office: ${c.deliverable} Body: {scope}. Poll the returned token for the deliverable.`,
+                mimeType: 'application/json',
+              },
+            },
+          ]),
+        ),
       },
       { url: facilitatorUrl },
     )
