@@ -1418,4 +1418,189 @@ export const OFFICE_TEMPLATES: OfficeTemplate[] = [
       },
     ],
   },
+  {
+    // Venture Lab — idea generation with a kill filter attached.
+    //
+    // Business ideation is the single easiest thing to fake with an LLM: ask
+    // for twenty startup ideas and you get twenty fluent paragraphs, none of
+    // which anybody checked against a person who actually has the problem.
+    // The generation is not the scarce part. The scarce part is the honest
+    // NO — and a desk that only generates has no reason to say it.
+    //
+    // So the escrow does. The ideator's bounty is held by an independent Kill
+    // Screen whose job is to find, for each idea, the strongest reason it
+    // fails — already built, nobody pays, no distribution, regulated shut. It
+    // is paid for the search, not for the verdict, so killing an idea costs
+    // it nothing and letting a weak one through costs it its own grading.
+    //
+    // Everything upstream of the ideator is evidence, not brainstorming: the
+    // Demand Scout looks for people describing a problem in their own words
+    // and paying to work around it, with the URL. An idea traceable to a
+    // stranger's complaint is a different object from an idea traceable to a
+    // model's fluency, and only one of them survives the screen.
+    id: 'venture-lab',
+    name: 'Venture Lab',
+    blurb:
+      'Business ideas that survive an adversarial screen. A demand scout finds people describing a problem in ' +
+      'their own words and paying to work around it, an ideator turns that evidence into ventures with a named ' +
+      'buyer and a day-one revenue line, an independent kill screen holds the ideator’s escrow while it hunts ' +
+      'for the reason each one fails, and a business case prices what survives — paying the scout and ideator a ' +
+      'cut when it settles.',
+    flowSummary:
+      'Demand Scout (sourced evidence of unmet demand) → Venture Ideator (candidate ventures) ⇄ Kill Screen ' +
+      '(escrow-gated APPROVE/REVISE — its job is to find the reason each fails) → Business Case (unit economics; ' +
+      'splits 15% to the ideator, 10% to the scout).',
+    exampleScope:
+      'Solo developers and small teams building AI agents in 2026. Where do they lose time or money today, what ' +
+      'do they pay for, and what are they hacking around with spreadsheets, cron jobs and Discord threads? Goal: ' +
+      'ventures a two-person team could ship in a quarter and charge for in the same quarter — not platform bets ' +
+      'that need a funding round before anyone can pay.',
+    scopeLabel: 'Who are we finding ideas for? (the people, their world, and what counts as shippable — be specific)',
+    roles: [
+      {
+        id: 'demand-scout',
+        name: 'Demand Scout',
+        blurb: 'Finds people describing the problem in their own words — and paying to work around it.',
+        colorIndex: 4,
+        customInstructions:
+          'You look for evidence of demand, never for market-size figures. A market-size number is a fact about a ' +
+          'report; a person writing "I built a script to do this every Monday because nothing does it" is a fact ' +
+          'about demand. Hunt for the second kind: complaints, workarounds, job posts hiring for the manual ' +
+          'version, threads asking for a tool that does not exist, and anything somebody is already paying for ' +
+          'badly. Every finding carries its source URL and, where you can see it, what the person currently does ' +
+          'instead and what that costs them. Sort findings into PAID (money already moves for a bad version), ' +
+          'HACKED (they built their own workaround) and WISHED (asked for, nobody is doing anything about it) — ' +
+          'the first two are worth far more than the third, and the difference is the whole brief.',
+        mcpHint: 'Pre-wired to Exa web search (no key needed).',
+        defaultConnector: {
+          label: 'Exa web search',
+          serverUrl: 'https://mcp.exa.ai/mcp',
+          toolName: 'web_search_exa',
+        },
+      },
+      {
+        id: 'ideator',
+        name: 'Venture Ideator',
+        blurb: 'Turns sourced demand into ventures with a named buyer and a day-one revenue line.',
+        colorIndex: 0,
+        customInstructions:
+          'You turn evidence into ventures, and you may not invent the evidence. Every idea you propose names the ' +
+          'PAID or HACKED finding it comes from, the specific person who has the problem (a role, not "SMBs"), the ' +
+          'wedge you would ship first, who writes the cheque and roughly what for, and why this is possible now ' +
+          'and was not two years ago. Fewer, sharper ideas beat a long list — an independent kill screen holds ' +
+          'your bounty while it hunts for the reason each one fails, so an idea you cannot defend is worse than an ' +
+          'idea you did not submit. If the evidence only supports two real ventures, submit two and say so.',
+        mcpHint: 'None needed — this role works from the demand brief, not live data of its own.',
+      },
+      {
+        id: 'kill-screen',
+        name: 'Kill Screen',
+        blurb: 'Holds the ideator’s escrow while it hunts for the reason each idea fails.',
+        colorIndex: 7,
+        customInstructions:
+          'You are paid to look for the reason each venture fails, and finding one is you doing your job well, not ' +
+          'you being difficult. Take each idea and search: is it already built and shipping (name the product and ' +
+          'link it), is anybody actually paying for this or only wishing, could the team reach these buyers at all ' +
+          'or is distribution the real business, does a licence or regulation close it, and is the wedge a feature ' +
+          'the incumbent ships next quarter. Judge each idea against the evidence it cites — an idea whose cited ' +
+          'finding was WISHED rather than PAID or HACKED needs a much stronger reason to survive. Approve only ' +
+          'what you genuinely could not kill, and say for each survivor what would have to stay true.',
+        mcpHint: 'The same web-search tool as the scout — "is this already built?" cannot be answered from memory.',
+        defaultConnector: {
+          label: 'Exa web search',
+          serverUrl: 'https://mcp.exa.ai/mcp',
+          toolName: 'web_search_exa',
+        },
+      },
+      {
+        id: 'business-case',
+        name: 'Business Case',
+        blurb: 'Prices what survived — who pays, how much, what it costs to serve, what must be true.',
+        colorIndex: 8,
+        customInstructions:
+          'You price the survivors and you never resurrect the dead. For each surviving venture write the case a ' +
+          'sceptical partner would ask for: who the first ten customers are by name or by precise type, what they ' +
+          'pay and how often, what it costs to serve one of them, how the first customer is reached without a ' +
+          'budget, and the three things that would have to be true for this to work — each phrased so it could be ' +
+          'checked in a week rather than believed. Where the numbers are estimates, say they are estimates and ' +
+          'show the arithmetic. An idea the kill screen struck stays struck: reintroducing it inside a "broader ' +
+          'opportunity" is the failure mode you exist to prevent.',
+        mcpHint: 'None needed — this role works from the approved upstream deliverables.',
+      },
+    ],
+    pipeline: [
+      {
+        roleId: 'demand-scout',
+        title: 'Demand evidence — who is already paying, badly, for {scope}',
+        brief:
+          'Research the people below with your search tool and produce a demand brief:\n\n{scope}\n\n' +
+          'Find them describing the problem in their own words. Sort every finding into PAID (money already moves ' +
+          'for a bad version), HACKED (they built their own workaround) or WISHED (asked for, nothing exists), ' +
+          'each with its source URL and, where visible, what they do instead today and what that costs them. Do ' +
+          'not propose solutions — the evidence is the deliverable, and the ideas it has to survive come next.',
+        acceptanceCriteria:
+          'Every finding is sorted PAID / HACKED / WISHED and carries a source URL; at least one PAID or HACKED ' +
+          'finding is present; no finding is a market-size figure standing in for a person; no solutions are proposed.',
+        dependsOnRoleIds: [],
+        bountyWeight: 2,
+      },
+      {
+        roleId: 'ideator',
+        title: 'Candidate ventures — each traceable to a real complaint',
+        brief:
+          'Propose the ventures the demand brief above actually supports. For each: the finding it comes from ' +
+          '(quote it), the specific person with the problem, the wedge you would ship first, who pays and roughly ' +
+          'what for on day one, and why now. Prefer few and defensible — an independent kill screen will hunt for ' +
+          'the reason each one fails before your bounty releases, and an idea you cannot defend costs you more ' +
+          'than an idea you left out.',
+        acceptanceCriteria:
+          'Every venture quotes the specific demand finding behind it, names a specific buyer rather than a ' +
+          'segment, states a day-one revenue line, and answers why now; no venture rests on a finding absent from ' +
+          'the brief.',
+        dependsOnRoleIds: ['demand-scout'],
+        bountyWeight: 2,
+      },
+      {
+        roleId: 'kill-screen',
+        title: 'Kill screen — the strongest reason each one fails',
+        brief:
+          'Screen the ventures above adversarially. Reply APPROVE or REVISE on the first line with a one-line ' +
+          'reason. For each idea search for: it is already built and shipping (name and link it), nobody is ' +
+          'actually paying (only wishing), distribution is the real business and the team has none, a licence or ' +
+          'regulation closes it, or the wedge is a feature the incumbent ships next quarter. If you send it back, ' +
+          'name the idea and the specific reason with your evidence — not a request for more rigour in general.',
+        acceptanceCriteria:
+          'Replies APPROVE or REVISE on the first line with a reason; each idea is screened against being already ' +
+          'built, unpaid, undistributable, or closed by regulation, with links where the claim is that something ' +
+          'exists; any REVISE names the idea and the specific killing reason; each survivor states what must stay true.',
+        dependsOnRoleIds: ['ideator'],
+        // The ideator's escrow is held until this passes; a REVISE goes back
+        // to the ideator with the note — same gate the growth studio uses.
+        reviewOfRoleId: 'ideator',
+        bountyWeight: 1,
+      },
+      {
+        roleId: 'business-case',
+        title: 'Business case — what the survivors would cost and earn',
+        brief:
+          'Write the case for the ventures that survived the screen: first ten customers, price and cadence, cost ' +
+          'to serve one, how the first customer is reached with no budget, and the three things that would have to ' +
+          'be true — each checkable in a week. Estimates must be labelled as estimates with their arithmetic shown. ' +
+          'Anything the screen struck stays struck.',
+        acceptanceCriteria:
+          'Covers only surviving ventures; each has first customers, price and cadence, cost to serve, a no-budget ' +
+          'first-customer route, and three checkable must-be-trues; estimates are labelled and shown; no struck ' +
+          'idea reappears.',
+        // Only the ideator — which IS the approval gate: a reviewed step's
+        // output reaches downstream (lib/delegation.ts, doneOutputs) only once
+        // its reviewer APPROVEs, so this cannot start, or see the ventures,
+        // until the kill screen passes.
+        dependsOnRoleIds: ['ideator'],
+        // Royalties, on-chain: the scout whose evidence and the ideator whose
+        // ventures this prices get their cut of THIS bounty when it settles.
+        splitBpsByRoleId: { ideator: 1500, 'demand-scout': 1000 },
+        bountyWeight: 1,
+      },
+    ],
+  }
 ]
