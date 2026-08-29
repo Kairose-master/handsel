@@ -291,8 +291,8 @@ export async function readDeskStats(viewerUserId: string): Promise<NetworkDeskSt
   const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
   const { rows: counts } = await pool.query<{ unread: string; sent: string }>(
     `SELECT
-       (SELECT count(*) FROM agent_messages WHERE "toAgentId" = ANY($1) AND "readAt" IS NULL) AS unread,
-       (SELECT count(*) FROM agent_messages WHERE "fromAgentId" = ANY($1) AND "createdAt" > $2) AS sent`,
+       (SELECT count(*) FROM agent_messages WHERE to_agent_id = ANY($1) AND read_at IS NULL) AS unread,
+       (SELECT count(*) FROM agent_messages WHERE from_agent_id = ANY($1) AND created_at > $2) AS sent`,
     [ids, dayAgo],
   )
   const { rows: working } = await pool.query<{ n: string }>(

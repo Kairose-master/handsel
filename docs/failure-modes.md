@@ -2019,6 +2019,41 @@ structural rather than heuristic: a depth counter in the payload strictly
 increases along any auto-generated chain and the decision refuses at the
 cap, with per-day and per-sender caps bounding cost independently.
 
+## 39. The network page 500'd on a column that never existed
+
+**Symptom.** `/office/network` threw immediately on load: Next.js's generic
+production error — "An error occurred in the Server Components render," the
+digest that hides the real message. A user screenshot from a phone browser
+was the only way this surfaced; nothing in CI or the test suite caught it.
+
+**Root cause.** `readDeskStats`'s two-line raw SQL against `agent_messages`
+was written in drizzle's camelCase JS field names, quoted as if that were
+the column identifier — `"toAgentId"`, `"readAt"`, `"fromAgentId"`,
+`"createdAt"`. The table's real columns are snake_case
+(`lib/db/schema.ts`: `fromAgentId: text('from_agent_id')`, etc., same
+pattern every other table in this schema uses). Postgres has no such
+quoted-camelCase column, so the query threw `column "toAgentId" does not
+exist` the instant it ran — on every single load of the page, for every
+account, unconditionally.
+
+**Why nothing caught it first.** Every other query in this codebase goes
+through drizzle's type-safe builder, which cannot make this mistake — the
+builder only ever emits the real column. This was the one query hand-written
+as a raw SQL string (for a `SELECT count(*)` drizzle's builder doesn't
+express as cleanly), and this repo has no database-backed test tier: every
+existing test is either pure or drizzle-mocked, so a wrong literal inside a
+raw SQL string has no path to being caught before a real Postgres executes
+it — which happens for the first time in production, on a user's real page
+load. The type system was silent because the string is just a string; the
+test suite was silent because nothing in it runs SQL.
+
+**Fix.** Corrected to the real column names. Since a live Postgres isn't
+available to this test suite, the regression is pinned by reading both
+files' *source* instead: the raw SQL string is asserted to contain the real
+snake_case names and never a quoted camelCase one again, cross-checked
+against the schema's own column declarations so a future intentional rename
+fails here, with a clear reason, rather than in someone's browser.
+
 ## Invariants these fixes encode
 
 Keep these true, and this class of bug stays dead:
@@ -2150,3 +2185,10 @@ Keep these true, and this class of bug stays dead:
    reached its recipient did not, and nothing on any screen said so. A
    feature missing its middle is indistinguishable from a feature that is
    quiet, and every observable agreed with both readings (§38).
+37. **A raw SQL string is a blind spot the type system cannot see into.**
+   Every other query in this codebase runs through a builder that cannot
+   name a column that doesn't exist; the one query hand-written as a string
+   could, did, and had no database-backed test tier to catch it before a
+   real page load did. Where a raw string is unavoidable, pin its literal
+   column names against the schema's own declarations, in a test — the
+   next-best guard when running the real query isn't available (§39).
