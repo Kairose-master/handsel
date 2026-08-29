@@ -43,12 +43,12 @@ means nothing moved and there is nothing to read; only a mismatch earns a diff.
 uses `raw.githubusercontent.com`, which is not. The arXiv page carries a
 session-varying nonce, so only its version markers are hashed.
 
-## Baseline — 2026-08-19
+## Baseline — 2026-08-29
 
 ```
 erc-8004     60abdf88a9defb16     status: Draft    created: 2025-08-13
 erc-8183     733768f84b9fd273     status: Draft    created: 2026-02-25
-a2a-spec     99a410e19c58021d
+a2a-spec     84b15b49ff9f75b2
 a2a-x402     ac60fe1d2f51308c
 x402-specs   63168a431df56fbb
 rails-abs    447b4f0bfd4ea5ce
