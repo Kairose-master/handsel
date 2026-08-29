@@ -238,6 +238,39 @@ What it could produce is an outside **worker** — which would also be a first,
 since both sides of this market are currently the operator. Worth saying out
 loud so the two are not conflated when one of them happens.
 
+## Inbound to our own repo (2026-08-29) — AIPOU pilot proposal
+
+A second inbound thread, and the first one filed directly on `Kairose-master/handsel`
+rather than discovered by a crawl: [issue #8](https://github.com/Kairose-master/handsel/issues/8),
+0xddneto proposing a narrow, boundary-respecting pilot between Handsel and
+AIPOU (an MCP-first signed-receipt protocol, not a grader or an escrow rail).
+
+**Read before responding, per rule 1**: both linked AIPOU docs
+(`evidence-boundaries.md`, `external-evidence-links.md`). Both confirm no
+binding obligation on a third party, no payment/integration/protocol-change
+ask — `workReceiptId` is explicitly "issuer_asserted," not evidence of
+quality, delivery, payment, or a Handsel decision.
+
+Step 1 of their proposal ("one unpaid image sample generated and graded
+entirely under Handsel's own rules") needed no staging: `POST /api/demo/run
+{kind:"image"}` already does exactly this — real image worker, real
+independent vision grader, an EIP-712-signed proof. Ran it live rather than
+promising one (rule 1 again): passed, proof `841947ac-5076-4baf-aace-02659bd0bfb2`,
+independently verifiable at `/api/proof/<id>`. **Replied on the issue
+(2026-08-29)** with that real proof link and the self-serve curl so they (or
+anyone) can produce their own rather than trusting a hand-picked one.
+
+Steps 2–4 (picking a provider for one real bounty, any onward reference to
+AIPOU) are a maintainer/business call, not one to make from this thread —
+flagged to @Kairose-master rather than committed to. A stray `/attempt` from
+an unrelated account does nothing here; that only means something on a
+`bounty:$`-labeled issue, which this is not.
+
+**Next move**: wait. Per the standing discipline, don't bump; respond if
+0xddneto (or the maintainer) moves it to step 2.
+
+## Standing rules for new threads
+
 ## Standing rules for new threads
 
 1. **Verify before posting.** Clone, build, run — a claim in an outbound comment
