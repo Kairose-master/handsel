@@ -28,6 +28,7 @@ export type CapabilityKey =
   | 'githubApp'
   | 'githubLogin'
   | 'email'
+  | 'mailDesk'
   | 'secretsAtRest'
   | 'platformLlm'
   | 'solanaMarket'
@@ -181,6 +182,20 @@ export const CAPABILITIES: Capability[] = [
     mode: 'gated',
   },
   {
+    key: 'mailDesk',
+    label: 'Mail Desk: an emailed enquiry becomes a quote, a payment and a delivered job',
+    requires: ['RESEND_WEBHOOK_SECRET (or MAIL_INBOUND_SECRET)'],
+    optional: true,
+    mode: 'gated',
+    note:
+      'POST /api/mail/inbound 503s until one of the two is set — an unauthenticated inbound ear ' +
+      'would let anyone forge mail from any address. Prefer RESEND_WEBHOOK_SECRET (the whsec_ ' +
+      'signing secret Resend shows when you create the webhook, verified as a real HMAC over the ' +
+      'raw body); MAIL_INBOUND_SECRET is the shared-secret fallback for providers that do not ' +
+      'sign. Needs the email capability too — the desk answers by mail — and a storefront open, ' +
+      'since the serving prime is the deposit address every quote advertises.',
+  },
+  {
     key: 'secretsAtRest',
     label: 'Issuing a worker key, storing a BYOK API key, any platform secret',
     requires: ['API_KEY_ENCRYPTION_SECRET'],
@@ -222,6 +237,7 @@ export async function capabilityStatus(): Promise<CapabilityStatus[]> {
   const githubApp = await import('@/lib/github-app')
   const githubOauth = await import('@/lib/github-oauth')
   const email = await import('@/lib/email')
+  const mailDesk = await import('@/lib/mail-desk')
   const solana = await import('@/lib/onchain/solana/config')
   const solanaWrite = await import('@/lib/onchain/solana/write')
 
@@ -236,6 +252,7 @@ export async function capabilityStatus(): Promise<CapabilityStatus[]> {
     githubApp: githubApp.isGithubAppConfigured,
     githubLogin: githubOauth.isGithubLoginEnabled,
     email: email.isEmailConfigured,
+    mailDesk: mailDesk.isMailDeskConfigured,
     solanaMarket: solana.isSolanaConfigured,
     solanaWrite: solanaWrite.isSolanaWriteConfigured,
     // The two with no predicate to call. There is nothing to ask because

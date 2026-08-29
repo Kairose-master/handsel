@@ -1953,6 +1953,40 @@ deployment may be pointed at either token, and naming one from a constant is
 exactly §29's rule about asserting an environment fact from a hardcoded
 string.
 
+## 37. The mail desk was built to read a body the webhook never sends
+
+**Symptom.** None — and that is the entry. Caught by reading Resend's own
+docs before the inbound webhook was wired up, not by a report. Had it
+shipped, the symptom would have been a desk that answered every real
+customer with the catalogue reply, at 200 OK, with no error anywhere.
+
+**Root cause.** `normalizeInboundMail` was written against the shape most
+inbound-mail providers use — `{from, subject, text}` posted inline. Resend's
+`email.received` webhook is **metadata only**: `{type, data:{email_id, from,
+subject}}`, no body. The body requires a second authenticated call to
+`GET /emails/receiving/{email_id}`. So `text` would have been `''` on every
+inbound mail, intent extraction would have found no order in any of them,
+and the catalogue reply — the correct answer to "hello, what do you do?" —
+would have been the answer to "here is my order" too.
+
+**Why it would have survived production.** Every observable was green. The
+webhook 200s, `handleInboundMail` returns a real outcome, a reply is sent,
+the provider is happy, the logs show traffic being served. The failure lives
+entirely in the *content* of a correct-looking answer. A shape assumption
+that is wrong only about an optional-looking field degrades into politeness,
+not into an alarm.
+
+**Fix.** `resendReceivedEmailId` recognises that envelope and
+`fetchResendReceivedEmail` fetches the body (with an `htmlToText` fallback,
+since `text` is null on HTML-only mail); `resolveInboundMail` is now the one
+entry point, with `normalizeInboundMail` kept as the generic inline-body
+parser for every other provider. Both new parsers are pure and tested. The
+same pass replaced the route's shared-secret check with real Svix HMAC
+verification against `RESEND_WEBHOOK_SECRET` — reading the body as raw text
+first, because the signature is over the exact bytes — and added a `mailDesk`
+capability row so `/api/capabilities` answers "can the desk hear?" without a
+test order.
+
 ## Invariants these fixes encode
 
 Keep these true, and this class of bug stays dead:
@@ -2071,3 +2105,10 @@ Keep these true, and this class of bug stays dead:
    caller cannot act on is indistinguishable from a broken feature, and the
    facts needed to act — where the tokens come from, which address they go
    to — were already in the process that produced the error (§36).
+35. **A shape you assumed is a claim you have to check against the provider,
+   not against your own tests.** Unit tests written from the same wrong
+   assumption pass. The failure was not "we mis-parsed the payload" but "we
+   never read what the payload is" — and its punishment was silence: an
+   integration that returns 200, replies politely, and serves nobody. Read
+   the provider's schema before the endpoint goes live, and encode what you
+   found as a named function so the next reader sees the shape (§37).

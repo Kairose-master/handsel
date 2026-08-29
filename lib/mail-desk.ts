@@ -43,6 +43,7 @@
 import { pool as pgPool } from '@/lib/db'
 import { nanoid } from 'nanoid'
 import { parseAbiItem } from 'viem'
+import { createHmac, timingSafeEqual } from 'node:crypto'
 import { STOREFRONT_COMMISSIONS, commissionPricing } from '@/lib/storefront-pricing'
 
 /** New quotes one sender may open per UTC day. Three genuine orders a day
@@ -92,10 +93,25 @@ export function extractOrderToken(subject: string, body: string): string | null 
   return m ? m[1] : null
 }
 
-/** Normalize the inbound webhook payload across providers (Resend, Postmark,
- *  and anything that posts {from, subject, text}). Unknown shapes come back
- *  null and are dropped — a webhook body we cannot read is not an order. */
-export function normalizeInboundMail(payload: unknown): { from: string; subject: string; text: string } | null {
+export type NormalizedMail = { from: string; subject: string; text: string }
+
+/** The one place that decides an address is usable and applies the length
+ *  caps — every inbound path funnels through this, so a new source added
+ *  later cannot accidentally skip either check. */
+function finalizeMail(from: string, subject: string, text: string): NormalizedMail | null {
+  const email = from.match(/<([^>]+)>/)?.[1] ?? from
+  const trimmed = email.trim().toLowerCase()
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return null
+  return { from: trimmed, subject: subject.slice(0, 300), text: text.slice(0, 8000) }
+}
+
+/** Normalize the GENERIC inbound webhook shape — Postmark, or anything that
+ *  posts {from, subject, text}/{From, Subject, TextBody} directly with the
+ *  body inline. Resend's own webhook does NOT carry the body inline (see
+ *  resendReceivedEmailId below) and is resolved separately. Unknown shapes
+ *  come back null and are dropped — a webhook body we cannot read is not an
+ *  order. */
+export function normalizeInboundMail(payload: unknown): NormalizedMail | null {
   if (!payload || typeof payload !== 'object') return null
   const p = payload as Record<string, unknown>
   const from =
@@ -116,9 +132,128 @@ export function normalizeInboundMail(payload: unknown): { from: string; subject:
           ? String((p as { plain_text: string }).plain_text)
           : ''
   if (!from) return null
-  const email = from.match(/<([^>]+)>/)?.[1] ?? from
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return null
-  return { from: email.trim().toLowerCase(), subject: subject.slice(0, 300), text: text.slice(0, 8000) }
+  return finalizeMail(from, subject, text)
+}
+
+/**
+ * Resend's `email.received` webhook is METADATA ONLY:
+ * `{type:'email.received', data:{email_id, from, subject, ...}}` — no text,
+ * no html. The body has to be fetched separately via the Receiving API
+ * (https://resend.com/docs/api-reference/emails/retrieve-received-email).
+ * Getting this wrong is silent and total: every real customer email would
+ * normalize to empty text, extractIntent would see nothing to work from,
+ * and the desk would reply with the catalogue to every single order
+ * forever — indistinguishable from "working" in the logs.
+ *
+ * This detects that specific envelope and returns the id to fetch, or null
+ * for anything else (a different Resend event type this desk does not
+ * subscribe to, or a non-Resend payload — normalizeInboundMail handles the
+ * latter as the generic fallback).
+ */
+export function resendReceivedEmailId(payload: unknown): string | null {
+  if (!payload || typeof payload !== 'object') return null
+  const p = payload as Record<string, unknown>
+  if (p.type !== 'email.received') return null
+  const data = p.data as Record<string, unknown> | undefined
+  const id = data?.email_id
+  return typeof id === 'string' && id.length > 0 ? id : null
+}
+
+/** Fetch the body Resend's webhook omitted. `text` is frequently null
+ *  (HTML-only mail) — falls back to stripping the HTML part with the same
+ *  htmlToText already used for office-source fetches; intent extraction
+ *  only needs prose, not exact formatting. */
+async function fetchResendReceivedEmail(emailId: string): Promise<NormalizedMail | null> {
+  const apiKey = process.env.RESEND_API_KEY
+  if (!apiKey) return null
+  try {
+    const res = await fetch(`https://api.resend.com/emails/receiving/${encodeURIComponent(emailId)}`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    })
+    if (!res.ok) return null
+    const body = (await res.json()) as { from?: unknown; subject?: unknown; text?: unknown; html?: unknown }
+    const from = typeof body.from === 'string' ? body.from : null
+    if (!from) return null
+    const subject = typeof body.subject === 'string' ? body.subject : ''
+    let text = typeof body.text === 'string' ? body.text : ''
+    if (!text.trim() && typeof body.html === 'string') {
+      const { htmlToText } = await import('@/lib/office-source-fetch')
+      text = htmlToText(body.html)
+    }
+    return finalizeMail(from, subject, text)
+  } catch (error) {
+    console.warn('[mail-desk] Resend receiving API fetch failed:', error)
+    return null
+  }
+}
+
+/** The single entry point handleInboundMail resolves through — detects
+ *  Resend's metadata-only shape and fetches the body, or falls back to the
+ *  generic inline-body parser for every other supported provider. */
+async function resolveInboundMail(payload: unknown): Promise<NormalizedMail | null> {
+  const resendId = resendReceivedEmailId(payload)
+  if (resendId) return fetchResendReceivedEmail(resendId)
+  return normalizeInboundMail(payload)
+}
+
+/** Svix tolerance window — Svix's own recommendation, and what Resend's
+ *  webhooks are signed with. */
+const SVIX_TOLERANCE_MS = 5 * 60 * 1000
+
+/**
+ * Verify a Resend webhook's Svix signature — real HMAC verification,
+ * matching this repo's own convention for provider webhooks
+ * (lib/github-app.ts's verifyGithubSignature does the same shape of check
+ * for GitHub). Preferred over a bare shared secret whenever the provider
+ * actually signs its payloads, which Resend does.
+ *
+ * `nowMs` is injectable so the timestamp-tolerance check is testable
+ * without real clock skew.
+ */
+export function verifyResendWebhookSignature(
+  rawBody: string,
+  headers: { id: string | null; timestamp: string | null; signature: string | null },
+  secret: string,
+  nowMs: number = Date.now(),
+): boolean {
+  if (!headers.id || !headers.timestamp || !headers.signature) return false
+  const timestampMs = Number(headers.timestamp) * 1000
+  if (!Number.isFinite(timestampMs) || Math.abs(nowMs - timestampMs) > SVIX_TOLERANCE_MS) return false
+  if (!secret.startsWith('whsec_')) return false
+
+  let secretBytes: Buffer
+  let expected: Buffer
+  try {
+    secretBytes = Buffer.from(secret.slice('whsec_'.length), 'base64')
+    const signedContent = `${headers.id}.${headers.timestamp}.${rawBody}`
+    expected = Buffer.from(createHmac('sha256', secretBytes).update(signedContent).digest('base64'), 'base64')
+  } catch {
+    return false
+  }
+
+  // Space-delimited "v1,<base64sig>" entries — Resend may present more than
+  // one during a signing-key rotation, so any one matching is valid.
+  return headers.signature.split(' ').some((entry) => {
+    const [version, sig] = entry.split(',')
+    if (version !== 'v1' || !sig) return false
+    try {
+      const given = Buffer.from(sig, 'base64')
+      return given.length === expected.length && timingSafeEqual(given, expected)
+    } catch {
+      return false
+    }
+  })
+}
+
+/**
+ * Whether the desk's ear is actually open — POST /api/mail/inbound refuses
+ * with 503 unless one of these is set, because an unauthenticated inbound
+ * endpoint lets anyone forge "customer" mail from any address. Reported by
+ * lib/capabilities.ts so an operator can check it with one curl instead of
+ * discovering it from an order that never arrived.
+ */
+export function isMailDeskConfigured(): boolean {
+  return Boolean(process.env.RESEND_WEBHOOK_SECRET || process.env.MAIL_INBOUND_SECRET)
 }
 
 /* ── Storage ─────────────────────────────────────────────────────────── */
@@ -165,7 +300,7 @@ export type InboundOutcome =
  * always 200s so the provider does not retry-storm.
  */
 export async function handleInboundMail(raw: unknown): Promise<InboundOutcome> {
-  const mail = normalizeInboundMail(raw)
+  const mail = await resolveInboundMail(raw)
   if (!mail) return { kind: 'dropped', why: 'unparseable payload' }
   await ensureTables()
 

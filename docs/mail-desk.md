@@ -5,7 +5,8 @@ same engine to anyone with an email address — the full loop, no human in it:
 
 ```
 buyer writes to orders@<your-domain>
-  → provider inbound webhook → POST /api/mail/inbound (shared secret)
+  → provider inbound webhook → POST /api/mail/inbound (signature-verified)
+  → the body is FETCHED, not read from the webhook (Resend — see below)
   → LLM intent extraction (fenced — mail bodies are hostile input)
   → quote reply: price WITH UNIQUE CENTS + the serving prime's address + HS-token
 buyer sends the exact amount of USDC
@@ -57,14 +58,59 @@ claim-ready, and (on the rehearsal) breeds its successes, with the owner
 appearing only in the audit logs. The "house office" is a role, not a new
 ownership type.
 
+## Resend's webhook carries no body — the one thing that silently breaks
+
+`email.received` is **metadata only**:
+
+```json
+{ "type": "email.received", "data": { "email_id": "...", "from": "...", "subject": "..." } }
+```
+
+No `text`, no `html`. The body comes from a second, authenticated call:
+`GET https://api.resend.com/emails/receiving/{email_id}`.
+
+This is the failure mode worth naming, because nothing about it looks
+broken: read the webhook as if the body were inline and every order
+normalizes to empty text, intent extraction finds nothing, and the desk
+answers *every* real customer with the catalogue — forever, at 200 OK, with
+clean logs. `resendReceivedEmailId` detects that envelope and
+`fetchResendReceivedEmail` fetches the body (falling back to `htmlToText`
+for HTML-only mail); `normalizeInboundMail` stays the generic inline-body
+parser for Postmark and anything posting `{from, subject, text}` directly.
+
+## Authenticating the ear
+
+`POST /api/mail/inbound` 503s until one of two env vars is set — an
+unauthenticated inbound endpoint lets anyone forge mail from any address:
+
+- **`RESEND_WEBHOOK_SECRET`** (preferred) — the `whsec_…` signing secret
+  Resend shows when you create the webhook. Verified as a real Svix HMAC:
+  `HMAC-SHA256(secret, "{svix-id}.{svix-timestamp}.{raw body}")`, compared
+  timing-safely, with a 5-minute timestamp window and multiple `v1,<sig>`
+  entries accepted so a key rotation does not drop mail. Same posture as
+  `verifyGithubSignature` in `lib/github-app.ts`. The route reads the body
+  as **text** and parses it only after verifying — the HMAC is over the
+  exact bytes, and re-serializing a parsed object would fail every real
+  signature.
+- **`MAIL_INBOUND_SECRET`** — the shared-secret fallback for providers that
+  do not sign, in `?secret=` or `X-Mail-Secret`. Treat it like
+  `CRON_SECRET`: a query-string secret lives in Vercel's logs permanently.
+
 ## Operator setup (the part only a human can do)
 
-1. Buy a domain; add it to Resend (or Postmark) — set `RESEND_API_KEY`,
-   `EMAIL_FROM=orders@<domain>`.
-2. Point the provider's **inbound** routing at
-   `POST https://<deployment>/api/mail/inbound?secret=<MAIL_INBOUND_SECRET>`
-   and set that env var.
-3. Open a storefront (`set_storefront`) — its prime's address is the
+1. Buy a domain and add it to Resend. **Sending** and **receiving** are two
+   separate setups on the same domain: sending wants SPF/DKIM, receiving
+   wants an MX record. Use the exact records Resend's dashboard prints for
+   *your* domain — they differ per domain and per region, so do not copy a
+   value out of a doc (this one included).
+2. Set `RESEND_API_KEY` and `EMAIL_FROM=orders@<domain>`.
+3. Create a Resend webhook on the **`email.received`** event pointing at
+   `POST https://<deployment>/api/mail/inbound`. Copy the signing secret it
+   shows into `RESEND_WEBHOOK_SECRET` and redeploy.
+4. Open a storefront (`set_storefront`) — its prime's address is the
    deposit address every quote advertises.
-4. Watch `/autonomy` and the x402 ledger; unmatched transfers to the prime
+5. Confirm with `curl -s https://<deployment>/api/capabilities` — `email`
+   and `mailDesk` both `on` means the desk can hear and answer. (Names and
+   on/off only; the endpoint never echoes a value.)
+6. Watch `/autonomy` and the x402 ledger; unmatched transfers to the prime
    are yours to reconcile.

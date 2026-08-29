@@ -4,11 +4,14 @@
  * stranger's payment to the wrong order — so it gets the adversarial cases.
  */
 import { describe, expect, it } from 'vitest'
+import { createHmac } from 'node:crypto'
 import {
   extractOrderToken,
   normalizeInboundMail,
   quoteWithUniqueCents,
+  resendReceivedEmailId,
   usdToUnits,
+  verifyResendWebhookSignature,
 } from '@/lib/mail-desk'
 
 describe('quoteWithUniqueCents', () => {
@@ -96,5 +99,97 @@ describe('normalizeInboundMail', () => {
     const m = normalizeInboundMail({ from: 'a@b.co', subject: 'x'.repeat(1000), text: 'y'.repeat(100_000) })
     expect(m!.subject.length).toBe(300)
     expect(m!.text.length).toBe(8000)
+  })
+})
+
+describe('resendReceivedEmailId', () => {
+  it('pulls the id out of Resend\'s metadata-only email.received envelope', () => {
+    expect(resendReceivedEmailId({ type: 'email.received', data: { email_id: 'abc-123', from: 'a@b.co' } })).toBe(
+      'abc-123',
+    )
+  })
+
+  it('ignores other Resend event types — the desk only subscribes to received', () => {
+    expect(resendReceivedEmailId({ type: 'email.delivered', data: { email_id: 'abc-123' } })).toBeNull()
+    expect(resendReceivedEmailId({ type: 'email.bounced', data: { email_id: 'abc-123' } })).toBeNull()
+  })
+
+  it('returns null for a generic inline-body payload so it falls through to normalizeInboundMail', () => {
+    expect(resendReceivedEmailId({ from: 'a@b.co', subject: 's', text: 't' })).toBeNull()
+    expect(resendReceivedEmailId({ type: 'email.received', data: {} })).toBeNull()
+    expect(resendReceivedEmailId({ type: 'email.received' })).toBeNull()
+    expect(resendReceivedEmailId(null)).toBeNull()
+    expect(resendReceivedEmailId('string')).toBeNull()
+  })
+})
+
+describe('verifyResendWebhookSignature', () => {
+  const secret = `whsec_${Buffer.from('a-signing-key-of-some-length').toString('base64')}`
+  const id = 'msg_2abc'
+  const body = JSON.stringify({ type: 'email.received', data: { email_id: 'e1' } })
+  const nowMs = 1_770_000_000_000
+  const timestamp = String(Math.floor(nowMs / 1000))
+
+  const sign = (signedId: string, signedTs: string, signedBody: string, key = secret) =>
+    createHmac('sha256', Buffer.from(key.slice('whsec_'.length), 'base64'))
+      .update(`${signedId}.${signedTs}.${signedBody}`)
+      .digest('base64')
+
+  const headers = (over: Partial<{ id: string; timestamp: string; signature: string }> = {}) => ({
+    id,
+    timestamp,
+    signature: `v1,${sign(id, timestamp, body)}`,
+    ...over,
+  })
+
+  it('accepts a correctly signed payload', () => {
+    expect(verifyResendWebhookSignature(body, headers(), secret, nowMs)).toBe(true)
+  })
+
+  it('accepts when one of several rotation signatures matches', () => {
+    const stale = sign(id, timestamp, body, `whsec_${Buffer.from('an-older-key').toString('base64')}`)
+    const sig = `v1,${stale} v1,${sign(id, timestamp, body)}`
+    expect(verifyResendWebhookSignature(body, headers({ signature: sig }), secret, nowMs)).toBe(true)
+  })
+
+  it('rejects a tampered body — the whole point of signing', () => {
+    expect(verifyResendWebhookSignature(`${body} `, headers(), secret, nowMs)).toBe(false)
+  })
+
+  it('rejects a signature bound to a different id or timestamp (replay across messages)', () => {
+    expect(verifyResendWebhookSignature(body, headers({ id: 'msg_other' }), secret, nowMs)).toBe(false)
+    expect(verifyResendWebhookSignature(body, headers({ timestamp: String(Number(timestamp) - 1) }), secret, nowMs)).toBe(
+      false,
+    )
+  })
+
+  it('rejects a timestamp outside the 5-minute tolerance, in both directions', () => {
+    expect(verifyResendWebhookSignature(body, headers(), secret, nowMs + 6 * 60_000)).toBe(false)
+    expect(verifyResendWebhookSignature(body, headers(), secret, nowMs - 6 * 60_000)).toBe(false)
+    expect(verifyResendWebhookSignature(body, headers(), secret, nowMs + 4 * 60_000)).toBe(true)
+  })
+
+  it('rejects the wrong signing key', () => {
+    const other = `whsec_${Buffer.from('a-different-signing-key').toString('base64')}`
+    expect(verifyResendWebhookSignature(body, headers(), other, nowMs)).toBe(false)
+  })
+
+  it('rejects missing headers, junk versions, and malformed secrets', () => {
+    expect(verifyResendWebhookSignature(body, headers({ signature: undefined as never }), secret, nowMs)).toBe(false)
+    expect(verifyResendWebhookSignature(body, { id: null, timestamp, signature: 'v1,x' }, secret, nowMs)).toBe(false)
+    expect(verifyResendWebhookSignature(body, headers({ timestamp: 'not-a-number' }), secret, nowMs)).toBe(false)
+    expect(verifyResendWebhookSignature(body, headers({ signature: sign(id, timestamp, body) }), secret, nowMs)).toBe(
+      false,
+    )
+    expect(verifyResendWebhookSignature(body, headers({ signature: `v2,${sign(id, timestamp, body)}` }), secret, nowMs)).toBe(
+      false,
+    )
+    expect(verifyResendWebhookSignature(body, headers(), 'no-whsec-prefix', nowMs)).toBe(false)
+  })
+
+  it('rejects a shorter signature that is a prefix of the real one', () => {
+    const real = sign(id, timestamp, body)
+    const truncated = Buffer.from(Buffer.from(real, 'base64').subarray(0, 16)).toString('base64')
+    expect(verifyResendWebhookSignature(body, headers({ signature: `v1,${truncated}` }), secret, nowMs)).toBe(false)
   })
 })
