@@ -183,6 +183,15 @@ export async function buildLineageReport(
 /* ── The lineage record ──────────────────────────────────────────────── */
 
 let tableReady: Promise<void> | null = null
+
+/** Exported so lib/lineage-mandate.ts can read agent_lineage without
+ *  depending on an invisible ordering: its budget queries hit this table
+ *  before anything else in a tick necessarily has, and a missing relation
+ *  there throws inside the sweep — safe (nothing acts) but silently broken. */
+export function ensureLineageTables(): Promise<void> {
+  return ensureTables()
+}
+
 function ensureTables(): Promise<void> {
   tableReady ??= (async () => {
     await pgPool.query(

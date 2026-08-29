@@ -135,6 +135,8 @@ export async function setLineageMandate(userId: string, slot: number, enabled: b
  *  the birth record IS the budget's ledger, so there is no second number to
  *  drift. */
 export async function birthsInWindow(userId: string): Promise<{ births: number; seededUsd: number }> {
+  const { ensureLineageTables } = await import('@/lib/agent-lineage-server')
+  await ensureLineageTables()
   const { rows } = await pgPool.query<{ births: string; seeded: string | null }>(
     `SELECT COUNT(*)::text AS births, COALESCE(SUM(seeded_usd), 0)::text AS seeded
        FROM agent_lineage
@@ -147,6 +149,8 @@ export async function birthsInWindow(userId: string): Promise<{ births: number; 
 }
 
 export async function retirementsInWindow(userId: string): Promise<number> {
+  const { ensureLineageTables } = await import('@/lib/agent-lineage-server')
+  await ensureLineageTables()
   const { rows } = await pgPool.query<{ n: string }>(
     `SELECT COUNT(*)::text AS n FROM agent_lineage
       WHERE user_id = $1 AND retired_at IS NOT NULL
