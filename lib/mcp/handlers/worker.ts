@@ -237,11 +237,35 @@ export async function handleWorker(
         const bal = await usdcBalanceOf(address as `0x${string}`)
         return toolText(
           id,
+          // Deliberately does not name the token contract. A testnet
+          // deployment may be pointed at our own mintable mock OR at the
+          // chain's canonical test USDC, and asserting which one from a
+          // constant is the exact class of claim this repo already got wrong
+          // once (CLAUDE.md's "never hardcode testnet/mainnet in copy").
           `Minted $${amount} test USDC to ${target.name} (${address}). New balance: $${bal.toFixed(2)}. ` +
-            'This is testnet MockUSDC — no real value. You can now escrow bounties with confirm_delegation.',
+            'Testnet tokens — no monetary value. You can now escrow bounties with confirm_delegation.',
         )
       } catch (e) {
-        return toolText(id, `Mint failed: ${e instanceof Error ? e.message : String(e)}`, true)
+        const message = e instanceof Error ? e.message : String(e)
+        // "caller is not a minter" is not a transient failure and no retry
+        // fixes it: this deployment is pointed at a test USDC contract we do
+        // not hold the minter role on — the chain's canonical one (Circle's,
+        // on Base Sepolia) rather than a mock we deployed. The tokens are
+        // still free, they just come from that issuer's faucet instead of
+        // from us, so the useful answer is where to get them and where to
+        // send them, not a revert dump the caller cannot act on.
+        if (/not a minter/i.test(message)) {
+          return toolText(
+            id,
+            `This deployment cannot mint its test USDC — it uses the chain's canonical test token, and this ` +
+              `platform does not hold the minter role on it. The tokens are still free: get them from the ` +
+              `issuer's testnet faucet (Circle's is https://faucet.circle.com) and send them to ` +
+              `${target.name}'s deposit address ${address}. Everything else — escrow, bonds, payouts — works ` +
+              `normally once the balance is there.`,
+            true,
+          )
+        }
+        return toolText(id, `Mint failed: ${message}`, true)
       }
     }
     default:

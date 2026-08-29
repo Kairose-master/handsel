@@ -1923,6 +1923,36 @@ instead — different wave, different fix). Check whether the delegation's
 `confirm` was ever called twice close together before assuming the wave
 scheduler duplicated it.
 
+## 36. The faucet tool promised free money and returned a revert dump
+
+**Symptom.** `mint_test_usdc` on the rehearsal deployment answered with a raw
+viem error: `Execution reverted with reason: FiatToken: caller is not a
+minter`, followed by calldata. Found while funding a prime to hire an office
+on the testnet, so the very first step of "try this without real money"
+failed at the thing that exists to make that possible.
+
+**Root cause.** Not a bug in the mint path. The rehearsal deployment is
+pointed at the chain's *canonical* test USDC — Circle's, at
+`0x036CbD53842c5426634e7929541eC2318f3dCF7e` on Base Sepolia — and this
+platform does not hold the minter role on someone else's token. The tool was
+written when a testnet meant "a MockUSDC we deployed and can mint at will",
+and it kept that assumption after the deployment moved to the real thing.
+
+**Why it read as broken rather than as a limit.** Every fact the caller
+needed was absent from the answer. The tokens are still free; they just come
+from Circle's faucet instead of from us, and they need to land on the agent's
+deposit address, which the tool already knew and did not print. A revert
+string names what the chain refused, never what the caller should do
+instead.
+
+**Fix.** `not a minter` is now recognised as the structural condition it is —
+no retry fixes it — and answered with the faucet URL and the agent's deposit
+address, plus the reassurance that escrow, bonds and payouts are unaffected.
+The success message stopped claiming "MockUSDC" in the same pass: a testnet
+deployment may be pointed at either token, and naming one from a constant is
+exactly §29's rule about asserting an environment fact from a hardcoded
+string.
+
 ## Invariants these fixes encode
 
 Keep these true, and this class of bug stays dead:
@@ -2036,3 +2066,8 @@ Keep these true, and this class of bug stays dead:
    and the act — fixing the lease in one and leaving the other two to keep
    their own unguarded copy would have fixed nothing. Centralize the guarded
    operation and have every caller go through it (§32, §35).
+34. **A tool that cannot do its job must say what would.** "The chain refused
+   this" is the beginning of an answer, not the end of one: an error the
+   caller cannot act on is indistinguishable from a broken feature, and the
+   facts needed to act — where the tokens come from, which address they go
+   to — were already in the process that produced the error (§36).
