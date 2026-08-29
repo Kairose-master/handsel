@@ -43,6 +43,9 @@ import {
   hireStaff,
   hireOfficeTemplate,
   type ConnectedOffice,
+  myOfficeAutomaton,
+  setMyOfficeAutomaton,
+  type OfficeAutomatonView,
 } from '@/app/actions/office'
 import { setMcpWorker, disconnectMcpWorker } from '@/app/actions/webhook'
 import {
@@ -1074,6 +1077,104 @@ function OfficeSourcePanel({ slot }: { slot: number }) {
 }
 
 /**
+ * The Automaton panel — this office's standing operator mandate
+ * (lib/office-automaton.ts). The toggle grants or revokes real spending
+ * authority (bounded: bond-floor top-ups between the owner's own wallets,
+ * daily budget, per-transfer cap), so the panel leads with what it has
+ * actually DONE — the audit log — not with what it could do. Every number
+ * is a live query; an empty log is a true "nothing yet".
+ */
+function OfficeAutomatonPanel({ slot }: { slot: number }) {
+  const [view, setView] = useState<OfficeAutomatonView | null>(null)
+  const [readError, setReadError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    let dead = false
+    setView(null)
+    setReadError(null)
+    myOfficeAutomaton(slot)
+      .then((v) => {
+        if (!dead) setView(v)
+      })
+      .catch((e) => {
+        if (!dead) setReadError(e instanceof Error ? e.message : 'Could not read it.')
+      })
+    return () => {
+      dead = true
+    }
+  }, [slot])
+
+  const toggle = async () => {
+    if (!view) return
+    setBusy(true)
+    try {
+      await setMyOfficeAutomaton(slot, !view.enabled)
+      setView(await myOfficeAutomaton(slot))
+    } catch (e) {
+      setReadError(e instanceof Error ? e.message : 'Could not change it.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle className="text-base">Automaton</CardTitle>
+          {view && (
+            <Button type="button" size="sm" variant={view.enabled ? 'destructive' : 'default'} onClick={toggle} disabled={busy}>
+              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : view.enabled ? 'Revoke mandate' : 'Grant mandate'}
+            </Button>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          A standing mandate to keep this desk claim-ready: any worker here holding under $
+          {view ? view.floorUsd.toFixed(2) : '…'} of bond float is topped up from your own richest agent — only ever
+          between your own wallets, at most ${view ? view.budgetUsd.toFixed(2) : '…'} a day, every move logged below.
+          Runs on the same background cycle that settles jobs.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {readError ? (
+          <p className="text-sm text-destructive">Couldn&apos;t read the mandate — {readError}</p>
+        ) : !view ? (
+          <p className="text-xs text-muted-foreground">Loading…</p>
+        ) : (
+          <>
+            <div className="flex flex-wrap items-center gap-3 font-mono text-xs tabular-nums">
+              <span className={view.enabled ? 'text-success' : 'text-muted-foreground'}>
+                ● {view.enabled ? 'ACTIVE' : 'OFF'}
+              </span>
+              <span className="text-muted-foreground">
+                moved 24h: ${view.spentUsd.toFixed(2)} / ${view.budgetUsd.toFixed(2)}
+              </span>
+            </div>
+            {view.actions.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No actions yet.</p>
+            ) : (
+              <ul className="space-y-1">
+                {view.actions.map((a) => (
+                  <li key={a.id} className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                    {new Date(a.at).toLocaleString()} · {a.kind} ${a.amountUsd.toFixed(2)} → {a.agentName}
+                    {a.txHash ? (
+                      <span className="text-success"> ✓ {a.txHash.slice(0, 10)}…</span>
+                    ) : a.note?.startsWith('FAILED') ? (
+                      <span className="text-destructive"> ✗ failed</span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+/**
  * Office dashboard — who is in this office and how each one is wired.
  *
  * Exists because connectors used to be settable only while hiring: a typo in
@@ -2036,6 +2137,7 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
     {/* Shares pollTrigger with the world above so a hire re-reads both. */}
     <OfficeRosterPanel slot={slot} refreshKey={pollTrigger} />
     <OfficeSourcePanel slot={slot} />
+    <OfficeAutomatonPanel slot={slot} />
     </div>
   )
 }

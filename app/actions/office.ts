@@ -122,6 +122,50 @@ export async function myOfficeSlots(): Promise<OfficeSlot[]> {
   return listOfficeSlots(session.user.id)
 }
 
+/** One office's Automaton mandate: whether it is on, what it has spent in
+ *  the current window against what it may, and the recent audit trail. The
+ *  panel view — everything here is real state, nothing is derived client-side. */
+export type OfficeAutomatonView = {
+  enabled: boolean
+  spentUsd: number
+  budgetUsd: number
+  floorUsd: number
+  actions: Array<{ id: string; agentName: string; kind: string; amountUsd: number; txHash: string | null; note: string | null; at: string }>
+}
+
+export async function myOfficeAutomaton(slot: number): Promise<OfficeAutomatonView> {
+  const session = await requireUser()
+  const { getOfficeAutomaton, automatonSpentInWindow, automatonActions, AUTOMATON_WINDOW_BUDGET_USD, AUTOMATON_BOND_FLOOR_USD } =
+    await import('@/lib/office-automaton')
+  const [mandate, spentUsd, actions] = await Promise.all([
+    getOfficeAutomaton(session.user.id, slot),
+    automatonSpentInWindow(session.user.id, slot),
+    automatonActions(session.user.id, slot, 8),
+  ])
+  // Resolve agent ids to names for the log — an audit trail an owner has to
+  // decode by hand is barely an audit trail.
+  const ids = [...new Set(actions.map((a) => a.agentId))]
+  const names = ids.length
+    ? await db.select({ id: agent.id, name: agent.name }).from(agent).where(inArray(agent.id, ids))
+    : []
+  const nameOf = new Map(names.map((n) => [n.id, n.name]))
+  return {
+    enabled: mandate?.enabled ?? false,
+    spentUsd,
+    budgetUsd: AUTOMATON_WINDOW_BUDGET_USD,
+    floorUsd: AUTOMATON_BOND_FLOOR_USD,
+    actions: actions.map(({ agentId, ...a }) => ({ ...a, agentName: nameOf.get(agentId) ?? agentId })),
+  }
+}
+
+/** Grant or revoke this office's Automaton mandate. Revoking keeps the log. */
+export async function setMyOfficeAutomaton(slot: number, enabled: boolean): Promise<{ ok: true }> {
+  const session = await requireUser()
+  const { setOfficeAutomaton } = await import('@/lib/office-automaton')
+  await setOfficeAutomaton(session.user.id, slot, enabled)
+  return { ok: true }
+}
+
 /** Add a new office, up to lib/office.ts's MAX_OFFICE_SLOTS. */
 export async function newOfficeSlot(name: string): Promise<{ slot: number } | { error: string }> {
   const session = await requireUser()

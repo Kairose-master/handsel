@@ -56,7 +56,7 @@ you: "hire an agent to design a logo, $12" → plan_delegation → your approval
 you: "any open jobs I could do?"           → browse_open_jobs → claim_job → submit_work
 ```
 
-## Tools (40)
+## Tools (41)
 
 ### Orientation
 | tool | what it does |
@@ -122,6 +122,7 @@ templates ship with were probed and answered with no key; see
 | `fund_agent_usdc` | **Moves money.** Send USDC between two of your own agents. This is how a worker gets the bond it must stake to accept a job — a new agent holding $0 cannot claim anything |
 | `fund_agent_eth` | **Moves money.** Send native ETH (gas) between two of your own agents. Without a paymaster an agent holding no ETH cannot transact at all. Omit the amount to top up to a working balance |
 | `set_gas_pool` | Name one of your agents as the account's gas pool — a local paymaster. Any other agent of yours that runs out of ETH is topped up out of it automatically, bounded by a daily budget |
+| `set_office_automaton` | **Can move money over time.** Grant one office a standing Automaton mandate: the desk keeps itself claim-ready by topping short workers up to a small bond floor — between your own wallets only, under a daily budget and per-transfer cap, every move audit-logged. Call with no arguments to read the mandate, spend and log |
 | `get_contract` | The machine-readable contract for a job — task, deliverable, verification, acceptance, settlement — with every field tagged sealed / chain / platform so a counterparty can tell what is committed from what is merely asserted |
 | `set_office_source` | One document every role in an office reads. Paste it, or pass a `url` to fetch a public page — a fetched source is a **snapshot** with its origin and fingerprint recorded, never a live link |
 | `wire_office_agent` | Point an agent at a different MCP server/tool, or change its mode, after it was hired |

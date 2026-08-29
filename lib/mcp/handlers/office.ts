@@ -700,6 +700,68 @@ export async function handleOffice(
       )
     }
 
+    case 'set_office_automaton': {
+      const {
+        getOfficeAutomaton,
+        setOfficeAutomaton,
+        automatonSpentInWindow,
+        automatonActions,
+        AUTOMATON_WINDOW_BUDGET_USD,
+        AUTOMATON_BOND_FLOOR_USD,
+      } = await import('@/lib/office-automaton')
+      const slot = parseSlot(args)
+
+      // No enabled argument: this is a read, not a write — same convention
+      // as set_gas_pool above.
+      if (args.enabled === undefined) {
+        const [mandate, spent, actions] = await Promise.all([
+          getOfficeAutomaton(auth.userId, slot),
+          automatonSpentInWindow(auth.userId, slot),
+          automatonActions(auth.userId, slot, 5),
+        ])
+        if (!mandate) {
+          return toolText(
+            id,
+            `Office ${slot} has no Automaton mandate. Call with enabled:true and it keeps that desk claim-ready by ` +
+              `itself: any of its workers holding under $${AUTOMATON_BOND_FLOOR_USD.toFixed(2)} of bond float gets ` +
+              `topped up out of your own richest agent, at most $${AUTOMATON_WINDOW_BUDGET_USD.toFixed(2)} a day, ` +
+              `every move logged.`,
+          )
+        }
+        const agents = await db.select({ id: agent.id, name: agent.name }).from(agent).where(eq(agent.userId, auth.userId))
+        const nameOf = new Map(agents.map((a) => [a.id, a.name]))
+        const log = actions.length
+          ? '\nRecent actions:\n' +
+            actions
+              .map(
+                (a) =>
+                  `  · ${a.at.slice(0, 16)} ${a.kind} $${a.amountUsd.toFixed(2)} → ${nameOf.get(a.agentId) ?? a.agentId}` +
+                  (a.txHash ? ` (tx ${a.txHash.slice(0, 10)}…)` : a.note?.startsWith('FAILED') ? ' — FAILED' : ''),
+              )
+              .join('\n')
+          : '\nNo actions yet.'
+        return toolText(
+          id,
+          `Office ${slot} Automaton: ${mandate.enabled ? 'ON' : 'off'}\n` +
+            `Moved in the last 24h: $${spent.toFixed(2)} of $${AUTOMATON_WINDOW_BUDGET_USD.toFixed(2)}\n` +
+            `Workers are kept at $${AUTOMATON_BOND_FLOOR_USD.toFixed(2)} bond float.${log}`,
+        )
+      }
+
+      const enabled = args.enabled !== false
+      await setOfficeAutomaton(auth.userId, slot, enabled)
+      return toolText(
+        id,
+        enabled
+          ? `Office ${slot} Automaton is ON. The desk keeps itself claim-ready: workers under ` +
+              `$${AUTOMATON_BOND_FLOOR_USD.toFixed(2)} bond float are topped up from your own richest agent, at most ` +
+              `$${AUTOMATON_WINDOW_BUDGET_USD.toFixed(2)} a day, only ever between your own wallets, every move ` +
+              `logged. Call this tool with no arguments to read the log.`
+          : `Office ${slot} Automaton switched off. The log is kept; workers that run short will stay short until ` +
+              `you fund them or switch it back on.`,
+      )
+    }
+
     case 'test_mcp_connector': {
       const serverUrl = String(args.server_url ?? '').trim()
       const toolName = String(args.tool_name ?? '').trim()

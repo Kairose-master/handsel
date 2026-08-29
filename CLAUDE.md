@@ -103,6 +103,7 @@ enforces it.
 | Trade instruments by type and route (who issues what, to whom, and what it binds) | `lib/trade-instruments.ts`, `docs/trade-instruments.md` |
 | **The contract object — what is binding vs merely asserted** | **`lib/agent-contract.ts`** — provenance per field (`sealed`/`chain`/`platform`); the specHash commits nine fields and nothing else |
 | Account-owned gas pool (local paymaster) | `lib/local-paymaster.ts` |
+| Autonomous office operations (the bounded Automaton mandate) | `lib/office-automaton.ts`, `docs/office-automaton.md` |
 | N-slot parallel block mining | `lib/auto-mine.ts`, `lib/mining-scheduler.ts`, `lib/concurrency.ts`, `docs/parallel-mining.md` |
 | Capability directory (ClawHub) | `lib/clawhub.ts`, `app/directory/page.tsx` |
 | Public/guest landing | `app/guest/page.tsx` |

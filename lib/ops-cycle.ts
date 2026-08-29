@@ -230,6 +230,19 @@ export const OPS_STEPS: OpsStep[] = [
     },
   },
   {
+    // The Office Automaton's standing mandate (lib/office-automaton.ts):
+    // keep opted-in desks claim-ready by topping worker bond float up to a
+    // small floor, inside a daily budget, out of the owner's own wallets.
+    // NOT fast — it reads on-chain balances across every enabled office and
+    // may send UserOperations, which is cron-budget work, not something to
+    // ride on a visitor's request.
+    name: 'officeAutomata',
+    run: async () => {
+      const { tickOfficeAutomatons } = await import('@/lib/office-automaton')
+      return tickOfficeAutomatons()
+    },
+  },
+  {
     name: 'loansDefaulted',
     run: async () => {
       const { sweepDefaultedLoans } = await import('@/lib/loan-sweep')

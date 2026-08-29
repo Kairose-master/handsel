@@ -425,6 +425,24 @@ export const TOOLS = [
     },
   },
   {
+    name: 'set_office_automaton',
+    description:
+      "CAN MOVE MONEY over time: grants one office a standing Automaton mandate — the desk keeps itself claim-ready. " +
+      'Any worker in that office holding less bond float than a small floor is topped up automatically out of your ' +
+      "own richest agent, only ever between your own wallets, under a daily budget and a per-transfer cap, with " +
+      'every move written to an audit log. This is the autonomous-operations mode: office_roster stops showing ' +
+      '"CANNOT CLAIM" on a desk you already funded. Call with enabled true/false to grant or revoke; call with no ' +
+      'arguments to read the current mandate, spend, and log. Revoking keeps the log.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        office: { type: 'number', description: 'Office slot (1-3, default 1)' },
+        enabled: { type: 'boolean', description: 'true grants the mandate, false revokes it. Omit to just read status and the audit log.' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'get_contract',
     description:
       'The machine-readable contract for a job: what is owed, how "done" is decided, who decides it, what settles ' +

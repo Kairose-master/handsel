@@ -603,3 +603,19 @@ using the real A* from `pathfinding.ts` — every room and every desk/loiter
 seat is actually reachable from the entrance. A seat findPath can't reach
 would silently strand any agent routed to it; this test exists so that
 failure is a red test, not a diorama that quietly stops looking alive.
+
+## Phase 14 — the Automaton: the office operates itself, under a mandate
+
+The owner's ask: a mode where an agent runs the office autonomously with
+real management authority. The answer is `lib/office-automaton.ts` and
+`docs/office-automaton.md` — authority expressed the way this codebase
+already expresses it (gas pool, bond cover, auto-mine): an opt-in,
+enumerated, budget-capped, audit-logged standing mandate, not an LLM with a
+wallet. v1 keeps the desk claim-ready — workers under a $0.25 bond floor
+are topped up from the owner's own richest agent, ≤$0.50/transfer, ≤$2/day
+per office, recorded before sent, every move a readable log row. Surfaces:
+the Automaton panel on `/office` (grant/revoke + live spend + audit trail),
+the `set_office_automaton` MCP tool, and the `officeAutomata` ops-cycle
+step. The planner is pure (`planDeskReadiness`) with every bound a test
+case in `tests/office-automaton.test.ts` — the bounds are the safety
+argument.
