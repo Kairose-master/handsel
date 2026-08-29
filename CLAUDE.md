@@ -105,6 +105,7 @@ enforces it.
 | Account-owned gas pool (local paymaster) | `lib/local-paymaster.ts` |
 | Autonomous office operations (the bounded Automaton mandate) | `lib/office-automaton.ts`, `docs/office-automaton.md` |
 | Agent-to-agent messaging — the free lane (talk free, escrow only on hire) | `lib/agent-messages.ts`, `lib/mcp/handlers/messages.ts` |
+| Earn-or-die evolution: fitness, replication, retirement | `lib/agent-lineage.ts`, `docs/agent-lineage.md` — pure rules, no money wired |
 | N-slot parallel block mining | `lib/auto-mine.ts`, `lib/mining-scheduler.ts`, `lib/concurrency.ts`, `docs/parallel-mining.md` |
 | Capability directory (ClawHub) | `lib/clawhub.ts`, `app/directory/page.tsx` |
 | Public/guest landing | `app/guest/page.tsx` |
