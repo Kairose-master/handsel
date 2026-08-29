@@ -762,6 +762,35 @@ export async function handleOffice(
       )
     }
 
+    case 'lineage_report': {
+      const { buildLineageReport } = await import('@/lib/agent-lineage-server')
+      const slot = args.office === undefined ? undefined : parseSlot(args)
+      const report = await buildLineageReport(auth.userId, slot)
+      if (report.rows.length === 0) {
+        return toolText(id, slot === undefined ? 'This account has no agents yet.' : `Office ${slot} has no agents.`)
+      }
+      const lines = report.rows.map((r) => {
+        const rate = r.graded.passRate === null ? 'ungraded' : `${Math.round(r.graded.passRate * 100)}%`
+        const held = r.heldUsd === null ? 'balance unreadable' : `$${r.heldUsd.toFixed(2)}`
+        return (
+          `- ${r.decision.action.toUpperCase()} (${r.decision.why}) · ${r.name} · gen ${r.generation} · ` +
+          `graded ${r.graded.passed}/${r.graded.total} ${rate} · earned $${r.earnedUsd.toFixed(2)} · holds ${held}`
+        )
+      })
+      return toolText(
+        id,
+        `Selection dry run over the last ${report.windowDays} days — NOTHING WAS CHANGED.\n` +
+          `${report.counts.replicate} would replicate · ${report.counts.retire} would retire · ` +
+          `${report.counts.hold} hold` +
+          (report.balanceReadErrors > 0 ? ` · ${report.balanceReadErrors} balance(s) unreadable` : '') +
+          `\nThresholds: replicate at ≥${Math.round(report.policy.replicatePassRate * 100)}% graded pass, retire at ` +
+          `≤${Math.round(report.policy.retirePassRate * 100)}%, both only after ${report.policy.minGraded} graded ` +
+          `outcomes; ${Math.round(report.policy.graceMs / 86_400_000)}-day grace before an agent can starve.\n\n` +
+          lines.join('\n') +
+          `\n\nThis is a report, not a mandate: no agent is created, funded or retired by this tool.`,
+      )
+    }
+
     case 'test_mcp_connector': {
       const serverUrl = String(args.server_url ?? '').trim()
       const toolName = String(args.tool_name ?? '').trim()

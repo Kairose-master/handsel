@@ -91,9 +91,29 @@ Defaults: `minGraded 5 · replicate ≥80% · retire ≤35% · seed $0.50 ·
 reserve $0.50 · starve floor $0.05 · grace 7d`. All overridable per call;
 24 cases in `tests/agent-lineage.test.ts`.
 
+## The dry run (shipped)
+
+`buildLineageReport` (`lib/agent-lineage-server.ts`) runs the rules against
+real data — independently graded verdicts and settled USDC from the last 30
+days, live wallet balances, real agent ages — and reports what selection
+*would* do. It changes nothing: no agent is created, funded, or retired by
+it.
+
+- **UI**: the "Selection — dry run" panel on `/office`, under the Automaton.
+  On demand rather than polled, because it reads every wallet in the office
+  on chain.
+- **MCP**: `lineage_report` (optional `office` slot).
+- Sorted so `replicate` and `retire` come first; every row shows the graded
+  record and the balance behind its call, and a null balance renders as
+  `unreadable`, never `$0.00`.
+
+Expect most rows to read `insufficient-evidence` at this market's current
+volume. That is the honest output, not a broken report — and it is exactly
+what a dry run is for: it says the rules are ready before the evidence is.
+
 ## Deliberately not wired yet
 
-`lib/agent-lineage.ts` moves no money and creates no agents. Replication
+Neither `lib/agent-lineage.ts` nor the report moves money or creates agents. Replication
 spends real USDC and mints a real on-chain account; retirement stops an
 agent an owner may still want. Both belong behind an explicit, revocable,
 budgeted mandate — the shape `lib/office-automaton.ts` already established —

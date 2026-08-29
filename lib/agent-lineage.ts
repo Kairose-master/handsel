@@ -50,7 +50,6 @@
  * kind of arithmetic that has to be readable in a test rather than inferred
  * from production.
  */
-import { MAX_INSTALLED_SKILLS } from '@/lib/agent-skills'
 import type { GradedOutcome } from '@/lib/skill-eval'
 
 /**
@@ -70,9 +69,13 @@ export type AgentGenome = {
   model: string | null
 }
 
-/** Mirrors lib/agent-skills.ts rather than restating it: a genome that could
- *  carry six skills would describe an agent the installer refuses to build. */
-export const MAX_GENOME_SKILLS = MAX_INSTALLED_SKILLS
+/** A genome that could carry six skills would describe an agent the
+ *  installer refuses to build, so this mirrors lib/agent-skills.ts's
+ *  MAX_INSTALLED_SKILLS — copied rather than imported, because that module
+ *  pulls in pg at load and this one has to stay importable from a client
+ *  component. tests/agent-lineage.test.ts pins the two together so the copy
+ *  cannot silently drift. */
+export const MAX_GENOME_SKILLS = 5
 
 /** Cap on inherited instructions. Long enough for a real brief, short enough
  *  that a lineage cannot grow an unbounded prompt one directive at a time —
@@ -211,13 +214,18 @@ export function decideLifecycle(input: {
   fitness: FitnessReading
   /** null = the balance could not be read. */
   heldUsd: number | null
-  /** Settled earnings minus spend over the same window as `fitness`. */
-  netUsd: number
+  /** USDC that actually settled to this agent over the same window as
+   *  `fitness`. Gross, not net: this platform records what a worker was
+   *  paid, not what its owner spent running it, and a "net" that quietly
+   *  omitted half the ledger would be a worse number than an honest gross
+   *  one. Only ever read as "is anything coming in?", which is the question
+   *  starvation actually asks. */
+  earnedUsd: number
   ageMs: number
   policy?: Partial<LifecyclePolicy>
 }): LifecycleDecision {
   const p = { ...DEFAULT_LIFECYCLE_POLICY, ...input.policy }
-  const { fitness, heldUsd, netUsd, ageMs } = input
+  const { fitness, heldUsd, earnedUsd, ageMs } = input
 
   if (heldUsd === null) return { action: 'hold', why: 'unreadable' }
 
@@ -225,7 +233,7 @@ export function decideLifecycle(input: {
   if (graded && fitness.passRate !== null && fitness.passRate <= p.retirePassRate) {
     return { action: 'retire', why: 'outcompeted' }
   }
-  if (ageMs > p.graceMs && heldUsd < p.starveFloorUsd && netUsd <= 0) {
+  if (ageMs > p.graceMs && heldUsd < p.starveFloorUsd && earnedUsd <= 0) {
     return { action: 'retire', why: 'starved' }
   }
   if (!graded) return { action: 'hold', why: 'insufficient-evidence' }
@@ -287,4 +295,36 @@ export function buildLineage(rows: readonly LineageRow[]): {
     if (depth > maxDepth) maxDepth = depth
   }
   return { childrenOf, depthOf, maxDepth }
+}
+
+/* ── The dry-run report ──────────────────────────────────────────────── */
+
+/**
+ * What selection WOULD do, per agent. The types live in this pure module
+ * rather than beside the query that builds them (lib/agent-lineage-server.ts,
+ * which imports pg) so a client component can render a report without
+ * dragging the database into the browser bundle — the same split, for the
+ * same reason, as OfficeTreasuryView in lib/office-world-data.ts.
+ */
+export type LineageReportRow = {
+  agentId: string
+  name: string
+  /** 0 = founder. Every agent is one until replication is wired. */
+  generation: number
+  ageDays: number
+  graded: { passed: number; total: number; passRate: number | null }
+  earnedUsd: number
+  /** null = the balance read failed. Never rendered as $0. */
+  heldUsd: number | null
+  decision: LifecycleDecision
+}
+
+export type LineageReport = {
+  windowDays: number
+  policy: LifecyclePolicy
+  rows: LineageReportRow[]
+  counts: { replicate: number; hold: number; retire: number }
+  /** Wallets whose balance could not be read this run. Each one is an agent
+   *  the rules deliberately refused to judge. */
+  balanceReadErrors: number
 }

@@ -16,7 +16,7 @@
  * permission grant: the market is already permissionless on-chain (see
  * lib/office.ts), so this page does not gate who can claim what.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { Copy, RefreshCw, Loader2, UserPlus, Building2, Plus, X, Maximize2, Minimize2, Plug, Unplug, Coins, Fuel } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -57,6 +57,8 @@ import {
 } from '@/app/actions/agent-skills'
 import type { ClawhubSkill } from '@/lib/clawhub'
 import { myAgentRepo, bindRepoToAgent, unbindRepoFromAgent, type AgentRepoView } from '@/app/actions/agent-repo'
+import { myLineageReport } from '@/app/actions/agent-lineage'
+import type { LineageReport } from '@/lib/agent-lineage'
 import { getGithubConnection } from '@/app/actions/repo-jobs'
 import type { GithubConnection } from '@/lib/github-identity'
 import dynamic from 'next/dynamic'
@@ -1069,6 +1071,109 @@ function OfficeSourcePanel({ slot }: { slot: number }) {
               {note && <span className="ml-auto text-xs text-muted-foreground">{note}</span>}
               {error && <span className="ml-auto text-xs text-destructive">{error}</span>}
             </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+const LIFECYCLE_STYLE: Record<string, { label: string; cls: string }> = {
+  replicate: { label: 'WOULD REPLICATE', cls: 'text-success' },
+  retire: { label: 'WOULD RETIRE', cls: 'text-destructive' },
+  hold: { label: 'hold', cls: 'text-muted-foreground' },
+}
+
+const LIFECYCLE_WHY: Record<string, string> = {
+  thriving: 'graded record is strong and it holds enough to seed a child above its own reserve',
+  healthy: 'working, but not good enough to copy or bad enough to drop',
+  'insufficient-evidence': 'too few graded outcomes to judge — no verdict is the correct verdict here',
+  'no-surplus': 'good enough to copy, but breeding would push it under its own reserve',
+  outcompeted: 'most of its graded work failed',
+  starved: 'past its grace period, under the bond floor, nothing coming in',
+  unreadable: 'its balance could not be read — nothing is decided on an unreadable balance',
+}
+
+/**
+ * Selection dry run — what the earn-or-die rules (lib/agent-lineage.ts)
+ * WOULD do to this office's agents, run against real graded verdicts and
+ * live balances. Nothing here acts: the panel exists so the rules can be
+ * argued with while they are still arithmetic, which is the whole reason
+ * the report shipped before the mandate.
+ */
+function LineageDryRunPanel({ slot }: { slot: number }) {
+  const [report, setReport] = useState<LineageReport | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const run = useCallback(async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      setReport(await myLineageReport(slot))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not run it.')
+    } finally {
+      setBusy(false)
+    }
+  }, [slot])
+
+  useEffect(() => {
+    setReport(null)
+    setError(null)
+  }, [slot])
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle className="text-base">Selection — dry run</CardTitle>
+          <Button type="button" size="sm" variant="outline" onClick={run} disabled={busy}>
+            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : report ? 'Re-run' : 'Run'}
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Earn-or-die, scored on independently graded work rather than attention — see{' '}
+          <code className="text-[11px]">docs/agent-lineage.md</code>. This reports what the rules would do; it does
+          nothing. No agent is created, funded, or retired by this panel.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        {!report && !error && (
+          <p className="text-xs text-muted-foreground">
+            Not run yet — it reads every wallet in this office on chain, so it runs on demand rather than on the poll.
+          </p>
+        )}
+        {report && (
+          <>
+            <div className="flex flex-wrap items-center gap-3 font-mono text-xs tabular-nums">
+              <span className="text-success">{report.counts.replicate} would replicate</span>
+              <span className="text-destructive">{report.counts.retire} would retire</span>
+              <span className="text-muted-foreground">{report.counts.hold} hold</span>
+              <span className="text-muted-foreground">· {report.windowDays}d window</span>
+              {report.balanceReadErrors > 0 && (
+                <span className="text-warning">· {report.balanceReadErrors} balance(s) unreadable</span>
+              )}
+            </div>
+            {report.rows.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No agents in this office.</p>
+            ) : (
+              <ul className="space-y-1">
+                {report.rows.map((r) => {
+                  const style = LIFECYCLE_STYLE[r.decision.action] ?? LIFECYCLE_STYLE.hold
+                  return (
+                    <li key={r.agentId} className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                      <span className={style.cls}>{style.label}</span> · {r.name} · gen {r.generation} · graded{' '}
+                      {r.graded.passed}/{r.graded.total}
+                      {r.graded.passRate !== null && ` (${Math.round(r.graded.passRate * 100)}%)`} · earned $
+                      {r.earnedUsd.toFixed(2)} · holds {r.heldUsd === null ? 'unreadable' : `$${r.heldUsd.toFixed(2)}`}
+                      <span className="block pl-4 opacity-70">{LIFECYCLE_WHY[r.decision.why] ?? r.decision.why}</span>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
           </>
         )}
       </CardContent>
@@ -2138,6 +2243,7 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
     <OfficeRosterPanel slot={slot} refreshKey={pollTrigger} />
     <OfficeSourcePanel slot={slot} />
     <OfficeAutomatonPanel slot={slot} />
+    <LineageDryRunPanel slot={slot} />
     </div>
   )
 }

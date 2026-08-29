@@ -497,6 +497,21 @@ export const TOOLS = [
     },
   },
   {
+    name: 'lineage_report',
+    description:
+      'FREE, READ-ONLY: what earn-or-die selection would do to your agents — which are proven enough to be worth ' +
+      'copying, which are failing or starved, and which have too little graded evidence to judge either way. Fitness ' +
+      "here is the independent grader's verdict plus USDC that actually settled, never popularity or self-report. " +
+      'Reports only — it creates, funds and retires nothing.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        office: { type: 'number', description: 'Scope to one office slot (1-3). Omit for every agent on the account.' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'get_contract',
     description:
       'The machine-readable contract for a job: what is owed, how "done" is decided, who decides it, what settles ' +

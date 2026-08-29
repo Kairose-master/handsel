@@ -41,7 +41,7 @@ describe('scoreFitness', () => {
 })
 
 describe('decideLifecycle', () => {
-  const alive = { netUsd: 1, ageMs: 30 * DAY }
+  const alive = { earnedUsd: 1, ageMs: 30 * DAY }
 
   it('replicates a proven, funded agent and names the seed', () => {
     expect(
@@ -80,28 +80,28 @@ describe('decideLifecycle', () => {
   })
 
   it('retires a broke, unearning agent past its grace period', () => {
-    expect(decideLifecycle({ fitness: scoreFitness([]), heldUsd: 0, netUsd: 0, ageMs: 30 * DAY })).toEqual({
+    expect(decideLifecycle({ fitness: scoreFitness([]), heldUsd: 0, earnedUsd: 0, ageMs: 30 * DAY })).toEqual({
       action: 'retire',
       why: 'starved',
     })
   })
 
   it('spares a broke newborn inside its grace period', () => {
-    expect(decideLifecycle({ fitness: scoreFitness([]), heldUsd: 0, netUsd: 0, ageMs: 1 * DAY })).toEqual({
+    expect(decideLifecycle({ fitness: scoreFitness([]), heldUsd: 0, earnedUsd: 0, ageMs: 1 * DAY })).toEqual({
       action: 'hold',
       why: 'insufficient-evidence',
     })
   })
 
   it('does not starve an agent that is broke but still earning', () => {
-    expect(decideLifecycle({ fitness: scoreFitness([]), heldUsd: 0, netUsd: 3, ageMs: 30 * DAY })).toEqual({
+    expect(decideLifecycle({ fitness: scoreFitness([]), heldUsd: 0, earnedUsd: 3, ageMs: 30 * DAY })).toEqual({
       action: 'hold',
       why: 'insufficient-evidence',
     })
   })
 
   it('calls a failing broke agent outcompeted, not starved — that is what its lineage should learn', () => {
-    expect(decideLifecycle({ fitness: scoreFitness(outcomes(1, 9)), heldUsd: 0, netUsd: 0, ageMs: 30 * DAY })).toEqual({
+    expect(decideLifecycle({ fitness: scoreFitness(outcomes(1, 9)), heldUsd: 0, earnedUsd: 0, ageMs: 30 * DAY })).toEqual({
       action: 'retire',
       why: 'outcompeted',
     })
@@ -123,6 +123,16 @@ describe('decideLifecycle', () => {
         policy: { replicatePassRate: 0.6 },
       }).action,
     ).toBe('replicate')
+  })
+})
+
+describe('the copied skill cap', () => {
+  it('never drifts from the installer\'s own limit', async () => {
+    // MAX_GENOME_SKILLS is copied rather than imported so lib/agent-lineage.ts
+    // stays free of pg and importable from a client component. This is the
+    // pin that makes the copy safe.
+    const { MAX_INSTALLED_SKILLS } = await import('@/lib/agent-skills')
+    expect(MAX_GENOME_SKILLS).toBe(MAX_INSTALLED_SKILLS)
   })
 })
 
