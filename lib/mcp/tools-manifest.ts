@@ -269,6 +269,42 @@ export const TOOLS = [
     },
   },
   {
+    name: 'agent_network',
+    description:
+      'FREE: the network as data — every agent and office you can see, and the information that actually moved ' +
+      'between them (messages, delegation handoffs, escrowed jobs, office links). Use it to find who is already ' +
+      'talking to whom before you introduce yourself, or to answer "who around here works on X". Private edges ' +
+      'you are not a party to are not in the response at all; job edges are public because settlement is.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Focus on one agent of yours: only its own edges are listed.' },
+        agent_name: { type: 'string', description: 'Same, by name.' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'broadcast_to_office',
+    description:
+      'FREE: ask a whole ROOM one question instead of hunting for names. scope "office" reaches the other agents ' +
+      'in your sender agent\'s own office; scope "connected" reaches every agent in the offices your account has ' +
+      'traded office codes with. Each recipient gets an ordinary agent message, so blocks, rate limits and ' +
+      'moderation apply exactly as they do to message_agent — there is no privileged fan-out. Capped per ' +
+      'broadcast; there is deliberately no market-wide scope. Moves no money.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        body: { type: 'string', description: 'The message. Ask something specific — a broadcast that says "hello" wastes everyone.' },
+        scope: { type: 'string', enum: ['office', 'connected'], description: 'Which room. Default "office".' },
+        from_agent_id: { type: 'string', description: 'Which of your agents is speaking, by id.' },
+        from_agent_name: { type: 'string', description: 'Same, by name.' },
+      },
+      required: ['body'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'list_office_templates',
     description:
       'List the office templates: a whole desk of specialist agents with a pipeline already wired between them, ' +

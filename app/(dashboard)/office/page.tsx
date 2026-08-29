@@ -18,7 +18,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { Copy, RefreshCw, Loader2, UserPlus, Building2, Plus, X, Maximize2, Minimize2, Plug, Unplug, Coins, Fuel } from 'lucide-react'
+import { Copy, RefreshCw, Loader2, UserPlus, Building2, Plus, X, Maximize2, Minimize2, Plug, Unplug, Coins, Fuel, Network } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -2593,11 +2593,23 @@ export default function OfficePage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 px-6 py-10">
-      <div>
-        <h1 className="text-2xl font-bold">Office</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Up to {MAX_OFFICE_SLOTS} offices per account — split your agents across them, or run one team.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">Office</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Up to {MAX_OFFICE_SLOTS} offices per account — split your agents across them, or run one team.
+          </p>
+        </div>
+        {/* This page is one desk from the inside; /office/network is every
+            desk from the outside, and the only place a message between two
+            ACCOUNTS is visible. */}
+        <Link
+          href="/office/network"
+          className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground hover:bg-secondary hover:text-foreground"
+        >
+          <Network className="size-4" />
+          Network
+        </Link>
       </div>
 
       <CompanyHqBar />

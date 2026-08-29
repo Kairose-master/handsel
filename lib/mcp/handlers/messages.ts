@@ -36,6 +36,10 @@ import {
   type AgentMessageType,
   type AgentRefCandidate,
 } from '@/lib/agent-messages'
+import { buildAgentNetwork, NETWORK_WINDOW_DAYS } from '@/lib/agent-network-server'
+import { broadcastFromAgent } from '@/lib/agent-broadcast-server'
+import { BROADCAST_SCOPES, summarizeBroadcast, type BroadcastScope } from '@/lib/agent-broadcast'
+import { agentNodeId } from '@/lib/agent-network'
 
 const ambiguityLine = (matches: AgentRefCandidate[]) =>
   matches.map((m) => `  · ${m.name} [${m.id}]`).join('\n')
@@ -211,6 +215,121 @@ export async function handleMessages(
       return toolText(
         id,
         `${unread.length} unread message(s)${args.mark_read === false ? '' : ' (now marked read)'}:\n${lines.join('\n')}`,
+      )
+    }
+
+    case 'agent_network': {
+      const mine = await db
+        .select({ id: agent.id, name: agent.name })
+        .from(agent)
+        .where(eq(agent.userId, auth.userId))
+
+      // An optional focus, resolved the same way every other tool here does.
+      let focusAgentId: string | null = null
+      const ref = { id: args.agent_id ? String(args.agent_id) : null, name: args.agent_name ? String(args.agent_name) : null }
+      if (ref.id || ref.name) {
+        const res = resolveAgentRef(mine, ref)
+        if (!res.found) {
+          return toolText(
+            id,
+            'why' in res && res.why === 'ambiguous'
+              ? `Several of your agents match — pick one by id:\n${ambiguityLine(res.matches)}`
+              : 'No agent of yours matches that.',
+            true,
+          )
+        }
+        focusAgentId = res.found.id
+      }
+
+      const net = await buildAgentNetwork(auth.userId)
+      const focusNode = focusAgentId ? agentNodeId(focusAgentId) : null
+      const nameOf = (nodeId: string) => net.nodes.find((n) => n.id === nodeId)?.label ?? nodeId
+      const edges = net.edges
+        .filter((e) => e.kind !== 'membership')
+        .filter((e) => !focusNode || e.source === focusNode || e.target === focusNode)
+        .sort((a, b) => (b.lastAt ?? '').localeCompare(a.lastAt ?? ''))
+        .slice(0, 40)
+
+      if (net.nodes.length === 0) {
+        return toolText(
+          id,
+          'The network is empty from where you stand — no agents yet. create_worker_agent, then find_agents to meet ' +
+            'somebody.',
+        )
+      }
+      if (edges.length === 0) {
+        return toolText(
+          id,
+          `${net.nodes.length} node(s) visible, no exchanges in the last ${NETWORK_WINDOW_DAYS} days` +
+            `${focusAgentId ? ' for that agent' : ''}. message_agent starts one, or broadcast_to_office asks a whole ` +
+            `room at once.`,
+        )
+      }
+
+      const lines = edges.map((e) => {
+        const when = e.lastAt ? ` · ${e.lastAt.slice(0, 16)}` : ''
+        const preview = e.preview ? ` — ${e.preview}` : ''
+        return `- [${e.kind}] ${nameOf(e.source)} ↔ ${nameOf(e.target)} ×${e.count}${when}${preview}`
+      })
+      const s = net.stats
+      return toolText(
+        id,
+        `Network over the last ${NETWORK_WINDOW_DAYS} days: ${s.agents} agent(s), ${s.offices} office(s), ` +
+          `${s.reachedAccounts} other account(s) reached.\n` +
+          `${s.messages} message · ${s.handoffs} handoff · ${s.jobs} job edge-events.\n\n` +
+          `${lines.join('\n')}\n\n` +
+          `Private edges you are not a party to are omitted entirely, not anonymised. Job edges are public — ` +
+          `settlement already is.`,
+      )
+    }
+
+    case 'broadcast_to_office': {
+      const body = String(args.body ?? '').trim()
+      if (!body) return toolText(id, 'body is required — what you want to ask the room.', true)
+      const rawScope = args.scope === undefined ? 'office' : String(args.scope)
+      if (!BROADCAST_SCOPES.includes(rawScope as BroadcastScope)) {
+        return toolText(id, `Unknown scope "${rawScope}". Use one of: ${BROADCAST_SCOPES.join(', ')}`, true)
+      }
+
+      const mine = await db
+        .select({ id: agent.id, name: agent.name, smartAccountAddress: agent.smartAccountAddress })
+        .from(agent)
+        .where(eq(agent.userId, auth.userId))
+      if (mine.length === 0) {
+        return toolText(id, 'This account has no agents yet — create_worker_agent first.', true)
+      }
+      const fromRef = {
+        id: args.from_agent_id ? String(args.from_agent_id) : null,
+        name: args.from_agent_name ? String(args.from_agent_name) : null,
+      }
+      const from =
+        fromRef.id || fromRef.name
+          ? resolveAgentRef(mine, fromRef)
+          : { found: mine.find((a) => a.smartAccountAddress) ?? mine[0] }
+      if (!from.found) {
+        return toolText(
+          id,
+          'why' in from && from.why === 'ambiguous'
+            ? `Several of your agents match that sender name — pick one by id:\n${ambiguityLine(from.matches)}`
+            : 'No agent of yours matches that sender.',
+          true,
+        )
+      }
+
+      const result = await broadcastFromAgent({
+        senderAgentId: from.found.id,
+        scope: rawScope as BroadcastScope,
+        body,
+      })
+      if ('error' in result) return toolText(id, result.error, true)
+
+      const detail = result.deliveries
+        .map((d) => `  ${d.ok ? '·' : '×'} ${d.name}${d.error ? ` — ${d.error}` : ''}`)
+        .join('\n')
+      return toolText(
+        id,
+        `${from.found.name} broadcast to "${rawScope}". ${summarizeBroadcast(result)}\n${detail}\n\n` +
+          `Free — nothing moved and nothing is owed. Replies land in check_inbox.`,
       )
     }
 

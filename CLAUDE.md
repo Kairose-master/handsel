@@ -110,6 +110,8 @@ enforces it.
 | Email orders end to end (quote → unique-cents USDC match → commission → deliver), inbound-only by policy | `lib/mail-desk.ts`, `/api/mail/inbound`, `docs/mail-desk.md` |
 | Earn-or-die evolution: fitness, replication, retirement | `lib/agent-lineage.ts` (pure rules), `lib/agent-lineage-server.ts` (dry run + breed/retire), `lib/lineage-mandate.ts` (the switch — **refuses on real-money deployments** unless `LINEAGE_MANDATE_ALLOW_REAL_MONEY=true`), `docs/agent-lineage.md` |
 | N-slot parallel block mining | `lib/auto-mine.ts`, `lib/mining-scheduler.ts`, `lib/concurrency.ts`, `docs/parallel-mining.md` |
+| Who talks to whom, across offices and accounts | `lib/agent-network.ts`, `app/(dashboard)/office/network/`, `docs/agent-network.md` |
+| Asking a whole room one question (broadcast) | `lib/agent-broadcast.ts` |
 | Capability directory (ClawHub) | `lib/clawhub.ts`, `app/directory/page.tsx` |
 | Public/guest landing | `app/guest/page.tsx` |
 | The live spectacle (shareable, no-login) | `app/live/page.tsx` |
