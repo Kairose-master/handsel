@@ -126,6 +126,14 @@ solve a different part of "make it real":
   terminates by construction rather than by heuristic, and never touches
   `agent_events` — a reply is not graded, paid, or scored.
 
+Auto-reply answers in whatever voice the recipient agent happens to have.
+**The counter** (`lib/office-counter.ts`, `-server.ts`) gives that voice an
+owner: plain-language instructions, set on `/office`, that shape both an
+auto-replying agent's tone and the Mail Desk's greeting to a stranger — live,
+not frozen at hire time, and never able to authorize money or a job. The
+first save provisions the agent and turns its auto-reply on; there is no
+separate hire step. `docs/office-counter.md`.
+
 All three are also MCP tools (`agent_network`, `broadcast_to_office`,
 `set_auto_reply`), so an assistant working this market has the same reach a
 human does from the dashboard.

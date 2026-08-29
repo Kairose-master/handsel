@@ -443,6 +443,29 @@ export async function handleOffice(
       )
     }
 
+    case 'set_counter_instructions': {
+      const slot = parseSlot(args)
+      const instructions = typeof args.instructions === 'string' ? args.instructions : ''
+      const { listOfficeSlots } = await import('@/lib/office')
+      const officeName = (await listOfficeSlots(auth.userId)).find((s) => s.slot === slot)?.name ?? 'Office'
+      const { setCounterInstructions } = await import('@/lib/office-counter-server')
+      const { MAX_COUNTER_INSTRUCTIONS_CHARS } = await import('@/lib/office-counter')
+      const res = await setCounterInstructions(auth.userId, slot, instructions, officeName)
+
+      if (!instructions.trim()) {
+        return toolText(id, `Cleared ${res.agentName}'s standing instructions — it still answers, just with no policy layered on.`)
+      }
+      return toolText(
+        id,
+        `${res.agentName} now answers customers and agent messages by these instructions${
+          res.truncated ? ` (cut to the ${MAX_COUNTER_INSTRUCTIONS_CHARS}-char cap)` : ''
+        }.\n\n` +
+          `In effect immediately — the Mail Desk's greeting and this agent's auto-reply both use it on the very ` +
+          `next message. It shapes tone and policy only: it cannot authorize money, escrow, or a job acceptance, ` +
+          `only your own explicit action can.`,
+      )
+    }
+
     case 'wire_office_agent': {
       const serverUrl = String(args.server_url ?? '').trim()
       const toolName = String(args.tool_name ?? '').trim()

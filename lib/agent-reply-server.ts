@@ -244,6 +244,7 @@ export async function answerMessage(messageId: string): Promise<ReplyOutcome> {
     [recipient.id, recipient.name],
     ...(sender ? ([[sender.id, sender.name]] as [string, string][]) : []),
   ])
+  const { counterInstructionsForAgent } = await import('@/lib/office-counter-server')
   const { system, user } = buildReplyPrompt({
     selfName: recipient.name,
     selfDescription: recipient.description,
@@ -251,6 +252,7 @@ export async function answerMessage(messageId: string): Promise<ReplyOutcome> {
     messageType: incoming.type,
     incomingBody: incoming.body,
     thread: await threadContext(recipient.id, incoming.fromAgentId, nameOf),
+    standingInstructions: await counterInstructionsForAgent(recipient.id),
   })
 
   let raw: string

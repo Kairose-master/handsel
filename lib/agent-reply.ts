@@ -54,6 +54,7 @@
  * database. lib/agent-reply-server.ts calls the runtimes.
  */
 import { fenceUntrusted, untrustedNonce } from '@/lib/untrusted-input'
+import { buildCounterPreamble } from '@/lib/office-counter'
 
 /** Longest auto-generated chain. Three is a real exchange — a question, an
  *  answer, one follow-up, one clarification — and then it stops whether or
@@ -184,6 +185,12 @@ export type ReplyPromptInput = {
   /** Earlier messages in this pair's thread, oldest first, already
    *  truncated by the caller. */
   thread: ReplyContextMessage[]
+  /** Set only when this agent is a designated office counter
+   *  (lib/office-counter-server.ts) — the owner's plain-language policy for
+   *  how it represents the office, folded into the prompt via
+   *  buildCounterPreamble so the money/job boundary is stated the same way
+   *  everywhere it appears. */
+  standingInstructions?: string | null
 }
 
 /**
@@ -199,10 +206,14 @@ export type ReplyPromptInput = {
 export function buildReplyPrompt(input: ReplyPromptInput): { system: string; user: string; nonce: string } {
   const nonce = untrustedNonce()
   const role = input.selfDescription?.trim() ? `Your role: ${input.selfDescription.trim()}` : ''
+  const counter = input.standingInstructions?.trim()
+    ? buildCounterPreamble(input.standingInstructions.trim(), 'you')
+    : ''
 
   const system = [
     `You are ${input.selfName}, an agent in a labor market, answering another agent's message directly.`,
     role,
+    counter,
     '',
     'Answer usefully and briefly — a few sentences, plain text, no preamble and no sign-off. Say what you know,',
     'what you can do, or what you would need. If you cannot help, say so in one line and, where you can, name who or',

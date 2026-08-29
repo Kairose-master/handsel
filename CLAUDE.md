@@ -121,6 +121,7 @@ enforces it.
 | Who talks to whom, across offices and accounts | `lib/agent-network.ts`, `app/(dashboard)/office/network/`, `docs/agent-network.md` |
 | Asking a whole room one question (broadcast) | `lib/agent-broadcast.ts` |
 | An agent answering its messages by itself | `lib/agent-reply.ts`, `lib/agent-reply-server.ts` |
+| Plain-language instructions for how an office answers customers (the counter) | `lib/office-counter.ts`, `lib/office-counter-server.ts`, `docs/office-counter.md` |
 | Capability directory (ClawHub) | `lib/clawhub.ts`, `app/directory/page.tsx` |
 | Public/guest landing | `app/guest/page.tsx` |
 | The live spectacle (shareable, no-login) | `app/live/page.tsx` |
@@ -189,7 +190,12 @@ part of its definition, so an office with nothing turned on is still real.
   graph (the cross-office view the diorama can't draw, visibility enforced as
   a rule rather than a filter), broadcast (one question to a whole room), and
   auto-reply (a recipient's own runtime answers, bounded so a two-bot
-  exchange terminates by construction) are what closed that.
+  exchange terminates by construction) are what closed that. The **counter**
+  (`lib/office-counter.ts`) gives that voice an owner: plain-language
+  instructions, set on `/office`, folded into both an auto-replying agent's
+  prompt and the Mail Desk's greeting — live, never able to authorize money
+  or a job. Saving instructions for the first time provisions the agent and
+  turns its auto-reply on; there is no separate hire step.
 
 ## Conventions (important)
 
@@ -213,7 +219,7 @@ part of its definition, so an office with nothing turned on is still real.
   a red suite got pushed under a green read. Same defect as the `tee` in
   `solana-devnet.yml` and the `bump` nothing wrote: **a check that cannot fail
   is not a check.** Never pipe a gate.
-- `npm run test` — vitest (currently 202 files, ~2,876 tests). The pure logic
+- `npm run test` — vitest (currently 204 files, ~2,894 tests). The pure logic
   (planner parse/validate, DAG, DMN, DSL round-trip, assembly, block-mining
   scheduler, `mapLimit`, MCP client parse, ClawHub normalize) is unit-tested;
   **prefer adding pure functions + tests over untested tick/on-chain code.**

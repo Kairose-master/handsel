@@ -426,6 +426,25 @@ export const TOOLS = [
     },
   },
   {
+    name: 'set_counter_instructions',
+    description:
+      'Plain-language instructions for how this office answers a customer email or another agent\'s question — ' +
+      'tone, policy, what to mention, what never to promise. The FIRST call for an office with none yet creates a ' +
+      'real "Counter" agent to carry them and turns its auto-reply on — that is the whole default: nothing else to ' +
+      'hire or switch. In effect immediately (not frozen at hire time, unlike set_office_source): the Mail Desk\'s ' +
+      'greeting and the counter agent\'s auto-reply both read it on the very next message. Cannot authorize money, ' +
+      'escrow or a job acceptance — only the owner\'s own explicit action does that. Empty instructions clears it ' +
+      'without removing the agent.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        instructions: { type: 'string', description: 'The standing instructions, in plain language. Empty clears them.' },
+        office: { type: 'number', description: 'Office slot (1-3, default 1)' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'wire_office_agent',
     description:
       'Point one of your agents at an MCP server and tool, or change the one it already uses. Use ' +

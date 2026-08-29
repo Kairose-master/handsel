@@ -423,3 +423,37 @@ export async function mcpGuideProgress(): Promise<{ hasMcpAgent: boolean }> {
     .limit(1)
   return { hasMcpAgent: Boolean(row) }
 }
+
+/**
+ * The counter — plain-language instructions for how this office answers
+ * customers and other agents, and the agent auto-provisioned to carry them.
+ * See lib/office-counter-server.ts for why this is its own live table
+ * rather than office_source (a frozen-at-hire work brief) or an agent
+ * column (a schema change every read of `agent` would break on until a
+ * manual migration ran).
+ */
+export async function myOfficeCounter(slot: number): Promise<import('@/lib/office-counter-server').OfficeCounterView> {
+  const session = await requireUser()
+  if (!Number.isInteger(slot) || slot < 1 || slot > MAX_OFFICE_SLOTS) throw new Error('Unknown office')
+  const { getOfficeCounter } = await import('@/lib/office-counter-server')
+  return getOfficeCounter(session.user.id, slot)
+}
+
+export async function saveOfficeCounter(
+  slot: number,
+  instructions: string,
+): Promise<{ ok: true; agentName: string; truncated: boolean } | { error: string }> {
+  const session = await requireUser()
+  if (!Number.isInteger(slot) || slot < 1 || slot > MAX_OFFICE_SLOTS) return { error: 'Unknown office' }
+  try {
+    const slots = await listOfficeSlots(session.user.id)
+    const officeName = slots.find((s) => s.slot === slot)?.name ?? 'Office'
+    const { setCounterInstructions } = await import('@/lib/office-counter-server')
+    const res = await setCounterInstructions(session.user.id, slot, instructions, officeName)
+    revalidatePath('/office')
+    revalidatePath('/office/network')
+    return { ok: true, agentName: res.agentName, truncated: res.truncated }
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Could not save it.' }
+  }
+}

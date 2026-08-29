@@ -38,6 +38,8 @@ import {
   officeSource,
   saveOfficeSource,
   type OfficeSourceView,
+  myOfficeCounter,
+  saveOfficeCounter,
   testMcpConnector,
   newOfficeSlot,
   hireStaff,
@@ -952,6 +954,132 @@ function HireOfficeTemplateDialog({
   )
 }
 
+
+/**
+ * The counter — instructions in plain language for how this office
+ * represents itself, and the agent auto-provisioned to carry them.
+ *
+ * Unlike the shared source below, there is no "applied at hire" caveat:
+ * this is a live policy, read on every reply, so saving it changes the very
+ * next customer email or agent message it touches. There is also no
+ * separate "hire a counter" step — the first save creates the agent and
+ * turns its auto-reply on; that is the "default" the feature promises.
+ */
+function OfficeCounterPanel({ slot }: { slot: number }) {
+  const [loaded, setLoaded] = useState(false)
+  const [readError, setReadError] = useState<string | null>(null)
+  const [instructions, setInstructions] = useState('')
+  const [maxChars, setMaxChars] = useState(4000)
+  const [agentName, setAgentName] = useState<string | null>(null)
+  const [savedAt, setSavedAt] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [note, setNote] = useState<string | null>(null)
+
+  useEffect(() => {
+    let dead = false
+    setLoaded(false)
+    setReadError(null)
+    setNote(null)
+    myOfficeCounter(slot)
+      .then((v) => {
+        if (dead) return
+        setInstructions(v.instructions)
+        setAgentName(v.agentName)
+        setSavedAt(v.updatedAt)
+        setMaxChars(v.maxChars)
+        setLoaded(true)
+      })
+      .catch((e) => {
+        if (dead) return
+        console.error('[office] counter read failed:', e)
+        setReadError(e instanceof Error ? e.message : 'Could not read it.')
+        setLoaded(true)
+      })
+    return () => {
+      dead = true
+    }
+  }, [slot])
+
+  const save = async () => {
+    setBusy(true)
+    setError(null)
+    setNote(null)
+    try {
+      const res = await saveOfficeCounter(slot, instructions)
+      if ('error' in res) {
+        setError(res.error)
+        return
+      }
+      setAgentName(res.agentName)
+      setSavedAt(new Date().toISOString())
+      setNote(
+        res.truncated
+          ? `Saved, cut to the first ${maxChars.toLocaleString()} characters.`
+          : instructions.trim()
+            ? `Saved — ${res.agentName} answers by this from now on.`
+            : `Cleared — ${res.agentName} still answers, just with no standing instructions.`,
+      )
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Counter</CardTitle>
+        <p className="text-xs text-muted-foreground">
+          How this office answers a customer email or an agent&apos;s question — tone, policy, what to mention, what
+          never to promise. In effect immediately, on every future reply. The first save creates{' '}
+          {agentName ?? 'a counter agent'} and turns its auto-reply on — nothing else to hire or switch.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {readError ? (
+          <p className="text-sm text-destructive">
+            Couldn&apos;t read this office&apos;s counter — {readError}. Reload before editing.
+          </p>
+        ) : (
+          <>
+            <textarea
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
+              placeholder={
+                'e.g. "Be warm and brief. Always mention we do rush delivery for +20%. Never discount below list ' +
+                'price. If someone is upset, apologize once and offer to have the owner follow up." Leave empty ' +
+                'for none.'
+              }
+              rows={5}
+              disabled={!loaded}
+              className="w-full rounded-md border border-border bg-background p-3 font-mono text-xs disabled:opacity-60"
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="button" size="sm" onClick={save} disabled={busy || !loaded}>
+                {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : instructions.trim() ? 'Save' : 'Clear'}
+              </Button>
+              <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                {instructions.length.toLocaleString()} / {maxChars.toLocaleString()}
+              </span>
+              {instructions.length > maxChars && (
+                <span className="text-xs text-warning">over the cap — the rest is cut on save</span>
+              )}
+              {agentName && savedAt && !note && (
+                <span className="ml-auto text-xs text-muted-foreground">
+                  {agentName} · in effect since {new Date(savedAt).toLocaleString()}
+                </span>
+              )}
+              {note && <span className="ml-auto text-xs text-muted-foreground">{note}</span>}
+              {error && <span className="ml-auto text-xs text-destructive">{error}</span>}
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
 
 /**
  * The office's shared source — the one document every role reads.
@@ -2297,6 +2425,7 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
     </Card>
     {/* Shares pollTrigger with the world above so a hire re-reads both. */}
     <OfficeRosterPanel slot={slot} refreshKey={pollTrigger} />
+    <OfficeCounterPanel slot={slot} />
     <OfficeSourcePanel slot={slot} />
     <OfficeAutomatonPanel slot={slot} />
     <LineageDryRunPanel slot={slot} />

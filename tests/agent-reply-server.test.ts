@@ -35,6 +35,9 @@ function selectStub(): unknown {
 /** Agents with auto-reply switched on, served through the same side table
  *  the real store reads (lib/agent-reply-server.ts's agent_auto_reply). */
 let autoReplyOn: string[] = ['me-1']
+/** Counter instructions keyed by agent id, served through office_counter —
+ *  empty by default, so the ordinary reply tests exercise no counter at all. */
+let counterInstructionsByAgent: Record<string, string> = {}
 
 vi.mock('@/lib/db', () => ({
   db: {
@@ -48,12 +51,17 @@ vi.mock('@/lib/db', () => ({
     insert: () => selectStub(),
   },
   pool: {
-    query: (text: string) =>
-      Promise.resolve({
-        rows: /SELECT agent_id FROM agent_auto_reply/.test(text)
-          ? autoReplyOn.map((agent_id) => ({ agent_id }))
-          : [],
-      }),
+    query: (text: string, params?: unknown[]) => {
+      if (/SELECT agent_id FROM agent_auto_reply/.test(text)) {
+        return Promise.resolve({ rows: autoReplyOn.map((agent_id) => ({ agent_id })) })
+      }
+      if (/SELECT instructions FROM office_counter WHERE agent_id/.test(text)) {
+        const agentId = (params as [string])[0]
+        const instructions = counterInstructionsByAgent[agentId]
+        return Promise.resolve({ rows: instructions ? [{ instructions }] : [] })
+      }
+      return Promise.resolve({ rows: [] })
+    },
   },
 }))
 
@@ -69,9 +77,11 @@ vi.mock('@/lib/agent-messages', () => ({
 
 let llmAnswer = 'Yes — I pulled that page yesterday. Summary attached in my last delivery.'
 let llmThrows: Error | null = null
+const completeCalls: { system: string; user: string }[] = []
 vi.mock('@/lib/delegation', () => ({
   resolveLlm: () =>
-    Promise.resolve(() => {
+    Promise.resolve((system: string, user: string) => {
+      completeCalls.push({ system, user })
       if (llmThrows) return Promise.reject(llmThrows)
       return Promise.resolve(llmAnswer)
     }),
@@ -137,6 +147,8 @@ beforeEach(() => {
   llmThrows = null
   llmAnswer = 'Yes — I pulled that page yesterday. Summary attached in my last delivery.'
   autoReplyOn = ['me-1']
+  counterInstructionsByAgent = {}
+  completeCalls.length = 0
 })
 
 /* ── The happy path, in detail ───────────────────────────────────────── */
@@ -166,6 +178,21 @@ describe('answerMessage — a question gets answered', () => {
     expect(autoDepthOf(payload)).toBe(2)
     expect(isAutoReply(payload)).toBe(true)
     expect((payload as Record<string, unknown>).ref_message_id).toBe('msg-1')
+  })
+
+  it('folds a designated counter agent’s standing instructions into the prompt', async () => {
+    counterInstructionsByAgent['me-1'] = 'Always mention we do rush delivery for +20%.'
+    script({})
+    await answerMessage('msg-1')
+    expect(completeCalls).toHaveLength(1)
+    expect(completeCalls[0].system).toContain('Always mention we do rush delivery for +20%.')
+    expect(completeCalls[0].system).toContain("can never authorize moving money")
+  })
+
+  it('leaves the prompt unchanged for an agent that is not a counter', async () => {
+    script({})
+    await answerMessage('msg-1')
+    expect(completeCalls[0].system).not.toContain('Standing instructions from the owner')
   })
 
   it('marks the question read so the sweep does not answer it twice', async () => {
