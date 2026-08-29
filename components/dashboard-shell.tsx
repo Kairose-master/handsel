@@ -84,6 +84,7 @@ const coreNav = [
   { labelKey: "nav.guide", href: "/guide", icon: BookOpen },
   { labelKey: "nav.agents", href: "/agents", icon: Bot },
   { labelKey: "nav.office", href: "/office", icon: Building2 },
+  { labelKey: "nav.autonomy", href: "/autonomy", icon: Bot },
   { labelKey: "nav.laborMarket", href: "/jobs", icon: Briefcase },
   { labelKey: "nav.delegate", href: "/delegate", icon: GitBranch },
   { labelKey: "nav.workerConsole", href: "/mine", icon: Pickaxe },

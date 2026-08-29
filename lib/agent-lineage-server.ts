@@ -480,3 +480,55 @@ async function gradedOutcomesFor(agentIds: string[]): Promise<Map<string, { at: 
   }
   return out
 }
+
+/** Births and retirements with their timestamps — the lineage half of the
+ *  autonomy console's timeline. `agent_lineage` carries both on one row
+ *  (a retired agent may also have been born here), so each row can yield up
+ *  to two entries and they are emitted separately rather than collapsed. */
+export async function lineageEvents(
+  userId: string,
+  limit = 20,
+): Promise<
+  Array<{ at: string; kind: 'birth' | 'retirement'; agentId: string; parentAgentId: string | null; seededUsd: number; reason: string | null }>
+> {
+  await ensureTables()
+  const { rows } = await pgPool.query<{
+    child_agent_id: string
+    parent_agent_id: string | null
+    seeded_usd: string
+    born_at: Date
+    retired_at: Date | null
+    retire_reason: string | null
+  }>(
+    `SELECT child_agent_id, parent_agent_id, seeded_usd::text, born_at, retired_at, retire_reason
+       FROM agent_lineage WHERE user_id = $1
+      ORDER BY GREATEST(born_at, COALESCE(retired_at, born_at)) DESC LIMIT $2`,
+    [userId, Math.max(1, Math.min(100, limit))],
+  )
+  const out: Array<{ at: string; kind: 'birth' | 'retirement'; agentId: string; parentAgentId: string | null; seededUsd: number; reason: string | null }> = []
+  for (const r of rows) {
+    // A row written by markRetired alone has no parent and was never a birth
+    // this mandate performed — recording it as one would invent a generation.
+    if (r.parent_agent_id) {
+      out.push({
+        at: r.born_at.toISOString(),
+        kind: 'birth',
+        agentId: r.child_agent_id,
+        parentAgentId: r.parent_agent_id,
+        seededUsd: Number(r.seeded_usd) || 0,
+        reason: null,
+      })
+    }
+    if (r.retired_at) {
+      out.push({
+        at: r.retired_at.toISOString(),
+        kind: 'retirement',
+        agentId: r.child_agent_id,
+        parentAgentId: r.parent_agent_id,
+        seededUsd: 0,
+        reason: r.retire_reason,
+      })
+    }
+  }
+  return out
+}

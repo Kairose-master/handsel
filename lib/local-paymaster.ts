@@ -276,3 +276,19 @@ export async function sponsorAgentGas(agentId: string): Promise<SponsorOutcome> 
     return { sponsored: false, why: 'failed' }
   }
 }
+
+/** Recent sponsorships, newest first — the gas half of the autonomy
+ *  console's timeline. The table is already the budget's ledger
+ *  (sponsoredInWindow sums it), so this only reshapes rows it owns. */
+export async function sponsorshipLog(
+  userId: string,
+  limit = 20,
+): Promise<Array<{ at: string; agentId: string; wei: string }>> {
+  await ensureTables()
+  const { rows } = await pgPool.query<{ agent_id: string; wei: string; created_at: Date }>(
+    `SELECT agent_id, wei::text, created_at FROM account_gas_sponsorship
+      WHERE user_id = $1 ORDER BY id DESC LIMIT $2`,
+    [userId, Math.max(1, Math.min(100, limit))],
+  )
+  return rows.map((r) => ({ at: r.created_at.toISOString(), agentId: r.agent_id, wei: r.wei }))
+}
