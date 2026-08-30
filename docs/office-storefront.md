@@ -78,5 +78,14 @@ was built for.
   same rehearsal-first posture as the lineage mandate.
 - Revenue starts at $0.00 and the ledger shows it. The first commission from
   a stranger's wallet matters as proof before it matters as money.
-- Switches: `set_storefront` MCP tool. A dashboard surface can follow; the
-  read side belongs on `/autonomy` eventually.
+- Switches: the **Storefront panel on `/office`**, or the `set_storefront`
+  MCP tool. The read side belongs on `/autonomy` eventually.
+
+  This line used to read "`set_storefront` MCP tool. A dashboard surface can
+  follow" — and nothing followed, for the whole life of the feature. That
+  was not a cosmetic gap: it meant the office's one autonomous sales channel
+  could only be opened by an assistant with the connector wired up and
+  authorized, so an owner sitting on their own `/office` could not open
+  their own shop. Every template was `open: false` on every deployment the
+  entire time, and a closed desk is indistinguishable on screen from an open
+  one nobody found. See `docs/failure-modes.md` §42.

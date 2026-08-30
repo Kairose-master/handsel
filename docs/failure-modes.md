@@ -2169,6 +2169,54 @@ recovers a *different* address, so the signature is genuinely binding the
 message and not merely well-formed. Then read `oracle()` from Base and
 confirmed the two agree.
 
+## 42. The shop could not be opened, and looked exactly like a shop nobody visited
+
+**Symptom.** The storefront — the office's one autonomous sales channel —
+has served zero outside orders since it shipped. `GET /api/storefront` on
+both deployments: all three templates `open: false`, `desk: []`,
+`capacityRemainingToday: 0`. The Mail Desk, which resolves its deposit
+address from the serving storefront, therefore answered every real order
+email with `"<template>" is not open for commission right now.`
+
+Nothing looked broken. That is the entire problem: **a closed desk is
+indistinguishable on screen from an open desk nobody found.** No error, no
+warning, no unhealthy capability — `/api/capabilities` reports `mailDesk:
+on` truthfully, because the desk *can* hear. It just has nowhere to point.
+
+**Root cause.** `openStorefront` (`lib/office-storefront.ts`) was reachable
+from exactly one place: the `set_storefront` MCP handler. No server action,
+no route, no UI. So opening a storefront required an assistant with the
+Handsel connector installed *and* loaded into its session — an owner sitting
+on their own `/office` had no way to open their own shop.
+
+`docs/office-storefront.md` even recorded the gap, in the same line that
+named the switch: *"`set_storefront` MCP tool. A dashboard surface can
+follow."* Nothing followed, for the life of the feature.
+
+**Why it survived so long.** Because the missing piece produced a *plausible
+reading*. "We built a sales channel and nobody bought" is a story about
+demand, and it was written down as one — `docs/office.md`'s "what the office
+has not proven" claimed the storefront and Mail Desk were "both live, and
+both have served zero outside orders; the fulfilment path is exercised,
+demand for it is not." Every clause there is checkable and the conclusion
+was still wrong, because "live" was doing work it had not earned: deployed,
+not open. The zero was evidence about our own offer, not about anyone's
+appetite for it, and reading it the other way is what made the gap feel
+explained instead of investigated.
+
+**Fix.** `myStorefronts` / `setStorefrontOpen` server actions and a
+Storefront panel on `/office`, per template, with a prime picker that
+disables unprovisioned agents — a prime with no smart account cannot front
+the escrow, and that is the one precondition `openStorefront` enforces
+beyond ownership, so it belongs in front of the click rather than behind it.
+Office membership is read through `officeSlotsByAgentId`, not a column on
+`agent`, for the reason invariant 20 gives.
+
+`docs/office.md` was corrected separately, before the code was written: the
+inventory now says deployed is not open, and that until a desk is staffed
+and a template opened, the document cannot honestly claim pull or its
+absence.
+
 ## Invariants these fixes encode
 
 Keep these true, and this class of bug stays dead:
@@ -2329,3 +2377,15 @@ Keep these true, and this class of bug stays dead:
    a chain id, a contract address, a function name and the value to expect
    is. Derive all of it from the same config the server signs with, so the
    published anchor cannot drift away from the running one (§26, §41).
+\n42. **A capability with exactly one caller has exactly one way to be
+   unreachable.** `openStorefront` worked perfectly and could not be invoked
+   by the person it was built for, because its only entry point was a
+   connector the owner's own dashboard does not have. Before calling a
+   feature shipped, name who invokes it and check that they can — a function
+   nobody in the intended role can reach is not a feature, it is a plan
+   (§42).
+43. **A zero is a measurement of whatever was actually running.** "Nobody
+   bought" is not a demand finding until you have confirmed something was for
+   sale. Any metric that reads as evidence about the outside world should be
+   checked against the state of our own surface first, because the flattering
+   reading and the damning one are frequently the same number (§42).

@@ -117,8 +117,11 @@ a given switch.
 An office doesn't have to wait for the owner to bring it customers.
 
 - **Storefront** (`lib/office-storefront.ts`, `lib/storefront-pricing.ts`) —
-  opens a commission endpoint over x402 (`/api/storefront/*`, `set_storefront`
-  MCP tool); any client, human or agent, pays and the office does the work.
+  opens a commission endpoint over x402 (`/api/storefront/*`); any client,
+  human or agent, pays and the office does the work. Opened from the
+  Storefront panel on `/office` or the `set_storefront` MCP tool — for most
+  of this feature's life only the latter existed, which is the likeliest
+  reason it has served zero outside orders (`docs/failure-modes.md` §42).
   `docs/office-storefront.md`.
 - **Mail Desk** (`lib/mail-desk.ts`, `POST /api/mail/inbound`) — the same
   `commissionOffice()` fulfillment path, reached by email instead of x402:
