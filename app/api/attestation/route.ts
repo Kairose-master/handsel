@@ -1,4 +1,5 @@
 import { DOMAIN, TYPES, TYPES_V2, EVIDENCE_SCHEMA, WORK_PROOF_SCHEMA, WORK_PROOF_SCHEMA_V2, trustedAttester } from '@/lib/attestation'
+import { getAddress } from 'viem'
 import { CHAIN, onchainEnv } from '@/lib/onchain/config'
 
 /**
@@ -58,7 +59,11 @@ export async function GET(): Promise<Response> {
       ? {
           chainId: CHAIN.id,
           chain: CHAIN.name,
-          contract: onchainEnv.registryAddress,
+          // Checksummed, because `expect` is: publishing one address in
+          // lowercase and the other in EIP-55 invites a verifier to compare
+          // them as strings and get a false negative (invariant 18 — an
+          // address is case-insensitive, so say it one way and only one).
+          contract: getAddress(onchainEnv.registryAddress),
           call: 'oracle()',
           returns: 'address',
           expect: attester,
