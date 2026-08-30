@@ -31,6 +31,9 @@ export interface OnchainJobLike {
   specHash: string
   /** USD. What the bond is a percentage of. */
   bounty: number
+  /** The governing deadline, unix seconds, or null on a market that has none
+   *  (V1). Read by the claim-fitness preflight, not by the scheduler itself. */
+  deadline?: number | null
 }
 
 /** The off-chain spec fields the scheduler reads (structural). */

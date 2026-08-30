@@ -223,8 +223,48 @@ export async function autoMineTick(
     ownAddresses = new Set(siblings.map((a) => a.addr?.toLowerCase()).filter((a): a is string => Boolean(a)))
   }
 
+  // Fitness: can this agent actually DO these jobs (lib/claim-fitness.ts)?
+  //
+  // Built ONCE per tick and reused for every candidate — the per-agent facts
+  // (turnaround median, recent failures by class) are one query over this
+  // agent's own history, and asking per job would make it N.
+  //
+  // Repo permission is deliberately left `unknown` here, which never blocks.
+  // Answering it needs a GitHub round trip per job, and the real gate is
+  // assertFitToClaim inside acceptAndDispatchJob — same relationship as the
+  // reservation courtesy filter: cheap and approximate here, authoritative
+  // there, and nothing is spent in between.
+  const fitCtx = await (async () => {
+    const { agentFitnessContext } = await import('@/lib/claim-fitness-server')
+    return await agentFitnessContext(agent).catch(() => null)
+  })()
+  let fitCandidates = candidates
+  if (fitCtx) {
+    const { assessClaimWith } = await import('@/lib/claim-fitness-server')
+    const said = new Set<string>()
+    fitCandidates = candidates.filter((c) => {
+      const verdict = assessClaimWith({
+        ctx: fitCtx,
+        spec: c.spec,
+        deadlineSec: c.job.deadline ?? null,
+        repoAccess: 'unknown',
+        autonomous: true,
+      })
+      if (verdict.ok) return true
+      // One line per distinct reason, not per job: a worker sitting out a
+      // whole class would otherwise print the same sentence twenty times,
+      // and an operator stops reading a log that repeats itself.
+      const blocked = verdict.blocked!
+      if (!said.has(blocked.code)) {
+        said.add(blocked.code)
+        console.info(`[auto-mine] ${agent.name} is passing on work: ${blocked.reason}`)
+      }
+      return false
+    })
+  }
+
   const selected = selectMiningBlocks({
-    candidates,
+    candidates: fitCandidates,
     myAddress,
     score,
     agentId: agent.id,
@@ -278,7 +318,7 @@ export async function autoMineTick(
   // inside acceptAndDispatchJob still guards each block against other rigs.
   for (const { job, spec } of selected) {
     try {
-      await acceptAndDispatchJob(agent, job.id, callbackUrl)
+      await acceptAndDispatchJob(agent, job.id, callbackUrl, { autonomous: true })
       await logPlatformEvent(
         'JOB_AUTO_ACCEPTED',
         `${agent.name} auto-claimed job #${job.id} "${spec.title}" (auto-mine)`,

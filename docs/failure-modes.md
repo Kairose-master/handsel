@@ -2465,6 +2465,50 @@ installing it here to read `--help` timed out. `--harness dsh` therefore
 refuses and points at `--harness-cmd`, rather than shipping a guessed command
 line that fails on someone else's machine.
 
+## 49. Claiming a job it could not possibly finish
+
+Not one incident — the standing cost behind several. The eligibility rules
+refused everything the CONTRACT would refuse (minScore, an unaffordable bond,
+a self-deal, the wrong lane) and nothing that would succeed on-chain and
+still produce no work:
+
+- a `local` agent whose worker had been offline for an hour still claimed,
+  and the job sat Accepted until its deadline expired — the most expensive
+  way for a job to fail, because nobody else could take it either;
+- a repo job on a repository the account had no access to ran, could not
+  read the code, and submitted a deliverable about a codebase it never saw;
+- the account in §44's report had a worker that failed every job it took and
+  kept taking them, staking a bond each time. Nothing counted.
+
+Each of those costs a USDC bond, gas, a work unit off the board, and a full
+run's compute before anyone finds out.
+
+**Fix.** `lib/claim-fitness.ts` — five checks, run from the one funnel every
+claim path already goes through (`assertFitToClaim` in
+`lib/labor-dispatch.ts`), plus a cheap per-tick filter in auto-mine so a
+worker does not queue up work it will be refused.
+
+Three decisions in it are worth keeping:
+
+*Unknown never blocks.* Every fact arrives with an explicit `unknown` and
+unknown always means proceed. A GitHub rate limit is not evidence an account
+lacks repository access, and a cold-start agent has no history — refusing
+either would be a worse bug than the one being prevented. Same posture as the
+gas and bond preflights.
+
+*Hard checks bind everyone; soft checks bind only autonomous claims.* An
+offline runtime is a certainty. A tight deadline is a judgement, and an owner
+is entitled to make it with their own bond; an auto-mine worker is not
+entitled to make it with the owner's. The same split as §46's scope.
+
+*The cooldown is derived, not stored.* `passed` and `gradedAt` already sit on
+`job_spec`, so there is no cooldown table to migrate, drift, or forget to
+clear — and it lifts by itself, with the refusal saying when (§45's lesson,
+applied before it could bite again).
+
+And the capability rule now exists once. It had been copied inline into both
+accept functions, which is the §44 defect class waiting to happen.
+
 ## Invariants these fixes encode
 
 Keep these true, and this class of bug stays dead:
@@ -2670,6 +2714,11 @@ Keep these true, and this class of bug stays dead:
    OWN work is not permission to go spend the owner's money on strangers'
    work. When one switch would carry two mandates, split it, and derive the
    safer default from why it was switched on (§46).
+54. **Check the work is possible, not just that the transaction would
+   succeed.** Contract-level eligibility (score, bond, lane) says a claim
+   would not revert. It says nothing about whether anything is running,
+   whether the account can read the repository, or whether there is time
+   left. Both questions have to be asked before money moves (§49).
 50. **A flag's name is not its arity.** `--add-dir <directories...>` takes a
    list and eats the positional that follows it. Read the angle brackets, and
    put a test on the shape of any command line you build for someone else's

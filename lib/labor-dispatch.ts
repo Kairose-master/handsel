@@ -299,10 +299,56 @@ async function coverBondIfAssigned(
   }
 }
 
+/**
+ * Can this agent actually do this job — before anything is staked on it?
+ *
+ * The gates above this one refuse what the CONTRACT would refuse: a
+ * self-deal, a lineage it already failed, a bond it cannot pay. This refuses
+ * what would succeed on-chain and still not produce work: an offline runtime,
+ * a repository the account cannot read, a deadline shorter than this agent
+ * has ever finished in, a class it has failed three times running. Each of
+ * those costs a bond, gas, a work unit taken off the board, and a full run's
+ * compute before anyone finds out. See lib/claim-fitness.ts.
+ *
+ * `autonomous` decides how much authority it has. A person claiming may take
+ * a job the numbers advise against — it is their bond. Auto-mine may not, so
+ * the same finding refuses there and is only logged here.
+ *
+ * Never throws on its own failure: a database or GitHub hiccup that stopped a
+ * working agent from earning would be a worse bug than the one this prevents.
+ */
+async function assertFitToClaim(
+  worker: AgentRow,
+  job: { deadline: number | null } | undefined,
+  spec: { title: string | null; deliverableKind: string | null; requiredCapabilities: string[] | null; repoFullName: string | null } | undefined,
+  autonomous: boolean,
+): Promise<void> {
+  if (!spec) return
+  let verdict
+  try {
+    const { agentFitnessContext, repoAccessFor, assessClaimWith } = await import('@/lib/claim-fitness-server')
+    const [ctx, repoAccess] = await Promise.all([
+      agentFitnessContext(worker),
+      repoAccessFor(spec.repoFullName ?? null),
+    ])
+    verdict = assessClaimWith({ ctx, spec, deadlineSec: job?.deadline ?? null, repoAccess, autonomous })
+  } catch (e) {
+    console.warn('[labor-dispatch] claim fitness could not be assessed, allowing the claim:', e)
+    return
+  }
+  for (const finding of verdict.findings) {
+    if (finding !== verdict.blocked) console.info(`[labor-dispatch] ${worker.name}: ${finding.reason}`)
+  }
+  if (verdict.blocked) throw new Error(verdict.blocked.reason)
+}
+
 export async function acceptAndDispatchJob(
   worker: AgentRow,
   jobId: number,
   callbackUrl: string,
+  // Defaults to a PERSON claiming. Auto-mine passes true, which is what
+  // turns the advisory findings in assertFitToClaim into refusals.
+  opts: { autonomous?: boolean } = {},
 ): Promise<{ txHash: string }> {
   const { acceptJob, readJobs } = await import('@/lib/onchain/labor')
 
@@ -314,18 +360,12 @@ export async function acceptAndDispatchJob(
 
   await assertNotFailedLineage(worker, spec?.failedWorkerIds)
 
-  // Capability gate — covers BOTH manual accepts and auto-mine (which
-  // also pre-filters, but this is the single chokepoint before gas is
-  // spent on an accept the worker can't deliver on).
-  if (spec) {
-    const { workerCanDeliver } = await import('@/lib/artifacts')
-    const kind = spec.deliverableKind ?? 'text'
-    if (!workerCanDeliver(worker.capabilities, kind, spec.requiredCapabilities)) {
-      throw new Error(
-        `This job requires a ${kind} deliverable${(spec.requiredCapabilities ?? []).length ? ` plus [${spec.requiredCapabilities.join(', ')}]` : ''} — ${worker.name} hasn't declared the needed capabilities.`,
-      )
-    }
-  }
+  // Capability, runtime liveness, repo permission, deadline, recent-failure
+  // cooldown — one gate, covering BOTH manual accepts and auto-mine. The
+  // capability check used to live here inline and the fitness module now
+  // reports it as one finding among several; two copies of the same rule are
+  // how the two start disagreeing about the same job.
+  await assertFitToClaim(worker, job, spec, opts.autonomous === true)
 
   // Take the off-chain work-unit claim before spending gas. Losing here is
   // the normal contention path — cheap and instant, like a mining pool
@@ -412,15 +452,12 @@ export async function acceptJobForExternalWorker(
   await assertNotSelfDeal(worker, job.requester, job.specHash)
 
   await assertNotFailedLineage(worker, spec.failedWorkerIds)
-  {
-    const { workerCanDeliver } = await import('@/lib/artifacts')
-    const kind = spec.deliverableKind ?? 'text'
-    if (!workerCanDeliver(worker.capabilities, kind, spec.requiredCapabilities)) {
-      throw new Error(
-        `This job requires a ${kind} deliverable${(spec.requiredCapabilities ?? []).length ? ` plus [${spec.requiredCapabilities.join(', ')}]` : ''} — agent ${worker.name} hasn't declared the needed capabilities.`,
-      )
-    }
-  }
+  // Same single gate as acceptAndDispatchJob: capability, runtime liveness,
+  // repo permission, deadline feasibility, recent-failure cooldown. Every
+  // caller of this function is a person or an external worker acting for one
+  // (MCP claim_job, /api/worker/claim, the admin work-* routes), so the
+  // advisory findings warn rather than refuse — it is their bond.
+  await assertFitToClaim(worker, job, spec, false)
   if (Math.round(parseFloat(worker.creditScore)) < job.minScore) {
     throw new Error(`Job requires credit score ≥ ${job.minScore}; ${worker.name} has ${Math.round(parseFloat(worker.creditScore))}.`)
   }

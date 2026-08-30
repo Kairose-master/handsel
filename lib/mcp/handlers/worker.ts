@@ -15,6 +15,46 @@ import { eq } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { toolText, type McpToolContext } from '../rpc'
 
+/**
+ * What is currently stopping this agent from claiming, if anything.
+ *
+ * Only the agent-level holds — liveness and the recent-failure cooldown.
+ * The per-job findings (capability, repo access, deadline) depend on a job
+ * and belong in the refusal for that job, not on a roster line.
+ *
+ * Silent on any failure: a roster that cannot render because a probe threw
+ * is worse than a roster missing one advisory line.
+ */
+async function claimHolds(row: { id: string }): Promise<string[]> {
+  try {
+    const { db: database } = await import('@/lib/db')
+    const { agent: agentTbl } = await import('@/lib/db/schema')
+    const { eq: equals } = await import('drizzle-orm')
+    const [full] = await database.select().from(agentTbl).where(equals(agentTbl.id, row.id))
+    if (!full) return []
+    const { agentFitnessContext } = await import('@/lib/claim-fitness-server')
+    const { cooldownUntil } = await import('@/lib/claim-fitness')
+    const ctx = await agentFitnessContext(full)
+    const out: string[] = []
+    if (ctx.liveness === 'offline') {
+      const age = ctx.heartbeatAgeSec === null ? 'never polled' : `last heartbeat ${Math.round(ctx.heartbeatAgeSec / 60)}m ago`
+      out.push(`worker offline (${age}) — it will not claim anything until it is running again`)
+    }
+    const now = Date.now()
+    for (const history of ctx.historyByClass.values()) {
+      const until = cooldownUntil(history)
+      if (until !== null && until > now) {
+        out.push(
+          `sitting out "${history.jobClass}" jobs until ${new Date(until).toISOString()} — it failed ${history.failed} of its last ${history.graded}. Clears by itself.`,
+        )
+      }
+    }
+    return out
+  } catch {
+    return []
+  }
+}
+
 export async function handleWorker(
   ctx: McpToolContext,
   name: string,
@@ -43,6 +83,12 @@ export async function handleWorker(
           bal = `${usdc} · ${eth}`
         }
         lines.push(`- ${a.name} [${a.id}] · credit ${a.creditScore ?? '?'} · ${bal} · ${a.smartAccountAddress ?? 'no wallet'}`)
+        // Why an agent is not taking work, in the place someone looks when
+        // wondering exactly that. Without it a preflight that quietly stops
+        // an agent claiming is the same invisible state as an expiring
+        // reservation was (§45): correct behaviour, indistinguishable from a
+        // broken one.
+        for (const note of await claimHolds(a)) lines.push(`    ⚠ ${note}`)
       }
       return toolText(id, `${lines.join('\n')}\n\nETH is gas money you funded by hand; withdraw_agent_eth sends it back to your payout address.`)
     }
