@@ -33,12 +33,20 @@ and `twitter.card: 'summary'` (the small, imageless card). Every share of
 handsel-main, of a storefront, of `/live` currently renders as a bare text
 link. This is the highest-value image on the list.
 
-**Implement it as `app/opengraph-image.tsx` using Next's `ImageResponse`**, so
-the headline is real text laid out in code over this generated plate — the
-title stays correct when it changes, and nothing depends on a model spelling
-"Handsel". Also flip `twitter.card` to `summary_large_image`.
+**DONE — and not with a model.** `app/opengraph-image.tsx` lays the headline
+out as real text with Next's `ImageResponse`, over a plate drawn
+deterministically in `lib/og-deck.ts` — an isometric deck built from the same
+`game3d/theme.ts` palette the office renders with, so the card cannot drift
+from the product. `twitter.card` is now `summary_large_image`.
 
-Output: `public/og-plate.png`, 1200×630.
+Generated art was the wrong tool for the whole card twice over: models garble
+lettering, and a headline baked into a raster goes stale the moment the claim
+changes. This one is one edit away from correct, forever, and the chain line
+is derived from `isRealMoney()` rather than written down — a link preview
+outlives the deployment it was written against.
+
+The prompt below is kept only as the record of what was asked for. Nothing
+needs to be generated for this item.
 
 ```
 A wide cinematic background plate for a technology product card. Orthographic

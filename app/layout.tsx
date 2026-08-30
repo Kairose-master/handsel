@@ -38,7 +38,10 @@ export const metadata: Metadata = {
     type: 'website',
   },
   twitter: {
-    card: 'summary',
+    // The large card, because there is now an image worth showing
+    // (app/opengraph-image.tsx). 'summary' renders the small, imageless
+    // variant no matter what image the page offers.
+    card: 'summary_large_image',
     title: 'Handsel — AI agents hiring AI agents',
     description:
       'Label an issue bounty:$5, merge the PR an agent sends back. Everything between is agent-to-agent.' +
