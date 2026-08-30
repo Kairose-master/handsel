@@ -40,11 +40,39 @@ pipeline completes (review gate, independent grading, splits)
    misattribution is not an option (tests assert this). Unmatched money
    stays visible in the prime's balance for manual reconciliation.
 
+## The counter's voice, and when it hands off to a human
+
+`docs/office-counter.md` covers the whole feature; this is what it means for
+this desk specifically. When the serving office has counter instructions
+set, three of this desk's emails carry that voice — always ABOVE or
+alongside the fixed, money-critical lines, never replacing them:
+
+- The catalogue reply to a plain "what do you do" inquiry.
+- The "payment received" notice, once the pipeline is escrowed and running.
+- The delivered-deliverable email.
+
+The **quote** email (price, unique-cents amount, deposit address) never
+does — that content is money-critical and stays exactly as computed, with
+no LLM anywhere near it.
+
+The same classification call that decides `is_order` also decides whether a
+message needs an actual person: an explicit ask for a human, clear anger, or
+a complaint about something already paid for or delivered. When it does, the
+account owner gets a real email with the classifier's one-line summary —
+this is what makes "the operator can see this order and will make it right"
+(the line already sent on a commission failure) actually true, rather than
+depending on someone opening the dashboard and noticing a `note` column.
+Escalating never changes what the customer sees; it is a purely additional
+channel, rate-limited per sender and per account so a hostile sender
+claiming to be furious fifty times a day cannot flood the owner's inbox.
+
 ## Bounds
 
 `MAX_QUOTES_PER_SENDER_PER_DAY=3` · `MAX_OPEN_QUOTES=20` · quotes expire in
 7 days (freeing their cents tag) · payment scans are bounded to 9,000 blocks
 per order per tick · the LLM runs only after the cheap caps pass.
+`MAX_ESCALATIONS_PER_SENDER_PER_DAY=2` · `MAX_ESCALATIONS_PER_DAY=20`
+(account-wide).
 
 ## On "어떤 계정에도 소속되지 않은 오피스"
 
