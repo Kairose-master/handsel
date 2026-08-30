@@ -29,6 +29,7 @@ import {
 } from 'lucide-react'
 import { getAgents } from '@/app/actions/agents'
 import { drawCredit, repayCredit, getCreditDraws } from '@/app/actions/credit'
+import { myFundableAgents, sendAgentEth, sendAgentUsdc } from '@/app/actions/agent-funding'
 import { getTreasury, sendFromTreasury } from '@/app/actions/treasury'
 import { CLOUD_PRESETS } from '@/lib/cloud-providers'
 import {
@@ -179,6 +180,157 @@ function cardTier(rating: string): { gradient: string; label: string; badge: str
   if (r === 'BB' || r === 'B')
     return { gradient: sheen + 'linear-gradient(135deg, #1c110b 0%, #7a4a2a 58%, #b9713f 100%)', label: 'Bronze', badge: '#e8b892' }
   return { gradient: sheen + 'linear-gradient(135deg, #15171c 0%, #33404f 58%, #566577 100%)', label: 'Graphite', badge: '#c7d0dc' }
+}
+
+
+/**
+ * Move gas and USDC between your own agents.
+ *
+ * fundAgentEth / fundAgentUsdc have existed for a long time and were
+ * reachable from exactly one place a person could use: the MCP connector.
+ * Every other caller is automatic — lineage seeding, office bond cover, the
+ * automaton — so an owner looking at an agent with no gas had no way to give
+ * it any without wiring up an assistant. This page could provision an agent
+ * and then could not feed it.
+ *
+ * docs/failure-modes.md §30 is "We hired a desk of ten agents that could not
+ * take a single job", and invariant 8 is the rule drawn from it: a
+ * capability an agent cannot fund is not a capability.
+ */
+function AgentFundingCard() {
+  const [agents, setAgents] = useState<Awaited<ReturnType<typeof myFundableAgents>>>([])
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
+  const [amount, setAmount] = useState('')
+  const [asset, setAsset] = useState<'eth' | 'usdc'>('eth')
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+  const [failed, setFailed] = useState(false)
+
+  const load = useCallback(() => {
+    myFundableAgents()
+      .then(setAgents)
+      .catch((e) => {
+        console.error('[profile] fundable agents read failed:', e)
+        setFailed(true)
+      })
+  }, [])
+  useEffect(load, [load])
+
+  const provisioned = agents.filter((a) => a.address)
+
+  const send = async () => {
+    setBusy(true)
+    setMsg(null)
+    try {
+      const res = asset === 'eth' ? await sendAgentEth(from, to, amount) : await sendAgentUsdc(from, to, amount)
+      if (!res.ok) {
+        setMsg(res.error)
+        return
+      }
+      setMsg(`Sent. tx ${res.txHash.slice(0, 10)}…`)
+      setAmount('')
+      load()
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : 'Could not send.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (failed) return null
+
+  return (
+    <div className="glass-card border border-border rounded-lg p-6">
+      <h3 className="font-bold text-lg mb-1">Fund an agent</h3>
+      <p className="text-sm text-muted-foreground mb-4">
+        Move gas or USDC between agents you own. A worker with no gas cannot accept a job, and one with no USDC cannot
+        post the bond the market asks for.
+      </p>
+
+      {provisioned.length < 2 ? (
+        // Both ends must exist before the form means anything — an empty
+        // picker with a Send button reads as broken rather than as "you need
+        // a second provisioned agent".
+        <p className="text-sm text-muted-foreground">
+          You need at least two agents with a provisioned smart account to move funds between them.
+        </p>
+      ) : (
+        <div className="space-y-3">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className="text-xs">
+              <span className="text-muted-foreground">From</span>
+              <select
+                value={from}
+                onChange={(e) => setFrom(e.target.value)}
+                className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm"
+              >
+                <option value="">Choose…</option>
+                {provisioned.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                    {a.usdc !== null ? ` — $${a.usdc.toFixed(2)}` : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-xs">
+              <span className="text-muted-foreground">To</span>
+              <select
+                value={to}
+                onChange={(e) => setTo(e.target.value)}
+                className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm"
+              >
+                <option value="">Choose…</option>
+                {provisioned
+                  .filter((a) => a.id !== from)
+                  .map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+          </div>
+
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="flex gap-1">
+              {(['eth', 'usdc'] as const).map((k) => (
+                <button
+                  key={k}
+                  onClick={() => setAsset(k)}
+                  className={`rounded-md border px-2 py-1.5 text-xs uppercase ${
+                    asset === k ? 'border-primary text-primary' : 'border-border text-muted-foreground'
+                  }`}
+                >
+                  {k}
+                </button>
+              ))}
+            </div>
+            <input
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder={asset === 'eth' ? '0.002' : '0.25'}
+              inputMode="decimal"
+              className="h-9 w-32 rounded-md border border-border bg-background px-2 text-sm"
+            />
+            <button
+              onClick={send}
+              disabled={busy || !from || !to || !amount}
+              className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50"
+            >
+              {busy ? 'Sending…' : 'Send'}
+            </button>
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            The sender keeps a reserve, so funding a peer cannot strand the funder with nothing to pay its own gas with.
+          </p>
+          {msg && <p className="text-sm text-muted-foreground">{msg}</p>}
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default function ProfilePage() {
@@ -604,6 +756,8 @@ export default function ProfilePage() {
        * The credit figures inside genuinely do need the vault, and they are
        * already guarded separately — `getOnchainInfo` only fills them when
        * `configured` is true, and they render as em dashes otherwise. */}
+      <AgentFundingCard />
+
       {onchain?.agentConfigured && (
         <div className="glass-card border border-border rounded-lg p-6">
           <h3 className="font-bold text-lg mb-1 flex items-center gap-2">
