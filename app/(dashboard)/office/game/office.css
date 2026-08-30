@@ -497,7 +497,19 @@
 }
 .far .r-lead .p-torso { box-shadow: 0 2px 0 rgba(74, 43, 60, .25), 0 0 0 2px var(--yellow); }
 
-.world-hud { position: absolute; right: 12px; top: 12px; display: flex; gap: 6px; }
+/* Wraps, because it did not: seven buttons in one non-wrapping row pinned
+   to the right ran straight off a phone screen, and the controls past the
+   edge were not reachable by any means. */
+.world-hud {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  max-width: calc(100% - 24px);
+}
 .world-hud button {
   padding: 7px 11px;
   border: 2px solid var(--ink);
@@ -508,6 +520,19 @@
   cursor: pointer;
 }
 .world-hud button.on { background: var(--yellow); }
+
+/* A finger is not a mouse pointer. 44px is the smallest target that can be
+   hit reliably, and these were 28. */
+@media (pointer: coarse) {
+  .world-hud button { min-height: 44px; padding: 10px 14px; font-size: 12px; }
+  .world-hint { bottom: 14px; font-size: 12px; }
+}
+
+/* On a narrow screen the theme button's name is the widest thing in the row
+   and the least useful — the swatch already says which theme is on. */
+@media (max-width: 640px) {
+  .world-hud .hud-label { display: none; }
+}
 .world-hint {
   position: absolute;
   left: 12px;

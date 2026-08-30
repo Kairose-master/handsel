@@ -623,6 +623,21 @@ function HireOfficeTemplateDialog({
                       <span className={`font-mono text-xs tabular-nums ${active ? 'text-primary' : 'text-muted-foreground'}`}>
                         {String(i + 1).padStart(2, '0')}
                       </span>
+                      {/* The desk itself. A storefront that sells a desk with
+                          no picture of the desk is a shop with no sign — and
+                          the eight are drawn at one camera angle and one
+                          lighting setup precisely so they read as a set here.
+                          File name IS the template id; tests/office-art.test.ts
+                          fails the build if a template ever lacks one. */}
+                      <img
+                        src={`/office-cards/${t.id}.png`}
+                        alt=""
+                        aria-hidden
+                        loading="lazy"
+                        className={`h-12 w-[52px] shrink-0 rounded-sm object-cover ring-1 transition-opacity ${
+                          active ? 'opacity-100 ring-primary/40' : 'opacity-70 ring-border'
+                        }`}
+                      />
                       <span className="min-w-0 flex-1">
                         <span className="block text-sm font-semibold">{t.name}</span>
                         <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">{t.flowSummary}</span>

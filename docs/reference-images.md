@@ -227,6 +227,27 @@ no perspective, no colour variation between icons, no frames around the icons.
 
 ---
 
+## Generated — where each one landed
+
+| block | file(s) |
+|---|---|
+| A · office look, tactical | `docs/assets/ref-office-tactical.png` |
+| B · office look, diorama | `docs/assets/ref-office-diorama.png` |
+| C · agent sheet, tactical | `docs/assets/ref-agents-tactical.png` |
+| D · agent sheet, diorama | `docs/assets/ref-agents-diorama.png` |
+| E · desk cards | `public/office-cards/<template-id>.png` × 8 — **shipped**, rendered in the office template picker |
+| F · hero | `docs/assets/hero.png` — top of the README |
+| G · department glyphs | `public/dept/<dept-id>.png` × 9 |
+
+E and G are named by ID, not by label, and `tests/office-art.test.ts` fails the
+build if a template or department ever lacks its file — or if art is left
+behind for one that no longer exists. Art referenced by id and stored by file
+name drifts silently otherwise: someone adds a ninth template, the picker
+renders a broken image, and nothing complains.
+
+A–D and F are reference sheets: the target the real-time scene builds toward,
+not assets it loads.
+
 ## Already built, no generation needed
 
 The social card. `app/opengraph-image.tsx` lays the headline out as real text

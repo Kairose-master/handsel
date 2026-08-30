@@ -2509,6 +2509,60 @@ applied before it could bite again).
 And the capability rule now exists once. It had been copied inline into both
 accept functions, which is the §44 defect class waiting to happen.
 
+## 50. The office could not be operated on a phone at all
+
+Not "awkward on mobile" — the camera could not be moved one pixel.
+
+Three separate reasons, and each alone was enough:
+
+- **The canvas never claimed the gesture.** No `touch-action`, so the browser
+  read a finger drag as a page scroll and `pointermove` never fired. One CSS
+  line.
+- **Zoom was the wheel.** A touch device has no wheel, and the tier buttons
+  jump rather than zoom. There was no pinch handler of any kind.
+- **Half the HUD was off-screen.** `.world-hud` was a single non-wrapping flex
+  row pinned right with seven buttons in it; on a 375px screen the ones past
+  the edge were unreachable by any means.
+
+Pan was WASD or a one-pointer drag, rotation was a button. Between them the
+whole control scheme assumed a keyboard, a wheel and a wide viewport.
+
+**Fix.** One pointer handler for mouse and touch alike: a map of live pointers
+where one is a drag and two are a pinch — zoom anchored on the midpoint, pan
+by the midpoint's movement, and a twist that banks toward quarter turns.
+`touch-action: none` on the canvas, a wrapping HUD with 44px targets under
+`(pointer: coarse)`, and a hint line that stops saying "WHEEL TO ZOOM" to
+someone holding a phone.
+
+Two details are load-bearing. The pointer is captured on the first real
+MOVEMENT, not on press — capturing on press takes it away from R3F's picking
+for the whole gesture, and a tap that never moves has to stay a click on an
+agent. And a two-finger gesture pans before it zooms, at the pre-zoom scale;
+the other order drifts.
+
+## 51. Movement started and stopped dead
+
+The same rig, felt rather than broken. Keys were binary — full speed on
+keydown, zero on keyup — and a drag ended the instant the pointer lifted.
+Nothing in a game moves like that, and the scene reads as a spreadsheet with
+a camera rather than a place.
+
+Worse, and specific to an isometric view: **zoom went to the centre of the
+screen, not to the cursor.** You point at a desk, zoom, and the desk slides
+away. It is the single loudest "this is not a game" tell, and the fix is four
+lines (`zoomAnchor`).
+
+**Fix.** `lib/office-controls.ts`, pure and tested: cursor-anchored zoom
+derived from the drag handler's own already-calibrated pixel→world identity
+rather than from first principles; a release flick measured over a ~90ms
+window (the last two events before a finger lifts are usually a jitter of a
+pixel or two, and using them turns a firm swipe into a dead stop about a third
+of the time); exponential decay expressed as a HALF-LIFE, because a per-frame
+multiplier decays twice as fast at 120Hz — the same defect the camera easing
+had already been fixed for once; and a keyboard ramp whose release is quicker
+than its press, since a camera that drifts after you let go feels broken while
+one that takes a moment to start feels weighty.
+
 ## Invariants these fixes encode
 
 Keep these true, and this class of bug stays dead:
@@ -2714,6 +2768,16 @@ Keep these true, and this class of bug stays dead:
    OWN work is not permission to go spend the owner's money on strangers'
    work. When one switch would carry two mandates, split it, and derive the
    safer default from why it was switched on (§46).
+55. **"Responsive" is not the same as operable.** The office page laid out
+   fine on a phone and could not be used on one: no pinch, no gesture claim,
+   half the controls past the screen edge. Ask what the INPUTS are on the
+   device, not just whether the pixels fit (§50).
+56. **Anchor a zoom to the pointer.** Zooming to screen centre is the loudest
+   "this is not a game" tell there is, and in an isometric scene it is the
+   difference between inspecting a thing and chasing it (§51).
+57. **Express decay as a half-life, never as a per-frame multiplier.** The
+   same easing runs twice as fast on a 120Hz display. This repo has now been
+   bitten by it in two separate files (§51).
 54. **Check the work is possible, not just that the transaction would
    succeed.** Contract-level eligibility (score, bond, lane) says a claim
    would not revert. It says nothing about whether anything is running,

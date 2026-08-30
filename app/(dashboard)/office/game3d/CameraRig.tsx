@@ -49,6 +49,23 @@ import { CEO_ROOM, ROOMS, COLS, ROWS } from '../game/world'
 import { hotRoomOf, closeRoomIdFor } from '../game/zoom'
 import type { Agent } from '../game/live-engine'
 import { useSceneStore } from './scene-store'
+import {
+  pinchOf,
+  pinchStep,
+  zoomAnchor,
+  twistTurns,
+  flickVelocity,
+  decayVelocity,
+  isNegligible,
+  pushSample,
+  rampAxis,
+  heldAxis,
+  KEY_ACCEL_SEC,
+  KEY_RELEASE_SEC,
+  FLICK_HALF_LIFE_SEC,
+  type Sample,
+  type Vec2,
+} from '@/lib/office-controls'
 
 export type ZoomTier = 'far' | 'medium' | 'close'
 
@@ -163,7 +180,19 @@ export function CameraRig({
   const manualFocus = useRef(new THREE.Vector3(COLS / 2, 0, ROWS / 2))
   const manualZoom = useRef(0)
   const held = useRef(new Set<string>())
-  const dragging = useRef<{ x: number; y: number } | null>(null)
+  /** Every pointer currently down, by id. One is a drag, two are a pinch.
+   *  A single `dragging` slot is why a second finger used to overwrite the
+   *  first and jump the camera. */
+  const pointers = useRef(new Map<number, Vec2>())
+  const pinch = useRef<ReturnType<typeof pinchOf> | null>(null)
+  /** Twist banked toward the next quarter turn (lib/office-controls.ts). */
+  const twist = useRef(0)
+  /** Recent pointer positions, for the release flick. */
+  const samples = useRef<Sample[]>([])
+  /** Coasting velocity in screen px/sec, decayed in useFrame. */
+  const flick = useRef<Vec2>({ x: 0, y: 0 })
+  /** Keyboard pan velocity, ramped rather than switched. */
+  const keyVel = useRef<Vec2>({ x: 0, y: 0 })
 
   // Keyboard pan. Held keys rather than keypress events so movement is
   // smooth and frame-rate paced, and ignored while typing — the office page
@@ -193,50 +222,146 @@ export function CameraRig({
     }
   }, [])
 
-  // Wheel zoom, and drag pan, on the canvas itself.
+  /**
+   * One pointer handler for mouse and touch alike.
+   *
+   * The old version had a mouse-shaped hole in it: pan was a single-pointer
+   * drag, zoom was the wheel, rotation was a button. A phone has no wheel and
+   * no keyboard, so zoom was unreachable — and the drag never started either,
+   * because the canvas never claimed the gesture and the browser took it as a
+   * page scroll before `pointermove` fired. Half the audience could look at
+   * the office and not move the camera one pixel.
+   *
+   * So: a map of live pointers. One is a drag, two are a pinch — zoom
+   * anchored on the midpoint, pan by the midpoint's movement, and a twist
+   * that spends itself on quarter turns. Releasing a drag leaves a flick.
+   * The arithmetic is in lib/office-controls.ts, with tests.
+   */
   useEffect(() => {
     const el = gl.domElement
+    // Without this the browser scrolls the page instead of giving us the
+    // gesture. It is the single line that made touch work at all.
+    const previousTouchAction = el.style.touchAction
+    el.style.touchAction = 'none'
+
+    /** Cursor offset from the viewport centre, which is where an orthographic
+     *  camera's focus sits — so this is exactly the anchor zoomAnchor wants. */
+    const offsetFromCentre = (clientX: number, clientY: number) => {
+      const r = el.getBoundingClientRect()
+      return { px: clientX - (r.left + r.width / 2), py: clientY - (r.top + r.height / 2) }
+    }
+
+    /** Change zoom while holding a screen point still. */
+    const zoomAt = (factor: number, clientX: number, clientY: number) => {
+      const ortho = camera as THREE.OrthographicCamera
+      startManual()
+      const before = manualZoom.current || ortho.zoom
+      const after = clamp(before * factor, MIN_ZOOM, MAX_ZOOM)
+      if (after === before) return
+      manualZoom.current = after
+      const { px, py } = offsetFromCentre(clientX, clientY)
+      const shift = zoomAnchor(px, py, before, after)
+      panScreen(shift.right, shift.up)
+    }
+
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
-      const ortho = camera as THREE.OrthographicCamera
-      if (!manualZoom.current) manualZoom.current = ortho.zoom
-      // Exponential in the wheel delta so one notch feels the same at every
-      // depth; clamped so you cannot zoom into or out of the world entirely.
-      manualZoom.current = clamp(manualZoom.current * Math.pow(0.999, e.deltaY), MIN_ZOOM, MAX_ZOOM)
-      if (!useSceneStore.getState().manual) {
-        manualFocus.current.copy(lookAt.current)
-        setManual(true)
+      // Exponential in the delta so one notch feels the same at every depth.
+      zoomAt(Math.pow(0.999, e.deltaY), e.clientX, e.clientY)
+    }
+
+    const onDown = (e: PointerEvent) => {
+      if (useSceneStore.getState().selectMode) return
+      if (e.pointerType === 'mouse' && e.button !== 0) return
+      // NOT captured here. Capturing on press would take the pointer away
+      // from R3F's own picking for the rest of the gesture, and a tap that
+      // never moves has to stay a click on an agent. Capture happens on the
+      // first real movement instead — see onMove.
+      pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+      flick.current = { x: 0, y: 0 } // a new touch cancels the previous coast
+      if (pointers.current.size === 1) {
+        samples.current = []
+        pushSample(samples.current, { x: e.clientX, y: e.clientY, t: e.timeStamp })
+      } else if (pointers.current.size === 2) {
+        const [a, b] = [...pointers.current.values()]
+        pinch.current = pinchOf(a, b)
       }
     }
-    const onDown = (e: PointerEvent) => {
-      if (e.button !== 0 || useSceneStore.getState().selectMode) return
-      dragging.current = { x: e.clientX, y: e.clientY }
-    }
+
     const onMove = (e: PointerEvent) => {
-      const d = dragging.current
-      if (!d) return
-      const dx = e.clientX - d.x
-      const dy = e.clientY - d.y
-      if (Math.abs(dx) + Math.abs(dy) < 2) return
-      dragging.current = { x: e.clientX, y: e.clientY }
-      startManual()
+      const prev = pointers.current.get(e.pointerId)
+      if (!prev) return
+      pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
       const ortho = camera as THREE.OrthographicCamera
-      // Screen pixels → world units at the current zoom, so the ground
-      // tracks the cursor instead of drifting at a different speed.
+
+      if (pointers.current.size >= 2) {
+        const [a, b] = [...pointers.current.values()]
+        const next = pinchOf(a, b)
+        const base = pinch.current
+        pinch.current = next
+        if (!base) return
+        const step = pinchStep(base, next)
+        // Pan first, at the pre-zoom scale, then zoom about the midpoint —
+        // doing it the other way round makes a two-finger drag drift.
+        startManual()
+        panScreen(-step.panPx.x / ortho.zoom, -step.panPx.y / ortho.zoom)
+        if (Math.abs(step.zoomFactor - 1) > 1e-4) zoomAt(step.zoomFactor, next.cx, next.cy)
+        twist.current += step.twist
+        const spent = twistTurns(twist.current)
+        if (spent.turns !== 0) {
+          twist.current = spent.rest
+          // `rotate` takes one step at a time on purpose — the store counts
+          // turns and the camera damps toward the count, so feeding it a
+          // multi-step delta would read as a spin rather than a turn.
+          const dir = spent.turns > 0 ? 1 : -1
+          for (let i = 0; i < Math.abs(spent.turns); i += 1) useSceneStore.getState().rotate(dir)
+        }
+        return
+      }
+
+      const dx = e.clientX - prev.x
+      const dy = e.clientY - prev.y
+      if (Math.abs(dx) + Math.abs(dy) < 1) return
+      // Now it is a drag, so take the pointer: without capture a finger that
+      // slides off the canvas mid-drag silently stops steering and the camera
+      // sticks half-way through the gesture.
+      if (!el.hasPointerCapture?.(e.pointerId)) el.setPointerCapture?.(e.pointerId)
+      pushSample(samples.current, { x: e.clientX, y: e.clientY, t: e.timeStamp })
+      startManual()
+      // Screen pixels → world units at the current zoom, so the ground tracks
+      // the finger instead of drifting at a different speed.
       panScreen(-dx / ortho.zoom, -dy / ortho.zoom)
     }
-    const onUp = () => {
-      dragging.current = null
+
+    const onUp = (e: PointerEvent) => {
+      const wasDragging = pointers.current.size === 1 && pointers.current.has(e.pointerId)
+      pointers.current.delete(e.pointerId)
+      if (el.hasPointerCapture?.(e.pointerId)) el.releasePointerCapture?.(e.pointerId)
+      if (pointers.current.size < 2) pinch.current = null
+      if (pointers.current.size === 1) {
+        // Dropped from two fingers to one: re-baseline, or the remaining
+        // finger's position jumps the camera by the gap between them.
+        samples.current = []
+        twist.current = 0
+      }
+      if (wasDragging) {
+        flick.current = flickVelocity(samples.current, e.timeStamp)
+        samples.current = []
+      }
     }
+
     el.addEventListener('wheel', onWheel, { passive: false })
     el.addEventListener('pointerdown', onDown)
-    window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', onUp)
+    el.addEventListener('pointermove', onMove)
+    el.addEventListener('pointerup', onUp)
+    el.addEventListener('pointercancel', onUp)
     return () => {
+      el.style.touchAction = previousTouchAction
       el.removeEventListener('wheel', onWheel)
       el.removeEventListener('pointerdown', onDown)
-      window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onUp)
+      el.removeEventListener('pointermove', onMove)
+      el.removeEventListener('pointerup', onUp)
+      el.removeEventListener('pointercancel', onUp)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gl, camera, setManual])
@@ -322,16 +447,30 @@ export function CameraRig({
 
     // Held-key panning, applied before the focus is used so movement lands
     // on this frame rather than the next.
-    if (held.current.size > 0) {
-      startManual()
-      const k = held.current
-      const x = (k.has('d') || k.has('arrowright') ? 1 : 0) - (k.has('a') || k.has('arrowleft') ? 1 : 0)
-      const y = (k.has('w') || k.has('arrowup') ? 1 : 0) - (k.has('s') || k.has('arrowdown') ? 1 : 0)
-      if (x || y) {
-        // size.height / zoom is the world height currently on screen.
-        const step = PAN_SCREENS_PER_SEC * (size.height / ortho.zoom) * dt
-        panScreen(x * step, y * step)
-      }
+    // Keys ramp instead of switching. Binary keys — full speed on the first
+    // frame, a dead stop on release — are why WASD read as a spreadsheet
+    // rather than a game. Release is quicker than press: a camera that keeps
+    // drifting after you let go feels broken, one that takes a moment to get
+    // going feels weighty.
+    const want = heldAxis(held.current)
+    const accel = want.x || want.y ? KEY_ACCEL_SEC : KEY_RELEASE_SEC
+    keyVel.current = {
+      x: rampAxis(keyVel.current.x, want.x, dt, accel),
+      y: rampAxis(keyVel.current.y, want.y, dt, accel),
+    }
+    if (keyVel.current.x || keyVel.current.y) {
+      if (want.x || want.y) startManual()
+      // size.height / zoom is the world height currently on screen.
+      const step = PAN_SCREENS_PER_SEC * (size.height / ortho.zoom) * dt
+      panScreen(keyVel.current.x * step, keyVel.current.y * step)
+    }
+
+    // Coast after a released drag, then stop cleanly rather than crawling.
+    if (!isNegligible(flick.current)) {
+      panScreen(-(flick.current.x * dt) / ortho.zoom, -(flick.current.y * dt) / ortho.zoom)
+      flick.current = decayVelocity(flick.current, dt, FLICK_HALF_LIFE_SEC)
+    } else if (flick.current.x || flick.current.y) {
+      flick.current = { x: 0, y: 0 }
     }
 
     let targetZoom: number

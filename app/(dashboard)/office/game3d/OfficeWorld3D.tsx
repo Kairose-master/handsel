@@ -34,6 +34,7 @@ import { COLS, ROWS, type Room } from '../game/world'
 import { MIN_SELECT_BOX_PX } from '../game/select'
 import type { ArtifactFlight, AgentConversation } from '@/lib/office-world-data'
 import { CameraRig } from './CameraRig'
+import { useCoarsePointer } from '@/lib/use-coarse-pointer'
 import { RoomMeshes } from './RoomMeshes'
 import { RoomProps } from './RoomProps'
 import { RoomDecor } from './RoomDecor'
@@ -215,6 +216,7 @@ export default function OfficeWorld3D({
   const setThemeId = useSceneStore((s) => s.setThemeId)
   const rotate = useSceneStore((s) => s.rotate)
   const theme = THEMES[themeId]
+  const coarse = useCoarsePointer()
 
   const dragRef = useRef({ px: 0, py: 0, moved: false })
   const selectDragRef = useRef(false)
@@ -436,11 +438,15 @@ export default function OfficeWorld3D({
             [ ⟳ ]
           </button>
           <button title={`Theme: ${theme.label} — click to cycle`} onClick={cycleTheme}>
-            [ 🎨 {theme.label.toUpperCase()} ]
+            [ 🎨 <span className="hud-label">{theme.label.toUpperCase()} </span>]
           </button>
         </div>
         <div className="world-hint">
-          {selectMode ? '>>> DRAG TO BOX-SELECT MULTIPLE AGENTS' : '>>> WASD / ARROWS TO MOVE · WHEEL TO ZOOM · DRAG TO PAN · Q/E TO TURN · CLICK FOR DETAIL'}
+          {selectMode
+            ? '>>> DRAG TO BOX-SELECT MULTIPLE AGENTS'
+            : coarse
+              ? '>>> DRAG TO PAN · PINCH TO ZOOM · TWIST TO TURN · TAP FOR DETAIL'
+              : '>>> WASD / ARROWS TO MOVE · WHEEL TO ZOOM · DRAG TO PAN · Q/E TO TURN · CLICK FOR DETAIL'}
         </div>
       </div>
       <BottomTelemetryBar agents={agents} flights={flights} />

@@ -119,6 +119,8 @@ enforces it.
 | Earn-or-die evolution: fitness, replication, retirement | `lib/agent-lineage.ts` (pure rules), `lib/agent-lineage-server.ts` (dry run + breed/retire), `lib/lineage-mandate.ts` (the switch — **refuses on real-money deployments** unless `LINEAGE_MANDATE_ALLOW_REAL_MONEY=true`), `docs/agent-lineage.md` |
 | Hand a task to a real coding agent (Claude Code, Codex, OpenCode, Cline, Gemini) instead of our own loop | `lib/worker-harness.ts`, `public/handsel-worker.mjs`, `docs/coding-harness.md` |
 | Generated art the project needs, and the prompt for each | `docs/reference-images.md` — palettes come from `game3d/theme.ts`, so a prompt and the renderer cannot drift |
+| Camera feel and touch input (pinch, flick, cursor-anchored zoom) | `lib/office-controls.ts` (pure) + `office/game3d/CameraRig.tsx`, `docs/failure-modes.md` §50–51 |
+| Generated art and where each piece landed | `docs/reference-images.md`; `public/office-cards/<template-id>.png`, `public/dept/<dept-id>.png` — pinned by `tests/office-art.test.ts` |
 | Verify an agent can DO a job before it stakes a bond on it | `lib/claim-fitness.ts` (pure) / `-server.ts`, `docs/claim-fitness.md` — liveness, capability, repo permission, deadline feasibility, recent-failure cooldown |
 | N-slot parallel block mining | `lib/auto-mine.ts`, `lib/mining-scheduler.ts`, `lib/concurrency.ts`, `docs/parallel-mining.md` |
 | How far an autonomous worker may bid (own work vs the open board) | `lib/mine-scope.ts` (pure) / `-server.ts` — an office's hired role defaults to `own`, a worker you switched on yourself to `market` |
