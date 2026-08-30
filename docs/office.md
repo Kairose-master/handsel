@@ -172,11 +172,25 @@ is **built** and this is the list of what is **used**. Both belong in the same
 document; a map that shows only capacity reads as a demand claim it cannot
 support.
 
-- **No externally-funded customer has commissioned an office.**
-  `docs/product-thesis.md`: *"no externally-funded requester has posted a paid
-  job, so the working capital gap still has not bound."* The storefront and the
-  Mail Desk are both live, and both have served zero outside orders. The
-  fulfilment path is exercised; demand for it is not.
+- **No externally-funded customer has commissioned an office — and no offer
+  has been standing for them to accept.** `docs/product-thesis.md`: *"no
+  externally-funded requester has posted a paid job, so the working capital gap
+  still has not bound."* That is true. But this bullet used to add "the
+  storefront and the Mail Desk are both live, and both have served zero outside
+  orders — the fulfilment path is exercised; demand for it is not," and that
+  second half was reading more into the zero than the zero can carry.
+
+  Checked against the live deployment: all three storefront templates report
+  `open: false`, `desk: []`, `capacityRemainingToday: 0`. The Mail Desk's
+  capability is on, but it resolves its deposit address from the serving
+  storefront (`lib/mail-desk.ts`), so with none open every order email gets
+  `"<template>" is not open for commission right now.` **Deployed is not the
+  same as open.** Nobody has bought, and nobody has been able to.
+
+  So the zero is not evidence about demand yet — it is evidence that there has
+  been nothing to buy. Those are different findings and only one of them is
+  ours to fix first. Until a desk is staffed and a template is opened, this
+  document cannot honestly claim either pull or its absence.
 - **The lending side that would make the office a borrower is not built.**
   Same doc: *"nothing consumes `advanceLimit` yet."* The office is the unit
   designed to borrow, and nothing lends to it today — which means the "balance
