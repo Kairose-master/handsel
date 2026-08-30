@@ -216,6 +216,19 @@ export async function postJobAction(input: {
    *  approve); a real human posting a job can opt out and keep manual
    *  review even on a passing verdict. */
   autoApprove?: boolean
+  /** Which machine may run this job (lib/job-lane.ts).
+   *
+   *  'local'   — only the owner's own local worker, which is the only
+   *              runtime that can open a file, run a test or produce a diff
+   *              (public/handsel-worker.mjs --workdir). This is how you post
+   *              work on real source.
+   *  'handsel' — only a platform-driven runtime.
+   *  undefined — anyone, which is what every job meant before lanes existed.
+   *
+   *  Without this parameter the lane machinery had no way to be used at all:
+   *  the eligibility rule and the claim gate both consulted a lane that
+   *  nothing ever set, so every job was 'any' and the split did nothing. */
+  lane?: 'local' | 'handsel'
 }) {
   // The WRITE path needs this as much as the reads do, and it did not have it.
   // Six read paths called ensureJobSpecColumns and no write path did, which is
@@ -275,6 +288,15 @@ export async function postJobAction(input: {
 
     // Posting fee before escrow (lib/platform-fee.ts): wash trading must
     // cost something, and "can't afford bounty + fee" should surface here.
+    // Lane, recorded before the money moves. It has to exist by the time a
+    // worker can see the job: the claim gate reads it, and a job that is
+    // open for a moment with no lane is a job a platform agent can take out
+    // from under the local worker it was posted for.
+    if (input.lane) {
+      const { setJobLane } = await import('@/lib/job-lane-server')
+      await setJobLane(specHash, input.lane)
+    }
+
     const { collectPostingFee } = await import('@/lib/platform-fee')
     await collectPostingFee(input.requesterAgentId, input.bountyUsd, `"${input.title}"`)
 

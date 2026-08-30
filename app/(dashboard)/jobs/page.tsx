@@ -207,6 +207,13 @@ export default function JobsPage() {
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [testCode, setTestCode] = useState('')
   const [autoApprove, setAutoApprove] = useState(true)
+  /** Post this as work for the owner's own local worker only.
+   *
+   *  Until now nothing in the product could set a job's lane, so the lane
+   *  machinery — the eligibility rule and the claim gate that both read it —
+   *  had no way to be used: every job was 'any'. This is the switch that
+   *  makes a local job a thing you can create. */
+  const [localOnly, setLocalOnly] = useState(false)
   const [deliveryIdx, setDeliveryIdx] = useState(0)
   const [deliverableKind, setDeliverableKind] = useState('text')
   const [requiredCaps, setRequiredCaps] = useState<string[]>([])
@@ -289,6 +296,7 @@ export default function JobsPage() {
         deliverableKind,
         requiredCapabilities: requiredCaps,
         deliveryWindowSec: DELIVERY_WINDOWS[deliveryIdx].sec,
+        ...(localOnly ? { lane: 'local' as const } : {}),
       }).then(() => {
         setTitle('')
         setDescription('')
@@ -507,6 +515,25 @@ export default function JobsPage() {
                         className="mt-0.5"
                       />
                       <span>{t('jobs.post.autoApprove')}</span>
+                    </label>
+                    {/* The local lane. Deliberately phrased as what it DOES
+                        rather than as a lane name: the reason to tick it is
+                        that the work needs a real machine, and the reason not
+                        to is that nothing will pick it up unless your worker
+                        is running. */}
+                    <label className="mt-2 flex items-start gap-2 text-xs text-muted-foreground">
+                      <input
+                        type="checkbox"
+                        checked={localOnly}
+                        onChange={(e) => setLocalOnly(e.target.checked)}
+                        className="mt-0.5"
+                      />
+                      <span>
+                        Run on my own machine — only my local worker may take this job. Required for work on real
+                        source: reading files, running tests, producing a diff. Start it with{' '}
+                        <code className="font-mono">handsel-worker.mjs --workdir &lt;repo&gt;</code>, or nothing will
+                        claim this.
+                      </span>
                     </label>
                   </div>
                   <select
