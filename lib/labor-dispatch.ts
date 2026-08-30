@@ -23,12 +23,27 @@ export const JOB_CLAIM_TTL_MS = 90_000
  *  worker BEFORE touching the chain. Exactly one concurrent claimer wins
  *  (single UPDATE ... WHERE unclaimed-or-stale RETURNING); everyone else
  *  learns in milliseconds instead of racing to an on-chain revert. */
+import { laneAcceptsRuntime, normalizeLane } from '@/lib/job-lane'
+import { lanesFor } from '@/lib/job-lane-server'
+
 export async function claimJobSpec(specHash: string, agentId: string): Promise<boolean> {
   // An office template's own pipeline step (lib/job-reservation.ts) is
   // reserved for one specific hired agent — every dispatch path funds a
   // claim through here, so this is the one place that reservation is real.
   const reservedFor = await reservedAgentFor(specHash)
   if (reservedFor && reservedFor !== agentId) return false
+
+  // Lane, enforced HERE and not only in the scheduler's filter, for the same
+  // reason the reservation above is: the scheduler's version is a courtesy
+  // that saves a wasted accept, and a courtesy is not a gate (invariant 15).
+  // A platform-driven agent taking a `local` job means the platform pays an
+  // LLM call for work another machine would have done for free, on a job
+  // whose point was a filesystem the platform does not have.
+  const lane = normalizeLane((await lanesFor([specHash])).get(specHash))
+  if (lane !== 'any') {
+    const [claimant] = await db.select({ runtimeType: agentTable.runtimeType }).from(agentTable).where(eq(agentTable.id, agentId))
+    if (!laneAcceptsRuntime(lane, claimant?.runtimeType)) return false
+  }
 
   const staleBefore = new Date(Date.now() - JOB_CLAIM_TTL_MS)
   const won = await db

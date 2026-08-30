@@ -19,6 +19,8 @@
 
 /** The on-chain job fields the scheduler reads (structural — the real
  *  readJobs() row has more; anything with these is accepted). */
+import { laneAcceptsRuntime, normalizeLane } from '@/lib/job-lane'
+
 export interface OnchainJobLike {
   id: number
   status: string
@@ -41,6 +43,9 @@ export interface JobSpecLike {
   deliverableKind: string | null
   requiredCapabilities: string[] | null
   title: string
+  /** Which machine this job is meant to run on (lib/job-lane.ts). Null on
+   *  every job posted before the lane existed, which normalizes to `any`. */
+  lane?: string | null
 }
 
 export interface MiningCandidate {
@@ -57,6 +62,11 @@ export interface SelectMiningInput {
   score: number
   /** The worker's agent id (for failed-lineage and own-claim checks). */
   agentId: string
+  /** The worker's runtime (`local`, `cloud`, `mcp`, `platform`, `webhook`).
+   *  Decides which lanes it may take from — a platform-driven agent taking a
+   *  `local` job means the platform pays for work another machine would have
+   *  done for free, and cannot touch the filesystem that job needs. */
+  runtimeType?: string | null
   /** Wall-clock now, ms (for claim-staleness). */
   now: number
   /** How many blocks this agent may still take this tick (>= 0). */
@@ -101,6 +111,7 @@ export function isEligibleBlock(c: MiningCandidate, input: SelectMiningInput): b
   if (!input.canPostBond(job)) return false // cannot stake the bond — also a guaranteed revert
   if (job.requester.toLowerCase() === input.myAddress) return false // no self-dealing
   if (input.isFaucetReserved(spec)) return false // newcomer grace window
+  if (!laneAcceptsRuntime(normalizeLane(spec.lane), input.runtimeType)) return false // wrong machine
   if (input.isReservedForOther(spec)) return false // an office's job, assigned elsewhere
   if (spec.failedWorkerIds?.includes(input.agentId)) return false // already failed this lineage
   if (claimedByOther(spec, input.agentId, input.now, input.claimTtlMs)) return false // another rig has it

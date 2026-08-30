@@ -29,6 +29,7 @@ import { agent, agentTask, jobSpec, type agent as agentTable } from '@/lib/db/sc
 import { and, eq, inArray } from 'drizzle-orm'
 import { acceptAndDispatchJob, dispatchAcceptedJob, JOB_CLAIM_TTL_MS } from '@/lib/labor-dispatch'
 import { logPlatformEvent } from '@/lib/platform-feed'
+import { lanesFor } from '@/lib/job-lane-server'
 import { mapLimit } from '@/lib/concurrency'
 import type { OnchainJob } from '@/lib/onchain/labor'
 import {
@@ -193,11 +194,24 @@ export async function autoMineTick(
   ])
   let bondShortfall: { bounty: number; shortUsd: number } | null = null
 
+  // Lanes come from a side table (lib/job-lane-server.ts), read for exactly
+  // the specs in play. A failed read degrades to "no lanes declared" rather
+  // than stalling mining — an unknown lane is `any`, which is what these
+  // jobs meant before lanes existed.
+  const lanes = await lanesFor(candidates.map((c) => c.spec.specHash)).catch(() => new Map<string, string>())
+  for (const c of candidates) {
+    ;(c.spec as { lane?: string | null }).lane = lanes.get(c.spec.specHash) ?? null
+  }
+
   const selected = selectMiningBlocks({
     candidates,
     myAddress,
     score,
     agentId: agent.id,
+    // Which lanes this worker may take from. Without it every runtime reads
+    // as the platform default and local-lane jobs get claimed by agents the
+    // platform pays for (lib/job-lane.ts).
+    runtimeType: agent.runtimeType,
     now,
     freeSlots: free,
     claimTtlMs: JOB_CLAIM_TTL_MS,
