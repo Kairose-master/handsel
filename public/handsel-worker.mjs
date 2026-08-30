@@ -17,6 +17,25 @@
  *                                                              # Fireworks, OpenRouter, a
  *                                                              # custom hosted endpoint, etc.
  *   node handsel-worker.mjs --token <TOKEN> --concurrency 3 # run up to 3 jobs at once
+ *   node handsel-worker.mjs --token <TOKEN> \
+ *     --workdir ~/code/my-repo                              # WORK ON REAL SOURCE
+ *   node handsel-worker.mjs --token <TOKEN> \
+ *     --workdir ~/code/my-repo --allow-bash                 # …and let it run commands
+ *
+ * --workdir turns this from "answer a question" into "do the work": the
+ * model gets list/read/write tools scoped to that directory and loops until
+ * it says it is done. --allow-bash additionally lets it run commands there
+ * (tests, build, git diff). Both are OFF by default, and this matters:
+ * without --workdir the worker cannot touch your disk at all, which is the
+ * behaviour every existing install keeps.
+ *
+ * READ THIS BEFORE ENABLING EITHER. Tasks can come from strangers — an
+ * outside customer who paid for an office commission is one. --workdir lets
+ * their task's model rewrite any file under that directory; --allow-bash
+ * lets it execute commands as you. Point it at a scratch checkout you can
+ * throw away, never at your home directory, and never at anything holding
+ * credentials. Paths are confined to the directory (../ and absolute paths
+ * are refused) but a command you allow can do whatever your shell can.
  *
  * --openai isn't "local-only" — it's any OpenAI-compatible /chat/completions
  * endpoint, on your machine or in the cloud. --api-key (or OPENAI_API_KEY)
@@ -38,6 +57,14 @@
  * independent graders (Proving Ground answers, job acceptance tests) — not
  * your machine — decide what it's worth.
  */
+
+import { promises as fs } from 'node:fs'
+import path from 'node:path'
+import os from 'node:os'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+
+const execFileAsync = promisify(execFile)
 
 const args = process.argv.slice(2)
 const flag = (name) => {
@@ -71,6 +98,124 @@ const POLL_MS = 3000
 // How many jobs this worker runs in parallel. Bounded [1,8]: the parallelism
 // is in local execution; on-chain accepts stay serial on the platform side.
 const CONCURRENCY = Math.max(1, Math.min(parseInt(flag('concurrency') ?? '1', 10) || 1, 8))
+
+const WORKDIR_RAW = flag('workdir') ?? process.env.HANDSEL_WORKDIR ?? ''
+const ALLOW_BASH = args.includes('--allow-bash')
+const WORKDIR = WORKDIR_RAW ? path.resolve(WORKDIR_RAW.replace(/^~(?=$|\/)/, os.homedir())) : ''
+
+/* ── Agent mode ───────────────────────────────────────────────────────────
+ * With --workdir the worker stops being a single prompt and becomes a loop:
+ * the model emits action tags, we execute them against the directory, feed
+ * the results back, and repeat until it says <done>. That is the difference
+ * between an agent that describes a fix and one that makes it.
+ *
+ * The grammar is a text protocol rather than OpenAI function-calling
+ * because this worker targets ANY OpenAI-compatible endpoint — Ollama, LM
+ * Studio, llama.cpp, vLLM, Groq — and tool-calling support across those is
+ * inconsistent and differently shaped. Tags work everywhere, including on
+ * models with no tool support at all, which is the population this worker
+ * exists to sell the labor of.
+ *
+ * Mirrored from lib/worker-agent-protocol.ts, which holds the same rules as
+ * pure functions with tests (tests/worker-agent-protocol.test.ts). This file
+ * is dependency-free and standalone by design, so it cannot import them —
+ * if you change one, change both. */
+const MAX_AGENT_STEPS = 24
+const MAX_TOOL_OUTPUT = 8000
+
+/** Resolve `candidate` inside WORKDIR, or null if it escapes. THE sandbox:
+ *  tasks can arrive from strangers, so this decides what a paying outsider's
+ *  model may touch on the owner's machine. Absolute paths are refused rather
+ *  than rebased — rebasing turns a request for /etc/passwd into a read of
+ *  <workdir>/etc/passwd, which succeeds quietly and hides the attempt. */
+function confinePath(candidate) {
+  if (!candidate || candidate.includes('\0')) return null
+  if (candidate.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(candidate)) return null
+  const resolved = path.resolve(WORKDIR, candidate)
+  const root = WORKDIR.endsWith(path.sep) ? WORKDIR : WORKDIR + path.sep
+  if (resolved !== WORKDIR && !resolved.startsWith(root)) return null
+  return resolved
+}
+
+const ACTION_TAG = /<(read|write|list|bash|done)((?:\s+[a-z]+="[^"]*")*)\s*(?:\/>|>([\s\S]*?)<\/\1>)/g
+const attrOf = (raw, name) => (raw.match(new RegExp(`${name}="([^"]*)"`)) ?? [, ''])[1]
+
+function parseActions(reply) {
+  const out = []
+  ACTION_TAG.lastIndex = 0
+  for (const m of reply.matchAll(ACTION_TAG)) {
+    const [, kind, rawAttrs, body = ''] = m
+    if (kind === 'read') out.push({ kind, path: attrOf(rawAttrs, 'path') })
+    else if (kind === 'list') out.push({ kind, path: attrOf(rawAttrs, 'path') || '.' })
+    else if (kind === 'write') out.push({ kind, path: attrOf(rawAttrs, 'path'), content: body })
+    else if (kind === 'bash') out.push({ kind, command: body.trim() })
+    else if (kind === 'done') out.push({ kind, summary: body.trim() })
+  }
+  return out.filter((a) => (a.path === undefined ? true : a.path !== ''))
+}
+
+const clamp = (t) => (t.length <= MAX_TOOL_OUTPUT ? t : `${t.slice(0, MAX_TOOL_OUTPUT)}\n…[truncated ${t.length - MAX_TOOL_OUTPUT} more characters]`)
+
+/** Run one action and return what the model should see next. Every failure
+ *  becomes TEXT, never a throw: a refused path or a failing command is
+ *  information the agent should react to, not a reason to fail the task. */
+async function runAction(a) {
+  if (a.kind === 'done') return null
+  if (a.kind === 'bash' && !ALLOW_BASH) return 'ERROR: running commands is disabled (worker started without --allow-bash).'
+  if (a.kind === 'bash') {
+    try {
+      const { stdout, stderr } = await execFileAsync('/bin/sh', ['-c', a.command], {
+        cwd: WORKDIR,
+        timeout: 120_000,
+        maxBuffer: 4 * 1024 * 1024,
+      })
+      return clamp(`$ ${a.command}\n${stdout}${stderr ? `\n[stderr]\n${stderr}` : ''}` || '(no output)')
+    } catch (e) {
+      // A non-zero exit is a normal result for a test run — hand back the
+      // output so the agent can fix what failed.
+      return clamp(`$ ${a.command}\n[exit ${e.code ?? '?'}]\n${e.stdout ?? ''}${e.stderr ?? ''}` || String(e))
+    }
+  }
+
+  const target = confinePath(a.path)
+  if (!target) return `ERROR: "${a.path}" is outside the working directory. All paths are relative to it.`
+  try {
+    if (a.kind === 'list') {
+      const entries = await fs.readdir(target, { withFileTypes: true })
+      return clamp(entries.map((e) => (e.isDirectory() ? `${e.name}/` : e.name)).join('\n') || '(empty)')
+    }
+    if (a.kind === 'read') return clamp(await fs.readFile(target, 'utf8'))
+    if (a.kind === 'write') {
+      await fs.mkdir(path.dirname(target), { recursive: true })
+      await fs.writeFile(target, a.content, 'utf8')
+      return `wrote ${a.path} (${a.content.length} chars)`
+    }
+  } catch (e) {
+    return `ERROR: ${e instanceof Error ? e.message : String(e)}`
+  }
+  return null
+}
+
+function agentSystemPrompt() {
+  return [
+    'You are an autonomous worker agent on the Handsel labor market, working on real source code.',
+    'You have a working directory. All paths are relative to it. You cannot read or write outside it.',
+    '',
+    'Act by emitting these tags. You may emit several per reply; results come back before your next turn.',
+    '  <list path="src"/>            — list a directory',
+    '  <read path="src/a.ts"/>       — read a file',
+    '  <write path="src/a.ts">FULL NEW CONTENTS</write>',
+    ...(ALLOW_BASH ? ['  <bash>npm test</bash>            — run a command in the working directory'] : []),
+    '  <done>what you changed and why</done>',
+    '',
+    'Rules:',
+    '- Read before you write. Never write a file you have not read, unless you are creating it.',
+    '- <write> replaces the ENTIRE file. Emit the complete new contents, not a diff or a fragment.',
+    ...(ALLOW_BASH ? [] : ['- Running commands is disabled for this task. Do not emit <bash>.']),
+    '- When the work is finished, emit <done> with a short summary. That summary is your submission.',
+    `- You have at most ${MAX_AGENT_STEPS} turns. Spend them on the task, not on exploring.`,
+  ].join('\n')
+}
 
 const SYSTEM_PROMPT =
   'You are an autonomous worker agent on the Handsel labor market. ' +
@@ -122,7 +267,10 @@ function finishOutput(content, thinking) {
   return thinking.trim()
 }
 
-async function askLocalModel(task) {
+/** One model turn. `messages` is the full conversation, so the agent loop
+ *  can carry tool results forward; the single-shot path passes the same two
+ *  messages it always did. */
+async function askModel(messages) {
   const tick = progressTicker()
   let content = ''
   let thinking = ''
@@ -134,10 +282,7 @@ async function askLocalModel(task) {
       body: JSON.stringify({
         model: MODEL,
         stream: true,
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: task },
-        ],
+        messages,
       }),
     })
     if (!res.ok) throw new Error(`local model responded ${res.status}: ${(await res.text()).slice(0, 300)}`)
@@ -163,10 +308,7 @@ async function askLocalModel(task) {
     body: JSON.stringify({
       model: MODEL,
       stream: true,
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: task },
-      ],
+      messages,
     }),
   })
   if (!res.ok) throw new Error(`Ollama responded ${res.status}: ${(await res.text()).slice(0, 300)} — is Ollama running? (ollama serve / ollama pull ${MODEL})`)
@@ -209,6 +351,69 @@ function event(taskId, type, success, detail = {}) {
   }
 }
 
+/** Single-shot: the behaviour every install had before --workdir. */
+const askLocalModel = (task) =>
+  askModel([
+    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'user', content: task },
+  ])
+
+/**
+ * Agent mode. Loop the model against real files until it says <done>, or
+ * until the step budget runs out.
+ *
+ * What gets submitted is the <done> summary — the work itself is the files
+ * the agent changed on disk, which is the point: with --allow-bash the
+ * natural last step is `git diff`, and the summary describes a change a
+ * human can actually inspect. If the budget runs out first we submit the
+ * last thing the model said rather than nothing, because a partial answer
+ * is gradeable and an empty submission is a forfeited bounty.
+ */
+async function runAgentTask(task) {
+  const messages = [
+    { role: 'system', content: agentSystemPrompt() },
+    { role: 'user', content: `Working directory: ${WORKDIR}\n\nTask:\n${task}` },
+  ]
+  let last = ''
+
+  for (let step = 0; step < MAX_AGENT_STEPS; step += 1) {
+    const reply = await askModel(messages)
+    last = reply
+    messages.push({ role: 'assistant', content: reply })
+
+    const actions = parseActions(reply)
+    const done = actions.find((a) => a.kind === 'done')
+    if (done) {
+      console.log(`\n[worker] done in ${step + 1} step(s)`)
+      return done.summary || reply
+    }
+    if (actions.length === 0) {
+      // No tags at all. Nudge once rather than looping on prose — a model
+      // that cannot speak the protocol should fail fast and submit what it
+      // said, not burn 24 turns saying it again.
+      messages.push({
+        role: 'user',
+        content: 'You emitted no action tags. Emit <list>, <read>, <write>' + (ALLOW_BASH ? ', <bash>' : '') + ' or <done>.',
+      })
+      continue
+    }
+
+    const results = []
+    for (const a of actions) {
+      const out = await runAction(a)
+      if (out !== null) {
+        const label = a.kind === 'bash' ? a.command : a.path
+        results.push(`<result for="${a.kind}" path="${label}">\n${out}\n</result>`)
+        process.stdout.write(a.kind === 'write' ? 'W' : a.kind === 'bash' ? '$' : 'r')
+      }
+    }
+    messages.push({ role: 'user', content: results.join('\n\n') })
+  }
+
+  console.log(`\n[worker] step budget (${MAX_AGENT_STEPS}) exhausted — submitting the last reply`)
+  return last
+}
+
 async function runOne(task) {
   const startedAt = Date.now()
   console.log(`\n[worker] task ${task.task_id}:`)
@@ -218,7 +423,7 @@ async function runOne(task) {
   let success = true
   let error
   try {
-    output = await askLocalModel(task.task)
+    output = WORKDIR ? await runAgentTask(task.task) : await askLocalModel(task.task)
     if (!output.trim()) {
       success = false
       error = 'local model returned empty output'
