@@ -318,6 +318,31 @@ export async function handleJobs(
           `certificate: ${origin}/proof/${stored.id}`,
       )
     }
+    case 'tool_record': {
+      // The answer this market is uniquely able to give, reachable from
+      // inside Claude/ChatGPT where the person choosing a tool already is.
+      // Read-only and account-independent — it is the same public record
+      // /directory renders, and deliberately the one tool here that tells
+      // you nothing about who hired what.
+      const { toolRecords } = await import('@/lib/tool-record-server')
+      const { describeRecord } = await import('@/lib/tool-record')
+      const records = await toolRecords().catch(() => [])
+      if (records.length === 0) {
+        return toolText(
+          id,
+          'No tool has graded work on this market yet. connect_mcp_worker brings any MCP server in as a worker, and every job it takes is graded by someone other than itself — that is what builds the record.',
+        )
+      }
+      const wanted = args.kind ? String(args.kind) : null
+      const shown = wanted ? records.filter((r) => r.kind === wanted) : records
+      if (shown.length === 0) return toolText(id, `No ${wanted} tool has graded work yet.`)
+      const lines = shown.slice(0, 30).map((r) => `• [${r.kind}] ${r.label}\n  ${describeRecord(r)}`)
+      return toolText(
+        id,
+        `How attached tools actually did on real paid jobs — graded by someone other than the worker, with the worker's own bond at risk:\n\n${lines.join('\n')}\n\n` +
+          'Sample size is next to every rate on purpose: a rate without one is a decoration, and a tool hired by a single account is listed but not ranked, because that is a record of one setup rather than evidence about the tool.',
+      )
+    }
     case 'browse_capabilities': {
       const limit = Math.max(1, Math.min(Number(args.limit ?? 15) || 15, 40))
       const { listClawhubSkills } = await import('@/lib/clawhub')

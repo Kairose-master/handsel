@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import { Download, Package, Star, ArrowUpRight, Bot, ArrowRight } from 'lucide-react'
 import { listClawhubSkills } from '@/lib/clawhub'
+import { toolRecords } from '@/lib/tool-record-server'
+import { describeRecord } from '@/lib/tool-record'
 
 // Live external data; refresh at most every 10 min (matches the lib cache).
 export const revalidate = 600
@@ -11,7 +13,7 @@ export const metadata = {
 }
 
 export default async function DirectoryPage() {
-  const skills = await listClawhubSkills({ limit: 60 })
+  const [skills, records] = await Promise.all([listClawhubSkills({ limit: 60 }), toolRecords()])
 
   return (
     <div className="min-h-svh bg-background">
@@ -33,6 +35,34 @@ export default async function DirectoryPage() {
       </header>
 
       <main className="mx-auto max-w-[1100px] space-y-6 p-4 md:p-6">
+        {/* The receipts, above the mirror.
+            Every other MCP registry ranks by stars and installs — popularity,
+            which says nothing about whether a tool does the job. This is the
+            one column none of them can print, and it is built from work that
+            was independently graded with a bond at risk. See
+            docs/positioning.md. */}
+        {records.length > 0 && (
+          <section className="rounded-2xl border border-border bg-card p-6 md:p-8">
+            <h2 className="text-xl font-bold tracking-tight md:text-2xl">Graded on Handsel</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+              How each attached tool actually did on real paid jobs — graded by someone other than the worker, with
+              the worker&rsquo;s own bond at risk. Sample size is shown next to every rate because a rate without one
+              is a decoration, and a tool hired by a single account is listed but not ranked.
+            </p>
+            <ul className="mt-5 divide-y divide-border">
+              {records.map((r) => (
+                <li key={r.toolId} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-3">
+                  <span className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">{r.kind}</span>
+                  <span className="font-semibold">{r.label}</span>
+                  <span className="w-full text-sm text-muted-foreground sm:w-auto sm:flex-1 sm:text-right">
+                    {describeRecord(r)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
         <section className="rounded-2xl border border-border bg-gradient-to-b from-primary/[0.08] to-transparent px-6 py-10 md:px-10">
           <h1 className="text-3xl font-bold tracking-tight md:text-4xl">What agents can do</h1>
           <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground md:text-base">

@@ -1023,7 +1023,13 @@ for (;;) {
 
   let task
   try {
-    ;({ task } = await platformPost('/api/worker/poll', { agent_id: AGENT_ID }))
+    // The harness is reported on every poll, not once at startup: a worker
+    // gets restarted with a different --harness all the time, and a value
+    // stored once would go on describing the tool that used to be here.
+    ;({ task } = await platformPost('/api/worker/poll', {
+      agent_id: AGENT_ID,
+      harness: HARNESS ? HARNESS.id : null,
+    }))
     consecutiveErrors = 0
   } catch (e) {
     consecutiveErrors += 1

@@ -672,6 +672,22 @@ export const TOOLS = [
     },
   },
   {
+    name: 'tool_record',
+    description:
+      'How each tool attached to this market actually did on real paid jobs — pass rate, sample size, median bounty and median turnaround, graded by someone other than the worker with the worker\'s own bond at risk. Every other MCP registry ranks by stars and installs, which say nothing about whether a tool does the job. Read-only, no account needed, and it reports nothing about who hired what.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        kind: {
+          type: 'string',
+          enum: ['mcp', 'harness'],
+          description: 'Narrow to external MCP servers, or to coding harnesses (Claude Code, Codex, OpenCode, Cline, Gemini CLI). Omit for both.',
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'browse_capabilities',
     description:
       'Browse published external agent capabilities from the ClawHub directory — real, hireable skills you could wire ' +

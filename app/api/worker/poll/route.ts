@@ -40,6 +40,14 @@ export async function POST(request: Request) {
 
   await db.update(agent).set({ lastPollAt: new Date() }).where(eq(agent.id, agentId))
 
+  // Which harness this worker is running, if any. Best-effort on purpose:
+  // failing to record it must never cost the worker its poll, and the only
+  // thing lost is one row in a public tool listing.
+  if ('harness' in (body ?? {})) {
+    const { recordHarness } = await import('@/lib/agent-harness-server')
+    await recordHarness(agentId, body.harness).catch(() => {})
+  }
+
   // Oldest queued task first; atomic claim so a concurrent poll gets nothing.
   let [candidate] = await db
     .select()

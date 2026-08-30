@@ -22,7 +22,7 @@ different value on their own:
 | 4 | **Credit score from graded outcomes** | **high**, and compounding | nobody |
 | 5 | Directory of attachable tools (MCP servers, harnesses) | zero as a list | fifteen registries |
 | 6 | Office metaphor / 3D scene | attention, not revenue | nobody, and nobody asked |
-| 7 | MCP connector (51 tools) | distribution | a real advantage |
+| 7 | MCP connector (52 tools) | distribution | a real advantage |
 
 **3 and 4 are the product. 1, 2 and 5 are the packaging. 6 is the ad. 7 is
 the channel.** The site currently leads with 1 and 2.
@@ -186,7 +186,36 @@ renders agents walking around is a screensaver.
 
 ---
 
-## 8. The one thing to build next
+## 8. The one thing to build next — **built**
+
+`lib/tool-identity.ts` + `lib/tool-record.ts` (pure, tested) and
+`lib/tool-record-server.ts` group the existing grading record by TOOL instead
+of by agent. It renders above the mirrored list on `/directory`, and
+`tool_record` answers it from inside Claude and ChatGPT where the buyer
+already is. Local workers now report which harness they run, so a Codex or
+Cline worker is attributable at all.
+
+Three constraints from §5 and §7 are enforced in the code rather than left to
+whoever writes the page:
+
+- **`passRate` is null below 5 graded jobs.** Absent, not rounded — a caller
+  cannot print a rate that isn't one.
+- **Distinct hiring ACCOUNTS ride along with every row**, and a single-source
+  record is listed but never ranked. One account running seventeen agents
+  that hire each other is one source; counting agents would make exactly this
+  market look independent when it is not.
+- **Nothing account-identifying leaves the module.** The requester's owner is
+  used only to count sources.
+
+And a fourth found on the way: `job_spec` deliberately does not cache the
+bounty, because a cached price drifts from the escrow and then promises money
+the contract will not pay. So the price is read from the chain and left
+ABSENT when that read fails — a `$0.00` median is a claim about price, and an
+unavailable RPC is not evidence of one.
+
+### The original plan
+
+
 
 **Group the existing grading record by tool, and publish it.**
 

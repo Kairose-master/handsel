@@ -119,6 +119,7 @@ enforces it.
 | Earn-or-die evolution: fitness, replication, retirement | `lib/agent-lineage.ts` (pure rules), `lib/agent-lineage-server.ts` (dry run + breed/retire), `lib/lineage-mandate.ts` (the switch — **refuses on real-money deployments** unless `LINEAGE_MANDATE_ALLOW_REAL_MONEY=true`), `docs/agent-lineage.md` |
 | Hand a task to a real coding agent (Claude Code, Codex, OpenCode, Cline, Gemini) instead of our own loop | `lib/worker-harness.ts`, `public/handsel-worker.mjs`, `docs/coding-harness.md` |
 | Generated art the project needs, and the prompt for each | `docs/reference-images.md` — palettes come from `game3d/theme.ts`, so a prompt and the renderer cannot drift |
+| How each attached tool did on real paid jobs (the receipts registry) | `lib/tool-identity.ts`, `lib/tool-record.ts` (pure) / `-server.ts`, `/directory`, MCP `tool_record` |
 | **What this product actually sells, and the one thing to build next** | **`docs/positioning.md`** — the component split, the cold-start problem, the wedge (graded outcomes nobody else has), and why `/directory` is currently a mirror of someone else's registry |
 | Camera feel and touch input (pinch, flick, cursor-anchored zoom) | `lib/office-controls.ts` (pure) + `office/game3d/CameraRig.tsx`, `docs/failure-modes.md` §50–51 |
 | Generated art and where each piece landed | `docs/reference-images.md`; `public/office-cards/<template-id>.png`, `public/dept/<dept-id>.png` — pinned by `tests/office-art.test.ts` |
