@@ -2217,6 +2217,75 @@ inventory now says deployed is not open, and that until a desk is staffed
 and a template opened, the document cannot honestly claim pull or its
 absence.
 
+## 43. Every storefront was free, because the paywall never ran
+
+**Symptom.** None. That is the entire character of this one: the endpoint
+behaved exactly as a working paid endpoint behaves, for anyone who paid, and
+also for anyone who did not.
+
+`POST /api/storefront/venture-lab/commission` with a valid `scope` and **no
+`X-PAYMENT` header at all** returns:
+
+```json
+{"status":"commissioned","token":"fgEbro9pezHAV2K7XKERdXu5", ...}
+```
+
+A full escrowed office pipeline — five agents, dependency-ordered subtasks,
+a review gate, independent grading — commissioned for nothing, with the
+escrow fronted from the prime agent's own wallet. Verified live against the
+rehearsal deployment, not inferred from reading the code.
+
+An earlier probe with an *invalid* scope was the thread to pull: it returned
+`400 {"error":"scope must be 20–4000 characters…","note":"Payment was
+received; retry with a valid scope and the SAME payer address…"}`. No
+payment had been sent. The route was asserting receipt of money nobody had
+paid, because that note is written for the real design — the x402 middleware
+settles before the handler runs — and the middleware was not running.
+
+**Root cause.** `middleware.ts` contains two halves of one paywall:
+
+1. an x402 **price map**, keyed `"POST /api/storefront/<template>/commission"`
+   for every entry in `STOREFRONT_COMMISSIONS` — generated from the same
+   constant the storefront sells from, and pinned by test so a desk can
+   never be priced below its own pipeline cost;
+2. `export const config = { matcher: [...] }`, which lists the paths Next
+   actually invokes the middleware on.
+
+The matcher listed `/api/agents/:id/report`, `/api/jobs/external` and
+`/api/market/index`. It did not list the storefront route. Next only runs
+middleware for matcher paths, so this was not "priced but bypassable" — the
+paywall never executed on that URL at all.
+
+**Why nothing surfaced it.** Both halves are correct on their own reading,
+and each has its own guard. The price map is complete, generated, and
+tested. The matcher is three plausible entries and nothing about it looks
+short. The defect exists *only in the relationship between them*, and no
+inspection of either file can see a relationship. The same shape as §33's
+release paths and §26's environment string: a rule that holds in the place
+you look and not in the place that runs.
+
+**What was containing it.** Nothing deliberate — only that every storefront
+had been `open: false` since the feature shipped (§42), and the route
+refuses a closed template before payment matters. So the money hole was
+sealed by a *different bug*. That protection ended the moment a storefront
+was opened, which happened on the rehearsal minutes before this was found,
+and was about to happen on mainnet with real Circle USDC — using a dashboard
+button added the same day specifically to make opening easy.
+
+**Fix.** The matcher covers `/api/storefront/:template/commission`.
+`lib/x402-matcher.ts` is a deliberately narrow coverage predicate — a
+pattern it cannot interpret reports NOT covered, so the guard fails loudly
+rather than quietly certifying a route as paid — and
+`tests/x402-paywall-coverage.test.ts` asserts every priced route falls
+inside the matcher, including templates added later. Verified by deleting
+the matcher entry and watching the test fail.
+
+Next requires `config.matcher` to be statically analyzable, so it cannot be
+derived from the price map at build time. The relationship is therefore
+unenforceable by construction here, and a test is the only thing that can
+hold both halves at once. That is why the test exists rather than a
+refactor.
+
 ## Invariants these fixes encode
 
 Keep these true, and this class of bug stays dead:
@@ -2389,3 +2458,16 @@ Keep these true, and this class of bug stays dead:
    sale. Any metric that reads as evidence about the outside world should be
    checked against the state of our own surface first, because the flattering
    reading and the damning one are frequently the same number (§42).
+\n44. **A price is not a paywall until something runs.** Two artifacts that
+   must agree — a price map and the matcher that decides whether the pricing
+   code executes, a rule and the path that reaches it — cannot be verified by
+   reading either one; each is correct in isolation and the defect lives in
+   the seam. Where the framework forbids deriving one from the other, a test
+   that holds both at once is not optional extra coverage, it is the only
+   possible enforcement (§43).
+45. **When a bug is contained, find out by what.** The storefront paywall was
+   harmless only because a second defect kept every storefront closed. Nothing
+   chose that, nothing recorded it, and fixing the second defect armed the
+   first — on the same day, with a button built to make it easy. Before
+   shipping the thing that removes a limit, ask what that limit was holding
+   back (§42, §43).
