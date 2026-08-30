@@ -29,7 +29,14 @@ import {
 } from 'lucide-react'
 import { getAgents } from '@/app/actions/agents'
 import { drawCredit, repayCredit, getCreditDraws } from '@/app/actions/credit'
-import { myFundableAgents, sendAgentEth, sendAgentUsdc } from '@/app/actions/agent-funding'
+import {
+  myFundableAgents,
+  sendAgentEth,
+  sendAgentUsdc,
+  myGasPool,
+  setMyGasPool,
+  disableMyGasPool,
+} from '@/app/actions/agent-funding'
 import { getTreasury, sendFromTreasury } from '@/app/actions/treasury'
 import { CLOUD_PRESETS } from '@/lib/cloud-providers'
 import {
@@ -329,6 +336,72 @@ function AgentFundingCard() {
           {msg && <p className="text-sm text-muted-foreground">{msg}</p>}
         </div>
       )}
+
+      <GasPoolRow agents={provisioned} />
+    </div>
+  )
+}
+
+/**
+ * The gas pool: one agent the account tops the others up from, automatically.
+ *
+ * Manual funding above keeps ONE agent alive. This is what keeps a desk
+ * alive with nobody watching, which is the premise of an office that runs
+ * unattended — and like the funding calls, it was reachable only from the
+ * MCP connector.
+ */
+function GasPoolRow({ agents }: { agents: { id: string; name: string }[] }) {
+  const [state, setState] = useState<Awaited<ReturnType<typeof myGasPool>> | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+
+  const load = useCallback(() => {
+    myGasPool()
+      .then(setState)
+      .catch(() => setState(null))
+  }, [])
+  useEffect(load, [load])
+
+  const choose = async (id: string) => {
+    setBusy(true)
+    setMsg(null)
+    // Selecting an agent sets the pool; the empty option turns it off.
+    const out = id ? await setMyGasPool(id) : await disableMyGasPool()
+    if ('error' in out) setMsg(out.error)
+    else load()
+    setBusy(false)
+  }
+
+  if (!state) return null
+  const sponsored = Number(state.sponsoredWei) / 1e18
+  const budget = Number(state.windowBudgetWei) / 1e18
+
+  return (
+    <div className="mt-4 border-t border-border pt-4">
+      <h4 className="text-sm font-semibold">Gas pool</h4>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Top every agent up from one wallet, automatically, so a worker never misses a job for want of gas. Bounded:
+        the pool keeps its own reserve, and the account may sponsor at most {budget.toFixed(4)} ETH per day.
+      </p>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <select
+          value={state.pool?.enabled ? state.pool.sourceAgentId : ''}
+          onChange={(e) => choose(e.target.value)}
+          disabled={busy || agents.length === 0}
+          className="h-9 rounded-md border border-border bg-background px-2 text-sm"
+        >
+          <option value="">Off</option>
+          {agents.map((a) => (
+            <option key={a.id} value={a.id}>
+              Sponsor from {a.name}
+            </option>
+          ))}
+        </select>
+        <span className="text-xs text-muted-foreground tabular-nums">
+          {sponsored.toFixed(5)} / {budget.toFixed(4)} ETH used today
+        </span>
+      </div>
+      {msg && <p className="mt-2 text-xs text-destructive">{msg}</p>}
     </div>
   )
 }

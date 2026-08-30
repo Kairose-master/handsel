@@ -74,3 +74,72 @@ export async function sendAgentUsdc(fromAgentId: string, toAgentId: string, amou
   if (amountUsd === null) return { ok: false, error: 'Amount must be a plain positive decimal, e.g. "0.25".' }
   return fundAgentUsdc(userId, fromAgentId, toAgentId, { amountUsd })
 }
+
+/**
+ * The gas pool — one agent this account sponsors everyone else's gas out of.
+ *
+ * The automatic counterpart to the manual funding above, and connector-only
+ * for the same reason everything else in this sweep was: `setGasPool` /
+ * `disableGasPool` were called from `lib/mcp/handlers/office.ts` and nowhere
+ * a person could reach. Funding by hand keeps one agent alive; the pool is
+ * what keeps a desk alive without somebody watching it, which is the whole
+ * premise of an office that runs unattended.
+ *
+ * `setGasPool`'s own comment says "Ownership of sourceAgentId is the
+ * caller's to establish" — the lib deliberately does not check it. So this
+ * checks it, explicitly, before calling. Without that, an account could
+ * nominate somebody else's agent as the wallet its gas is drained from.
+ */
+export async function myGasPool(): Promise<{
+  pool: { sourceAgentId: string; enabled: boolean } | null
+  sponsoredWei: string
+  windowBudgetWei: string
+  targetWei: string
+}> {
+  const userId = await requireUserId()
+  const { getGasPool, sponsoredInWindow, LOCAL_GAS_WINDOW_BUDGET_WEI, LOCAL_GAS_TARGET_WEI } = await import(
+    '@/lib/local-paymaster'
+  )
+  const [pool, sponsored] = await Promise.all([getGasPool(userId), sponsoredInWindow(userId).catch(() => 0n)])
+  return {
+    pool,
+    sponsoredWei: sponsored.toString(),
+    windowBudgetWei: LOCAL_GAS_WINDOW_BUDGET_WEI.toString(),
+    targetWei: LOCAL_GAS_TARGET_WEI.toString(),
+  }
+}
+
+export async function setMyGasPool(sourceAgentId: string): Promise<{ ok: true } | { error: string }> {
+  const userId = await requireUserId()
+  try {
+    // The ownership check the lib explicitly leaves to its caller. Resolved
+    // against this account's own agents, so a nominated id that is not one
+    // of ours refuses rather than silently designating a stranger's wallet.
+    const { db } = await import('@/lib/db')
+    const { agent } = await import('@/lib/db/schema')
+    const { and, eq } = await import('drizzle-orm')
+    const [owned] = await db
+      .select({ id: agent.id, addr: agent.smartAccountAddress })
+      .from(agent)
+      .where(and(eq(agent.id, sourceAgentId), eq(agent.userId, userId)))
+    if (!owned) return { error: 'That agent is not on this account.' }
+    if (!owned.addr) return { error: 'Provision that agent first — a pool with no wallet cannot sponsor anything.' }
+
+    const { setGasPool } = await import('@/lib/local-paymaster')
+    await setGasPool(userId, sourceAgentId, true)
+    return { ok: true }
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Could not set the gas pool.' }
+  }
+}
+
+export async function disableMyGasPool(): Promise<{ ok: true } | { error: string }> {
+  const userId = await requireUserId()
+  try {
+    const { disableGasPool } = await import('@/lib/local-paymaster')
+    await disableGasPool(userId)
+    return { ok: true }
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Could not disable the gas pool.' }
+  }
+}

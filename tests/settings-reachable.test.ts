@@ -77,3 +77,28 @@ describe('an owner can fund their own agent from the dashboard', () => {
     expect(funding).not.toMatch(/export async function send\w+\([^)]*userId/)
   })
 })
+
+describe('the gas pool is reachable and ownership-checked', () => {
+  // setGasPool's own comment: "Ownership of sourceAgentId is the caller's to
+  // establish" — the lib deliberately does not check. Without a check here,
+  // an account could nominate somebody else's agent as the wallet its gas is
+  // drained from.
+  it('mounts the pool control', () => {
+    expect(profile).toMatch(/<GasPoolRow\b/)
+  })
+
+  it('verifies the nominated agent belongs to the caller before setting it', () => {
+    const fn = funding.slice(funding.indexOf('export async function setMyGasPool'))
+    const body = fn.slice(0, fn.indexOf('export async function disableMyGasPool'))
+    expect(body).toContain('eq(agent.userId, userId)')
+    // and refuses rather than proceeding
+    expect(body).toContain('not on this account')
+    // the ownership lookup must come BEFORE the write
+    expect(body.indexOf('eq(agent.userId, userId)')).toBeLessThan(body.indexOf('setGasPool('))
+  })
+
+  it('can be turned off, not only on', () => {
+    expect(funding).toContain('disableMyGasPool')
+    expect(profile).toContain('disableMyGasPool')
+  })
+})
