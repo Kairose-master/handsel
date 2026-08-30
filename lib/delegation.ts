@@ -57,6 +57,12 @@ export interface DelegationSubtask {
   /** Optional Python asserts — when present the subtask flows through the
    *  existing mechanical grading path instead of LLM review. */
   testCode?: string | null
+  /** Which machine may work this step (lib/job-lane.ts). `local` reserves it
+   *  for the owner's own worker — the only runtime that can open a file, run
+   *  a test or produce a diff — so an office pipeline can contain a step
+   *  that is real work on real source rather than a description of it.
+   *  Absent means `any`, which is what every plan meant before lanes. */
+  lane?: 'local' | 'handsel'
   specHash?: string
   onchainJobId?: number
   /** Snapshot of the worker's delivered output once the job completes. */
@@ -481,7 +487,16 @@ Rules:
  *  from the LLM call so the guardrails (count bounds, bounty bounds,
  *  budget ceiling) are directly unit-testable: these checks are what
  *  stand between a misbehaving planner and real escrowed money. */
-export function parsePlannerOutput(rawText: string, budgetUsd: number): DelegationSubtask[] {
+export function parsePlannerOutput(
+  rawText: string,
+  budgetUsd: number,
+  /** Whether this account actually HAS a local worker. The local lane is
+   *  gated on it because a step planned onto a machine that is not running
+   *  never gets claimed: it sits Open with its escrow locked, which is the
+   *  §30/F1 shape this codebase already has scars from. Defaults false — a
+   *  caller that has not established the fact does not get the lane. */
+  opts: { allowLocalLane?: boolean } = {},
+): DelegationSubtask[] {
   const text = rawText.replace(/^```(?:json)?\s*|\s*```$/g, '')
 
   let parsed: unknown
@@ -501,6 +516,13 @@ export function parsePlannerOutput(rawText: string, budgetUsd: number): Delegati
     const acceptanceCriteria = String(raw?.acceptanceCriteria ?? '').trim()
     const bountyUsd = isIntegration ? 0 : Number(raw?.bountyUsd)
     const testCode = typeof raw?.testCode === 'string' && raw.testCode.trim() ? raw.testCode.trim() : null
+    // Only the two real lanes are accepted; anything else is dropped to
+    // `any`. Parsed explicitly because this function rebuilds each subtask
+    // key by key — a field the planner emits and this does not read is
+    // silently discarded, which is how a capability ends up looking wired
+    // and doing nothing.
+    const rawLane = raw?.lane === 'local' || raw?.lane === 'handsel' ? (raw.lane as 'local' | 'handsel') : null
+    const lane = rawLane === 'local' && !opts.allowLocalLane ? null : rawLane
 
     if (isIntegration) {
       // Integration subtask: platform-verified, not a paid job. Must carry
@@ -546,6 +568,7 @@ export function parsePlannerOutput(rawText: string, budgetUsd: number): Delegati
               ? ('audio' as const)
               : ('text' as const),
       testCode,
+      ...(lane ? { lane } : {}),
       ...(reviewOf ? { reviewOf } : {}),
       ...(reviewTier ? { reviewTier } : {}),
       ...(officeOnly ? { officeOnly } : {}),
@@ -634,11 +657,37 @@ export function parsePlannerOutput(rawText: string, budgetUsd: number): Delegati
 
 /** LLM-decompose `task` into subtasks. Pure planning — nothing is posted
  *  or escrowed here; the owner reviews the plan before confirming. */
+/** Appended to the planner prompt ONLY when the account has a local worker.
+ *  Describing a lane that cannot be served would invite the planner to place
+ *  steps nothing will ever claim. */
+const LOCAL_LANE_RULE =
+  '- If a subtask requires working on real source — reading files, running tests, producing a diff — add "lane": "local". ' +
+  'That reserves it for this account\'s own machine, the only runtime that can do those things. ' +
+  'Use it only when the work genuinely needs a filesystem; everything else must omit lane.'
+
 export async function planDelegation(userId: string, task: string, budgetUsd: number): Promise<DelegationSubtask[]> {
   const complete = await resolveLlm(userId)
+
+  // Does this account have a worker that could actually run a local step?
+  // A `local` runtime is the only one that can touch a filesystem. Asked
+  // once here rather than trusted from the plan: the planner must not be
+  // able to strand escrow on a machine that does not exist.
+  const { agent } = await import('@/lib/db/schema')
+  const { and, eq } = await import('drizzle-orm')
+  const localWorkers = await db
+    .select({ id: agent.id })
+    .from(agent)
+    .where(and(eq(agent.userId, userId), eq(agent.runtimeType, 'local')))
+    .catch(() => [])
+  const allowLocalLane = localWorkers.length > 0
+
   const planOnce = async (t: string, b: number): Promise<DelegationSubtask[]> => {
-    const text = await complete(PLANNER_SYSTEM, `Budget: $${b} total.\n\nClient task:\n${t}`, 8000)
-    return parsePlannerOutput(text, b)
+    const text = await complete(
+      allowLocalLane ? `${PLANNER_SYSTEM}\n${LOCAL_LANE_RULE}` : PLANNER_SYSTEM,
+      `Budget: $${b} total.\n\nClient task:\n${t}`,
+      8000,
+    )
+    return parsePlannerOutput(text, b, { allowLocalLane })
   }
   const top = await planOnce(task, budgetUsd)
   // Recursive subcontract, one level deep: any piece the planner marked is
@@ -838,6 +887,14 @@ async function postOneSubtask(
     officeOwnerId: st.reviewOf && st.officeOnly ? ownerId : null,
     splitSpec: st.splitSpec ?? null,
   })
+  // The step's lane, written before the job exists on-chain. Same ordering
+  // rule as the standalone post path: a job that is open for even a moment
+  // with no lane can be claimed by a platform agent out from under the local
+  // worker the step was planned for.
+  if (st.lane) {
+    const { setJobLane } = await import('@/lib/job-lane-server')
+    await setJobLane(specHash, st.lane)
+  }
   // Bundler rate-limits back-to-back userops (free tier) — space them.
   if (spaceOut) await new Promise((r) => setTimeout(r, 2000))
   await postJob(payerAgentId, st.bountyUsd, 0, specHash)
