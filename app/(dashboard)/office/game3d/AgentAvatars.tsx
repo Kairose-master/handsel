@@ -41,6 +41,7 @@ import type { Agent, Facing } from '../game/live-engine'
 import { useSceneStore } from './scene-store'
 import { THEMES, type OfficeTheme } from './theme'
 import { OFFICE_DEPARTMENTS } from '@/lib/office-world-data'
+import { kitFor, visorEmissive, type AvatarKit } from '@/lib/office-avatar-kit'
 
 const FACING_YAW: Record<Facing, number> = { down: 0, right: Math.PI / 2, up: Math.PI, left: -Math.PI / 2 }
 
@@ -59,6 +60,116 @@ function dampAngle(current: number, target: number, k: number): number {
 // guess: live-engine.ts's applySnapshot sets deptId to exactly one of these.
 const DEPT_ICON: Record<string, string> = { ceo: '🏢', lounge: '☕' }
 for (const d of OFFICE_DEPARTMENTS) DEPT_ICON[d.id] = d.icon
+
+/**
+ * One accessory, built from the same blocky primitives as the body.
+ *
+ * The generated character sheets tell ten figures apart by silhouette and a
+ * single prop each, never by facial detail — because at this camera a face is
+ * about four pixels. These are the shapes that survive that: a bump on the
+ * head, a slab at the chest, a bag at the hip, a bar across the back. Nothing
+ * that needs detail to be recognised, because detail at this size is noise.
+ *
+ * Which one an agent wears is decided by `lib/office-avatar-kit.ts` from its
+ * live department, so the kit is a readout of what the agent is doing rather
+ * than decoration.
+ */
+function Accessory({ kit, theme }: { kit: AvatarKit; theme: OfficeTheme }) {
+  if (kit.kind === 'none') return null
+  const tone =
+    kit.tone === 'warn'
+      ? theme.warn
+      : kit.tone === 'danger'
+        ? theme.danger
+        : kit.tone === 'ok'
+          ? theme.ok
+          : kit.tone === 'accent'
+            ? theme.accent
+            : theme.prop.frame
+  // Accessories take a little emission on the glowing theme so they read
+  // against a dark torso, and none on the flat one, for the same reason the
+  // visor does.
+  const mat = (
+    <meshStandardMaterial
+      color={tone}
+      emissive={tone}
+      emissiveIntensity={theme.glow ? 0.45 : 0}
+      roughness={0.5}
+    />
+  )
+  switch (kit.kind) {
+    case 'hardhat':
+      return (
+        <group position={[0, 0.94, 0]}>
+          <mesh castShadow>
+            <boxGeometry args={[0.32, 0.1, 0.3]} />
+            {mat}
+          </mesh>
+          <mesh castShadow position={[0, -0.05, 0.02]}>
+            <boxGeometry args={[0.36, 0.03, 0.36]} />
+            {mat}
+          </mesh>
+        </group>
+      )
+    case 'clipboard':
+      return (
+        <mesh castShadow position={[0, 0.44, 0.19]} rotation={[-0.35, 0, 0]}>
+          <boxGeometry args={[0.22, 0.28, 0.03]} />
+          {mat}
+        </mesh>
+      )
+    case 'satchel':
+      return (
+        <group>
+          <mesh castShadow position={[0.2, 0.27, 0.05]}>
+            <boxGeometry args={[0.16, 0.16, 0.1]} />
+            {mat}
+          </mesh>
+          {/* The strap is what makes it read as carried rather than stuck on. */}
+          <mesh castShadow position={[0.02, 0.48, 0.05]} rotation={[0, 0, -0.7]}>
+            <boxGeometry args={[0.05, 0.4, 0.04]} />
+            {mat}
+          </mesh>
+        </group>
+      )
+    case 'pauldron':
+      return (
+        <mesh castShadow position={[-0.26, 0.56, 0]}>
+          <boxGeometry args={[0.16, 0.1, 0.24]} />
+          {mat}
+        </mesh>
+      )
+    case 'tube':
+      return (
+        <mesh castShadow position={[0, 0.44, -0.18]} rotation={[0, 0, 0.6]}>
+          <cylinderGeometry args={[0.05, 0.05, 0.42, 8]} />
+          {mat}
+        </mesh>
+      )
+    case 'headset':
+      return (
+        <group position={[0, 0.86, 0]}>
+          <mesh castShadow>
+            <boxGeometry args={[0.32, 0.04, 0.06]} />
+            {mat}
+          </mesh>
+          <mesh castShadow position={[0.16, -0.04, 0]}>
+            <boxGeometry args={[0.06, 0.1, 0.1]} />
+            {mat}
+          </mesh>
+        </group>
+      )
+    case 'square':
+      return (
+        <mesh castShadow position={[0.24, 0.36, 0.06]} rotation={[0, 0, -0.5]}>
+          <boxGeometry args={[0.04, 0.3, 0.04]} />
+          {mat}
+        </mesh>
+      )
+    default:
+      return null
+  }
+}
 
 function AgentMesh({
   agent,
@@ -265,6 +376,22 @@ function AgentMesh({
             <boxGeometry args={[0.3, 0.12, 0.2]} />
             <meshStandardMaterial color={agent.hair} roughness={0.7} />
           </mesh>
+          {/* The visor. The sheets' single strongest identity cue, and it
+              replaces a face this geometry never had — two boxes for a head
+              read as a crate until something crosses them horizontally. Sits
+              slightly proud of the head so it is never z-fighting with it. */}
+          <mesh position={[0, 0.80, 0.135]}>
+            <boxGeometry args={[0.24, 0.075, 0.02]} />
+            <meshStandardMaterial
+              color={theme.accent}
+              emissive={theme.accent}
+              emissiveIntensity={visorEmissive(theme.glow, selected)}
+              toneMapped={!theme.glow}
+              roughness={0.3}
+            />
+          </mesh>
+          {/* What this agent is doing, worn. lib/office-avatar-kit.ts */}
+          <Accessory kit={kitFor(agent.deptId)} theme={theme} />
           {agent.rank === 'lead' && (
             <mesh position={[0, 1.1, 0]} rotation={[Math.PI / 2, 0, 0]}>
               <coneGeometry args={[0.12, 0.16, 4]} />

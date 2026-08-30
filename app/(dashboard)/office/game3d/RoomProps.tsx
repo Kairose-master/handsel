@@ -108,6 +108,56 @@ function Desk({ prop, mats, tall }: { prop: Prop; mats: Mats; tall: boolean }) {
         position={[0, h + 0.18 + MONITOR_H / 2, -d / 2 + 0.248]}
         scale={[MONITOR_W - 0.08, MONITOR_H - 0.07, 1]}
       />
+      <Chair mats={mats} z={d / 2 + 0.34} />
+    </group>
+  )
+}
+
+/**
+ * The chair nobody had drawn.
+ *
+ * Every desk in the reference sheets has one and the scene had none, which is
+ * most of why the deck read as furniture in a showroom rather than a place
+ * people work — an empty desk is a display model. Five boxes on the near side
+ * of the desk, since that is the side the isometric camera can see.
+ *
+ * Not a collidable prop: `world.ts` has no chair rows and agents already
+ * path to the desk they work at, so adding one to the grid would block the
+ * tile an agent has to stand on. It is scenery attached to the desk that owns
+ * it, which is also why it takes no `Prop` of its own.
+ */
+function Chair({ mats, z }: { mats: Mats; z: number }) {
+  const SEAT = 0.34
+  const SEAT_H = 0.36
+  return (
+    <group position={[0, 0, z]}>
+      <mesh castShadow receiveShadow geometry={BOX} material={mats.fabric} position={[0, SEAT_H, 0]} scale={[SEAT, 0.07, SEAT]} />
+      {/* Back: leaned, because a vertical slab reads as a crate. */}
+      <mesh
+        castShadow
+        geometry={BOX}
+        material={mats.fabric}
+        position={[0, SEAT_H + 0.22, SEAT / 2 - 0.03]}
+        rotation={[0.16, 0, 0]}
+        scale={[SEAT, 0.4, 0.06]}
+      />
+      <mesh castShadow geometry={CYL} material={mats.frame} position={[0, SEAT_H / 2, 0]} scale={[0.045, SEAT_H, 0.045]} />
+      {/* A star base, not four legs — the silhouette is what says "office
+          chair" rather than "dining chair" at this size. */}
+      {[0, 1, 2, 3, 4].map((i) => {
+        const a = (i / 5) * Math.PI * 2
+        return (
+          <mesh
+            key={i}
+            castShadow
+            geometry={BOX}
+            material={mats.frame}
+            position={[Math.sin(a) * 0.12, 0.04, Math.cos(a) * 0.12]}
+            rotation={[0, -a, 0]}
+            scale={[0.04, 0.05, 0.24]}
+          />
+        )
+      })}
     </group>
   )
 }

@@ -246,7 +246,17 @@ name drifts silently otherwise: someone adds a ninth template, the picker
 renders a broken image, and nothing complains.
 
 A–D and F are reference sheets: the target the real-time scene builds toward,
-not assets it loads.
+not assets it loads. What has actually been built toward them so far:
+
+| from | change |
+|---|---|
+| C/D · the visor band | every avatar has one — it replaces a face this geometry never had, and two boxes for a head read as a crate until something crosses them horizontally |
+| C/D · one accessory each | `lib/office-avatar-kit.ts` maps the agent's LIVE department to a hard hat / satchel / clipboard / pauldron / tube / headset / square, so the kit is a readout of what it is doing rather than a costume |
+| A/B · a chair at every desk | the scene had none, which is most of why the deck read as a showroom rather than a place people work |
+
+Still on the sheets and not in the scene: wall-mounted displays, doors,
+framed art, a printer, ceiling pendants, and the denser prop population the
+rooms have in A and B.
 
 ## Already built, no generation needed
 
