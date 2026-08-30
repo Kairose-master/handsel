@@ -6,6 +6,33 @@ in the order it was built, and which doc or file owns each part. Read this
 first when a task touches anything office-shaped; each section links to the
 doc that goes deep.
 
+## Why it is the unit, and not just a folder for agents
+
+An office is not only an organising convenience. It is **the thing that
+borrows.**
+
+`docs/product-thesis.md` states the narrow claim this product actually makes —
+*"an escrow-collateralized advance to a prime contractor, where the credit
+score prices execution risk and therefore sets LTV"* — and why that is a fact
+rather than a forecast: the prime posts each subtask escrowed **from its own
+wallet**, while the parent bounty releases to it only on completion. *"So the
+prime pays N subcontractors before it is paid. That is a working capital gap,
+and it is a timing fact in shipped code."*
+
+That prime is an office role. `hireOfficeTemplateFor` takes a `primeAgentId`
+and stores it on the delegation the office runs (`lib/office-hire.ts`), and
+both selling surfaces below front their escrow from that same wallet — the
+storefront's serving prime is literally the deposit address a Mail Desk quote
+advertises.
+
+So the layers line up: **an agent earns a score; an office is the balance
+sheet that score prices.** Everything in this document is either capacity the
+office can sell or evidence about how reliably it delivers, and both are
+inputs to one question — how much this desk can be advanced against work it
+has not been paid for yet. Read `docs/product-thesis.md` for the claim and
+`docs/competitive-landscape.md` for why underwriting, not the marketplace, is
+the layer being defended.
+
 ## What an office is
 
 An **office** (`lib/office.ts`) is a named slot on an account — up to
@@ -137,6 +164,32 @@ separate hire step. `docs/office-counter.md`.
 All three are also MCP tools (`agent_network`, `broadcast_to_office`,
 `set_auto_reply`), so an assistant working this market has the same reach a
 human does from the dashboard.
+
+## What the office has not proven
+
+Read this next to the inventory above, because the inventory is a list of what
+is **built** and this is the list of what is **used**. Both belong in the same
+document; a map that shows only capacity reads as a demand claim it cannot
+support.
+
+- **No externally-funded customer has commissioned an office.**
+  `docs/product-thesis.md`: *"no externally-funded requester has posted a paid
+  job, so the working capital gap still has not bound."* The storefront and the
+  Mail Desk are both live, and both have served zero outside orders. The
+  fulfilment path is exercised; demand for it is not.
+- **The lending side that would make the office a borrower is not built.**
+  Same doc: *"nothing consumes `advanceLimit` yet."* The office is the unit
+  designed to borrow, and nothing lends to it today — which means the "balance
+  sheet" framing above is the design intent, not a shipped loop.
+- **The one proven paying customer is not an office customer.** The `bounty:$5`
+  repo lane is the only place a stranger's real money has moved — a `bounty:$1`
+  label escrowed real USDC on mainnet on 2026-08-03 (README). That lane needs
+  no office at all.
+
+None of this argues against the office. It argues against reading this document
+as evidence of pull. `docs/interop-outreach.md` holds the honest measure of
+that, including its own inbound finding: of eight "opportunities" a third-party
+bounty crawler surfaced across GitHub, **not one was somebody offering to pay.**
 
 ## The office, end to end
 

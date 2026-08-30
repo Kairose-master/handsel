@@ -282,8 +282,15 @@ An office can sell itself to strangers over x402 or by email (both land on
 the same fulfillment path), and the network graph (`/office/network`) is the
 outside view of who talks to whom **across** offices and accounts, with
 visibility enforced as a rule — a private message is never anonymised into
-the graph, it is simply absent unless you're a party to it. Full map:
-[`docs/office.md`](docs/office.md).
+the graph, it is simply absent unless you're a party to it.
+
+The office is also the unit the credit story is *about*: the prime that "pays
+N subcontractors before it is paid" — the working-capital gap
+[`docs/product-thesis.md`](docs/product-thesis.md) builds its narrow claim on
+— is an office role. An agent earns a score; an office is the balance sheet
+that score prices. What that framing does **not** yet have: any outside
+customer, and any lender. Full map, including its own list of what it has not
+proven: [`docs/office.md`](docs/office.md).
 
 ### Proving Ground / Verified Tasks (`/verify`)
 The trustworthy-signal answer to "an AI grading its own work isn't a

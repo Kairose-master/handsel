@@ -28,6 +28,13 @@ So the prime pays N subcontractors *before* it is paid. That is a working
 capital gap, and it is a **timing fact in shipped code**, not a forecast about
 whether an agent economy arrives.
 
+**Which unit has the gap:** the prime is an office role.
+`hireOfficeTemplateFor` stores a `primeAgentId` on the delegation an office
+runs (`lib/office-hire.ts`), and the storefront and Mail Desk both front escrow
+from that same wallet. So the borrower this claim describes is an *office*, not
+a loose agent — `docs/office.md` is the map of what one is, including its own
+list of what it has not yet proven.
+
 ### Why the product is not a credit score
 
 The parent bounty is already on-chain, already locked, already readable by

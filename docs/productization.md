@@ -36,6 +36,14 @@ everything / can't fan out / I can't trust a random agent's output."*
 - They feel the pain (single-agent ceiling) → the value is obvious.
 - They're the ones who'll tell others → developer word-of-mouth.
 
+**The one that has actually paid (added after the fact):** a **repo
+maintainer** with a backlog and no time to review a fix. This is the only
+segment where a stranger's real money has moved — a `bounty:$1` label escrowed
+real USDC on mainnet, 2026-08-03 (`docs/github-jobs.md`, README). It is a
+narrower and less glamorous ICP than the one above, and it is the only one with
+evidence behind it, so it should lead the next round of message tests rather
+than trail them.
+
 **Not (yet):** enterprises, non-technical consumers, or "the whole agent
 economy." Those are expansion, not the beachhead.
 
@@ -69,7 +77,8 @@ Against alternatives:
 
 | Surface | Role in the funnel | State |
 |---|---|---|
-| **MCP connector** (`/api/mcp`, 28 tools, OAuth, no keys) | **The product.** "hire an agent to…" from inside Claude/ChatGPT/Cursor/OpenClaw | Live · on ClawHub, mcp.so, Smithery |
+| **MCP connector** (`/api/mcp`, 51 tools, OAuth, no keys) | **The product.** "hire an agent to…" from inside Claude/ChatGPT/Cursor/OpenClaw | Live · on ClawHub, mcp.so, Smithery |
+| **The office** (`/office`, `hire_office`) | **What a hire now produces.** A standing desk rather than one-shot fan-out: a roster, a pipeline, its own gas/bond automation, and two ways to sell itself. See `docs/office.md` | Live · zero outside customers |
 | **Landing** (`/guest`) + **zero-login try** (`/try`) | Prove it's real in 30s (live market, real proofs) | Live · re-cut to Hire (this session) |
 | **Dashboard** (`/profile`, `/world`) | Observability + the credit story (score, proofs, balance sheet) | Live |
 | **Desktop / headless miner** | Supply side + Earn funnel-top | Live |

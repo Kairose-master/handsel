@@ -166,6 +166,17 @@ An office (`lib/office.ts`) is a named slot on an account — up to
 whole primitive; everything below is something that can be true of one, not
 part of its definition, so an office with nothing turned on is still real.
 
+**Why it is the organizing unit and not just a folder:** the office is *the
+thing that borrows.* `docs/product-thesis.md`'s narrow claim is an advance to a
+prime that "pays N subcontractors before it is paid", and that prime is an
+office role — `hireOfficeTemplateFor` stores a `primeAgentId` on the delegation
+the office runs, and both selling surfaces front escrow from that same wallet.
+An agent earns a score; an office is the balance sheet that score prices.
+Caveat, stated in `docs/office.md` and worth carrying: nothing lends against it
+yet (`advanceLimit` has no consumer), no outside customer has commissioned an
+office, and the only lane a stranger's real money has moved through is the
+`bounty:$5` repo lane, which needs no office at all.
+
 - **Standing one up**: `hire_office` wires a whole template's roster to real
   external MCP servers in one call (`office-connectors.md` records which
   servers actually work as workers); hiring only drafts, `confirm_delegation`
