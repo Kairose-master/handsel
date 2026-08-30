@@ -76,7 +76,12 @@ function AgentMesh({
   const groupRef = useRef<THREE.Group>(null)
   const bodyRef = useRef<THREE.Group>(null)
   const ringRef = useRef<THREE.Mesh>(null)
+  const armLRef = useRef<THREE.Group>(null)
+  const armRRef = useRef<THREE.Group>(null)
+  const legLRef = useRef<THREE.Group>(null)
+  const legRRef = useRef<THREE.Group>(null)
   const walkRef = useRef(0)
+  const typeRef = useRef(0)
   const [hovered, setHovered] = useState(false)
   /** Current emphasis, 0..1, chasing whether this agent is selected/hovered.
    *  A ref rather than state: it is read and written every frame, and putting
@@ -92,12 +97,46 @@ function AgentMesh({
     // Turning in place used to be a hard snap between four yaw values, which
     // at walking speed reads as the avatar teleporting between facings.
     g.rotation.y = dampAngle(g.rotation.y, FACING_YAW[agent.facing], Math.min(1, 1 - Math.pow(1 - 0.22, dt * 60)))
+    // Limb poses. `walk` used to be the whole body bobbing and `type` was
+    // indistinguishable from `idle`, because there was nothing to move — the
+    // avatar was three stacked boxes. The engine has always published a real
+    // `anim` per agent; this is the first renderer that spends it.
+    const armL = armLRef.current
+    const armR = armRRef.current
+    const legL = legLRef.current
+    const legR = legRRef.current
+
     if (agent.anim === 'walk') {
       walkRef.current += dt * 10
       g.position.y = Math.abs(Math.sin(walkRef.current)) * 0.08
+      const swing = Math.sin(walkRef.current) * 0.7
+      if (armL) armL.rotation.x = swing
+      if (armR) armR.rotation.x = -swing
+      if (legL) legL.rotation.x = -swing * 0.8
+      if (legR) legR.rotation.x = swing * 0.8
     } else {
       walkRef.current = 0
       g.position.y += (0 - g.position.y) * Math.min(1, 1 - Math.pow(1 - 0.2, dt * 60))
+      if (agent.anim === 'type') {
+        // Forearms forward and alternating — read as "at a keyboard" rather
+        // than "standing very still", which is what the desks needed.
+        typeRef.current += dt * 9
+        const tap = Math.sin(typeRef.current) * 0.12
+        if (armL) armL.rotation.x = -1.15 + tap
+        if (armR) armR.rotation.x = -1.15 - tap
+      } else {
+        typeRef.current = 0
+        const settle = Math.min(1, 1 - Math.pow(1 - 0.15, dt * 60))
+        if (armL) armL.rotation.x += (0 - armL.rotation.x) * settle
+        if (armR) armR.rotation.x += (0 - armR.rotation.x) * settle
+      }
+      // Sitting bends the legs forward and drops the whole figure; standing
+      // eases both back rather than snapping, so a stand-up is a movement.
+      const seated = agent.anim === 'sit' || agent.anim === 'type'
+      const settle = Math.min(1, 1 - Math.pow(1 - 0.15, dt * 60))
+      const legTarget = seated ? -1.35 : 0
+      if (legL) legL.rotation.x += (legTarget - legL.rotation.x) * settle
+      if (legR) legR.rotation.x += (legTarget - legR.rotation.x) * settle
     }
 
     // Selection and hover are the same continuous quantity, so one damped
@@ -173,20 +212,61 @@ function AgentMesh({
         </mesh>
       ) : (
         <>
-          <mesh castShadow receiveShadow position={[0, 0.34, 0]}>
-            <boxGeometry args={[0.46, 0.5, 0.28]} />
+          {/* Torso, tapered: shoulders wider than the hips. Three equal-width
+              boxes stacked read as a stack of boxes at any distance; a
+              silhouette that changes width is what the eye resolves as a
+              body, and it costs the same draw call. */}
+          <mesh castShadow receiveShadow position={[0, 0.46, 0]}>
+            <boxGeometry args={[0.44, 0.26, 0.26]} />
             <meshStandardMaterial color={agent.shirt} emissive={agent.shirt} emissiveIntensity={theme.glow ? 0.35 : 0} roughness={0.5} />
           </mesh>
-          <mesh castShadow position={[0, 0.68, 0]}>
-            <boxGeometry args={[0.32, 0.3, 0.3]} />
+          <mesh castShadow receiveShadow position={[0, 0.26, 0]}>
+            <boxGeometry args={[0.32, 0.22, 0.22]} />
+            <meshStandardMaterial color={agent.shirt} emissive={agent.shirt} emissiveIntensity={theme.glow ? 0.28 : 0} roughness={0.55} />
+          </mesh>
+          {/* Arms and legs. They are what carry the animation: without limbs
+              `walk` was a whole body bobbing up and down, and `type` looked
+              exactly like `idle`. Refs are animated in useFrame above. */}
+          <group ref={armLRef} position={[-0.27, 0.5, 0]}>
+            <mesh castShadow position={[0, -0.11, 0]}>
+              <boxGeometry args={[0.1, 0.26, 0.13]} />
+              <meshStandardMaterial color={agent.shirt} roughness={0.6} />
+            </mesh>
+          </group>
+          <group ref={armRRef} position={[0.27, 0.5, 0]}>
+            <mesh castShadow position={[0, -0.11, 0]}>
+              <boxGeometry args={[0.1, 0.26, 0.13]} />
+              <meshStandardMaterial color={agent.shirt} roughness={0.6} />
+            </mesh>
+          </group>
+          <group ref={legLRef} position={[-0.09, 0.16, 0]}>
+            <mesh castShadow position={[0, -0.08, 0]}>
+              <boxGeometry args={[0.12, 0.18, 0.14]} />
+              <meshStandardMaterial color={agent.hair} roughness={0.75} />
+            </mesh>
+          </group>
+          <group ref={legRRef} position={[0.09, 0.16, 0]}>
+            <mesh castShadow position={[0, -0.08, 0]}>
+              <boxGeometry args={[0.12, 0.18, 0.14]} />
+              <meshStandardMaterial color={agent.hair} roughness={0.75} />
+            </mesh>
+          </group>
+          {/* Neck gap: the head used to sit flush on a same-width torso, so
+              the two merged into one block from most angles. */}
+          <mesh castShadow position={[0, 0.63, 0]}>
+            <boxGeometry args={[0.12, 0.06, 0.12]} />
+            <meshStandardMaterial color={agent.skin} roughness={0.8} />
+          </mesh>
+          <mesh castShadow position={[0, 0.78, 0]}>
+            <boxGeometry args={[0.28, 0.26, 0.26]} />
             <meshStandardMaterial color={agent.skin} roughness={0.7} />
           </mesh>
-          <mesh castShadow position={[0, 0.85, -0.06]}>
-            <boxGeometry args={[0.34, 0.14, 0.2]} />
+          <mesh castShadow position={[0, 0.93, -0.04]}>
+            <boxGeometry args={[0.3, 0.12, 0.2]} />
             <meshStandardMaterial color={agent.hair} roughness={0.7} />
           </mesh>
           {agent.rank === 'lead' && (
-            <mesh position={[0, 1.02, 0]} rotation={[Math.PI / 2, 0, 0]}>
+            <mesh position={[0, 1.1, 0]} rotation={[Math.PI / 2, 0, 0]}>
               <coneGeometry args={[0.12, 0.16, 4]} />
               <meshStandardMaterial color={theme.accent} emissive={theme.accent} emissiveIntensity={theme.glow ? 0.8 : 0} toneMapped={false} />
             </mesh>
@@ -194,8 +274,16 @@ function AgentMesh({
         </>
       )}
       </group>
+      {/* The label is anchored by its BOTTOM edge, not its centre. With
+          `center` the stack is centred on the anchor point, so it grows
+          downward into the avatar it describes — and because Html is
+          screen-space while the world zooms, at CLOSE the label came out
+          several times the size of the agent and buried it completely.
+          Dropping `center` and translating the stack (office.css's
+          .ag3d-stack) to sit fully above the point means a two-line bubble
+          grows upward, away from the body, whatever its height. */}
       {!far && (
-        <Html position={[0, 1.12, 0]} center occlude={false}>
+        <Html position={[0, 1.2, 0]} occlude={false}>
           <div className="ag3d-stack">
             {agent.speech && (
               // key={agent.speech} forces a remount (not a diff-and-patch)

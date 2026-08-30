@@ -796,7 +796,10 @@
   cursor: help;
 }
 
-.ag3d-stack { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+/* translate(-50%, -100%) bottom-anchors the stack on the R3F <Html> point:
+   horizontally centred, and entirely ABOVE it, so the label never covers the
+   avatar it belongs to no matter how tall the bubble grows. */
+.ag3d-stack { display: flex; flex-direction: column; align-items: center; gap: 4px; transform: translate(-50%, -100%); }
 .ag3d-bubble {
   display: flex;
   align-items: flex-start;
