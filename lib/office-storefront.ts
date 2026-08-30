@@ -296,6 +296,19 @@ export async function commissionStatus(token: string): Promise<CommissionStatus 
 
   const { tickDelegation, subtaskViews } = await import('@/lib/delegation')
   await tickDelegation(dlg).catch(() => undefined)
+
+  // …and start any subtask that was accepted but never dispatched. The tick
+  // above advances waves, review gates and settlement; the step that turns
+  // an accepted job into a RUNNING one lives in `fleetTick`, which is
+  // cron-only (see lib/commission-dispatch.ts). Without this, a customer on
+  // a deployment whose heartbeat is slow watches their paid order sit at
+  // "Accepted" indefinitely — money taken, nothing running, no error
+  // anywhere. Scoped to this commission, idempotent, and capped, so it is
+  // safe to hang off an untrusted poll.
+  const { absoluteUrl } = await import('@/lib/origin')
+  const { dispatchCommissionWork } = await import('@/lib/commission-dispatch')
+  await dispatchCommissionWork(dlg, absoluteUrl('/api/runtime/callback')).catch(() => 0)
+
   const [fresh] = await db.select().from(delegation).where(eq(delegation.id, row.delegation_id))
   const views = await subtaskViews(fresh ?? dlg)
 
