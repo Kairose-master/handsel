@@ -9,8 +9,130 @@ import {
   removeOpenAiKey,
 } from '@/app/actions/settings'
 import { updateDisplayName, changePassword } from '@/app/actions/account'
+import { myGithubConnection, disconnectMyGithub } from '@/app/actions/github-connection'
 import { CLOUD_PRESETS } from '@/lib/cloud-providers'
 import { useI18n } from '@/lib/i18n'
+
+/**
+ * GitHub — connect the account, and see which repos this platform can post
+ * jobs on.
+ *
+ * The OAuth flow and the App install both shipped long ago, linked from
+ * /start, from /admin/access, and from error text you only see once
+ * something has already failed. Settings — the page a person actually opens
+ * to connect an account — said nothing about GitHub, so the feature was
+ * effectively hidden from everyone who was not mid-onboarding or an admin.
+ */
+function GithubSection() {
+  const [conn, setConn] = useState<Awaited<ReturnType<typeof myGithubConnection>> | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+
+  const load = () => {
+    myGithubConnection()
+      .then(setConn)
+      .catch((e) => {
+        console.error('[settings] github read failed:', e)
+        setMsg('Could not read the GitHub connection.')
+      })
+  }
+  useEffect(load, [])
+
+  const disconnect = async () => {
+    setBusy(true)
+    setMsg(null)
+    try {
+      const res = await disconnectMyGithub()
+      if ('error' in res) setMsg(res.error)
+      else {
+        setMsg('Disconnected.')
+        load()
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-4">
+      <h2 className="text-sm font-semibold">GitHub</h2>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Connect GitHub to sign in with it and to let this platform open pull requests on repositories you choose.
+      </p>
+
+      {!conn && !msg && <p className="mt-3 text-sm text-muted-foreground">Reading…</p>}
+
+      {conn && !conn.loginEnabled && (
+        // Configuration is the operator's, not the visitor's — say which
+        // rather than showing a button that answers 503.
+        <p className="mt-3 text-sm text-muted-foreground">
+          GitHub is not configured on this deployment.
+        </p>
+      )}
+
+      {conn?.loginEnabled && (
+        <div className="mt-3 space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`text-sm ${conn.connected ? 'text-emerald-500' : 'text-muted-foreground'}`}>
+              {conn.connected ? `Connected as ${conn.login}` : 'Not connected'}
+            </span>
+            <div className="ml-auto flex gap-2">
+              <a
+                href="/api/github/oauth/start?next=/settings"
+                className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground"
+              >
+                {conn.connected ? 'Reconnect' : 'Connect GitHub'}
+              </a>
+              {conn.connected && (
+                <button
+                  onClick={disconnect}
+                  disabled={busy}
+                  className="rounded-md border border-border px-3 py-1.5 text-sm disabled:opacity-50"
+                >
+                  {busy ? '…' : 'Disconnect'}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {conn.connected && (
+            <div className="rounded-md border border-border p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs text-muted-foreground">
+                  {conn.repos.length > 0
+                    ? `${conn.repos.length} repo${conn.repos.length === 1 ? '' : 's'} this platform can post jobs on`
+                    : 'No repositories yet — the GitHub App has to be installed on the ones you want to use.'}
+                </span>
+                <a
+                  href={conn.installUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="ml-auto text-xs underline underline-offset-4"
+                >
+                  Install / manage the App
+                </a>
+              </div>
+              {conn.repos.length > 0 && (
+                <ul className="mt-2 space-y-1">
+                  {conn.repos.slice(0, 8).map((r) => (
+                    <li key={r.fullName} className="font-mono text-xs">
+                      {r.fullName}
+                      {r.private && <span className="ml-1 text-muted-foreground">(private)</span>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
+          {conn.error && <p className="text-xs text-destructive">{conn.error}</p>}
+        </div>
+      )}
+
+      {msg && <p className="mt-2 text-sm text-muted-foreground">{msg}</p>}
+    </div>
+  )
+}
 
 export default function SettingsPage() {
   const { t } = useI18n()
@@ -357,6 +479,8 @@ function AccountCard({ initialName, email }: { initialName: string; email: strin
           {pwMsg && <p className="mt-2 text-sm text-muted-foreground">{pwMsg}</p>}
         </div>
       </div>
+
+      <GithubSection />
     </div>
   )
 }
