@@ -73,6 +73,7 @@ function RoomMesh({
   return (
     <group>
       <mesh
+        receiveShadow
         position={[cx, 0, cz]}
         rotation={[-Math.PI / 2, 0, 0]}
         onPointerUp={(e) => {
@@ -84,7 +85,7 @@ function RoomMesh({
         <meshStandardMaterial map={floorTex} roughness={0.85} metalness={0.1} />
       </mesh>
       {segs.map((s, i) => (
-        <mesh key={i} position={[s.x, WALL_H / 2, s.z]}>
+        <mesh key={i} castShadow receiveShadow position={[s.x, WALL_H / 2, s.z]}>
           <boxGeometry args={[WALL_T + 0.9, WALL_H, WALL_T + 0.9]} />
           <meshStandardMaterial color={theme.wall} emissive={wallEmissive} emissiveIntensity={wallEmissiveIntensity} roughness={0.6} />
         </mesh>

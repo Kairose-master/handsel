@@ -40,6 +40,13 @@ function loadThemeId(): ThemeId {
 type SceneStore = {
   zoom: ZoomTier
   setZoom: (zoom: ZoomTier) => void
+  /** Which of the four corners the diorama is viewed from, as a quarter-turn
+   *  COUNT rather than an angle. Counting turns instead of storing radians is
+   *  what lets the camera take the short way round and keep spinning in one
+   *  direction past 360° — an angle normalised into [0, 2π) makes the third
+   *  press of the same button snap backwards through three quadrants. */
+  quarterTurns: number
+  rotate: (delta: 1 | -1) => void
   selectMode: boolean
   setSelectMode: (on: boolean | ((prev: boolean) => boolean)) => void
   themeId: ThemeId
@@ -49,6 +56,8 @@ type SceneStore = {
 export const useSceneStore = create<SceneStore>((set) => ({
   zoom: 'far',
   setZoom: (zoom) => set({ zoom }),
+  quarterTurns: 0,
+  rotate: (delta) => set((s) => ({ quarterTurns: s.quarterTurns + delta })),
   selectMode: false,
   setSelectMode: (on) => set((s) => ({ selectMode: typeof on === 'function' ? on(s.selectMode) : on })),
   themeId: loadThemeId(),
