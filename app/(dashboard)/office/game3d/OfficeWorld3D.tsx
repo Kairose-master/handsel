@@ -36,6 +36,7 @@ import type { ArtifactFlight, AgentConversation } from '@/lib/office-world-data'
 import { CameraRig } from './CameraRig'
 import { RoomMeshes } from './RoomMeshes'
 import { RoomProps } from './RoomProps'
+import { RoomDecor } from './RoomDecor'
 import { AgentAvatars } from './AgentAvatars'
 import { ArtifactFlights3D } from './ArtifactFlights3D'
 import { AgentConversations3D } from './AgentConversations3D'
@@ -358,6 +359,7 @@ export default function OfficeWorld3D({
           {theme.fog && <fog attach="fog" args={[theme.bg, theme.fog[0], theme.fog[1]]} />}
           <RoomMeshes agents={agents} onSelectRoom={handlePickRoom} />
           <RoomProps />
+          <RoomDecor />
           <AgentAvatars agents={agents} selectedId={selectedId} onSelect={handlePick} />
           <ArtifactFlights3D flights={flights} agents={agents} />
           <AgentConversations3D conversations={conversations} agents={agents} />
