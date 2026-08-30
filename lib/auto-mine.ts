@@ -203,6 +203,26 @@ export async function autoMineTick(
     ;(c.spec as { lane?: string | null }).lane = lanes.get(c.spec.specHash) ?? null
   }
 
+  // How far this worker may bid (lib/mine-scope.ts). An office's hired
+  // specialist defaults to its own account's work; a worker somebody switched
+  // on themselves keeps the whole board. Resolved per tick rather than cached
+  // so a scope change takes effect on the next sweep, not the next deploy.
+  const { effectiveMineScope } = await import('@/lib/mine-scope-server')
+  const { scope } = await effectiveMineScope(agent.id).catch(() => ({ scope: 'market' as const }))
+  // Only the `own` scope needs to know who the account's agents are, so an
+  // open-market worker pays nothing for the feature.
+  let ownAddresses: Set<string> | null = null
+  if (scope === 'own') {
+    // `agent` is the ROW here (the parameter shadows the schema table), so
+    // the table has to come in under another name.
+    const { agent: agentTbl } = await import('@/lib/db/schema')
+    const siblings = await db
+      .select({ addr: agentTbl.smartAccountAddress })
+      .from(agentTbl)
+      .where(eq(agentTbl.userId, agent.userId))
+    ownAddresses = new Set(siblings.map((a) => a.addr?.toLowerCase()).filter((a): a is string => Boolean(a)))
+  }
+
   const selected = selectMiningBlocks({
     candidates,
     myAddress,
@@ -222,6 +242,12 @@ export async function autoMineTick(
     // them and takes non-faucet (or post-grace) work instead.
     isFaucetReserved: (spec) =>
       Boolean(faucetId && spec.requesterAgentId === faucetId && faucetReservedFor(score, spec.createdAt, now)),
+    scope,
+    // Requester address, not requesterAgentId: the on-chain requester is the
+    // authority on who posted a job, and a third party's spec row carries
+    // their agent id, not ours. Lowercased on both sides — addresses are
+    // case-insensitive and the chain returns them checksummed.
+    isOwnAccountJob: ({ job }) => (ownAddresses ? ownAddresses.has(job.requester.toLowerCase()) : true),
     isReservedForOther: (spec) => {
       const reservedFor = reservedBy.get(spec.specHash)
       return Boolean(reservedFor && reservedFor !== agent.id)

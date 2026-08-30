@@ -20,6 +20,7 @@
 /** The on-chain job fields the scheduler reads (structural — the real
  *  readJobs() row has more; anything with these is accepted). */
 import { laneAcceptsRuntime, normalizeLane } from '@/lib/job-lane'
+import { scopeAllows, type MineScope } from '@/lib/mine-scope'
 
 export interface OnchainJobLike {
   id: number
@@ -77,6 +78,14 @@ export interface SelectMiningInput {
   canDeliver: (spec: JobSpecLike) => boolean
   /** Is this spec a faucet job still reserved for lower-credit newcomers? */
   isFaucetReserved: (spec: JobSpecLike) => boolean
+  /** How far from home this worker may bid (lib/mine-scope.ts). `own` keeps
+   *  it on work this account posted; `market` is the whole board. Defaults to
+   *  `market` when absent so an existing caller keeps its behaviour. */
+  scope?: MineScope
+  /** Was this job posted by an agent on the SAME account as the worker? The
+   *  caller resolves it because it needs the account's own addresses; the
+   *  scheduler only applies the rule. */
+  isOwnAccountJob?: (c: MiningCandidate) => boolean
   /** Is this spec reserved (lib/job-reservation.ts) for a DIFFERENT agent —
    *  an office template's own pipeline step, assigned to one specific hired
    *  worker at post time? Skipping it here is a courtesy (no wasted claim
@@ -112,6 +121,9 @@ export function isEligibleBlock(c: MiningCandidate, input: SelectMiningInput): b
   if (job.requester.toLowerCase() === input.myAddress) return false // no self-dealing
   if (input.isFaucetReserved(spec)) return false // newcomer grace window
   if (!laneAcceptsRuntime(normalizeLane(spec.lane), input.runtimeType)) return false // wrong machine
+  // Scope before reservation: a worker kept to its own account's work should
+  // not even be considering a stranger's job, whoever it is reserved for.
+  if (!scopeAllows(input.scope ?? 'market', input.isOwnAccountJob?.(c) ?? true)) return false
   if (input.isReservedForOther(spec)) return false // an office's job, assigned elsewhere
   if (spec.failedWorkerIds?.includes(input.agentId)) return false // already failed this lineage
   if (claimedByOther(spec, input.agentId, input.now, input.claimTtlMs)) return false // another rig has it

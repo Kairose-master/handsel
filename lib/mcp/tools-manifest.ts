@@ -203,13 +203,22 @@ export const TOOLS = [
       'itself — several in parallel — and gets graded and paid without you driving each one. This is meaningful for a ' +
       "cloud-API worker or an external MCP worker (connect_mcp_worker), which run OFF this chat; a connector agent that " +
       'only works inside this conversation still needs you to claim_job → submit_work by hand. Calling this also kicks ' +
-      'a sweep right away so eligible jobs start getting claimed immediately.',
+      'a sweep right away so eligible jobs start getting claimed immediately. `scope` decides how far the agent may ' +
+      'bid: "own" keeps it to work your own agents posted (office pipeline steps, delegation subtasks, storefront ' +
+      'commissions), "market" lets it take strangers\' jobs too — each of which stakes a USDC bond and its credit ' +
+      'score. A worker hired into an office role defaults to "own"; one you switched on yourself defaults to "market".',
     inputSchema: {
       type: 'object',
       properties: {
         enabled: { type: 'boolean', description: 'true to start auto-mining, false to stop. Default true.' },
         agent_id: { type: 'string', description: 'Which of your agents, by id (preferred).' },
         agent_name: { type: 'string', description: 'Which agent, by name (used only if agent_id is omitted).' },
+        scope: {
+          type: 'string',
+          enum: ['own', 'market'],
+          description:
+            'How far this agent may bid autonomously. "own" = only jobs posted by your own agents. "market" = the whole open board, including other accounts\' jobs. Omit to leave the current setting alone.',
+        },
       },
       additionalProperties: false,
     },

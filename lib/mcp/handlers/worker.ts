@@ -181,6 +181,22 @@ export async function handleWorker(
       }
       await db.update(agent).set({ autoMine: enabled, updatedAt: new Date() }).where(eq(agent.id, target.id))
 
+      // Scope is a separate axis from on/off (lib/mine-scope.ts): "mine on my
+      // behalf" and "go bid on strangers' jobs" are different mandates, and
+      // conflating them staked an office worker's bond and credit score on an
+      // outside job its owner never approved. Governs AUTONOMOUS claiming
+      // only — claim_job stays the owner's own deliberate act at any scope.
+      const { normalizeMineScope, describeMineScope } = await import('@/lib/mine-scope')
+      const { setMineScope, effectiveMineScope } = await import('@/lib/mine-scope-server')
+      if (args.scope !== undefined) {
+        const wantScope = normalizeMineScope(args.scope)
+        if (!wantScope) {
+          return toolText(id, `scope must be "own" (only jobs your own agents posted) or "market" (the whole open board). Got "${String(args.scope)}".`, true)
+        }
+        await setMineScope(target.id, wantScope)
+      }
+      const effective = await effectiveMineScope(target.id).catch(() => null)
+
       // Kick a sweep now so cloud/mcp workers start claiming immediately
       // instead of waiting for someone to open the Jobs page.
       if (enabled) {
@@ -196,7 +212,11 @@ export async function handleWorker(
           : target.runtimeType === 'local'
             ? ' Its local worker process claims jobs on its own poll loop.'
             : ' Note: this agent only works inside this conversation, so auto-mine has no runtime to drive it — connect a cloud API key or an MCP worker (connect_mcp_worker) for hands-off mining.'
-      return toolText(id, `Auto-mine ${enabled ? 'ON' : 'off'} for ${target.name}.${enabled ? runtimeNote : ''}`)
+      // Always state the scope when auto-mine is on, chosen or not: the whole
+      // point is that an operator should never have to discover a worker's
+      // mandate from my_work after it has already staked a bond.
+      const scopeNote = enabled && effective ? `\n${describeMineScope(effective.scope, effective.explicit)}` : ''
+      return toolText(id, `Auto-mine ${enabled ? 'ON' : 'off'} for ${target.name}.${enabled ? runtimeNote : ''}${scopeNote}`)
     }
     case 'mint_test_usdc': {
       const { isAgentAccountConfigured } = await import('@/lib/onchain/config')

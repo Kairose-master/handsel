@@ -86,6 +86,92 @@ export function reservationLapsed(
   return now - row.eligibleSince.getTime() > RESERVATION_TTL_MS
 }
 
+/**
+ * When this reservation opens to the market — or null if it already has.
+ *
+ * `reservationLapsed` answers yes/no, which is all the claim gate needs and
+ * exactly what made a reported confusion unanswerable: a job refused as
+ * "reserved for a different hired worker" was claimed hours later by the
+ * asker's own auto-mine worker, and nothing anywhere said the reservation had
+ * simply expired. From the outside a lapse and a permissions hole look
+ * identical. So the gate now has a companion that reports the DEADLINE, and
+ * the tools that refuse a claim quote it.
+ *
+ * Whichever clock fires first wins, mirroring reservationLapsed exactly — if
+ * the two ever disagreed, the message would be worse than none.
+ */
+export function reservationOpensAt(
+  row: { reservedAt: Date; eligibleSince: Date | null },
+  now: number,
+): number | null {
+  const hardAt = row.reservedAt.getTime() + RESERVATION_HARD_TTL_MS
+  const softAt = row.eligibleSince === null ? Infinity : row.eligibleSince.getTime() + RESERVATION_TTL_MS
+  const opensAt = Math.min(hardAt, softAt)
+  return opensAt <= now ? null : opensAt
+}
+
+/** How long until a reservation lapses, in words an operator can plan
+ *  around. Rounded coarsely on purpose — the exact second is noise, and the
+ *  claim is only ever "come back after this". */
+export function untilText(opensAt: number, now: number): string {
+  const ms = Math.max(0, opensAt - now)
+  const mins = Math.round(ms / 60_000)
+  if (mins < 1) return 'in under a minute'
+  if (mins < 90) return `in about ${mins} minute${mins === 1 ? '' : 's'}`
+  const hours = Math.round(ms / 3_600_000)
+  return `in about ${hours} hour${hours === 1 ? '' : 's'}`
+}
+
+/**
+ * The refusal an operator can act on.
+ *
+ * The old text — "it is not open to anyone else" — was true and also read as
+ * permanent, which is why the same job being auto-claimed hours later looked
+ * like a permissions hole rather than a window closing. Both facts have to be
+ * in the sentence: it is held now, and it will not be held forever.
+ */
+export function reservationHoldText(opensAt: number | null, now: number): string {
+  if (opensAt === null) {
+    return 'This job is reserved for a different hired worker (an office pipeline step). Its priority window has already lapsed, so it is claimable again — another worker just beat you to it. Try a different one.'
+  }
+  return (
+    'This job is reserved for a different hired worker (an office pipeline step) — it is not open to anyone else yet. ' +
+    `The reservation lapses ${untilText(opensAt, now)} (${new Date(opensAt).toISOString()}), after which it opens to the whole market and any qualifying worker, including an auto-mine one of yours, may claim it.`
+  )
+}
+
+/** Everything an operator needs to be told about a job's reservation: who
+ *  holds it, whether it is still in force, and when it lapses. */
+export type ReservationState = {
+  agentId: string
+  /** False once either clock has run out — the job is open to any worker. */
+  active: boolean
+  /** Epoch ms the market gets it, or null when that has already happened. */
+  opensAt: number | null
+}
+
+/** The reservation on one job, TTL and all. Null when the job was never
+ *  reserved (an ordinary open-market posting). */
+export async function reservationStateFor(specHash: string): Promise<ReservationState | null> {
+  await ensureTable()
+  const { rows } = await pool.query<{ agent_id: string; reserved_at: Date; eligible_since: Date | null }>(
+    `SELECT agent_id, reserved_at, eligible_since FROM job_reservation WHERE spec_hash = $1`,
+    [specHash],
+  )
+  const row = rows[0]
+  if (!row) return null
+  const parsed = {
+    reservedAt: new Date(row.reserved_at),
+    eligibleSince: row.eligible_since ? new Date(row.eligible_since) : null,
+  }
+  const now = Date.now()
+  return {
+    agentId: row.agent_id,
+    active: !reservationLapsed(parsed, now),
+    opensAt: reservationOpensAt(parsed, now),
+  }
+}
+
 /** Reserve a job for exactly one agent — called once, right after the spec
  *  is posted (lib/delegation.ts's postOneSubtask). A second reservation for
  *  the same specHash is a no-op: one job, one assigned worker. */

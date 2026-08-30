@@ -337,6 +337,24 @@ export async function roleIdsByAgentId(agentIds: string[], slot: number): Promis
   return result
 }
 
+/** Which of the given agents hold a TEMPLATE ROLE, in any slot.
+ *
+ *  The durable answer to "was auto-mine switched on for this agent by
+ *  hire_office, or by a person?" — hire_office is the only thing that stamps
+ *  a role_id. lib/mine-scope.ts derives a worker's default mining scope from
+ *  it, so an office's own specialists don't quietly go bid on strangers'
+ *  jobs. Slot-agnostic on purpose: a role in office 2 was hired exactly the
+ *  same way as a role in office 1. */
+export async function officeRoleAgentIds(agentIds: string[]): Promise<Set<string>> {
+  if (agentIds.length === 0) return new Set()
+  await ensureAgentOfficeSlotTable()
+  const { rows } = await pool.query<{ agent_id: string }>(
+    `SELECT agent_id FROM agent_office_slot WHERE agent_id = ANY($1) AND role_id IS NOT NULL`,
+    [agentIds],
+  )
+  return new Set(rows.map((r) => r.agent_id))
+}
+
 /** Every given agent's office slot, defaulting to 1 for any id absent from
  *  the table (never hired into a non-default office). */
 export async function officeSlotsByAgentId(agentIds: string[]): Promise<Map<string, number>> {

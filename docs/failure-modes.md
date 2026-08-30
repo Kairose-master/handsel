@@ -2286,6 +2286,106 @@ unenforceable by construction here, and a test is the only thing that can
 hold both halves at once. That is why the test exists rather than a
 refactor.
 
+## 44. `get_job` said a failed job was "done and paid"
+
+Reported from outside, against the real-money deployment, with verbatim tool
+output. Three tools disagreed about one job, and the one an operator is most
+likely to read was the wrong one:
+
+| tool | job #20 |
+|---|---|
+| `my_work` | `Completed · grading: FAILED` |
+| `get_job(20)` | `Completed (done and paid — see get_work_proof for the signed proof)` |
+| `get_work_proof(20)` | `No proof recorded … proofs are issued when a job passes grading` |
+
+Independently confirmed: the worker's USDC balance was unchanged at its seed
+$0.06, while every agent that actually passed a job carried its bounty.
+
+**Root cause.** `get_job` described a job from a static `Record<string,
+string>` keyed on the ON-CHAIN status alone. `my_work` read
+`spec.testResult.passed`. `get_job` already loaded the same `spec` row — it
+just never looked at the grading field on it.
+
+The mistake underneath is a category error. `Completed` on the LaborMarket
+means the ESCROW reached a terminal state, not that the worker was paid: a
+job that fails grading also settles, with the money going back to the
+requester. Any sentence about payment or about a work proof is a claim about
+grading, and has to consult the grading record.
+
+The second half compounded it. Proofs are only issued on a graded pass, so
+"see get_work_proof for the signed proof" on a failed job points the operator
+at a tool that cannot answer — the suggestion refutes itself.
+
+**Fix.** `lib/job-status-text.ts` — `describeJobStatus(onchainStatus,
+verdict)` returns the sentence AND a `proofExpected` flag, so no caller can
+promise a proof without having consulted the verdict. `get_job` now prints a
+`grading verdict:` line as well, and the same module covers the sibling case
+the report also found: on-chain `Submitted` with a verdict already in
+(job #31) used to read "awaiting independent grading", which is exactly wrong
+once the grader has answered.
+
+## 45. A reservation lapsing was invisible, so it looked like a permissions hole
+
+Same report. `claim_job(31)` was refused, repeatedly, with "This job is
+reserved for a different hired worker (an office pipeline step) — it is not
+open to anyone else." Hours later, with no operator action, the account's own
+auto-mine worker had claimed and submitted that same job.
+
+Two explanations fit, and from outside they are indistinguishable: either
+auto-mine bypasses a gate manual claiming respects (a permissions hole), or
+the reservation legitimately expired (missing observability).
+
+**It was the second.** `lib/job-reservation.ts` has run two clocks since §36:
+`RESERVATION_TTL_MS` (30 minutes of the assigned agent being ABLE and idle)
+and `RESERVATION_HARD_TTL_MS` (6 hours from posting, unconditional). Whichever
+fires first opens the job to the market. `claimJobSpec` is the single funnel
+every dispatch path funds a claim through, auto-mine included, so both paths
+saw the same reservation — one before it lapsed, one after.
+
+That is correct behaviour reported as a bug, which means the defect is in
+what we said, not what we did. The refusal asserted "not open to anyone
+else" — true, and reading as permanent. Nothing anywhere named the deadline,
+and nothing recorded the transition when it passed.
+
+**Fix.** `reservationOpensAt` (pure, tested to agree with `reservationLapsed`
+at every boundary) plus `reservationHoldText`. Both claim paths in
+`lib/labor-dispatch.ts` now refuse with the deadline in the sentence, and
+`get_job` shows a live `reserved:` line on an Open job — who holds it, and
+when it opens to the market.
+
+## 46. "Auto-mine on" was read as "go bid on strangers' jobs"
+
+Also from the same report, and the one with real money in it. `hire_office`
+turns `autoMine` on for every role that appears as a pipeline step, so a
+newly hired desk can work its own pipeline without the owner clicking Accept
+fourteen times. Nothing in that gesture says "and also compete on the public
+board" — but `autoMine` was a single boolean, so that is what it did. One of
+those hired specialists claimed an unrelated third party's job, staked a USDC
+bond and its credit score on it, and failed the grading. The owner approved
+none of it and was told none of it.
+
+**Fix.** Scope is now a separate axis from the on/off switch
+(`lib/mine-scope.ts`): `own` takes only work this account's agents posted
+(office steps, delegation subtasks, storefront commissions — all posted by an
+own agent, so one rule covers all three); `market` is the whole board,
+unchanged.
+
+The default is DERIVED, not stored: an agent holding a template role
+(`agent_office_slot.role_id`, which only `hire_office` stamps) defaults to
+`own`; an agent somebody switched on themselves defaults to `market`. Derived
+because the accounts already carrying this defect were hired long before any
+of this existed — a stored default would need a backfill, and would silently
+miss whatever the backfill missed. An explicit `scope` on `set_auto_mine`
+beats the derived one in both directions.
+
+Scope governs AUTONOMOUS claiming only. `claim_job` is the owner's own
+deliberate act and is not gated by it.
+
+And the reporter's third ask — some readable signal — is now in the place
+they were already looking: `my_work` marks any job whose on-chain requester is
+not one of the account's own agents as `⚠ outside job`, with a footer naming
+`scope:"own"` as the way to stop it.
+
 ## Invariants these fixes encode
 
 Keep these true, and this class of bug stays dead:
@@ -2471,3 +2571,23 @@ Keep these true, and this class of bug stays dead:
    first — on the same day, with a button built to make it easy. Before
    shipping the thing that removes a limit, ask what that limit was holding
    back (§42, §43).
+46. **A status is about one thing; do not let it answer for another.** An
+   on-chain job status says where the ESCROW got to. It never says whether the
+   work was any good — only the grading record does. Any sentence claiming
+   payment, a proof, or a verdict has to consult the record that actually
+   holds it, and two tools describing the same object must read the same
+   source (§44).
+47. **Never point at evidence that cannot exist.** A work proof is issued only
+   on a graded pass, so offering one for a failed job is self-refuting. Where
+   a suggestion depends on a precondition, carry the precondition with the
+   sentence (`proofExpected`) instead of trusting each call site to remember
+   it (§44).
+48. **A temporary refusal must say when it ends.** A gate that expires and
+   says "not open to anyone else" is indistinguishable, from outside, from a
+   gate that leaks — the same job being claimed later looks like a bypass
+   rather than a window closing. Quote the deadline in the refusal, and show
+   the hold while it is in force (§45).
+49. **Convenience is not consent.** Turning something on so a desk can do its
+   OWN work is not permission to go spend the owner's money on strangers'
+   work. When one switch would carry two mandates, split it, and derive the
+   safer default from why it was switched on (§46).

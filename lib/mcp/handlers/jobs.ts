@@ -121,18 +121,37 @@ export async function handleJobs(
       const kind = spec?.deliverableKind ?? 'text'
       const reqCaps = (spec?.requiredCapabilities ?? []) as string[]
       const trunc = (s: string | null | undefined, n: number) => (s && s.length > n ? `${s.slice(0, n)}…` : (s ?? ''))
-      const statusHint: Record<string, string> = {
-        Open: 'claimable now — claim_job to take it',
-        Accepted: 'a worker has accepted it and is working',
-        Submitted: 'submitted — awaiting independent grading / settlement',
-        Completed: 'done and paid — see get_work_proof for the signed proof',
-        Disputed: 'in dispute — being returned to the market for a different worker',
-        Refunded: 'refunded to the requester',
-        Cancelled: 'cancelled by the requester',
+      // The on-chain status alone does not say whether the work passed, so
+      // describing a job from it produced sentences that contradicted
+      // `my_work` about the same job — including "done and paid" for a job
+      // whose grading failed. The grading record is right here in `spec`;
+      // read it. (`lib/job-status-text.ts`)
+      const { describeJobStatus, verdictOf, verdictLine } = await import('@/lib/job-status-text')
+      const verdict = verdictOf(spec?.testResult)
+      const { hint } = describeJobStatus(job.status, verdict)
+
+      // Whether an Open job is actually claimable, and if not, until when.
+      // A reservation is a temporary priority window, but nothing said so:
+      // a job refused as "reserved" and then auto-claimed hours later was
+      // indistinguishable, from out here, from a gate auto-mine bypasses.
+      // The deadline is the difference, so show it before anyone has to ask.
+      let reservationNote = ''
+      if (job.status === 'Open' && spec) {
+        const { reservationStateFor, untilText } = await import('@/lib/job-reservation')
+        const st = await reservationStateFor(spec.specHash).catch(() => null)
+        if (st?.active) {
+          const mine = await db.select({ id: agent.id }).from(agent).where(eq(agent.userId, auth.userId))
+          const isOurs = mine.some((a) => a.id === st.agentId)
+          reservationNote =
+            `reserved: held for ${isOurs ? 'one of your own agents' : "another account's hired worker"}` +
+            (st.opensAt ? ` until ${new Date(st.opensAt).toISOString()} (${untilText(st.opensAt, Date.now())}), then it opens to the whole market` : '')
+        }
       }
       const lines = [
         `📋 Job #${job.id} — ${spec?.title ?? 'Untitled'}`,
-        `status: ${job.status} (${statusHint[job.status] ?? '—'})`,
+        `status: ${job.status} (${hint})`,
+        verdictLine(verdict) ?? '',
+        reservationNote,
         `bounty: $${job.bounty} · min credit score: ${job.minScore}`,
         `deliverable: ${kind}${reqCaps.length ? ` · requires [${reqCaps.join(', ')}]` : ''}`,
         `requester: ${job.requester}`,
@@ -140,7 +159,11 @@ export async function handleJobs(
         spec?.testCode ? 'grading: automated acceptance tests (objective)' : 'grading: independent grader',
         spec?.description ? `\ntask:\n${trunc(spec.description, 700)}` : '',
         spec?.acceptanceCriteria ? `\nacceptance criteria:\n${trunc(spec.acceptanceCriteria, 400)}` : '',
-        job.status === 'Open' ? '\n→ claim_job to take this for one of your agents.' : '',
+        job.status === 'Open'
+          ? reservationNote
+            ? '\n→ claim_job will be refused until that window lapses; after it does, this becomes ordinary open-market work.'
+            : '\n→ claim_job to take this for one of your agents.'
+          : '',
       ].filter(Boolean)
       return toolText(id, lines.join('\n'))
     }
@@ -240,12 +263,27 @@ export async function handleJobs(
       if (specs.length === 0) return toolText(id, 'No claimed jobs yet — browse_open_jobs → claim_job to start earning.')
       const { readJobs } = await import('@/lib/onchain/labor')
       const jobs = await readJobs().catch(() => [])
+      // Whose job was it? An auto-mine worker can take a stranger's posting,
+      // which stakes a USDC bond and its credit score on work the owner never
+      // approved — and until this marker there was nothing anywhere that said
+      // so. Compared on the on-chain requester, lowercased on both sides:
+      // addresses are case-insensitive and the chain returns them checksummed.
+      const myAddresses = new Set(
+        agents.map((a) => a.smartAccountAddress?.toLowerCase()).filter((a): a is string => Boolean(a)),
+      )
+      let outside = 0
       const lines = specs.slice(-10).map((s) => {
         const job = s.onchainJobId != null ? jobs.find((j) => j.id === s.onchainJobId) : undefined
         const grade = s.testResult ? (s.testResult.passed === true ? 'passed' : s.testResult.passed === false ? 'FAILED' : 'ungraded') : '—'
-        return `#${s.onchainJobId ?? '?'} · ${s.title.slice(0, 50)} · ${job?.status ?? '?'} · grading: ${grade} · agent: ${mine.get(s.workerAgentId!)?.name}`
+        const foreign = Boolean(job && !myAddresses.has(job.requester.toLowerCase()))
+        if (foreign) outside += 1
+        return `#${s.onchainJobId ?? '?'} · ${s.title.slice(0, 50)} · ${job?.status ?? '?'} · grading: ${grade} · agent: ${mine.get(s.workerAgentId!)?.name}${foreign ? ' · ⚠ outside job (posted by another account)' : ''}`
       })
-      return toolText(id, lines.join('\n'))
+      const outsideNote = outside
+        ? `\n\n${outside} of these ${outside === 1 ? 'is' : 'are'} an outside job — posted by another account, with your agent's bond and credit score staked on it. ` +
+          'set_auto_mine with scope:"own" keeps a worker to work your own agents posted.'
+        : ''
+      return toolText(id, lines.join('\n') + outsideNote)
     }
     case 'market_price': {
       const { observedPrices } = await import('@/lib/market-price-read')

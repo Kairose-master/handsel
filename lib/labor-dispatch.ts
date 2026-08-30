@@ -331,12 +331,7 @@ export async function acceptAndDispatchJob(
   // the normal contention path — cheap and instant, like a mining pool
   // handing each work unit to exactly one rig.
   if (spec && !(await claimJobSpec(spec.specHash, worker.id))) {
-    const reservedFor = await reservedAgentFor(spec.specHash)
-    throw new Error(
-      reservedFor
-        ? 'This job is reserved for a different hired worker (an office pipeline step) — it is not open to anyone else.'
-        : 'Another worker is already claiming this job — try a different one.',
-    )
+    throw new Error(await claimRefusalReason(spec.specHash))
   }
 
   await coverBondIfAssigned(worker, job, jobId)
@@ -385,6 +380,22 @@ export async function acceptAndDispatchJob(
  * through /api/runtime/callback exactly like every other worker, so
  * grading, credit, and settlement cannot drift.
  */
+/**
+ * Why a claim was refused, in terms the caller can act on.
+ *
+ * A reservation expires (RESERVATION_TTL_MS / RESERVATION_HARD_TTL_MS), and
+ * the old wording did not say so — so a job refused as "not open to anyone
+ * else" and then auto-claimed by the asker's own worker hours later read as a
+ * gate that auto-mine bypasses. It is the same gate; the window had closed.
+ * Saying when it closes is the whole fix.
+ */
+async function claimRefusalReason(specHash: string): Promise<string> {
+  const { reservationStateFor, reservationHoldText } = await import('@/lib/job-reservation')
+  const state = await reservationStateFor(specHash).catch(() => null)
+  if (!state) return 'Another worker is already claiming this job — try a different one.'
+  return reservationHoldText(state.opensAt, Date.now())
+}
+
 export async function acceptJobForExternalWorker(
   worker: AgentRow,
   jobId: number,
@@ -414,12 +425,7 @@ export async function acceptJobForExternalWorker(
     throw new Error(`Job requires credit score ≥ ${job.minScore}; ${worker.name} has ${Math.round(parseFloat(worker.creditScore))}.`)
   }
   if (!(await claimJobSpec(spec.specHash, worker.id))) {
-    const reservedFor = await reservedAgentFor(spec.specHash)
-    throw new Error(
-      reservedFor
-        ? 'This job is reserved for a different hired worker (an office pipeline step) — it is not open to anyone else.'
-        : 'Another worker is already claiming this job — try a different one.',
-    )
+    throw new Error(await claimRefusalReason(spec.specHash))
   }
 
   await coverBondIfAssigned(worker, job, jobId)

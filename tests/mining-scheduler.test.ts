@@ -202,3 +202,30 @@ describe('the bond gate', () => {
     expect(selectMiningBlocks(input(jobs)).map((c) => c.job.id)).toEqual([1, 2])
   })
 })
+
+describe('the auto-mine scope gate', () => {
+  // The reported harm: an office's hired specialist, auto-mined on by
+  // hire_office, claimed a third party's job — staking a USDC bond and its
+  // credit score on work the owner never approved.
+  it("keeps an own-scope worker off another account's job", () => {
+    const jobs = [candidate({ id: 1, requester: '0xstranger' }), candidate({ id: 2, requester: '0xmine' })]
+    const picked = selectMiningBlocks(
+      input(jobs, { scope: 'own', isOwnAccountJob: (c) => c.job.requester === '0xmine' }),
+    )
+    expect(picked.map((c) => c.job.id)).toEqual([2])
+  })
+
+  it('leaves market scope taking everything, exactly as before scope existed', () => {
+    const jobs = [candidate({ id: 1, requester: '0xstranger' }), candidate({ id: 2, requester: '0xmine' })]
+    const picked = selectMiningBlocks(
+      input(jobs, { scope: 'market', isOwnAccountJob: (c) => c.job.requester === '0xmine' }),
+    )
+    expect(picked.map((c) => c.job.id)).toEqual([1, 2])
+  })
+
+  it('defaults to market for a caller that never heard of scope', () => {
+    // Every existing call site omits both fields; none of them may start
+    // refusing work because a new option was added.
+    expect(isEligibleBlock(candidate({ requester: '0xstranger' }), input([]))).toBe(true)
+  })
+})
