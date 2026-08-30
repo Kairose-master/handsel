@@ -457,3 +457,86 @@ export async function saveOfficeCounter(
     return { error: error instanceof Error ? error.message : 'Could not save it.' }
   }
 }
+
+/**
+ * Storefront — open or close an office's commission desk from the dashboard.
+ *
+ * `openStorefront` shipped reachable ONLY through the MCP connector
+ * (`set_storefront` in lib/mcp/handlers/office.ts). There was no server
+ * action and no route, so an owner sitting on /office could not open their
+ * own shop: the office's one autonomous sales channel required an assistant
+ * with the connector wired up. All three templates have been `open: false`
+ * on every deployment since the feature shipped, and this is the most
+ * likely reason why — nothing about a closed storefront looks broken, it
+ * just never sold anything (docs/office.md, "What the office has not
+ * proven").
+ *
+ * The Mail Desk reads its deposit address from the serving storefront
+ * (lib/mail-desk.ts), so opening one here lights up both selling surfaces
+ * at once.
+ */
+export async function myStorefronts(slot: number): Promise<{
+  templates: { id: string; label: string; priceUsd: number; open: boolean; primeAgentId: string | null }[]
+  primes: { id: string; name: string; provisioned: boolean }[]
+}> {
+  const session = await requireUser()
+  if (!Number.isInteger(slot) || slot < 1 || slot > MAX_OFFICE_SLOTS) throw new Error('Unknown office')
+
+  const { STOREFRONT_COMMISSIONS } = await import('@/lib/storefront-pricing')
+  const { enabledStorefronts } = await import('@/lib/office-storefront')
+  const open = await enabledStorefronts()
+  const mine = new Map(open.filter((r) => r.userId === session.user.id && r.slot === slot).map((r) => [r.templateId, r]))
+
+  const { db } = await import('@/lib/db')
+  const { agent } = await import('@/lib/db/schema')
+  const { eq } = await import('drizzle-orm')
+  const all = await db
+    .select({ id: agent.id, name: agent.name, addr: agent.smartAccountAddress })
+    .from(agent)
+    .where(eq(agent.userId, session.user.id))
+  // Which office an agent sits in lives in `agent_office_slot`, not on
+  // `agent` — the same side-table pattern agent_auto_reply and
+  // office_counter use, and for the same reason (drizzle's select() names
+  // every column, so a new one on `agent` breaks every read of it from
+  // deploy until a manual migration runs).
+  const bySlot = await officeSlotsByAgentId(all.map((a) => a.id))
+  const roster = all.filter((a) => (bySlot.get(a.id) ?? 1) === slot)
+
+  return {
+    templates: STOREFRONT_COMMISSIONS.map((c) => ({
+      id: c.templateId,
+      label: c.deliverable,
+      priceUsd: c.priceUsd,
+      open: mine.has(c.templateId),
+      primeAgentId: mine.get(c.templateId)?.primeAgentId ?? null,
+    })),
+    // `provisioned` is the one precondition openStorefront enforces beyond
+    // ownership: a prime with no smart account cannot front the escrow, and
+    // the underlying call refuses it rather than opening a desk that would
+    // fail on its first order.
+    primes: roster.map((a) => ({ id: a.id, name: a.name, provisioned: Boolean(a.addr) })),
+  }
+}
+
+export async function setStorefrontOpen(
+  slot: number,
+  templateId: string,
+  primeAgentId: string | null,
+): Promise<{ ok: true } | { error: string }> {
+  const session = await requireUser()
+  if (!Number.isInteger(slot) || slot < 1 || slot > MAX_OFFICE_SLOTS) return { error: 'Unknown office' }
+  try {
+    const { openStorefront, closeStorefront } = await import('@/lib/office-storefront')
+    if (!primeAgentId) {
+      await closeStorefront(session.user.id, slot, templateId)
+      revalidatePath('/office')
+      return { ok: true }
+    }
+    const res = await openStorefront(session.user.id, slot, templateId, primeAgentId)
+    if ('error' in res) return res
+    revalidatePath('/office')
+    return { ok: true }
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Could not change the storefront.' }
+  }
+}

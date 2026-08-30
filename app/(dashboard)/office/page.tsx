@@ -40,6 +40,8 @@ import {
   type OfficeSourceView,
   myOfficeCounter,
   saveOfficeCounter,
+  myStorefronts,
+  setStorefrontOpen,
   testMcpConnector,
   newOfficeSlot,
   hireStaff,
@@ -965,6 +967,118 @@ function HireOfficeTemplateDialog({
  * separate "hire a counter" step — the first save creates the agent and
  * turns its auto-reply on; that is the "default" the feature promises.
  */
+/**
+ * Storefront — the office's commission desk, opened from here.
+ *
+ * `openStorefront` shipped reachable only through the MCP connector, so an
+ * owner on this page could not open their own shop: the office's one
+ * autonomous sales channel needed an assistant with the connector wired up.
+ * Every template has been closed on every deployment since, which is the
+ * likeliest reason the storefront has served zero outside orders — a closed
+ * desk looks exactly like an open one nobody found.
+ *
+ * The Mail Desk resolves its deposit address from the serving storefront,
+ * so opening one here also gives the email lane somewhere to point.
+ */
+function OfficeStorefrontPanel({ slot }: { slot: number }) {
+  const [view, setView] = useState<Awaited<ReturnType<typeof myStorefronts>> | null>(null)
+  const [readError, setReadError] = useState<string | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [picked, setPicked] = useState<Record<string, string>>({})
+
+  const load = useCallback(() => {
+    setReadError(null)
+    myStorefronts(slot)
+      .then(setView)
+      .catch((e) => {
+        console.error('[office] storefront read failed:', e)
+        setReadError(e instanceof Error ? e.message : 'Could not read it.')
+      })
+  }, [slot])
+
+  useEffect(load, [load])
+
+  const toggle = async (templateId: string, open: boolean) => {
+    setBusy(templateId)
+    setError(null)
+    try {
+      const primeAgentId = open ? (picked[templateId] ?? view?.primes.find((p) => p.provisioned)?.id ?? '') : null
+      if (open && !primeAgentId) {
+        setError('This office has no provisioned agent to front the escrow yet.')
+        return
+      }
+      const res = await setStorefrontOpen(slot, templateId, primeAgentId)
+      if ('error' in res) {
+        setError(res.error)
+        return
+      }
+      load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not change it.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Storefront</CardTitle>
+        <p className="text-xs text-muted-foreground">
+          Open a template for commission and anyone — human or agent — can pay for a run over x402, and the Mail Desk
+          gets a deposit address to quote. The prime you pick fronts every pipeline&apos;s escrow from its own wallet.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {readError && <p className="text-xs text-destructive">{readError}</p>}
+        {!view && !readError && <p className="text-xs text-muted-foreground">Reading…</p>}
+        {view?.primes.length === 0 && (
+          <p className="text-xs text-muted-foreground">
+            No agents in this office yet — hire a roster first, then come back.
+          </p>
+        )}
+        {view?.templates.map((t) => (
+          <div key={t.id} className="flex flex-wrap items-center gap-2 rounded-md border border-border p-2">
+            <span className="font-mono text-xs">{t.id}</span>
+            <span className="text-xs text-muted-foreground">${t.priceUsd}</span>
+            <span className={`text-xs ${t.open ? 'text-emerald-500' : 'text-muted-foreground'}`}>
+              {t.open ? 'open' : 'closed'}
+            </span>
+            <div className="ml-auto flex items-center gap-2">
+              {!t.open && (
+                <select
+                  className="rounded border border-border bg-background px-1.5 py-1 text-xs"
+                  value={picked[t.id] ?? ''}
+                  onChange={(e) => setPicked((p) => ({ ...p, [t.id]: e.target.value }))}
+                  aria-label={`Prime agent for ${t.id}`}
+                >
+                  <option value="">Prime…</option>
+                  {view.primes.map((p) => (
+                    <option key={p.id} value={p.id} disabled={!p.provisioned}>
+                      {p.name}
+                      {p.provisioned ? '' : ' (not provisioned)'}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <Button
+                size="sm"
+                variant={t.open ? 'outline' : 'default'}
+                disabled={busy === t.id}
+                onClick={() => toggle(t.id, !t.open)}
+              >
+                {busy === t.id ? '…' : t.open ? 'Close' : 'Open'}
+              </Button>
+            </div>
+          </div>
+        ))}
+        {error && <p className="text-xs text-destructive">{error}</p>}
+      </CardContent>
+    </Card>
+  )
+}
+
 function OfficeCounterPanel({ slot }: { slot: number }) {
   const [loaded, setLoaded] = useState(false)
   const [readError, setReadError] = useState<string | null>(null)
@@ -2425,6 +2539,7 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
     </Card>
     {/* Shares pollTrigger with the world above so a hire re-reads both. */}
     <OfficeRosterPanel slot={slot} refreshKey={pollTrigger} />
+    <OfficeStorefrontPanel slot={slot} />
     <OfficeCounterPanel slot={slot} />
     <OfficeSourcePanel slot={slot} />
     <OfficeAutomatonPanel slot={slot} />
