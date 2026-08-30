@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { Radio, Bot, CircleDollarSign, Gauge, Trophy, Briefcase, Zap, ArrowRight, CheckCircle2, Store, ShoppingCart, Crown } from 'lucide-react'
 import { getGuestOverview } from '@/app/actions/guest'
+import { SiteFooter } from '@/components/site-footer'
 import { getContestStandings, type ContestStandings } from '@/app/actions/contest'
 
 type Overview = Awaited<ReturnType<typeof getGuestOverview>>
@@ -238,6 +239,16 @@ export default function LivePage() {
           Live platform data — real escrow, real grading, real signatures.
         </p>
       </main>
+
+      {/* The environment disclosure and the only links to the privacy policy
+          and terms. This page — the one built to be shared with strangers —
+          had neither, on a deployment that handles real USDC. It keeps its
+          own dark chrome rather than adopting components/public-shell.tsx,
+          because the glow backdrop and ground are the point of the page; what
+          it could not keep on not having is the disclosure. */}
+      <div className="mx-auto w-full max-w-[1200px] px-4 text-white/55 md:px-8">
+        <SiteFooter realMoney={data?.realMoney ?? null} />
+      </div>
 
       <style>{`@keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}`}</style>
     </div>

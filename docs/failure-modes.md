@@ -2617,6 +2617,42 @@ times: **a thing can be complete, correct, tested, and reach nobody.** The
 test that pins a file's existence is not the test that matters; the one that
 pins its USE is.
 
+## 54. Three of four public pages had no legal links and no environment disclosure
+
+Found by running the redesign skill's audit over the public surface, not by a
+user report — which is the only reason it was found at all.
+
+`components/site-footer.tsx` carries the mainnet/testnet disclosure and the
+only links to the privacy policy and terms. Its own header says why it exists:
+*"Every credible financial interface labels its environment and its terms —
+the absence of this strip is one of the things that made the app read as a
+demo."*
+
+Exactly one of the four public pages rendered it. `/directory`, `/live` and
+`/try` had neither the disclosure nor the legal links, on a deployment that
+handles real USDC. `/live` is the page built specifically to be shared with
+strangers.
+
+The component was complete, correct, well-argued and unreachable — §42, §43
+and §53 again, this time in the layout rather than in a feature.
+
+**Fix.** `components/public-shell.tsx`: one header, one nav defined once, one
+set of named container widths, one footer. Not a style decision — it is what
+makes "every public page discloses its environment" true by construction
+rather than by remembering. `tests/public-shell.test.ts` fails the build if a
+public page renders neither the shell nor the footer.
+
+The four pages had also each grown their own header — `h-16` on two, `h-14` on
+a third, three border treatments, three navs, and three container widths
+(1100px, 1200px, `max-w-2xl`) with no rule about which meant what. `/live`
+keeps its own dark chrome deliberately: the glow backdrop is the point of that
+page, and what it could not keep on not having was the disclosure.
+
+And there was no 404. Next's default is unstyled black-on-white with no
+navigation, which is a dead end on a site whose first rung is a stranger
+following a link — and job, proof and storefront URLs are exactly the ones
+people paste around and let go stale.
+
 ## Invariants these fixes encode
 
 Keep these true, and this class of bug stays dead:
@@ -2822,6 +2858,13 @@ Keep these true, and this class of bug stays dead:
    OWN work is not permission to go spend the owner's money on strangers'
    work. When one switch would carry two mandates, split it, and derive the
    safer default from why it was switched on (§46).
+61. **Layout is a place features go missing too.** A component can be
+   complete, correct and rendered by one page out of four. When something must
+   appear everywhere, put it in the shell every page uses — "remember to add
+   the footer" is not a mechanism (§54).
+62. **A test that reads source must strip comments first.** The copy check on
+   the 404 passed on a file whose only apologetic word was a comment saying
+   not to use one — it could not have failed for the real reason (§54).
 58. **A second instruction louder than the first is a bug, not an addition.**
    Harness mode appended "nothing else you print is read" to briefs that
    already said what to submit. Before adding a global instruction, read what

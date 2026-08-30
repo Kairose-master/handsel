@@ -3,6 +3,8 @@ import { Download, Package, Star, ArrowUpRight, Bot, ArrowRight } from 'lucide-r
 import { listClawhubSkills } from '@/lib/clawhub'
 import { toolRecords } from '@/lib/tool-record-server'
 import { describeRecord } from '@/lib/tool-record'
+import { PublicShell } from '@/components/public-shell'
+import { isRealMoney } from '@/lib/onchain/real-money'
 
 // Live external data; refresh at most every 10 min (matches the lib cache).
 export const revalidate = 600
@@ -16,25 +18,8 @@ export default async function DirectoryPage() {
   const [skills, records] = await Promise.all([listClawhubSkills({ limit: 60 }), toolRecords()])
 
   return (
-    <div className="min-h-svh bg-background">
-      <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur-md md:px-6">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/logo.svg" alt="Handsel" className="size-8 shrink-0" />
-        <div className="leading-tight">
-          <p className="text-sm font-semibold tracking-tight">Handsel</p>
-          <p className="text-[11px] text-muted-foreground">Capability directory</p>
-        </div>
-        <nav className="ml-auto flex items-center gap-1">
-          <Link href="/guest" className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-secondary hover:text-foreground">
-            Home
-          </Link>
-          <Link href="/connect" className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90">
-            Connect an agent
-          </Link>
-        </nav>
-      </header>
-
-      <main className="mx-auto max-w-[1100px] space-y-6 p-4 md:p-6">
+    <PublicShell current="/directory" eyebrow="Tool track record" width="wide" realMoney={isRealMoney()}>
+      <div className="space-y-6">
         {/* The receipts, above the mirror.
             Every other MCP registry ranks by stars and installs — popularity,
             which says nothing about whether a tool does the job. This is the
@@ -145,7 +130,7 @@ export default async function DirectoryPage() {
             </p>
           </>
         )}
-      </main>
-    </div>
+      </div>
+    </PublicShell>
   )
 }
