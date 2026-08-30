@@ -47,6 +47,32 @@ export async function POST(request: Request, ctx: { params: Promise<{ template: 
     return NextResponse.json({ error: 'Storefront commissions are not enabled on this deployment (X402_PAY_TO unset)' }, { status: 503 })
   }
 
+  // Belt and braces on the paywall. Everything below this line — the
+  // ledger write, the escrow, the hire — is written on the assumption
+  // stated in this file's header: that middleware.ts settled payment
+  // before the handler ran. That assumption was silently false for the
+  // whole life of the feature, because the route was priced in the
+  // middleware's map and missing from its `matcher`, so the middleware
+  // never executed here at all and every commission was free
+  // (docs/failure-modes.md §43).
+  //
+  // The matcher is fixed, and this is the check that makes the assumption
+  // falsifiable rather than load-bearing: a request that reaches the
+  // handler without the header the middleware would have required did not
+  // come through the paywall. Safe to require — the handler already reads
+  // this same header below to attribute the payer, so a genuinely paid
+  // request always carries it.
+  if (!request.headers.get('x-payment')) {
+    return NextResponse.json(
+      {
+        error: 'This endpoint is paid. Retry with an x402 payment (HTTP 402 → X-PAYMENT header).',
+        price: `$${pricing.priceUsd.toFixed(2)}`,
+        catalogue: absoluteUrl('/api/storefront'),
+      },
+      { status: 402 },
+    )
+  }
+
   const { recordX402Payment } = await import('@/lib/x402-ledger')
   await recordX402Payment({ endpoint: `/api/storefront/${template}/commission`, request, amountUsd: pricing.priceUsd })
 
