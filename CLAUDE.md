@@ -236,7 +236,7 @@ office, and the only lane a stranger's real money has moved through is the
   a red suite got pushed under a green read. Same defect as the `tee` in
   `solana-devnet.yml` and the `bump` nothing wrote: **a check that cannot fail
   is not a check.** Never pipe a gate.
-- `npm run test` — vitest (currently 205 files, ~2,902 tests). The pure logic
+- `npm run test` — vitest (currently 207 files, ~2,912 tests). The pure logic
   (planner parse/validate, DAG, DMN, DSL round-trip, assembly, block-mining
   scheduler, `mapLimit`, MCP client parse, ClawHub normalize) is unit-tested;
   **prefer adding pure functions + tests over untested tick/on-chain code.**
@@ -249,6 +249,18 @@ office, and the only lane a stranger's real money has moved through is the
   operator/CI step, not an in-repo one.
 - **Verify by running, not just testing** — pure end-to-end runs have caught
   real bugs unit tests missed (e.g. synthesis-vs-subcontract assembly).
+- **CI installs with pnpm; `npm run gates` does not.** The committed lockfile
+  is `pnpm-lock.yaml` and `.github/workflows/ci.yml` runs
+  `pnpm install --frozen-lockfile`, whose strict symlinked tree lets a package
+  resolve only what it declares. npm hoists every transitive dependency flat,
+  so an *undeclared* import resolves locally and fails in CI — green and red
+  are then both correct readings of the same source (`docs/failure-modes.md`
+  §40). **Any change to package.json is verified against a pnpm install:**
+  `pnpm install --lockfile-only` (CI's `--frozen-lockfile` rejects a stale
+  lockfile), then `pnpm install --frozen-lockfile && pnpm exec tsc --noEmit`.
+  `tests/dependency-declarations.test.ts` catches the imported-by-name case
+  from the npm side; the implicit `@types/*` case only `tsc` on a strict tree
+  can see.
 
 ## Installed skills (`.claude/skills/`)
 

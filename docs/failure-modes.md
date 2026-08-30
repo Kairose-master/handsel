@@ -2054,6 +2054,56 @@ snake_case names and never a quoted camelCase one again, cross-checked
 against the schema's own column declarations so a future intentional rename
 fails here, with a clear reason, rather than in someone's browser.
 
+## 40. CI was red for weeks and nobody could see past the first failure
+
+**Symptom.** Every commit for weeks came back red on GitHub Actions, while
+`npm run gates` — typecheck, lint, the full vitest suite, `next build` —
+was green locally on those same commits. Neither result was wrong, which is
+why the contradiction was easy to leave alone.
+
+**Root cause.** A phantom dependency. `three` is a direct dependency;
+`@types/three` was never declared. npm hoists every transitive dependency
+flat into `node_modules/`, so `@types/three@0.185.4` sat there anyway —
+pulled in by `@react-three/drei`, `maath`, `meshline`, `postprocessing` and
+`stats-gl` — and local `tsc` resolved it. CI installs with
+`pnpm install --frozen-lockfile`, and pnpm's strict symlinked layout lets a
+package see only what it declares. The same `tsc` on the same source failed
+with six `TS7016: Could not find a declaration file for module 'three'`
+errors across the `office/game3d/` components.
+
+**What made it worse than one broken step.** The job's steps were
+fail-fast. `pnpm test:coverage` ran after `tsc`, so it had **never executed
+in CI, not once**, across every commit in that window. "CI is red" therefore
+carried no information about whether the test suite passed — the visible
+failure was hiding an unknown strictly larger than itself. This is §1's
+shape again in a different place: a check whose result you cannot read is
+not a check.
+
+**Fix.** Three parts, because the defect had three.
+
+1. `@types/three` declared in `devDependencies` and `pnpm-lock.yaml`
+   regenerated — CI uses `--frozen-lockfile`, so a package.json edit without
+   the lockfile is a second red build, not a fix.
+2. CI's three gates now each carry `if: ${{ !cancelled() }}`, so a failure
+   in one no longer suppresses the ones after it. The first run under this
+   change is the first time lint, typecheck and the full suite have all
+   reported on the same commit.
+3. `tests/dependency-declarations.test.ts` walks the tree `tsc` typechecks
+   and asserts every package imported **by name** is declared, so an
+   undeclared runtime import — the worse phantom, since that one breaks the
+   deployed app rather than just the typecheck — fails locally under npm's
+   hoisted tree exactly as it would under pnpm's strict one.
+
+**What that guard deliberately does not cover.** It would not have caught
+`@types/three`. Nothing imports that name; TypeScript resolves it implicitly
+from `import ... from 'three'`. Finding *that* class requires running `tsc`
+against a strict layout, which is CI's job — and so the honest local
+practice, now in CLAUDE.md, is that a dependency change gets verified with
+`pnpm install --frozen-lockfile && pnpm exec tsc --noEmit`, not with npm's
+tree. Every step of this fix was verified by doing exactly that: pnpm
+install, `pnpm lint` (0 errors), `pnpm exec tsc --noEmit` (exit 0),
+`pnpm test:coverage` (exit 0) and `pnpm build` (exit 0).
+
 ## Invariants these fixes encode
 
 Keep these true, and this class of bug stays dead:
@@ -2192,3 +2242,13 @@ Keep these true, and this class of bug stays dead:
    real page load did. Where a raw string is unavoidable, pin its literal
    column names against the schema's own declarations, in a test — the
    next-best guard when running the real query isn't available (§39).
+38. **A check whose result you cannot read is not a check.** Fail-fast is
+   right for a deploy and wrong for a gate suite: it turns "CI is red" into a
+   sentence about the first step only, and everything behind it goes
+   unmeasured for as long as that step stays broken. Let every gate report on
+   the same commit (§1, §40).
+39. **Two package managers are two different programs.** A tree npm hoists
+   flat and a tree pnpm links strictly do not resolve the same imports, so
+   green locally and red in CI can both be correct readings of the same
+   source. Whichever one CI runs is the one that decides — verify a
+   dependency change against *that* install, not the convenient one (§40).

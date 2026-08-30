@@ -18,6 +18,19 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm lint
-      - run: pnpm exec tsc --noEmit
-      - run: pnpm test:coverage
+
+      # Each gate runs even if an earlier one failed. Without this the job is
+      # fail-fast, and a single red step hides every step behind it: `tsc`
+      # broke on a phantom dependency and `pnpm test:coverage` then went
+      # weeks without running once, so "CI is red" said nothing about
+      # whether the tests passed. `!cancelled()` (not `always()`) so a
+      # cancelled run still stops immediately.
+      - name: Lint
+        if: ${{ !cancelled() }}
+        run: pnpm lint
+      - name: Typecheck
+        if: ${{ !cancelled() }}
+        run: pnpm exec tsc --noEmit
+      - name: Test
+        if: ${{ !cancelled() }}
+        run: pnpm test:coverage
