@@ -14,6 +14,7 @@
  * it is pure. Everything it must refuse is a way of starting work twice, or
  * of starting work that isn't this customer's.
  */
+import { readFileSync } from 'fs'
 import { describe, expect, it } from 'vitest'
 
 import { MAX_DISPATCH_PER_POLL, undispatchedAcceptedJobs } from '@/lib/commission-dispatch'
@@ -85,5 +86,23 @@ describe('undispatchedAcceptedJobs', () => {
   it('caps how much one poll can start', () => {
     expect(MAX_DISPATCH_PER_POLL).toBeGreaterThan(0)
     expect(MAX_DISPATCH_PER_POLL).toBeLessThanOrEqual(5)
+  })
+})
+
+describe('the worker lookup compares addresses the way addresses are defined', () => {
+  // An EVM address is case-insensitive: the chain hands back whatever casing
+  // it uses (often EIP-55) and the column holds whatever provisioning wrote.
+  // An exact match finds nothing, and this function's failure mode when it
+  // finds nothing is silence — indistinguishable from "no work to do". The
+  // first version of this file had exactly that bug. Invariant 18.
+  const src = readFileSync('lib/commission-dispatch.ts', 'utf8')
+
+  it('never matches smartAccountAddress case-sensitively', () => {
+    expect(src).not.toMatch(/eq\(agent\.smartAccountAddress/)
+  })
+
+  it('lowercases both sides of the comparison', () => {
+    expect(src).toContain('lower(')
+    expect(src).toContain('.toLowerCase()')
   })
 })

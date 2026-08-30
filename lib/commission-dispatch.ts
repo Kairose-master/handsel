@@ -38,7 +38,7 @@
  */
 import { db } from '@/lib/db'
 import { agent, jobSpec } from '@/lib/db/schema'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import type { delegation } from '@/lib/db/schema'
 import type { DelegationSubtask } from '@/lib/delegation'
 
@@ -97,7 +97,18 @@ export async function dispatchCommissionWork(
       // both pass it on the same subtask.
       if (!spec || spec.agentTaskId) continue
 
-      const [worker] = await db.select().from(agent).where(eq(agent.smartAccountAddress, p.worker))
+      // Case-INSENSITIVE, because an EVM address is. The chain returns
+      // whatever casing it returns (often EIP-55 checksummed) and this
+      // column stores whatever was written at provision time; an exact
+      // string match therefore finds nothing and this function silently
+      // dispatches zero jobs — the same defect invariant 18 records, with
+      // the added cruelty that its failure mode here is indistinguishable
+      // from "no work to do". auto-mine's own loop lowercases both sides;
+      // this is the same comparison, expressed in SQL.
+      const [worker] = await db
+        .select()
+        .from(agent)
+        .where(sql`lower(${agent.smartAccountAddress}) = ${p.worker.toLowerCase()}`)
       if (!worker) {
         // Accepted by an address this platform does not host. Nothing to
         // dispatch — an external worker submits through its own path.
