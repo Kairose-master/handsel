@@ -42,6 +42,7 @@ import {
   saveOfficeCounter,
   myStorefronts,
   setStorefrontOpen,
+  myCommandBar,
   testMcpConnector,
   newOfficeSlot,
   hireStaff,
@@ -82,6 +83,7 @@ const OfficeWorld3D = dynamic(() => import('./game3d/OfficeWorld3D'), { ssr: fal
 import { LiveOffice, type Agent } from './game/live-engine'
 import type { Room } from './game/world'
 import type { OfficeTreasuryView, CompanyTreasuryView, CompanyGasHealth, ArtifactFlight, AgentConversation } from '@/lib/office-world-data'
+import { agentsLabel, burnPerHour } from '@/lib/office-command-bar'
 import { OFFICE_DEPARTMENTS } from '@/lib/office-world-data'
 import { selectionSummary } from './game/select'
 import {
@@ -980,6 +982,68 @@ function HireOfficeTemplateDialog({
  * The Mail Desk resolves its deposit address from the serving storefront,
  * so opening one here also gives the email lane somewhere to point.
  */
+/**
+ * The operational headline, modelled on the reference dashboard: treasury,
+ * how much of the desk can actually work, what is running, what is waiting
+ * on a person.
+ *
+ * A metric with no honest source is NOT here. The reference also shows a
+ * success rate, an average task time, a cost per task and an office level —
+ * this codebase records none of those, and a strip of confident numbers
+ * across the top of a dashboard is the most believable place in a UI to put
+ * one that is invented. lib/office-command-bar.ts lists each omission and
+ * why.
+ */
+function OfficeCommandBar({ slot }: { slot: number }) {
+  const [view, setView] = useState<Awaited<ReturnType<typeof myCommandBar>> | null>(null)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    let dead = false
+    myCommandBar(slot)
+      .then((v) => !dead && setView(v))
+      .catch((e) => {
+        if (dead) return
+        console.error('[office] command bar read failed:', e)
+        setFailed(true)
+      })
+    return () => {
+      dead = true
+    }
+  }, [slot])
+
+  const burn = view ? burnPerHour(view.gasUsd24h) : null
+  const cells: { label: string; value: string; tone?: 'warn' }[] = view
+    ? [
+        { label: 'Treasury', value: view.treasuryUsd === null ? '—' : `$${view.treasuryUsd.toFixed(2)}` },
+        { label: 'Gas / h', value: burn === null ? '—' : `$${burn.toFixed(4)}` },
+        { label: 'Agents', value: agentsLabel(view.agents) },
+        { label: 'Running', value: String(view.runningTasks) },
+        { label: 'Delivered', value: String(view.waitingApproval) },
+        {
+          label: 'Needs you',
+          value: String(view.humanDecisions),
+          ...(view.humanDecisions > 0 ? { tone: 'warn' as const } : {}),
+        },
+      ]
+    : []
+
+  return (
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+      {failed && <p className="col-span-full text-xs text-destructive">Could not read the office metrics.</p>}
+      {!view && !failed && <p className="col-span-full text-xs text-muted-foreground">Reading…</p>}
+      {cells.map((c) => (
+        <div key={c.label} className="rounded-lg border border-border bg-card px-3 py-2">
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{c.label}</div>
+          <div className={`text-lg font-semibold tabular-nums ${c.tone === 'warn' ? 'text-amber-500' : ''}`}>
+            {c.value}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function OfficeStorefrontPanel({ slot }: { slot: number }) {
   const [view, setView] = useState<Awaited<ReturnType<typeof myStorefronts>> | null>(null)
   const [readError, setReadError] = useState<string | null>(null)
@@ -2538,6 +2602,7 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
       />
     </Card>
     {/* Shares pollTrigger with the world above so a hire re-reads both. */}
+    <OfficeCommandBar slot={slot} />
     <OfficeRosterPanel slot={slot} refreshKey={pollTrigger} />
     <OfficeStorefrontPanel slot={slot} />
     <OfficeCounterPanel slot={slot} />

@@ -540,3 +540,16 @@ export async function setStorefrontOpen(
     return { error: error instanceof Error ? error.message : 'Could not change the storefront.' }
   }
 }
+
+/**
+ * The office command bar — the operational headline an owner reads first.
+ * Every field is a live query; anything without an honest source is absent
+ * from the view rather than computed from a partial one
+ * (lib/office-command-bar.ts explains each omission).
+ */
+export async function myCommandBar(slot: number): Promise<import('@/lib/office-command-bar').CommandBarView> {
+  const session = await requireUser()
+  if (!Number.isInteger(slot) || slot < 1 || slot > MAX_OFFICE_SLOTS) throw new Error('Unknown office')
+  const { readCommandBar } = await import('@/lib/office-command-bar-server')
+  return readCommandBar(session.user.id, slot)
+}
