@@ -295,9 +295,12 @@ export default function OfficeWorld3D({
       if (e.metaKey || e.ctrlKey || e.altKey) return
       const el = document.activeElement as HTMLElement | null
       if (el && (el.isContentEditable || /^(input|textarea|select)$/i.test(el.tagName))) return
-      if (e.key === 'q' || e.key === 'Q' || e.key === 'ArrowLeft') {
+      // Q/E only. The arrows used to rotate too, but they pan now
+      // (CameraRig) — one key cannot both turn the deck and walk across it,
+      // and panning is what people reach for the arrows expecting.
+      if (e.key === 'q' || e.key === 'Q') {
         rotate(-1)
-      } else if (e.key === 'e' || e.key === 'E' || e.key === 'ArrowRight') {
+      } else if (e.key === 'e' || e.key === 'E') {
         rotate(1)
       } else {
         return
@@ -426,10 +429,10 @@ export default function OfficeWorld3D({
               [ SELECT ]
             </button>
           )}
-          <button title="Turn the deck left (Q or ←)" onClick={() => rotate(-1)}>
+          <button title="Turn the deck left (Q)" onClick={() => rotate(-1)}>
             [ ⟲ ]
           </button>
-          <button title="Turn the deck right (E or →)" onClick={() => rotate(1)}>
+          <button title="Turn the deck right (E)" onClick={() => rotate(1)}>
             [ ⟳ ]
           </button>
           <button title={`Theme: ${theme.label} — click to cycle`} onClick={cycleTheme}>
@@ -437,7 +440,7 @@ export default function OfficeWorld3D({
           </button>
         </div>
         <div className="world-hint">
-          {selectMode ? '>>> DRAG TO BOX-SELECT MULTIPLE AGENTS' : '>>> DRAG TO PAN · Q/E TO TURN · CLICK AN AGENT OR ROOM FOR DETAIL'}
+          {selectMode ? '>>> DRAG TO BOX-SELECT MULTIPLE AGENTS' : '>>> WASD / ARROWS TO MOVE · WHEEL TO ZOOM · DRAG TO PAN · Q/E TO TURN · CLICK FOR DETAIL'}
         </div>
       </div>
       <BottomTelemetryBar agents={agents} flights={flights} />

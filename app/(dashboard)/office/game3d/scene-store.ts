@@ -47,6 +47,16 @@ type SceneStore = {
    *  press of the same button snap backwards through three quadrants. */
   quarterTurns: number
   rotate: (delta: 1 | -1) => void
+  /** True once the viewer has moved the camera themselves. The rig then
+   *  stops following the busiest room and holds where they put it — an
+   *  auto-follow that keeps yanking the view back is the single most
+   *  annoying thing a diorama camera can do. A zoom-tier button clears it
+   *  and hands control back. Only the FLAG lives here; the pan offset and
+   *  zoom are refs inside CameraRig, because they change every frame and
+   *  this store's whole rule (see the header) is that per-frame state stays
+   *  out of React. */
+  manual: boolean
+  setManual: (on: boolean) => void
   selectMode: boolean
   setSelectMode: (on: boolean | ((prev: boolean) => boolean)) => void
   themeId: ThemeId
@@ -55,9 +65,11 @@ type SceneStore = {
 
 export const useSceneStore = create<SceneStore>((set) => ({
   zoom: 'far',
-  setZoom: (zoom) => set({ zoom }),
+  setZoom: (zoom) => set({ zoom, manual: false }),
   quarterTurns: 0,
   rotate: (delta) => set((s) => ({ quarterTurns: s.quarterTurns + delta })),
+  manual: false,
+  setManual: (on) => set((s) => (s.manual === on ? s : { manual: on })),
   selectMode: false,
   setSelectMode: (on) => set((s) => ({ selectMode: typeof on === 'function' ? on(s.selectMode) : on })),
   themeId: loadThemeId(),

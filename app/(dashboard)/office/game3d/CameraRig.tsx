@@ -32,11 +32,17 @@
  * `camRef`/`targetRef` already used (OfficeWorld.tsx) is simpler AND
  * provably correct — the two renderers now share the same camera
  * philosophy, just applied to a real transform instead of a CSS one.
- * Free click-and-drag panning is the one capability this trades away for
- * now; the three zoom tiers plus click-to-focus (an inspect click already
- * recenters on its target) cover real navigation without it.
+ * Free navigation is back, and hand-rolled for the same reason the rest of
+ * this is: WASD / arrows to pan, wheel to zoom, drag to pan. The HUD had
+ * been printing "DRAG TO PAN" the whole time this file said panning was
+ * traded away — a control the interface advertised and did not have.
+ *
+ * Moving the camera yourself sets `manual` (scene-store) and the rig stops
+ * following the busiest room, because an auto-follow that yanks the view
+ * back the moment you look somewhere is the most irritating thing a diorama
+ * camera can do. A zoom-tier button clears the flag and hands control back.
  */
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { CEO_ROOM, ROOMS, COLS, ROWS } from '../game/world'
@@ -72,6 +78,23 @@ const CLOSE_SPAN_TILES = 21
 
 /** Margin left around the office at FAR, as a fraction of the fit. */
 const FAR_MARGIN = 1.12
+
+/** Keys that pan. WASD and the arrows both, because half the people who
+ *  open this reach for one and half for the other. */
+const PAN_KEYS = new Set(['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'])
+/** Pan speed as a fraction of the VISIBLE world height per second. A
+ *  constant tiles-per-second reads as sluggish when zoomed out and berserk
+ *  when zoomed in; tying it to what is actually on screen makes one tap of
+ *  W move the same apparent distance at every zoom. Measured: 900 tiles/sec
+ *  at FAR crossed the whole 78x66 deck and hit the clamp in under a second. */
+const PAN_SCREENS_PER_SEC = 0.55
+/** How far past the office edge a viewer may pan before being stopped — far
+ *  enough to look at a corner from outside, not so far the deck is lost. */
+const PAN_MARGIN = 14
+const MIN_ZOOM = 4
+const MAX_ZOOM = 160
+
+const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v)
 
 // Fixed isometric elevation — the offset FROM the look-at point TO the
 // camera. Distance is arbitrary for an orthographic camera (it only picks
@@ -128,9 +151,118 @@ export function CameraRig({
   selectedId: string | null
   selectedRoomId: string | null
 }) {
-  const { camera, size } = useThree()
+  const { camera, size, gl } = useThree()
   const zoom = useSceneStore((s) => s.zoom)
   const quarterTurns = useSceneStore((s) => s.quarterTurns)
+  const manual = useSceneStore((s) => s.manual)
+  const setManual = useSceneStore((s) => s.setManual)
+
+  /** Where the viewer has moved the camera to, and how far in. Refs, not
+   *  state: these change on every frame a key is held, and this scene's rule
+   *  is that per-frame values never round-trip through React. */
+  const manualFocus = useRef(new THREE.Vector3(COLS / 2, 0, ROWS / 2))
+  const manualZoom = useRef(0)
+  const held = useRef(new Set<string>())
+  const dragging = useRef<{ x: number; y: number } | null>(null)
+
+  // Keyboard pan. Held keys rather than keypress events so movement is
+  // smooth and frame-rate paced, and ignored while typing — the office page
+  // has real text inputs and stealing "w" from a name field is a bug report.
+  useEffect(() => {
+    const typing = () => {
+      const el = document.activeElement as HTMLElement | null
+      return !!el && (el.isContentEditable || /^(input|textarea|select)$/i.test(el.tagName))
+    }
+    const down = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || typing()) return
+      const k = e.key.toLowerCase()
+      if (PAN_KEYS.has(k)) {
+        held.current.add(k)
+        e.preventDefault()
+      }
+    }
+    const up = (e: KeyboardEvent) => held.current.delete(e.key.toLowerCase())
+    const blur = () => held.current.clear()
+    window.addEventListener('keydown', down)
+    window.addEventListener('keyup', up)
+    window.addEventListener('blur', blur)
+    return () => {
+      window.removeEventListener('keydown', down)
+      window.removeEventListener('keyup', up)
+      window.removeEventListener('blur', blur)
+    }
+  }, [])
+
+  // Wheel zoom, and drag pan, on the canvas itself.
+  useEffect(() => {
+    const el = gl.domElement
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      const ortho = camera as THREE.OrthographicCamera
+      if (!manualZoom.current) manualZoom.current = ortho.zoom
+      // Exponential in the wheel delta so one notch feels the same at every
+      // depth; clamped so you cannot zoom into or out of the world entirely.
+      manualZoom.current = clamp(manualZoom.current * Math.pow(0.999, e.deltaY), MIN_ZOOM, MAX_ZOOM)
+      if (!useSceneStore.getState().manual) {
+        manualFocus.current.copy(lookAt.current)
+        setManual(true)
+      }
+    }
+    const onDown = (e: PointerEvent) => {
+      if (e.button !== 0 || useSceneStore.getState().selectMode) return
+      dragging.current = { x: e.clientX, y: e.clientY }
+    }
+    const onMove = (e: PointerEvent) => {
+      const d = dragging.current
+      if (!d) return
+      const dx = e.clientX - d.x
+      const dy = e.clientY - d.y
+      if (Math.abs(dx) + Math.abs(dy) < 2) return
+      dragging.current = { x: e.clientX, y: e.clientY }
+      startManual()
+      const ortho = camera as THREE.OrthographicCamera
+      // Screen pixels → world units at the current zoom, so the ground
+      // tracks the cursor instead of drifting at a different speed.
+      panScreen(-dx / ortho.zoom, -dy / ortho.zoom)
+    }
+    const onUp = () => {
+      dragging.current = null
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    el.addEventListener('pointerdown', onDown)
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    return () => {
+      el.removeEventListener('wheel', onWheel)
+      el.removeEventListener('pointerdown', onDown)
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gl, camera, setManual])
+
+  /** Take control at the camera's current position, so grabbing it never
+   *  jumps the view. */
+  function startManual() {
+    if (!useSceneStore.getState().manual) {
+      manualFocus.current.copy(lookAt.current)
+      manualZoom.current = (camera as THREE.OrthographicCamera).zoom
+      setManual(true)
+    }
+  }
+
+  /** Move the focus by a screen-space delta, rotated into the world by the
+   *  camera's current yaw — "up" has to mean up-the-screen at every corner,
+   *  not a fixed compass direction. */
+  function panScreen(right: number, up: number) {
+    const c = Math.cos(yaw.current)
+    const sn = Math.sin(yaw.current)
+    // Screen-right and screen-up on the ground plane for an iso camera.
+    manualFocus.current.x += right * c + up * sn
+    manualFocus.current.z += -right * sn + up * c
+    manualFocus.current.x = clamp(manualFocus.current.x, -PAN_MARGIN, COLS + PAN_MARGIN)
+    manualFocus.current.z = clamp(manualFocus.current.z, -PAN_MARGIN, ROWS + PAN_MARGIN)
+  }
   const lookAt = useRef(new THREE.Vector3(COLS / 2, 0, ROWS / 2))
   /** Live yaw, chasing `quarterTurns * 90°`. Kept unnormalised on purpose so
    *  repeated turns in one direction keep going that way. */
@@ -165,6 +297,11 @@ export function CameraRig({
     // literally moved at a different speed depending on the monitor. This
     // is the same 0.08-at-60fps feel, expressed as a time constant.
     const k = Math.min(1, 1 - Math.pow(1 - 0.08, dt * 60))
+    // Once the viewer has taken control, the tiers stop choosing where to
+    // look — the whole point of `manual` is that the camera stays put.
+    if (manual) {
+      focus = { x: manualFocus.current.x, z: manualFocus.current.z }
+    }
     lookAt.current.lerp(new THREE.Vector3(focus.x, 0, focus.z), k)
 
     // A turn is a slower move than a pan — at the pan's rate a quarter-turn
@@ -182,6 +319,21 @@ export function CameraRig({
     camera.updateMatrixWorld()
 
     const ortho = camera as THREE.OrthographicCamera
+
+    // Held-key panning, applied before the focus is used so movement lands
+    // on this frame rather than the next.
+    if (held.current.size > 0) {
+      startManual()
+      const k = held.current
+      const x = (k.has('d') || k.has('arrowright') ? 1 : 0) - (k.has('a') || k.has('arrowleft') ? 1 : 0)
+      const y = (k.has('w') || k.has('arrowup') ? 1 : 0) - (k.has('s') || k.has('arrowdown') ? 1 : 0)
+      if (x || y) {
+        // size.height / zoom is the world height currently on screen.
+        const step = PAN_SCREENS_PER_SEC * (size.height / ortho.zoom) * dt
+        panScreen(x * step, y * step)
+      }
+    }
+
     let targetZoom: number
     if (zoom === 'far') {
       const fp = measureFootprint(camera)
@@ -193,6 +345,7 @@ export function CameraRig({
       const minSide = Math.max(1, Math.min(size.width, size.height))
       targetZoom = minSide / spanTiles
     }
+    if (manual && manualZoom.current) targetZoom = manualZoom.current
     ortho.zoom += (targetZoom - ortho.zoom) * k
     ortho.updateProjectionMatrix()
   })
