@@ -2386,6 +2386,85 @@ they were already looking: `my_work` marks any job whose on-chain requester is
 not one of the account's own agents as `⚠ outside job`, with a footer naming
 `scope:"own"` as the way to stop it.
 
+## 47. A flag list does not tell you a flag's arity
+
+Found while attaching real coding harnesses to the local worker
+(`docs/coding-harness.md`). The Claude Code adapter was built by reading
+`claude --help` and passing what it named:
+
+```
+claude --print --permission-mode bypassPermissions --add-dir <workdir> <brief>
+```
+
+Every flag exists, every value is correct, and the run fails:
+
+```
+Error: Input must be provided either through stdin or as a prompt argument
+```
+
+`--add-dir <directories...>` is VARIADIC. It swallowed the brief as a second
+directory, so by the time the parser looked for a prompt there was none. The
+arity is in the angle brackets, and reading past them costs nothing until a
+worker on somebody else's machine fails every job it takes — which the
+platform records as that agent being bad at its work, not as a bad flag.
+
+`--add-dir` was also redundant: the harness's cwd is already the workdir, and
+that is the access grant that matters. So the fix is a deletion.
+
+**Two things this changes.** `VARIADIC_FLAGS` in `lib/worker-harness.ts`
+records the list-taking flags per tool, and a test asserts no adapter places
+one where a positional brief can be eaten. And the adapters are now labelled
+by *how* they were verified — `claude` end-to-end against the real binary,
+the rest against each tool's published CLI reference. Four of the five were
+built from documentation alone; saying so is more useful than implying they
+were all exercised.
+
+The general shape: this was only found by RUNNING the thing. Four adapters
+still have not been, and the docs say which.
+
+## 48. Building an agent loop we had no business maintaining
+
+Not a production incident — a standing cost, recorded because the decision to
+stop is worth keeping.
+
+`public/handsel-worker.mjs` grew its own coding agent: a text action grammar,
+a step budget, path confinement, a read/write/list/bash executor, a
+tag-parsing protocol with its own tests. All of it exists because an agent
+that can only emit prose cannot open a file or run a test, so every
+"engineering" subtask an office ran was a description of work rather than
+work.
+
+The gap was real. Filling it in here was the wrong move by roughly the size
+of the coding-agent industry. Claude Code, Codex, OpenCode, Cline, Gemini
+CLI, DeepSeek's harness are all installable, headless, BYO-model, and
+maintained full-time. Handsel's job is to find the work, hold the escrow,
+grade the result and pay — not to be a worse coding agent.
+
+**Fix.** `--harness <id>` hands the task to one of them and submits what it
+wrote. The built-in loop stays, unchanged and default-when-nothing-is-found,
+because deleting it would strand exactly the bare-Ollama owners the worker
+was written for.
+
+Two choices in that fix are load-bearing:
+
+*The deliverable comes from a FILE, not stdout.* Each of these tools has a
+different, unversioned `--json` event stream. Parsing five schemas buys
+nothing and fails silently — a shape changes, the extractor finds nothing,
+and the worker submits an empty deliverable that fails grading for a reason
+nobody can see. Every one of them can write a file. Stdout parsing survives
+only as a tolerant fallback, and the log says when it was used.
+
+*One file per task.* `--concurrency` runs several tasks in one workdir, so a
+shared filename would have two harnesses overwrite each other — and a file
+left behind by an interrupted task would be submitted to the NEXT client as
+their deliverable, which grades as plausible work and settles.
+
+And one refusal: DeepSeek Harness has no adapter. Its published entry point
+is a web UI, its headless flags are not documented at the version on npm, and
+installing it here to read `--help` timed out. `--harness dsh` therefore
+refuses and points at `--harness-cmd`, rather than shipping a guessed command
+line that fails on someone else's machine.
+
 ## Invariants these fixes encode
 
 Keep these true, and this class of bug stays dead:
@@ -2591,3 +2670,19 @@ Keep these true, and this class of bug stays dead:
    OWN work is not permission to go spend the owner's money on strangers'
    work. When one switch would carry two mandates, split it, and derive the
    safer default from why it was switched on (§46).
+50. **A flag's name is not its arity.** `--add-dir <directories...>` takes a
+   list and eats the positional that follows it. Read the angle brackets, and
+   put a test on the shape of any command line you build for someone else's
+   machine (§47).
+51. **Label how a thing was verified, not just that it was.** Four of five
+   harness adapters were built from published references and one was run.
+   Saying which is more useful to the next person than a table that implies
+   they were all exercised (§47).
+52. **Prefer the interface every implementation already has.** Five coding
+   agents have five incompatible, unversioned JSON event streams and one
+   thing in common: they can all write a file. Contract on the common thing;
+   parse the bespoke one only as a fallback that announces itself (§48).
+53. **Before building a capability, check whether it is an industry.** The
+   worker's own agent loop was a worse version of software maintained
+   full-time by other people. Attaching one of theirs is a smaller
+   maintenance surface AND a better agent (§48).

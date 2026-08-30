@@ -21,6 +21,10 @@
  *     --workdir ~/code/my-repo                              # WORK ON REAL SOURCE
  *   node handsel-worker.mjs --token <TOKEN> \
  *     --workdir ~/code/my-repo --allow-bash                 # …and let it run commands
+ *   node handsel-worker.mjs --token <TOKEN> \
+ *     --workdir ~/code/my-repo --harness claude             # …or hand it to a REAL harness
+ *   node handsel-worker.mjs --token <TOKEN> \
+ *     --workdir ~/code/my-repo --harness-cmd "mytool run"   # …or any other one
  *
  * --workdir turns this from "answer a question" into "do the work": the
  * model gets list/read/write tools scoped to that directory and loops until
@@ -36,6 +40,22 @@
  * throw away, never at your home directory, and never at anything holding
  * credentials. Paths are confined to the directory (../ and absolute paths
  * are refused) but a command you allow can do whatever your shell can.
+ *
+ * --harness is the third mode, and the one to reach for on engineering work.
+ * Instead of this file's own agent loop, the task is handed to a coding
+ * harness that already exists and is maintained by people who do nothing
+ * else — Claude Code, Codex, OpenCode, Cline, Gemini CLI — and whatever it
+ * writes to .handsel/deliverable-<task>.md is submitted. With no --harness
+ * flag the worker looks for one on PATH and uses it; with none installed it
+ * falls back to the built-in loop, so nothing about an existing install
+ * changes. Mirrored from lib/worker-harness.ts (tests/worker-harness.test.ts).
+ *
+ * READ THIS TOO: --harness is strictly MORE permissive than --allow-bash. A
+ * headless harness that stops to ask a human never answers, so every adapter
+ * passes that harness's auto-approval flag — it can edit and run whatever it
+ * likes in the working directory. Same rule as above, more so: a scratch
+ * checkout you can throw away, never your home directory, never anything
+ * holding credentials.
  *
  * --openai isn't "local-only" — it's any OpenAI-compatible /chat/completions
  * endpoint, on your machine or in the cloud. --api-key (or OPENAI_API_KEY)
@@ -61,7 +81,7 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)
@@ -102,6 +122,322 @@ const CONCURRENCY = Math.max(1, Math.min(parseInt(flag('concurrency') ?? '1', 10
 const WORKDIR_RAW = flag('workdir') ?? process.env.HANDSEL_WORKDIR ?? ''
 const ALLOW_BASH = args.includes('--allow-bash')
 const WORKDIR = WORKDIR_RAW ? path.resolve(WORKDIR_RAW.replace(/^~(?=$|\/)/, os.homedir())) : ''
+
+const HARNESS_ID = flag('harness') ?? null
+const HARNESS_CMD = flag('harness-cmd') ?? null
+const NO_HARNESS = args.includes('--no-harness')
+// A harness gets a hard wall-clock limit because it is a process on someone
+// else's machine that we do not control: a run that hangs holds a slot, and
+// with --concurrency it holds one of very few. Generous by default — real
+// engineering work is slow — and overridable for jobs that are slower still.
+const HARNESS_TIMEOUT_MS = Math.max(60, parseInt(flag('harness-timeout') ?? '1800', 10) || 1800) * 1000
+
+/* ── Harness mode ─────────────────────────────────────────────────────────
+ * Hand the whole task to a coding harness that already exists.
+ *
+ * Mirrored from lib/worker-harness.ts, which holds the same registry and the
+ * same output selection as pure functions with tests. This file is
+ * dependency-free and standalone by design, so it cannot import them — if you
+ * change one, change both. tests/worker-harness.test.ts pins the flags in
+ * BOTH files, so a drifting mirror fails the build rather than shipping a
+ * wrong command line to someone else's machine.
+ *
+ * Two things worth knowing before editing an adapter:
+ *
+ *   Long flags only. These tools agree on nothing, including which letter -c
+ *   is: --continue to OpenCode, --cwd to Cline. A short form on the wrong
+ *   tool fails in a way that reads like the model being bad at its job.
+ *
+ *   The brief is always the LAST argv entry (or the value of a flag that
+ *   names it). A client writes the brief, and a brief beginning with a dash
+ *   that lands where a flag is expected is a stranger configuring the
+ *   harness that runs on your machine.
+ */
+const DELIVERABLE_DIR = '.handsel'
+const HARNESSES = [
+  {
+    id: 'claude',
+    bin: 'claude',
+    label: 'Claude Code',
+    install: 'npm i -g @anthropic-ai/claude-code',
+    // No --add-dir: it is variadic and swallows the brief. The workdir is
+    // already this child's cwd. See lib/worker-harness.ts.
+    argv: (i) => [
+      '--print',
+      ...(i.model ? ['--model', i.model] : []),
+      '--permission-mode',
+      'bypassPermissions',
+      i.brief,
+    ],
+  },
+  {
+    id: 'codex',
+    bin: 'codex',
+    label: 'OpenAI Codex CLI',
+    install: 'npm i -g @openai/codex',
+    argv: (i) => [
+      'exec',
+      ...(i.model ? ['--model', i.model] : []),
+      '--cd',
+      i.workdir,
+      '--full-auto',
+      '--skip-git-repo-check',
+      i.brief,
+    ],
+  },
+  {
+    id: 'opencode',
+    bin: 'opencode',
+    label: 'OpenCode',
+    install: 'npm i -g opencode-ai',
+    argv: (i) => ['run', ...(i.model ? ['--model', i.model] : []), '--dir', i.workdir, '--auto', i.brief],
+  },
+  {
+    id: 'cline',
+    bin: 'cline',
+    label: 'Cline CLI',
+    install: 'npm i -g cline',
+    argv: (i) => ['--yolo', ...(i.model ? ['--model', i.model] : []), '--cwd', i.workdir, i.brief],
+  },
+  {
+    id: 'gemini',
+    bin: 'gemini',
+    label: 'Gemini CLI',
+    install: 'npm i -g @google/gemini-cli',
+    argv: (i) => [...(i.model ? ['--model', i.model] : []), '--yolo', '--prompt', i.brief],
+  },
+]
+const AUTODETECT_ORDER = ['claude', 'codex', 'opencode', 'cline', 'gemini']
+
+/** Per task, never one shared filename: --concurrency runs several tasks in
+ *  this same directory, and a file left over from a previous task would be
+ *  submitted to the next client as their deliverable. */
+function deliverablePathFor(taskId) {
+  const safe = String(taskId).replace(/[^A-Za-z0-9_-]/g, '') || 'task'
+  return `${DELIVERABLE_DIR}/deliverable-${safe.slice(0, 64)}.md`
+}
+
+function harnessBrief(brief, relPath) {
+  return [
+    brief,
+    '',
+    '---',
+    '',
+    'HOW THIS IS SUBMITTED:',
+    `When you are finished, write your complete deliverable to \`${relPath}\` (create the directory if needed).`,
+    'That file is what gets submitted to the client and graded — nothing else you print is read.',
+    'If the task was to change code, the file should describe what you changed and why; the changed files themselves stay where you wrote them.',
+    'Write it as the last thing you do, once the work is actually done.',
+  ].join('\n')
+}
+
+/** Is `bin` runnable? Asked through the platform's own lookup tool rather
+ *  than by starting the binary, because starting it to test it runs it. */
+async function onPath(bin) {
+  try {
+    await execFileAsync(process.platform === 'win32' ? 'where' : 'which', [bin])
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Split --harness-cmd into a binary and arguments. Not a template, and no
+ *  shell: the brief goes to the child on stdin precisely so a client's text
+ *  never reaches a command line. */
+function parseHarnessCommand(raw) {
+  const parts = []
+  let cur = ''
+  let quote = null
+  let any = false
+  for (const ch of raw) {
+    if (quote) {
+      if (ch === quote) quote = null
+      else cur += ch
+      continue
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch
+      any = true
+      continue
+    }
+    if (/\s/.test(ch)) {
+      if (cur || any) parts.push(cur)
+      cur = ''
+      any = false
+      continue
+    }
+    cur += ch
+  }
+  if (cur || any) parts.push(cur)
+  if (quote) return null
+  const [bin, ...argv] = parts
+  return bin ? { bin, argv } : null
+}
+
+/** Chosen once at startup, so a misconfiguration is a refusal to start
+ *  rather than every task failing one at a time. */
+let HARNESS = null
+
+async function resolveHarnessAtStartup() {
+  if (NO_HARNESS) return
+  if (HARNESS_CMD) {
+    const parsed = parseHarnessCommand(HARNESS_CMD)
+    if (!parsed) {
+      console.error('Could not read --harness-cmd (unbalanced quote, or empty).')
+      process.exit(1)
+    }
+    if (!WORKDIR) {
+      console.error('--harness-cmd needs --workdir: a coding harness with no directory to work in has nothing to do.')
+      process.exit(1)
+    }
+    HARNESS = { id: 'custom', label: parsed.bin, bin: parsed.bin, argv: () => parsed.argv, briefOnStdin: true }
+    return
+  }
+  if (HARNESS_ID) {
+    const spec = HARNESSES.find((h) => h.id === HARNESS_ID)
+    if (!spec) {
+      console.error(
+        `Unknown --harness "${HARNESS_ID}". Known: ${HARNESSES.map((h) => h.id).join(', ')}. ` +
+          'Any other tool can be attached with --harness-cmd "<its headless command>" — the brief arrives on stdin.',
+      )
+      process.exit(1)
+    }
+    if (!WORKDIR) {
+      console.error(`--harness ${spec.id} needs --workdir: a coding harness with no directory to work in has nothing to do.`)
+      process.exit(1)
+    }
+    if (!(await onPath(spec.bin))) {
+      console.error(`--harness ${spec.id} needs \`${spec.bin}\` on PATH. Install it with: ${spec.install}`)
+      process.exit(1)
+    }
+    HARNESS = spec
+    return
+  }
+  // Nothing asked for. Autodetect only makes sense with a workdir, and only
+  // ever UPGRADES a run that was already going to use the built-in loop.
+  if (!WORKDIR) return
+  for (const id of AUTODETECT_ORDER) {
+    const spec = HARNESSES.find((h) => h.id === id)
+    if (spec && (await onPath(spec.bin))) {
+      HARNESS = spec
+      console.log(`[worker] found ${spec.label} on PATH — using it for tasks (--no-harness to use the built-in loop)`)
+      return
+    }
+  }
+}
+
+/**
+ * Run one task through the harness.
+ *
+ * stdout and stderr are streamed to the console rather than buffered
+ * silently: this is somebody's own machine, the run takes minutes, and a
+ * progress-free wait is indistinguishable from a hang.
+ */
+async function runHarnessTask(task) {
+  const rel = deliverablePathFor(task.task_id)
+  const abs = path.resolve(WORKDIR, rel)
+  await fs.mkdir(path.dirname(abs), { recursive: true })
+  // Never inherit a previous run's file: an interrupted task that left one
+  // behind would otherwise be submitted as this task's work.
+  await fs.unlink(abs).catch(() => {})
+
+  const brief = harnessBrief(`Working directory: ${WORKDIR}\n\nTask:\n${task.task}`, rel)
+  const argv = HARNESS.argv({ brief, workdir: WORKDIR, model: flag('harness-model') ?? null })
+
+  const { out: stdout, code, errTail } = await new Promise((resolve, reject) => {
+    const child = spawn(HARNESS.bin, argv, {
+      cwd: WORKDIR,
+      stdio: [HARNESS.briefOnStdin ? 'pipe' : 'ignore', 'pipe', 'pipe'],
+      env: process.env,
+    })
+    let out = ''
+    // Kept so a failure explains itself in the TASK RECORD, not only on a
+    // console nobody is watching. "produced neither a file nor any output"
+    // is a symptom; the harness's own last words are the cause.
+    let errTail = ''
+    const timer = setTimeout(() => {
+      child.kill()
+      reject(new Error(`${HARNESS.label} exceeded --harness-timeout (${Math.round(HARNESS_TIMEOUT_MS / 1000)}s)`))
+    }, HARNESS_TIMEOUT_MS)
+    if (HARNESS.briefOnStdin) child.stdin.end(brief)
+    child.stdout.on('data', (d) => {
+      out += d
+      process.stdout.write(d)
+    })
+    child.stderr.on('data', (d) => {
+      errTail = (errTail + d).slice(-2000)
+      process.stderr.write(d)
+    })
+    child.on('error', (e) => {
+      clearTimeout(timer)
+      reject(new Error(`could not run ${HARNESS.bin}: ${e.message}`))
+    })
+    child.on('close', (code) => {
+      clearTimeout(timer)
+      // A non-zero exit is not automatically a failed task: several of these
+      // exit non-zero on a turn limit having already written a usable
+      // deliverable. The file decides; the code only colours the log.
+      if (code !== 0) console.log(`\n[worker] ${HARNESS.label} exited ${code}`)
+      resolve({ out, code, errTail })
+    })
+  })
+
+  let file = null
+  try {
+    file = await fs.readFile(abs, 'utf8')
+  } catch {
+    /* the harness wrote nothing — fall back to what it said */
+  }
+  if (file && file.trim()) {
+    console.log(`\n[worker] deliverable from ${rel} (${file.trim().length} chars)`)
+    return file.trim()
+  }
+  const salvaged = extractHarnessText(stdout).trim()
+  if (!salvaged) {
+    throw new Error(
+      `${HARNESS.label} exited ${code} and produced neither ${rel} nor any output` +
+        (errTail.trim() ? `: ${errTail.trim().slice(-600)}` : ''),
+    )
+  }
+  console.log(`\n[worker] ${HARNESS.label} wrote no ${rel} — submitting its output instead`)
+  return salvaged
+}
+
+/** Fallback only. These event streams are unversioned, so this is tolerant
+ *  by design: approximately right beats empty, because an empty submission
+ *  fails grading with no clue why. */
+function extractHarnessText(stdout) {
+  const out = []
+  const TEXT_KEYS = new Set(['text', 'result', 'content', 'message', 'response', 'output'])
+  const walk = (node, depth) => {
+    if (depth > 6 || node === null || node === undefined) return
+    if (typeof node === 'string') {
+      const t = node.trim()
+      if (t) out.push(t)
+      return
+    }
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item, depth + 1)
+      return
+    }
+    if (typeof node !== 'object') return
+    const type = typeof node.type === 'string' ? node.type : ''
+    if (type && /tool|error|usage|thinking|reasoning/i.test(type)) return
+    for (const key of Object.keys(node)) if (TEXT_KEYS.has(key)) walk(node[key], depth + 1)
+  }
+  for (const line of stdout.split('\n')) {
+    const t = line.trim()
+    if (!t.startsWith('{')) continue
+    try {
+      walk(JSON.parse(t), 0)
+    } catch {
+      /* truncated or not an event — skip the line, keep the run */
+    }
+  }
+  const joined = out.join('\n').trim()
+  return joined || stdout.trim()
+}
 
 /* ── Agent mode ───────────────────────────────────────────────────────────
  * With --workdir the worker stops being a single prompt and becomes a loop:
@@ -423,7 +759,11 @@ async function runOne(task) {
   let success = true
   let error
   try {
-    output = WORKDIR ? await runAgentTask(task.task) : await askLocalModel(task.task)
+    output = HARNESS
+      ? await runHarnessTask(task)
+      : WORKDIR
+        ? await runAgentTask(task.task)
+        : await askLocalModel(task.task)
     if (!output.trim()) {
       success = false
       error = 'local model returned empty output'
@@ -498,9 +838,25 @@ async function warmupModel() {
 console.log(`[worker] Handsel local worker`)
 console.log(`[worker] agent    ${AGENT_ID}`)
 console.log(`[worker] platform ${PLATFORM}`)
-console.log(`[worker] model    ${MODEL} via ${OPENAI_BASE ? `OpenAI-compatible ${OPENAI_BASE}` : `Ollama ${OLLAMA_BASE}`}`)
+await resolveHarnessAtStartup()
+// Only print the model line when that model is what actually runs the work.
+// A harness carries its own model and auth, and announcing an Ollama the
+// harness never calls is how someone spends an afternoon debugging Ollama.
+if (!HARNESS) {
+  console.log(`[worker] model    ${MODEL} via ${OPENAI_BASE ? `OpenAI-compatible ${OPENAI_BASE}` : `Ollama ${OLLAMA_BASE}`}`)
+}
+if (HARNESS) {
+  console.log(`[worker] harness  ${HARNESS.label} in ${WORKDIR}`)
+  console.log(
+    `[worker] NOTE: the harness runs with its approvals off — it can edit and run anything in that directory,\n` +
+      `[worker]       and tasks can come from strangers. Point it at a checkout you can throw away.`,
+  )
+} else if (WORKDIR) {
+  console.log(`[worker] workdir  ${WORKDIR}${ALLOW_BASH ? ' (commands allowed)' : ''} — built-in agent loop`)
+}
 
-await warmupModel()
+// The built-in loop is what a warm model is for; a harness brings its own.
+if (!HARNESS) await warmupModel()
 
 console.log(
   `[worker] polling every ${POLL_MS / 1000}s` +
