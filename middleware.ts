@@ -84,6 +84,33 @@ export default async function middleware(request: NextRequest) {
   return x402(request)
 }
 
+/**
+ * Which paths the middleware actually RUNS on.
+ *
+ * This list and the price map above are two halves of one paywall, and for
+ * the whole life of the storefront feature they disagreed: the map priced
+ * `POST /api/storefront/<template>/commission`, and this matcher did not
+ * include it, so Next never invoked the middleware on that path and the
+ * route served for free. A POST with a valid scope and no `X-PAYMENT`
+ * header at all came back `{"status":"commissioned"}` — a full escrowed
+ * office pipeline, fronted from the prime's own wallet, given away.
+ *
+ * Nothing surfaced it because both halves looked right in isolation: the
+ * price map names every template and is pinned by test against
+ * storefront-pricing.ts, and the matcher is three plausible entries. The
+ * bug lives only in their relationship. tests/x402-paywall-coverage.test.ts
+ * now asserts that every priced route is covered here — see
+ * docs/failure-modes.md §43.
+ *
+ * Next requires this to be statically analyzable, so it stays a literal
+ * rather than being derived from STOREFRONT_COMMISSIONS; the test is what
+ * keeps the literal honest.
+ */
 export const config = {
-  matcher: ['/api/agents/:id/report', '/api/jobs/external', '/api/market/index'],
+  matcher: [
+    '/api/agents/:id/report',
+    '/api/jobs/external',
+    '/api/market/index',
+    '/api/storefront/:template/commission',
+  ],
 }
