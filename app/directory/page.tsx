@@ -2,8 +2,8 @@ import Link from 'next/link'
 import { Download, Package, Star, ArrowUpRight, Bot, ArrowRight } from 'lucide-react'
 import { listClawhubSkills } from '@/lib/clawhub'
 import { toolRecords } from '@/lib/tool-record-server'
-import { describeRecord } from '@/lib/tool-record'
 import { PublicShell } from '@/components/public-shell'
+import { ToolRecordTable } from '@/components/tool-record-table'
 import { isRealMoney } from '@/lib/onchain/real-money'
 
 // Live external data; refresh at most every 10 min (matches the lib cache).
@@ -24,33 +24,21 @@ export default async function DirectoryPage() {
             Every other MCP registry ranks by stars and installs — popularity,
             which says nothing about whether a tool does the job. This is the
             one column none of them can print, and it is built from work that
-            was independently graded with a bond at risk. See
-            docs/positioning.md. */}
-        {records.length > 0 && (
-          <section className="rounded-2xl border border-border bg-card p-6 md:p-8">
-            <h2 className="text-xl font-bold tracking-tight md:text-2xl">Graded on Handsel</h2>
-            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-              How each attached tool actually did on real paid jobs — graded by someone other than the worker, with
-              the worker&rsquo;s own bond at risk. Sample size is shown next to every rate because a rate without one
-              is a decoration, and a tool hired by a single account is listed but not ranked.
-            </p>
-            <ul className="mt-5 divide-y divide-border">
-              {records.map((r) => (
-                <li key={r.toolId} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-3">
-                  <span className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">{r.kind}</span>
-                  <span className="font-semibold">{r.label}</span>
-                  <span className="w-full text-sm text-muted-foreground sm:w-auto sm:flex-1 sm:text-right">
-                    {describeRecord(r)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
+            was independently graded with a bond at risk. Rendered even when
+            EMPTY: the first version returned null with no records, so a
+            first-time visitor saw only the mirrored third-party list and the
+            page's whole reason to exist was invisible until data happened to
+            exist. See docs/positioning.md. */}
+        <ToolRecordTable records={records} />
 
-        <section className="rounded-2xl border border-border bg-gradient-to-b from-primary/[0.08] to-transparent px-6 py-10 md:px-10">
-          <h1 className="text-3xl font-bold tracking-tight md:text-4xl">What agents can do</h1>
-          <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground md:text-base">
+        {/* Demoted, deliberately. This is a MIRROR of ClawHub's list ranked by
+            ClawHub's stars — somebody else's data and a popularity metric
+            Handsel cannot vouch for. It was an h1 in a filled panel while the
+            graded record above it was a plain h2, which is the hierarchy
+            exactly backwards. See docs/positioning.md 5. */}
+        <section className="border-t border-border pt-8">
+          <h2 className="text-lg font-semibold tracking-tight">What agents can do, elsewhere</h2>
+          <p className="mt-2 max-w-[62ch] text-pretty text-sm leading-relaxed text-muted-foreground">
             A live look at capabilities across the OpenClaw ecosystem — these are{' '}
             <a href="https://clawhub.ai" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
               ClawHub

@@ -2653,6 +2653,52 @@ navigation, which is a dead end on a site whose first rung is a stranger
 following a link — and job, proof and storefront URLs are exactly the ones
 people paste around and let go stale.
 
+## 55. The wedge page outranked itself with a mirror of someone else's list
+
+`/directory` renders two things: the graded track record — the one column no
+other MCP registry can print, and rung 1 of the entry ladder — and, below it,
+a mirror of ClawHub's list ranked by ClawHub's stars.
+
+The mirror was an `<h1>` at `text-4xl` inside a filled gradient panel. The
+record was an `<h2>` at `text-xl` with no ground. Visually, somebody else's
+popularity metric was the page's headline and the evidence was a footnote —
+the hierarchy exactly inverted against what the page is for.
+
+Two smaller ones alongside it: the record shipped as a `<ul>` of sentences,
+with the pass rate — the number people scan for — as plain text in the middle
+of a paragraph. And the section returned `null` when there were no records, so
+a first-time visitor saw ONLY the mirrored third-party list and the page's
+whole reason to exist was invisible until data happened to exist. An empty
+state is not a nicety here; it is the rung-2 invitation.
+
+**Fix.** `components/tool-record-table.tsx`: the record is the page's `h1`, the
+rate has a bar as well as a digit, and the mirror is a quiet `h2` on the page
+ground with no panel. Semantic colour for the rate is kept away from the brand
+accent — "this tool does well" and "this is Handsel" cannot be the same hue.
+
+## 56. Two phantom bugs, and how they were caught
+
+Both found while screenshotting the redesign, and both would have been "fixed"
+into the codebase if the screenshot had been trusted.
+
+**The empty footer.** The 404 screenshot showed two hairlines with nothing
+between them. It looked exactly like `SiteFooter` rendering blank — plausible,
+because it is a client component calling `useI18n` and a missing provider
+would do that. Curling the HTML showed four correct links. The footer was
+simply below the 800px viewport crop.
+
+**The mobile overflow.** `/directory` at `--window-size=390` showed text
+clipped mid-word with no reflow and the header button cut off. Also plausible.
+But text that does not REFLOW has not been laid out narrow — it has been laid
+out wide and cropped. A three-line `data:` page with a `width:100%` box and a
+printed `innerWidth` settled it: headless Chrome laid out at **500px** when
+asked for 390, then cropped the image to 390.
+
+The lesson is not "screenshots lie". It is that a screenshot is evidence about
+a rendering pipeline, and the pipeline has to be calibrated before its output
+is evidence about the page. Both phantoms had a distinguishing signature
+available for free — content below the fold, and text that did not reflow.
+
 ## Invariants these fixes encode
 
 Keep these true, and this class of bug stays dead:
@@ -2858,6 +2904,14 @@ Keep these true, and this class of bug stays dead:
    OWN work is not permission to go spend the owner's money on strangers'
    work. When one switch would carry two mandates, split it, and derive the
    safer default from why it was switched on (§46).
+63. **Visual weight is a claim about importance.** A mirrored third-party
+   list as an h1 in a filled panel, above the product's own evidence as a
+   plain h2, tells a reader which one matters — and it was the wrong one
+   (§55).
+64. **Calibrate the instrument before believing it.** A screenshot is evidence
+   about a rendering pipeline first and about the page second. Headless Chrome
+   laid out at 500px when asked for 390 and cropped; text that does not reflow
+   was never laid out narrow (§56).
 61. **Layout is a place features go missing too.** A component can be
    complete, correct and rendered by one page out of four. When something must
    appear everywhere, put it in the shell every page uses — "remember to add

@@ -214,13 +214,40 @@ describe('a price that could not be read', () => {
 describe('the record is reachable', () => {
   const read = (p: string) => readFileSync(p, 'utf8')
 
+  it('shows the section even with no records', () => {
+    // The first version returned null when the record was empty, so a
+    // first-time visitor saw only the mirrored third-party list and the
+    // page's whole reason to exist was invisible until data existed.
+    const page = read('app/directory/page.tsx')
+    expect(page).not.toMatch(/records\.length > 0 &&/)
+    const table = read('components/tool-record-table.tsx')
+    expect(table).toMatch(/records\.length === 0 \? \(/)
+    expect(table).toMatch(/No tool has graded work here yet/)
+  })
+
+  it('states the sample floor in the words the reader sees, from the constants', () => {
+    // A page that hardcodes "below 5 jobs" drifts the day the constant moves,
+    // and then the interface is describing a rule the code no longer follows.
+    const table = read('components/tool-record-table.tsx')
+    expect(table).toMatch(/\{MIN_RATED_JOBS\}/)
+    expect(table).toMatch(/\{MIN_SOURCES\}/)
+  })
+
+  it('keeps the pass-rate colour away from the brand accent', () => {
+    // Semantic colour answers "is this good"; the accent answers "is this
+    // Handsel". One hue cannot mean both.
+    const table = read('components/tool-record-table.tsx')
+    expect(table).toMatch(/var\(--success\)/)
+    expect(table).not.toMatch(/rateTone[\s\S]{0,400}var\(--primary\)/)
+  })
+
   it('renders above the mirrored registry on /directory', () => {
     // /directory was a mirror of ClawHub's list ranked by ClawHub's stars —
     // somebody else's data and a popularity metric Handsel cannot vouch for,
     // while sitting on the only column no other registry can print.
     const page = read('app/directory/page.tsx')
     expect(page).toMatch(/toolRecords\(\)/)
-    expect(page).toMatch(/describeRecord\(r\)/)
+    expect(page).toMatch(/<ToolRecordTable records=\{records\} \/>/)
     expect(page.indexOf('Graded on Handsel')).toBeLessThan(page.indexOf('What agents can do'))
   })
 
