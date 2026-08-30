@@ -327,6 +327,126 @@ async function resolveHarnessAtStartup() {
   }
 }
 
+/* ── Repo jobs: the diff IS the deliverable ───────────────────────────────
+ * Mirrored from lib/worker-deliverable.ts (tests/worker-deliverable.test.ts).
+ *
+ * The platform's repo-job brief has always said "submit ONE unified diff in a
+ * ```diff fenced block", and the platform side of that is complete: it
+ * extracts the diff, validates every path, opens a pull request, lets the
+ * repository's own CI grade it, and releases the escrow on merge. Harness
+ * mode broke exactly that by appending "write your deliverable to
+ * .handsel/deliverable-<task>.md — nothing else you print is read" to EVERY
+ * brief, which on a repo job overrides the only instruction that mattered.
+ *
+ * So a repo job takes a different path: clone into a per-task scratch
+ * checkout, run the harness with that as its working directory, and take the
+ * diff with git. Nothing in the loop is prose. */
+const REPO_ROOT = '.handsel/repos'
+
+function clonePathFor(taskId) {
+  const safe = String(taskId).replace(/[^A-Za-z0-9_-]/g, '') || 'task'
+  return `${REPO_ROOT}/${safe.slice(0, 64)}`
+}
+
+/** owner/repo, both segments starting alphanumeric, no `..`.
+ *  This value reaches a git argv and a directory name, and git reads a
+ *  leading dash as an OPTION — it has options that execute things, so no
+ *  shell has to be involved for that to be code execution here. */
+function validRepoName(s) {
+  if (typeof s !== 'string' || s.length > 140 || s.includes('..')) return false
+  return /^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(s)
+}
+
+function validBranch(b) {
+  if (typeof b !== 'string' || !b || b.length > 200 || b.includes('..')) return false
+  return /^[A-Za-z0-9][A-Za-z0-9._\-/]*$/.test(b)
+}
+
+function repoOf(task) {
+  const r = task?.repo
+  if (!r || !validRepoName(r.full_name)) return null
+  // No branch means the repository's DEFAULT, which is not the same as
+  // 'main': octocat/Hello-World defaults to master and a guessed --branch
+  // fails the clone outright. --single-branch with no --branch takes the
+  // real default, so the right answer needs no lookup.
+  const branch = r.base_branch || null
+  if (branch && !validBranch(branch)) return null
+  return { fullName: r.full_name, baseBranch: branch }
+}
+
+async function git(args, cwd) {
+  const { stdout } = await execFileAsync('git', args, { cwd, maxBuffer: 64 * 1024 * 1024 })
+  return stdout
+}
+
+/**
+ * Run a repo job end to end and return the submission.
+ *
+ * The harness runs with the CHECKOUT as its cwd, not the worker's --workdir,
+ * so `git diff` at the end is about this job and nothing else — with
+ * --concurrency two jobs share a workdir, and one clone between them would
+ * put each one's changes in the other's submission.
+ */
+async function runRepoTask(task, repo) {
+  const rel = clonePathFor(task.task_id)
+  const dest = path.resolve(WORKDIR, rel)
+  await fs.rm(dest, { recursive: true, force: true }).catch(() => {})
+  await fs.mkdir(path.dirname(dest), { recursive: true })
+
+  console.log(`\n[worker] cloning ${repo.fullName}${repo.baseBranch ? `@${repo.baseBranch}` : ' (default branch)'} → ${rel}`)
+  await git(
+    [
+      'clone',
+      '--depth',
+      '1',
+      '--single-branch',
+      ...(repo.baseBranch ? ['--branch', repo.baseBranch] : []),
+      '--',
+      `https://github.com/${repo.fullName}.git`,
+      dest,
+    ],
+    WORKDIR,
+  )
+  const baseSha = (await git(['rev-parse', 'HEAD'], dest)).trim()
+  const branch = (await git(['rev-parse', '--abbrev-ref', 'HEAD'], dest)).trim()
+
+  const brief = [
+    task.task.trim(),
+    '',
+    '---',
+    '',
+    'HOW THIS RUN IS SET UP:',
+    `${repo.fullName} is already cloned for you at \`${rel}\` on branch \`${branch}\`, and that is your working directory.`,
+    'Make the change there, in the files. Do not print a diff and do not write a summary file —',
+    'the diff is taken from the checkout with git once you are done, so what is on disk IS the deliverable.',
+  ].join('\n')
+
+  const { stdout } = await spawnHarness(brief, dest)
+
+  // Stage first: a diff that silently omits CREATED files is the most common
+  // way a repo-job submission fails review, and it reads as the worker having
+  // forgotten to write them.
+  await git(['add', '-A'], dest)
+  // Against the recorded base rather than HEAD, so this works whether or not
+  // the harness committed its own work — several of them do.
+  const diff = await git(['diff', '--cached', '--no-color', '--no-ext-diff', baseSha], dest)
+
+  const hasPatch = diff
+    .trim()
+    .split('\n')
+    .some((l) => l.startsWith('diff --git ') || l.startsWith('--- '))
+  if (!hasPatch) {
+    throw new Error(
+      `${HARNESS.label} changed nothing in ${repo.fullName} — no diff to submit. ` +
+        'Submitting a description of work that did not happen is worse than failing the job.',
+    )
+  }
+
+  const summary = extractHarnessText(stdout).trim().slice(0, 1500)
+  console.log(`\n[worker] diff: ${diff.split('\n').length} lines from ${rel}`)
+  return [summary, summary ? '' : null, '```diff', diff.trimEnd(), '```'].filter((l) => l !== null).join('\n')
+}
+
 /**
  * Run one task through the harness.
  *
@@ -334,20 +454,23 @@ async function resolveHarnessAtStartup() {
  * silently: this is somebody's own machine, the run takes minutes, and a
  * progress-free wait is indistinguishable from a hang.
  */
-async function runHarnessTask(task) {
-  const rel = deliverablePathFor(task.task_id)
-  const abs = path.resolve(WORKDIR, rel)
-  await fs.mkdir(path.dirname(abs), { recursive: true })
-  // Never inherit a previous run's file: an interrupted task that left one
-  // behind would otherwise be submitted as this task's work.
-  await fs.unlink(abs).catch(() => {})
-
-  const brief = harnessBrief(`Working directory: ${WORKDIR}\n\nTask:\n${task.task}`, rel)
-  const argv = HARNESS.argv({ brief, workdir: WORKDIR, model: flag('harness-model') ?? null })
-
-  const { out: stdout, code, errTail } = await new Promise((resolve, reject) => {
+/**
+ * Run the harness once and hand back what it said.
+ *
+ * Split out of runHarnessTask so a repo job can point it at a scratch
+ * checkout instead of the worker's own --workdir: with --concurrency two jobs
+ * share a workdir, and one clone between them would put each job's changes in
+ * the other's submission.
+ */
+async function spawnHarness(brief, cwd) {
+  const argv = HARNESS.argv({ brief, workdir: cwd, model: flag('harness-model') ?? null })
+  const { out, code, errTail } = await new Promise((resolve, reject) => {
     const child = spawn(HARNESS.bin, argv, {
-      cwd: WORKDIR,
+      // The CALLER's directory, not WORKDIR: a repo job runs the harness
+      // inside its own scratch checkout, and using WORKDIR here silently put
+      // every edit one level up, where `git diff` in the checkout could not
+      // see it. Found by running it, not by a test.
+      cwd,
       stdio: [HARNESS.briefOnStdin ? 'pipe' : 'ignore', 'pipe', 'pipe'],
       env: process.env,
     })
@@ -382,6 +505,19 @@ async function runHarnessTask(task) {
       resolve({ out, code, errTail })
     })
   })
+  return { stdout: out, code, errTail }
+}
+
+async function runHarnessTask(task) {
+  const rel = deliverablePathFor(task.task_id)
+  const abs = path.resolve(WORKDIR, rel)
+  await fs.mkdir(path.dirname(abs), { recursive: true })
+  // Never inherit a previous run's file: an interrupted task that left one
+  // behind would otherwise be submitted as this task's work.
+  await fs.unlink(abs).catch(() => {})
+
+  const brief = harnessBrief(`Working directory: ${WORKDIR}\n\nTask:\n${task.task}`, rel)
+  const { stdout, code, errTail } = await spawnHarness(brief, WORKDIR)
 
   let file = null
   try {
@@ -759,11 +895,17 @@ async function runOne(task) {
   let success = true
   let error
   try {
-    output = HARNESS
-      ? await runHarnessTask(task)
-      : WORKDIR
-        ? await runAgentTask(task.task)
-        : await askLocalModel(task.task)
+    // A repo job's deliverable is a diff, not prose — and only a harness with
+    // a real checkout can produce one. The built-in loop keeps its own path:
+    // it has no git and its brief already tells the model to paste a diff.
+    const repo = HARNESS && WORKDIR ? repoOf(task) : null
+    output = repo
+      ? await runRepoTask(task, repo)
+      : HARNESS
+        ? await runHarnessTask(task)
+        : WORKDIR
+          ? await runAgentTask(task.task)
+          : await askLocalModel(task.task)
     if (!output.trim()) {
       success = false
       error = 'local model returned empty output'

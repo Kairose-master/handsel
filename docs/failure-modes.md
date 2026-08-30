@@ -2563,6 +2563,60 @@ had already been fixed for once; and a keyboard ramp whose release is quicker
 than its press, since a camera that drifts after you let go feels broken while
 one that takes a moment to start feels weighty.
 
+## 52. Harness mode broke the one job type it existed for
+
+Diagnosed in §48's own follow-up and shipped broken for a day.
+
+`lib/repo-jobs.ts` has always told a worker, in the brief the platform sends:
+clone the public repo, make the change, *submit ONE unified diff in a ```diff
+fenced block*. The platform side of that was already complete — extract the
+diff, validate every path, open the pull request, let the repository's own CI
+be the independent grader, release the escrow on merge.
+
+Harness mode then appended, to EVERY brief: *"write your complete deliverable
+to `.handsel/deliverable-<task>.md` — nothing else you print is read."* On a
+repo job that overrides the only instruction that mattered. The harness edits
+files, writes a summary, the worker submits the summary, `extractUnifiedDiff`
+finds nothing, the job fails. A coding harness could not do the one thing a
+coding harness is for.
+
+**Fix.** The deliverable is decided PER JOB, not per worker. `/api/worker/poll`
+now names the repository and branch on the task; the worker clones into a
+per-task scratch checkout, runs the harness with THAT as its working
+directory, and takes the diff with `git`. No prose anywhere in the loop.
+
+Three things that only running it could have found:
+
+- **The extracted `spawnHarness(brief, cwd)` still spawned in `WORKDIR`.** The
+  parameter was there, the body ignored it, so every edit landed one directory
+  above the checkout where `git diff` could not see it — and the run reported,
+  correctly and uselessly, that the harness had changed nothing.
+- **`|| 'main'` is a guess, and it is wrong.** `octocat/Hello-World` defaults
+  to `master`; the clone dies with "Remote branch main not found". Null now
+  means "the repository's own default", which `git clone --single-branch`
+  with no `--branch` gives for free and cannot get wrong.
+- **`git add -A` before the diff.** Without it a submission silently omits
+  every file the harness CREATED, which reads to a reviewer as a worker that
+  forgot to write them.
+
+And one security fix on the way: `validateRepoFullName` was a charset test
+that admitted `-x/y` and `../..`. Harmless while the name was only a label;
+not harmless once it reaches a `git` argv and a directory path, because git
+reads a leading dash as an OPTION and has options that execute things — no
+shell needed. Tightened in place rather than copied, so there is one rule.
+
+## 53. Nine icons, committed and worn by nothing
+
+Generated, cropped, catalogued, tested for existence — and referenced by zero
+lines of rendering code. The department list still printed emoji. Meanwhile
+`public/` was still serving six v0 scaffolding placeholders that nothing had
+imported since the day the project was scaffolded.
+
+The same shape as §42 and §43, which this repo has now caught itself in three
+times: **a thing can be complete, correct, tested, and reach nobody.** The
+test that pins a file's existence is not the test that matters; the one that
+pins its USE is.
+
 ## Invariants these fixes encode
 
 Keep these true, and this class of bug stays dead:
@@ -2768,6 +2822,17 @@ Keep these true, and this class of bug stays dead:
    OWN work is not permission to go spend the owner's money on strangers'
    work. When one switch would carry two mandates, split it, and derive the
    safer default from why it was switched on (§46).
+58. **A second instruction louder than the first is a bug, not an addition.**
+   Harness mode appended "nothing else you print is read" to briefs that
+   already said what to submit. Before adding a global instruction, read what
+   it will be appended TO (§52).
+59. **A default you guessed is a default that is wrong somewhere.** `|| 'main'`
+   fails on every repository that says `master`. Prefer the mechanism that
+   asks (`--single-branch` with no `--branch`) over the constant that assumes
+   (§52).
+60. **A validator is only as strong as its strongest caller.** A charset test
+   is fine for a label and unsafe for an argv. When a value moves to a more
+   dangerous position, tighten the shared rule — never add a second one (§52).
 55. **"Responsive" is not the same as operable.** The office page laid out
    fine on a phone and could not be used on one: no pinch, no gesture claim,
    half the controls past the screen edge. Ask what the INPUTS are on the

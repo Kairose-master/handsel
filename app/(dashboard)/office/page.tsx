@@ -2341,8 +2341,27 @@ function MultiSelectPanel({ agents, onClear }: { agents: Agent[]; onClear: () =>
           const label = DEPT_LABEL[deptId] ?? { name: deptId, icon: '•' }
           return (
             <li key={deptId} className="flex items-center justify-between text-muted-foreground">
-              <span>
-                {label.icon} {label.name}
+              <span className="flex items-center gap-2">
+                {/* The drawn glyph where there is one, the emoji where there
+                    is not. Emoji render differently on every platform and are
+                    somebody else's visual language; these nine were drawn for
+                    this product. `onError` falls back rather than leaving a
+                    broken image — a department added without art should look
+                    unstyled, never broken. */}
+                <img
+                  src={`/dept/${deptId}.png`}
+                  alt=""
+                  aria-hidden
+                  loading="lazy"
+                  width={18}
+                  height={18}
+                  className="h-[18px] w-[18px] shrink-0 object-contain"
+                  onError={(e) => {
+                    const el = e.currentTarget
+                    el.replaceWith(document.createTextNode(label.icon))
+                  }}
+                />
+                {label.name}
               </span>
               <span className="tabular-nums">{count}</span>
             </li>

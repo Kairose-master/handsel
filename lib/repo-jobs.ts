@@ -17,9 +17,25 @@ export class DiffRejectedError extends Error {}
 
 export const REPO_JOB_TITLE_PREFIX = 'repo → '
 
-/** owner/name, both segments in GitHub's allowed charset. */
+/**
+ * owner/name, both segments in GitHub's allowed charset.
+ *
+ * Tightened beyond "the charset" once this name started reaching a `git`
+ * argv and a directory name (lib/worker-deliverable.ts): the charset alone
+ * admitted `-x/y` and `../..`. Neither is a real repository, and both are
+ * dangerous in the new position — git reads a leading dash as an OPTION, and
+ * it has options that execute things (`--upload-pack`, `--config
+ * core.sshCommand=…`), so no shell needs to be involved for that to be code
+ * execution on a worker's machine. `..` walks a clone out of its scratch
+ * directory.
+ *
+ * Both segments must therefore START with an alphanumeric, and `..` is
+ * refused outright. GitHub's own rules are narrower still, so this rejects
+ * nothing legitimate.
+ */
 export function validateRepoFullName(s: string): boolean {
-  return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(s)
+  if (typeof s !== 'string' || s.length > 140 || s.includes('..')) return false
+  return /^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(s)
 }
 
 export function repoJobTitle(repoFullName: string, title: string): string {
