@@ -45,6 +45,19 @@ export type OfficeTheme = {
   warn: string
   ok: string
 
+  /** Furniture palette. Rooms used to be empty floor slabs inside a wall
+   *  ring, so a theme only ever had to describe architecture; once `PROPS`
+   *  is actually rendered a theme has to say what a desk is made of too. */
+  prop: {
+    surface: string   // desk and table tops
+    frame: string     // legs, shelving, cabinet carcass
+    fabric: string    // sofas, chairs, rugs
+    foliage: string   // planting
+    screen: string    // monitor and wall-panel emission
+  }
+  /** Warm pool of light hung over each room. Carries the "somebody works
+   *  here" reading that a single global key light cannot. */
+  roomLight: { color: string; intensity: number }
   ambient: { color: string; intensity: number }
   directional: { color: string; intensity: number }
   fog: [near: number, far: number] | null
@@ -71,6 +84,14 @@ const TACTICAL: OfficeTheme = {
   danger: '#ff3b3b',
   warn: '#ffb84f',
   ok: '#57ffb0',
+  prop: {
+    surface: '#243444',
+    frame: '#38506a',
+    fabric: '#1e2c3a',
+    foliage: '#2f7d5c',
+    screen: '#4fd8ff',
+  },
+  roomLight: { color: '#bfe6ff', intensity: 420 },
   ambient: { color: '#1c6b85', intensity: 0.5 },
   directional: { color: '#dff4ff', intensity: 1.15 },
   fog: [60, 160],
@@ -97,6 +118,14 @@ const DIORAMA: OfficeTheme = {
   danger: '#ff5fa8',
   warn: '#ffd83d',
   ok: '#b8f0dd',
+  prop: {
+    surface: '#e8c9a8',
+    frame: '#a97d5e',
+    fabric: '#ffb3d1',
+    foliage: '#7fc8a0',
+    screen: '#cfeaff',
+  },
+  roomLight: { color: '#ffe6c2', intensity: 300 },
   ambient: { color: '#ffffff', intensity: 0.85 },
   directional: { color: '#fff3e0', intensity: 0.9 },
   fog: null,

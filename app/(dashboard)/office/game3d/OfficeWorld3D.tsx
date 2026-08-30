@@ -25,7 +25,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { OrthographicCamera } from '@react-three/drei'
+import { Environment, Lightformer, OrthographicCamera } from '@react-three/drei'
 import { EffectComposer, Bloom, SMAA, ToneMapping, Vignette, SSAO } from '@react-three/postprocessing'
 import { BlendFunction, ToneMappingMode } from 'postprocessing'
 import * as THREE from 'three'
@@ -35,6 +35,7 @@ import { MIN_SELECT_BOX_PX } from '../game/select'
 import type { ArtifactFlight, AgentConversation } from '@/lib/office-world-data'
 import { CameraRig } from './CameraRig'
 import { RoomMeshes } from './RoomMeshes'
+import { RoomProps } from './RoomProps'
 import { AgentAvatars } from './AgentAvatars'
 import { ArtifactFlights3D } from './ArtifactFlights3D'
 import { AgentConversations3D } from './AgentConversations3D'
@@ -324,7 +325,10 @@ export default function OfficeWorld3D({
         onPointerLeave={onPointerUp}
       >
         <Canvas
-          shadows="soft"
+          // `shadows="soft"` selects PCFSoftShadowMap, which three 0.185
+          // deprecates and silently downgrades to PCFShadowMap while warning
+          // once per frame. VSM actually is soft, and is not deprecated.
+          shadows={{ type: THREE.VSMShadowMap }}
           dpr={[1, 2]}
           gl={{ antialias: false }}
           camera={{ position: [0, 0, 0] }}
@@ -333,10 +337,27 @@ export default function OfficeWorld3D({
           <CameraRig agents={agents} selectedId={selectedId} selectedRoomId={selectedRoomId} />
           <ambientLight intensity={theme.ambient.intensity} color={theme.ambient.color} />
           <SunRig theme={theme} />
+          {/* Image-based lighting. Standard materials only look like
+              MATERIALS when they have something to reflect; with no
+              environment every surface returns the same flat diffuse term and
+              metalness might as well be zero. Built from Lightformers rather
+              than a `preset`, because a preset fetches an HDRI from a CDN at
+              runtime — an external request this app should not make, and one
+              that fails silently to exactly the flat look we are fixing. */}
+          {/* `frames={1}` bakes the cube map once, which is all a static
+              rig needs — but it also means a theme switch would keep the old
+              theme's reflections. Keyed on the theme so switching remounts it
+              and re-bakes. */}
+          <Environment key={themeId} resolution={128} frames={1}>
+            <Lightformer form="rect" intensity={theme.glow ? 1.6 : 2.4} color={theme.directional.color} scale={[60, 60, 1]} position={[0, 40, 0]} rotation={[-Math.PI / 2, 0, 0]} />
+            <Lightformer form="rect" intensity={theme.glow ? 1.1 : 0.6} color={theme.accent} scale={[40, 20, 1]} position={[-40, 12, 0]} rotation={[0, Math.PI / 2, 0]} />
+            <Lightformer form="rect" intensity={0.5} color={theme.accentDim} scale={[40, 20, 1]} position={[40, 12, 0]} rotation={[0, -Math.PI / 2, 0]} />
+          </Environment>
           <hemisphereLight args={[theme.accentDim, theme.wall, theme.glow ? 0.4 : 0.6]} />
           <color attach="background" args={[theme.bg]} />
           {theme.fog && <fog attach="fog" args={[theme.bg, theme.fog[0], theme.fog[1]]} />}
           <RoomMeshes agents={agents} onSelectRoom={handlePickRoom} />
+          <RoomProps />
           <AgentAvatars agents={agents} selectedId={selectedId} onSelect={handlePick} />
           <ArtifactFlights3D flights={flights} agents={agents} />
           <AgentConversations3D conversations={conversations} agents={agents} />
