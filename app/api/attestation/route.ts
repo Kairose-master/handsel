@@ -1,4 +1,5 @@
 import { DOMAIN, TYPES, TYPES_V2, EVIDENCE_SCHEMA, WORK_PROOF_SCHEMA, WORK_PROOF_SCHEMA_V2, trustedAttester } from '@/lib/attestation'
+import { CHAIN, onchainEnv } from '@/lib/onchain/config'
 
 /**
  * GET /api/attestation — the recipe for verifying a Handsel work proof WITHOUT
@@ -39,10 +40,33 @@ export async function GET(): Promise<Response> {
     // not configured on this deployment — a verifier must treat null as "cannot
     // verify here", never as "any signer is fine".
     attester,
-    // Cross-check this against the oracle's on-chain identity (it signs ERC-8004
-    // validations) rather than trusting this endpoint alone — that is the trust
-    // anchor that is not us.
+    // Cross-check this against the oracle's on-chain identity rather than
+    // trusting this endpoint alone — that is the trust anchor that is not us.
     attesterIsOnchainOracle: true,
+    // WHERE to cross-check it, machine-readably, because "verify it on-chain"
+    // is not an instruction anyone can follow. `AgentCreditRegistry.oracle()`
+    // is a view function on a deployed contract: the same address this
+    // endpoint returns as `attester`, readable from any Base RPC with no call
+    // to us. A verifier pins from here once and is thereafter checking against
+    // a fact no Handsel endpoint can change.
+    //
+    // Both values are DERIVED from the same config the server signs with —
+    // never a literal — so this cannot drift into pointing a verifier at the
+    // wrong contract (§26, and docs/failure-modes.md §41 for the version of
+    // this that was wrong).
+    attesterAnchor: onchainEnv.registryAddress
+      ? {
+          chainId: CHAIN.id,
+          chain: CHAIN.name,
+          contract: onchainEnv.registryAddress,
+          call: 'oracle()',
+          returns: 'address',
+          expect: attester,
+          note:
+            'Read oracle() on this contract from any RPC for the chain and compare to `attester` above. ' +
+            'Equal ⇒ the attester address is confirmed by on-chain state rather than by this endpoint.',
+        }
+      : null,
     // The full EIP-712 recipe. A verifier reconstructs the typed-data hash from
     // exactly these and recovers the signer locally. (Kept as the v1 recipe for
     // consumers built against it; `schemas` below carries every version.)

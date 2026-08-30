@@ -2104,6 +2104,71 @@ tree. Every step of this fix was verified by doing exactly that: pnpm
 install, `pnpm lint` (0 errors), `pnpm exec tsc --noEmit` (exit 0),
 `pnpm test:coverage` (exit 0) and `pnpm build` (exit 0).
 
+## 41. We told a partner to verify against a registry we never wrote to
+
+**Symptom.** None locally — this one only surfaces in someone else's codebase.
+An external platform (AIPOU, issue #8) ran the public demo, got a
+`handsel.work.v1` proof, and asked the exactly right question: a returned
+signature/attester pair is still *provider-issued data* until their own
+verifier recovers it against the correct typed-data domain. Where is the
+canonical verification route?
+
+`docs/verifying-proofs.md` had the answer, including a "don't even trust the
+recipe endpoint" section — the part that matters most to a counterparty,
+since `/api/attestation` publishing its own attester address is still our
+word. That section said: *"the oracle signs ERC-8004 validations on-chain, so
+its address appears on-chain as the validator. Pin the attester from that
+on-chain identity."*
+
+**Root cause.** The `erc8004` capability is **off** on the mainnet deployment
+— `GET /api/capabilities` reports `erc8004: on=false`, gated on three
+`ERC8004_*` addresses that are not set. The oracle has never written a
+validation to any ERC-8004 registry from this deployment. The instruction was
+aspirational — true of a design, not of a running system — and a verifier
+following it would have found nothing and had no way to tell "the anchor is
+empty" from "this proof is not anchored."
+
+Worse than a doc typo, because of who reads it: this is the one paragraph
+written for somebody outside the project, at the moment they are deciding
+whether our attestations mean anything. Being sent to an empty registry is a
+reason to file the whole thing under `provider_issued_unverified` — which is
+exactly what AIPOU said they would do.
+
+**What is actually true.** The anchor exists; it is just a different one.
+`AgentCreditRegistry.oracle()` is a view function on a deployed contract, and
+on Base mainnet it returns the attester address exactly:
+
+```
+registry 0x91acc4C081d3a364d3b713be8eEc39A77F647290  .oracle()
+      → 0x81C76907812A098427E177B1Ef9779157a3D3B68
+/api/attestation.attester
+      = 0x81C76907812A098427E177B1Ef9779157a3D3B68
+```
+
+Read from any Base RPC, no Handsel call involved. That is a real anchor with
+the property the paragraph was claiming: pin from it once and the recipe
+endpoint drops out of the verifier's trust set.
+
+**Fix.** `/api/attestation` now serves `attesterAnchor` — chain, contract,
+`oracle()`, and the address to expect — **derived** from `onchainEnv`
+and `CHAIN`, never a literal, so it cannot drift into pointing a verifier at
+the wrong contract (the same §26 rule, applied to an address instead of a
+sentence). A deployment with no registry configured returns `null`, which
+reads as "unanchored here" rather than "trust us instead".
+`docs/verifying-proofs.md` carries the corrected route with a runnable
+snippet, and keeps a visible note of what it used to say — a doc that
+silently rewrites a claim an outside party may have already built against is
+its own small betrayal. `tests/attestation-anchor.test.ts` pins all of it,
+including that no `0x…` literal ever appears in the route.
+
+**Verified before publishing, not asserted.** Recovered the signature of the
+proof actually cited in the thread
+(`841947ac-5076-4baf-aace-02659bd0bfb2`) locally with viem against the
+published recipe: recovers to the attester. Flipping `verdict` to `fail`
+recovers a *different* address, so the signature is genuinely binding the
+message and not merely well-formed. Then read `oracle()` from Base and
+confirmed the two agree.
+
 ## Invariants these fixes encode
 
 Keep these true, and this class of bug stays dead:
@@ -2252,3 +2317,15 @@ Keep these true, and this class of bug stays dead:
    green locally and red in CI can both be correct readings of the same
    source. Whichever one CI runs is the one that decides — verify a
    dependency change against *that* install, not the convenient one (§40).
+40. **A trust anchor you have never written to is not an anchor.** The
+   "don't trust us, check on-chain" paragraph is the one an outside verifier
+   reads most carefully, and it named a registry this deployment has never
+   published to. Any instruction pointing a counterparty at external state
+   must be checked against that state — not against the design that intended
+   it — and if the capability behind it reports `off`, the instruction is
+   fiction (§41).
+41. **Publish where to check, not just that it is checkable.** "Cross-check
+   the oracle's on-chain identity" is not an instruction anyone can follow;
+   a chain id, a contract address, a function name and the value to expect
+   is. Derive all of it from the same config the server signs with, so the
+   published anchor cannot drift away from the running one (§26, §41).

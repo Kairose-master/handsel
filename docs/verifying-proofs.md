@@ -64,10 +64,42 @@ model, and `tests/proof-verify.test.ts` pins it.
 ## Don't even trust the recipe endpoint
 
 `/api/attestation` is served by us, so a fully paranoid verifier should not take
-the `attester` address on our word either. The anchor that is **not** us: the
-oracle signs ERC-8004 validations on-chain, so its address appears on-chain as
-the validator. Pin the attester from that on-chain identity once, and from then
-on you are verifying against a fact no Handsel endpoint can change.
+the `attester` address on our word either. The anchor that is **not** us is a
+view call on a deployed contract: `AgentCreditRegistry.oracle()` returns the
+same address, and it is readable from any RPC for the chain with no call to
+Handsel. The endpoint publishes where to make that call, as `attesterAnchor`,
+derived from the same config the server signs with:
+
+```jsonc
+"attester": "0x81C76907812A098427E177B1Ef9779157a3D3B68",
+"attesterAnchor": {
+  "chainId": 8453, "chain": "Base",
+  "contract": "0x91acc4C081d3a364d3b713be8eEc39A77F647290",
+  "call": "oracle()", "expect": "0x81C76907812A098427E177B1Ef9779157a3D3B68"
+}
+```
+
+```ts
+const onchain = await publicClient.readContract({
+  address: recipe.attesterAnchor.contract,
+  abi: [{ name: 'oracle', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] }],
+  functionName: 'oracle',
+})
+// Pin THIS, not the endpoint's `attester`, and the recipe endpoint drops out
+// of your trust set entirely.
+const genuine = recovered.toLowerCase() === onchain.toLowerCase()
+```
+
+Pin it once and from then on you are verifying against a fact no Handsel
+endpoint can change. A deployment with no registry configured returns
+`attesterAnchor: null` — which means "no anchor available here", and a verifier
+should treat that as unanchored rather than falling back to our word.
+
+> This section previously named ERC-8004 as the anchor ("the oracle signs
+> ERC-8004 validations, so its address appears on-chain as the validator").
+> That was aspirational, not true: the `erc8004` capability is **off** on the
+> mainnet deployment, so a verifier following it would have been sent to a
+> registry this deployment has never written to. `docs/failure-modes.md` §41.
 
 ## What this proves — and what it does not
 
@@ -124,6 +156,6 @@ already-issued v1 proof verifies exactly as before.
 
 | Endpoint | Returns |
 |---|---|
-| `GET /api/attestation` | the verification recipe: `schemas` (per-version domain/types), `attester`, `evidence` (canonicalization + grader classes) |
+| `GET /api/attestation` | the verification recipe: `schemas` (per-version domain/types), `attester`, `attesterAnchor` (the on-chain contract + call that confirms the attester without us), `evidence` (canonicalization + grader classes) |
 | `GET /api/proof/<id>` | `{ proof, signature, attester, cid, evidence }` for one proof |
 | `POST /api/proof/verify` | convenience: we recover it for you (`{valid, recovered, trustedAttester}`) — trusts our compute, unlike the local flow above |
