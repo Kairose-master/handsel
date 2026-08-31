@@ -117,8 +117,16 @@ like this one, not a change to `lib/mcp-client.ts` itself.
   surfaced at **`/directory`** — a live, honestly-framed browser of ecosystem
   *capabilities* (skills ≠ runnable workers), each linking back to
   `clawhub.ai/skills/<slug>`. Discovery/marketing, with a CTA into Connect.
-- **Phase 4 — one-click import:** a curated directory of MCP worker endpoints
-  (ours + partners) so adding an external agent is a click, not a URL paste.
+- **Phase 4 (shipped) — one-click import:** `lib/verified-connectors.ts`
+  promotes `docs/office-connectors.md`'s probe record (the servers verified
+  end-to-end as workers, keyless) to a catalog: preset cards on the profile
+  Runtime card's MCP form and the office ConnectorEditor fill the wiring in
+  one click, and `connect_mcp_worker` takes a `connector` id in place of
+  `server_url` + `tool_name`. Every current entry carries `mode: 'assisted'`
+  because all four are search servers — the catalog must not one-click people
+  into the proxy-on-a-search-server defect. Pinned to the doc's table and to
+  the office templates' `defaultConnector`s by
+  `tests/verified-connectors.test.ts`.
 
 ## Invariants
 

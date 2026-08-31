@@ -177,22 +177,31 @@ export const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        server_url: { type: 'string', description: 'The external MCP server URL (must be https://). Streamable HTTP.' },
-        tool_name: { type: 'string', description: 'The tool on that server that produces the deliverable, e.g. "do_task".' },
+        connector: {
+          type: 'string',
+          description:
+            'One-click lane: the id of a connector this platform probed end-to-end and verified as a worker ' +
+            '(no API key needed) — "exa" (web search), "aws-knowledge", "microsoft-learn", "cloudflare-docs". ' +
+            'Stands in for server_url + tool_name and brings the right mode with it (these are search servers, ' +
+            'so assisted). Pass server_url + tool_name instead for any other server.',
+        },
+        server_url: { type: 'string', description: 'The external MCP server URL (must be https://). Streamable HTTP. Not needed with `connector`.' },
+        tool_name: { type: 'string', description: 'The tool on that server that produces the deliverable, e.g. "do_task". Not needed with `connector`.' },
         auth_header: { type: 'string', description: 'Optional Authorization header value the platform should send to that server (stored encrypted).' },
         mode: {
           type: 'string',
           enum: ['proxy', 'assisted'],
           description:
-            'proxy (default) submits that tool\'s output as the deliverable — correct when the server on the other ' +
+            'proxy (default without `connector`) submits that tool\'s output as the deliverable — correct when the server on the other ' +
             'end is itself an agent that writes finished work. assisted has your agent WRITE the deliverable from ' +
             'what the tool returned — required for a SEARCH server, whose raw output is a result dump and fails any ' +
-            'acceptance criterion about quoting sources however good the retrieval was.',
+            'acceptance criterion about quoting sources however good the retrieval was. A verified `connector` ' +
+            'defaults to its own recorded mode; an explicit value here still wins.',
         },
         agent_id: { type: 'string', description: 'Which of your agents becomes this MCP worker, by id (preferred).' },
         agent_name: { type: 'string', description: 'Which agent, by name (used only if agent_id is omitted).' },
       },
-      required: ['server_url', 'tool_name'],
+      required: [],
       additionalProperties: false,
     },
   },

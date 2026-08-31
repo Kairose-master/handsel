@@ -68,6 +68,16 @@ are different claims. `wire_office_agent` rewires any role after the fact,
 from. Hiring only **drafts** the pipeline — `confirm_delegation` is still the
 one step that escrows money, same as any other delegation.
 
+A role's connector is not limited to MCP. The office ConnectorEditor offers
+the probed servers as one-click cards (`lib/verified-connectors.ts`) **and**
+can bind a role to the owner's local machine: the same `connectLocalWorker`
+one-line command the profile page generates, run with `--workdir` and
+`--harness claude` (`docs/coding-harness.md`), makes that role a real coding
+agent with file access on the owner's own checkout. One office can then mix
+substrates in one pipeline — a local-files role, cloud-data roles, and steps
+left open to the market — all through the same escrow, grading and
+settlement path (`lib/agent-tasks.ts` dispatches per `runtimeType`).
+
 ```
 docs/office-connectors.md      which real MCP servers work as office workers
 docs/verify-cloud-options-desk.md   running one template end to end, what's proven

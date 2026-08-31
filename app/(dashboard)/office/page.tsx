@@ -52,7 +52,8 @@ import {
   setMyOfficeAutomaton,
   type OfficeAutomatonView,
 } from '@/app/actions/office'
-import { setMcpWorker, disconnectMcpWorker } from '@/app/actions/webhook'
+import { setMcpWorker, disconnectMcpWorker, connectLocalWorker } from '@/app/actions/webhook'
+import { VERIFIED_CONNECTORS } from '@/lib/verified-connectors'
 import {
   myAgentSkills,
   installSkillOnAgent,
@@ -1735,7 +1736,11 @@ function OfficeRosterPanel({ slot, refreshKey }: { slot: number; refreshKey: num
                     </span>
                   )}
                   <span className="ml-auto">
-                    {a.mcpServerUrl && a.mcpToolName ? (
+                    {a.runtimeType === 'local' ? (
+                      <span className="inline-flex items-center gap-1 text-xs text-primary">
+                        <Plug className="h-3 w-3" /> local worker
+                      </span>
+                    ) : a.mcpServerUrl && a.mcpToolName ? (
                       <span className="inline-flex items-center gap-1 text-xs text-primary">
                         <Plug className="h-3 w-3" /> connected
                       </span>
@@ -1745,7 +1750,13 @@ function OfficeRosterPanel({ slot, refreshKey }: { slot: number; refreshKey: num
                   </span>
                 </div>
 
-                {a.mcpServerUrl && a.mcpToolName && (
+                {a.runtimeType === 'local' && (
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    runs on the owner&apos;s machine — jobs queue until its worker polls (harness-capable)
+                  </p>
+                )}
+
+                {a.runtimeType !== 'local' && a.mcpServerUrl && a.mcpToolName && (
                   <>
                     <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
                       {a.mcpToolName} · {a.mcpServerUrl}
@@ -1805,6 +1816,7 @@ function ConnectorEditor({
   const [mode, setMode] = useState<'proxy' | 'assisted'>(agent.mcpMode)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [localCommand, setLocalCommand] = useState<string | null>(null)
 
   const save = async () => {
     setBusy(true)
@@ -1837,8 +1849,81 @@ function ConnectorEditor({
     }
   }
 
+  const connectLocal = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      const { command } = await connectLocalWorker(agent.id)
+      setLocalCommand(command)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not connect a local worker.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // The one-line local attach took over: show the command, nothing else.
+  // The role is already switched to 'local'; Done refreshes the roster.
+  if (localCommand) {
+    return (
+      <div className="mt-2 space-y-2 rounded-md border border-border bg-secondary/40 p-2.5">
+        <p className="text-[11px] text-muted-foreground">
+          Run this on your machine. The worker connects outbound (polling) — no tunnel, no public URL. Append{' '}
+          <code className="font-mono">--workdir &lt;a scratch checkout&gt; --harness claude</code> to hand each job to
+          Claude Code (or any installed coding harness) with real file access in that directory — point it at a
+          checkout you can throw away, never at anything holding credentials.
+        </p>
+        <pre className="overflow-x-auto rounded-md border border-border bg-background p-2 font-mono text-[10px]">
+          {localCommand}
+        </pre>
+        <Button type="button" size="sm" onClick={onDone}>
+          Done
+        </Button>
+      </div>
+    )
+  }
+
   return (
     <div className="mt-2 space-y-2 rounded-md border border-border bg-secondary/40 p-2.5">
+      {/* One-click attach for servers this repo probed end-to-end
+          (docs/office-connectors.md → lib/verified-connectors.ts). Filling the
+          form instead of submitting directly keeps Test/auth/Save exactly as
+          they are; mode comes with the card because every one of these is a
+          search server, and a search server in proxy submits a result dump. */}
+      <div className="flex flex-wrap gap-1.5">
+        {VERIFIED_CONNECTORS.map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            title={`${c.blurb} Probed end-to-end ${c.verifiedOn}, no API key needed.`}
+            onClick={() => {
+              setServerUrl(c.serverUrl)
+              setToolName(c.toolName)
+              setMode(c.mode)
+            }}
+            className={`rounded-md border px-2 py-1 text-[11px] hover:bg-secondary ${
+              serverUrl.trim() === c.serverUrl && toolName.trim() === c.toolName
+                ? 'border-primary/40 bg-primary/10 text-primary'
+                : 'border-border'
+            }`}
+          >
+            {c.label}
+          </button>
+        ))}
+        <button
+          type="button"
+          title="Switch this role to your own machine: a polling worker that can hand each job to Claude Code or another installed coding harness, with real file access in a directory you choose."
+          onClick={connectLocal}
+          disabled={busy}
+          className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-secondary disabled:opacity-50"
+        >
+          My local machine (coding harness)
+        </button>
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        One click fills in a server that was probed end-to-end from this platform (no API key) — Test re-checks it
+        live before you save. Or paste any Streamable-HTTP MCP server:
+      </p>
       <Input value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} placeholder="https://…/mcp" className="h-8 text-xs" />
       <Input value={toolName} onChange={(e) => setToolName(e.target.value)} placeholder="tool name" className="h-8 text-xs" />
       <Input

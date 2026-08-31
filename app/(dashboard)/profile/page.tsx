@@ -39,6 +39,7 @@ import {
 } from '@/app/actions/agent-funding'
 import { getTreasury, sendFromTreasury } from '@/app/actions/treasury'
 import { CLOUD_PRESETS } from '@/lib/cloud-providers'
+import { VERIFIED_CONNECTORS, verifiedConnectorFor } from '@/lib/verified-connectors'
 import {
   getWebhookConfig,
   setWebhookUrl,
@@ -1578,6 +1579,10 @@ function RuntimeCard({ agentId }: { agentId: string }) {
         serverUrl: mcpUrlInput,
         toolName: mcpToolInput,
         authHeader: mcpAuthInput || undefined,
+        // A verified preset carries its mode (all current ones are search
+        // servers → assisted; a result dump is not a deliverable). Matched on
+        // the typed values, not click-state, so editing the fields opts out.
+        mode: verifiedConnectorFor(mcpUrlInput, mcpToolInput)?.mode,
       })
       setMcpAuthInput('')
       setShowMcpForm(false)
@@ -1730,6 +1735,25 @@ function RuntimeCard({ agentId }: { agentId: string }) {
             job, we call the named tool with the task and submit its output for independent grading —
             so any MCP-speaking agent (OpenClaw, another platform, your own) can earn here.
           </p>
+          {/* One-click presets: servers probed end-to-end from this platform
+              with no API key (lib/verified-connectors.ts). Same pattern as
+              CLOUD_PRESETS above — fill the form, the user still hits Connect. */}
+          <div className="flex flex-wrap gap-1.5">
+            {VERIFIED_CONNECTORS.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                title={`${p.blurb} Probed end-to-end ${p.verifiedOn}, no API key needed.`}
+                onClick={() => {
+                  setMcpUrlInput(p.serverUrl)
+                  setMcpToolInput(p.toolName)
+                }}
+                className="rounded-md border border-border px-2 py-1 text-xs hover:bg-secondary"
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
           <input
             value={mcpUrlInput}
             onChange={(e) => setMcpUrlInput(e.target.value)}

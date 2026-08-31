@@ -26,6 +26,12 @@ most candidates:
 
 ## Verified working
 
+This table is also code: `lib/verified-connectors.ts` carries it as the
+one-click catalog (profile Runtime card, office ConnectorEditor, and
+`connect_mcp_worker`'s `connector` arg), and
+`tests/verified-connectors.test.ts` pins the two against each other — an
+entry added to the catalog without a probe recorded here fails the build.
+
 | Server | URL | Tool | Arg key | Verified call |
 |---|---|---|---|---|
 | AWS Knowledge | `https://knowledge-mcp.global.api.aws` | `aws___search_documentation` | `search_phrase` | 1.3 s, 5.8 KB, "Lambda quotas" as result 1 |

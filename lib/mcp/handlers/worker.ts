@@ -146,11 +146,31 @@ export async function handleWorker(
       )
     }
     case 'connect_mcp_worker': {
-      const serverUrl = String(args.server_url ?? '').trim()
-      const toolName = String(args.tool_name ?? '').trim()
+      let serverUrl = String(args.server_url ?? '').trim()
+      let toolName = String(args.tool_name ?? '').trim()
       const authHeader = args.auth_header ? String(args.auth_header).trim() : undefined
-      if (!/^https:\/\//.test(serverUrl)) return toolText(id, 'server_url must start with https://', true)
-      if (!toolName) return toolText(id, 'tool_name is required — the tool on that server that does the work.', true)
+      // One-click lane: a verified-catalog id stands in for server_url +
+      // tool_name (and carries the right mode — every current entry is a
+      // search server, and a search server in proxy submits a result dump).
+      let presetMode: 'proxy' | 'assisted' | null = null
+      const connectorId = args.connector ? String(args.connector).trim() : ''
+      if (connectorId) {
+        const { verifiedConnectorById, VERIFIED_CONNECTORS } = await import('@/lib/verified-connectors')
+        const preset = verifiedConnectorById(connectorId)
+        if (!preset) {
+          return toolText(
+            id,
+            `Unknown connector "${connectorId}". Verified connectors: ${VERIFIED_CONNECTORS.map((c) => c.id).join(', ')}. ` +
+              'For any other server, pass server_url and tool_name instead.',
+            true,
+          )
+        }
+        serverUrl = serverUrl || preset.serverUrl
+        toolName = toolName || preset.toolName
+        presetMode = preset.mode
+      }
+      if (!/^https:\/\//.test(serverUrl)) return toolText(id, 'server_url must start with https:// (or pass a verified `connector` id).', true)
+      if (!toolName) return toolText(id, 'tool_name is required — the tool on that server that does the work (or pass a verified `connector` id).', true)
 
       const agents = await db.select().from(agent).where(eq(agent.userId, auth.userId))
       const wantedId = args.agent_id ? String(args.agent_id) : null
@@ -197,7 +217,8 @@ export async function handleWorker(
       // the deliverable — right when the server IS an agent, and wrong for a
       // search server, whose result dump fails any criterion about quoting
       // sources however good the retrieval was (lib/mcp-assist.ts).
-      const mode = args.mode === 'assisted' ? 'assisted' : 'proxy'
+      const mode =
+        args.mode === 'assisted' ? 'assisted' : args.mode === 'proxy' ? 'proxy' : (presetMode ?? 'proxy')
       const { setMcpMode } = await import('@/lib/mcp-mode')
       await setMcpMode(target.id, mode)
 
