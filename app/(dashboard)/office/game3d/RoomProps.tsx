@@ -37,9 +37,12 @@ const DESK_H = 0.62
 const DESK_THICK = 0.08
 const LEG = 0.07
 const SHELF_H = 1.5
-const CABINET_H = 0.8
+/** Racks stand between desk height and the wall — see `Cabinet`. */
+const RACK_H = 1.55
 const SOFA_H = 0.42
 const MONITOR_W = 0.72
+/** Just under the beams RoomDecor hangs at WALL_H + 1.0. */
+const CEILING_FIXTURE = 3.4
 const MONITOR_H = 0.46
 
 // Shared geometry. A unit box scaled per-instance beats one geometry per
@@ -62,6 +65,12 @@ function useMaterials(theme: OfficeTheme) {
       // bloom pass exists mostly for them. `toneMapped: false` keeps a
       // screen reading as emitted light rather than as a lit surface.
       screen: new THREE.MeshBasicMaterial({ color: p.screen, toneMapped: false }),
+      // A warm source to set against all that cyan. Every reference render
+      // of this office is mostly cold screen light with a scatter of warm
+      // desk lamps through it, and the contrast between the two is what
+      // stops the deck reading as one flat blue wash.
+      lamp: new THREE.MeshBasicMaterial({ color: theme.warn, toneMapped: false }),
+      led: new THREE.MeshBasicMaterial({ color: theme.ok, toneMapped: false }),
       rug: new THREE.MeshStandardMaterial({
         color: p.fabric,
         roughness: 1,
@@ -75,13 +84,51 @@ function useMaterials(theme: OfficeTheme) {
 
 type Mats = ReturnType<typeof useMaterials>
 
-/** A desk slab on four legs, with a monitor standing at the back edge.
- *  `world.ts` seats the agent one tile SOUTH of the desk, so the screen
- *  faces that way — the avatar looks at the display rather than its back. */
+/**
+ * A monitor: a stalk, a bezel and an emissive face.
+ *
+ * Its own component because desks carry more than one. A single centred
+ * display is the thing that most gave the old desks away as placeholders —
+ * every workstation in the reference sheets is two or three panels angled
+ * in toward the person sitting at it, and the angle is half of why they
+ * read as a workstation rather than as a television on a table.
+ */
+function Monitor({ mats, x, y, z, ry, w }: { mats: Mats; x: number; y: number; z: number; ry: number; w: number }) {
+  return (
+    <group position={[x, y, z]} rotation={[0, ry, 0]}>
+      <mesh castShadow geometry={BOX} material={mats.frame} position={[0, 0.09, 0]} scale={[0.1, 0.18, 0.08]} />
+      <mesh castShadow geometry={BOX} material={mats.frame} position={[0, 0.18 + MONITOR_H / 2, 0]} scale={[w, MONITOR_H, 0.05]} />
+      <mesh geometry={PLANE} material={mats.screen} position={[0, 0.18 + MONITOR_H / 2, 0.028]} scale={[w - 0.08, MONITOR_H - 0.07, 1]} />
+    </group>
+  )
+}
+
+/** The desk lamp. Four small pieces and no light source of its own — an
+ *  actual pointLight per desk would be thirty more shadowless lights on the
+ *  deck for a pool nobody looks at. What matters is the warm POINT in the
+ *  frame, which the bloom pass turns into a glow for free. */
+function DeskLamp({ mats, x, y, z }: { mats: Mats; x: number; y: number; z: number }) {
+  return (
+    <group position={[x, y, z]}>
+      <mesh geometry={CYL} material={mats.frame} position={[0, 0.01, 0]} scale={[0.07, 0.02, 0.07]} />
+      <mesh geometry={CYL} material={mats.frame} position={[0, 0.15, 0]} scale={[0.016, 0.3, 0.016]} />
+      <mesh geometry={CYL} material={mats.frame} position={[0, 0.3, 0.05]} rotation={[0.5, 0, 0]} scale={[0.075, 0.11, 0.075]} />
+      <mesh geometry={SPHERE} material={mats.lamp} position={[0, 0.26, 0.08]} scale={[0.05, 0.05, 0.05]} />
+    </group>
+  )
+}
+
+/** A desk slab on four legs, with its displays standing at the back edge.
+ *  `world.ts` seats the agent one tile SOUTH of the desk, so the screens
+ *  face that way — the avatar looks at them rather than at their backs. */
 function Desk({ prop, mats, tall }: { prop: Prop; mats: Mats; tall: boolean }) {
   const w = prop.w
   const d = prop.h
   const h = tall ? DESK_H + 0.06 : DESK_H
+  const back = -d / 2 + 0.22
+  // Two panels once there is bench to put them on, angled in toward the
+  // seat; one centred panel on anything narrower.
+  const pair = w >= 2.5
   return (
     <group position={[prop.x + w / 2, 0, prop.y + d / 2]}>
       <mesh castShadow receiveShadow geometry={BOX} material={mats.surface} position={[0, h, 0]} scale={[w, DESK_THICK, d]} />
@@ -93,21 +140,15 @@ function Desk({ prop, mats, tall }: { prop: Prop; mats: Mats; tall: boolean }) {
       ].map(([lx, lz], i) => (
         <mesh key={i} castShadow geometry={BOX} material={mats.frame} position={[lx, h / 2, lz]} scale={[LEG, h, LEG]} />
       ))}
-      {/* Monitor: a thin bezel with an emissive face, on a short stalk. */}
-      <mesh castShadow geometry={BOX} material={mats.frame} position={[0, h + 0.09, -d / 2 + 0.22]} scale={[0.1, 0.18, 0.08]} />
-      <mesh
-        castShadow
-        geometry={BOX}
-        material={mats.frame}
-        position={[0, h + 0.18 + MONITOR_H / 2, -d / 2 + 0.22]}
-        scale={[MONITOR_W, MONITOR_H, 0.05]}
-      />
-      <mesh
-        geometry={PLANE}
-        material={mats.screen}
-        position={[0, h + 0.18 + MONITOR_H / 2, -d / 2 + 0.248]}
-        scale={[MONITOR_W - 0.08, MONITOR_H - 0.07, 1]}
-      />
+      {pair ? (
+        <>
+          <Monitor mats={mats} x={-MONITOR_W * 0.58} y={h} z={back + 0.06} ry={0.28} w={MONITOR_W} />
+          <Monitor mats={mats} x={MONITOR_W * 0.58} y={h} z={back + 0.06} ry={-0.28} w={MONITOR_W} />
+        </>
+      ) : (
+        <Monitor mats={mats} x={0} y={h} z={back} ry={0} w={MONITOR_W} />
+      )}
+      <DeskLamp mats={mats} x={w / 2 - 0.2} y={h + DESK_THICK / 2} z={back} />
       <Chair mats={mats} z={d / 2 + 0.34} />
     </group>
   )
@@ -236,13 +277,52 @@ function Table({ prop, mats }: { prop: Prop; mats: Mats }) {
   )
 }
 
+/**
+ * A rack, not a filing cabinet.
+ *
+ * `world.ts` puts one of these in the middle of every department, and it was
+ * a knee-high box with two drawer lines on it — the least interesting object
+ * in a room full of glowing screens. Every reference render of this office
+ * has waist-to-shoulder equipment racks standing in the floor space with
+ * rows of status lights down the front, and they are most of what gives the
+ * departments any vertical interest at all between desk height and the wall.
+ *
+ * Lights on both faces, because nothing in the data says which way a rack is
+ * turned and the deck can be viewed from any of four corners.
+ */
 function Cabinet({ prop, mats }: { prop: Prop; mats: Mats }) {
+  const depth = prop.h * 0.66
+  const rows = useMemo(() => {
+    let seed = (prop.x * 73856093) ^ (prop.y * 19349663)
+    const rand = () => {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff
+      return seed / 0x7fffffff
+    }
+    return [0, 1, 2, 3, 4].map((i) => ({ y: 0.32 + i * 0.26, w: 0.3 + rand() * 0.5, warm: rand() > 0.72 }))
+  }, [prop])
+
   return (
     <group position={[prop.x + prop.w / 2, 0, prop.y + prop.h / 2]}>
-      <mesh castShadow receiveShadow geometry={BOX} material={mats.frame} position={[0, CABINET_H / 2, 0]} scale={[prop.w, CABINET_H, prop.h * 0.6]} />
-      {[0.24, 0.52].map((y, i) => (
-        <mesh key={i} geometry={BOX} material={mats.surface} position={[0, y, prop.h * 0.31]} scale={[prop.w - 0.14, 0.02, 0.02]} />
+      <mesh castShadow receiveShadow geometry={BOX} material={mats.fabric} position={[0, RACK_H / 2, 0]} scale={[prop.w, RACK_H, depth]} />
+      {/* A recessed darker front on each face, so the lights sit in
+          something rather than on a flat slab. */}
+      {[1, -1].map((f) => (
+        <group key={f}>
+          <mesh geometry={BOX} material={mats.frame} position={[0, RACK_H / 2, (f * depth) / 2 + f * 0.01]} scale={[prop.w - 0.16, RACK_H - 0.18, 0.02]} />
+          {rows.map((r, i) => (
+            <mesh
+              key={i}
+              geometry={BOX}
+              material={r.warm ? mats.lamp : mats.led}
+              position={[(-(prop.w - 0.3) / 2 + ((prop.w - 0.3) * r.w) / 2) * 1, r.y, (f * depth) / 2 + f * 0.03]}
+              scale={[(prop.w - 0.3) * r.w, 0.035, 0.02]}
+            />
+          ))}
+        </group>
       ))}
+      {/* A vented cap, so the top is not a bare rectangle from above — which
+          at this camera angle is the face you see most of. */}
+      <mesh castShadow geometry={BOX} material={mats.surface} position={[0, RACK_H + 0.02, 0]} scale={[prop.w + 0.06, 0.04, depth + 0.06]} />
     </group>
   )
 }
@@ -333,22 +413,21 @@ export function RoomProps() {
               were in them. `distance` bounds the falloff so one room's lamp
               does not wash out its neighbours. */}
           <pointLight
-            position={[room.x + room.w / 2, 3.4, room.y + room.h / 2]}
+            position={[room.x + room.w / 2, CEILING_FIXTURE, room.y + room.h / 2]}
             color={theme.roomLight.color}
             intensity={theme.roomLight.intensity}
             distance={Math.max(room.w, room.h) * 1.2}
             decay={2}
           />
-          {/* And something to SEE as the source. A pool of light with no
-              fixture reads as a rendering artifact; a bright panel where the
-              light comes from reads as a ceiling. */}
-          <mesh
-            geometry={PLANE}
-            material={mats.screen}
-            position={[room.x + room.w / 2, 3.45, room.y + room.h / 2]}
-            rotation={[Math.PI / 2, 0, 0]}
-            scale={[room.w * 0.42, room.h * 0.09, 1]}
-          />
+          {/* No fixture is drawn, and that is the second answer to a
+              question this file got wrong twice. A visible source was first
+              a plane rotated to face DOWN — invisible from the only angle
+              the scene is ever viewed from — and then a light bar, which
+              was visible and was the brightest thing in the frame: a white
+              stick floating over a room that, being an open-top diorama,
+              has no ceiling for it to be attached to. The reference renders
+              show rooms lit from above by nothing at all, because that is
+              what a dollhouse with its roof off looks like. */}
         </group>
       ))}
     </>

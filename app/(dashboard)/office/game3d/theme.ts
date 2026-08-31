@@ -33,6 +33,15 @@ export type OfficeTheme = {
   floorLounge: string
   floorLine: string // grid-texture line color (tactical) — flat floors ignore it
   wall: string
+  /** The coping along the top of a full-height wall. Lighter than the wall
+   *  itself in both presets: the top edge is the line that tells an
+   *  isometric viewer a wall is a wall and not a shadow, and the reference
+   *  renders draw it as a bright rail on every one. */
+  wallTop: string
+  /** The light line where wall meets floor. Runs along every wall including
+   *  the cut-away ones, so a room the viewer is looking into still has its
+   *  footprint drawn. */
+  wallTrim: string
   wallGlowCyan: string
   wallGlowAmber: string
   wallGlowRed: string
@@ -69,11 +78,13 @@ const TACTICAL: OfficeTheme = {
   brand: 'HANDSEL // OFFICE DECK',
   glow: true,
   bg: '#070a0f',
-  floorDept: '#18242f',
-  floorCeo: '#20304a',
-  floorLounge: '#16292a',
+  floorDept: '#1e2c3a',
+  floorCeo: '#27384f',
+  floorLounge: '#1b3032',
   floorLine: 'rgba(79,216,255,0.34)',
   wall: '#0d151d',
+  wallTop: '#2a3d4f',
+  wallTrim: '#2f9fc4',
   wallGlowCyan: '#0e3a4a',
   wallGlowAmber: '#4a350e',
   wallGlowRed: '#4a0e0e',
@@ -91,8 +102,12 @@ const TACTICAL: OfficeTheme = {
     foliage: '#2f7d5c',
     screen: '#4fd8ff',
   },
-  roomLight: { color: '#bfe6ff', intensity: 420 },
-  ambient: { color: '#1c6b85', intensity: 0.5 },
+  // Pulled down from 420 and the ambient lifted to match: at the old value
+  // anything standing directly under the pool — a desk top, the cap of a
+  // rack — came back pure white while the rest of the room stayed near
+  // black. A diorama wants a narrow range, not a spotlight.
+  roomLight: { color: '#bfe6ff', intensity: 240 },
+  ambient: { color: '#1c6b85', intensity: 0.8 },
   directional: { color: '#dff4ff', intensity: 1.15 },
   fog: [60, 160],
 }
@@ -108,6 +123,8 @@ const DIORAMA: OfficeTheme = {
   floorLounge: '#eefaf4',
   floorLine: 'transparent',
   wall: '#4a2b3c',
+  wallTop: '#6d4257',
+  wallTrim: '#ffd83d',
   wallGlowCyan: '#4a2b3c', // no emissive glow when !glow — same as base wall color
   wallGlowAmber: '#4a2b3c',
   wallGlowRed: '#4a2b3c',
@@ -125,8 +142,8 @@ const DIORAMA: OfficeTheme = {
     foliage: '#7fc8a0',
     screen: '#cfeaff',
   },
-  roomLight: { color: '#ffe6c2', intensity: 300 },
-  ambient: { color: '#ffffff', intensity: 0.85 },
+  roomLight: { color: '#ffe6c2', intensity: 190 },
+  ambient: { color: '#ffffff', intensity: 1 },
   directional: { color: '#fff3e0', intensity: 0.9 },
   fog: null,
 }

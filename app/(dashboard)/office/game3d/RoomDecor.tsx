@@ -26,14 +26,17 @@ import * as THREE from 'three'
 import { COLS, ROWS, PROPS, ROOMS, type Room } from '../game/world'
 import { THEMES, type OfficeTheme } from './theme'
 import { useSceneStore } from './scene-store'
+import { WALL_H, WALL_T, sideNormal, wallRuns } from './walls'
 
 const BOX = new THREE.BoxGeometry(1, 1, 1)
 const CYL = new THREE.CylinderGeometry(1, 1, 1, 10)
 const PLANE = new THREE.PlaneGeometry(1, 1)
 
 const DESK_TOP = 0.7 // desk surface height from RoomProps
-const WALL_H = 1.3 // wall height from RoomMeshes
-const CEILING = 3.6
+/** Above the walls, which are now room-height and moved with them: this
+ *  used to be a second copy of the number, which is how the two files came
+ *  to disagree the first time one of them changed. */
+const CEILING = WALL_H + 1.0
 
 /** Deterministic per-position noise. Set dressing must not reshuffle on
  *  every render — a mug that moves when React re-renders reads as a bug. */
@@ -57,6 +60,17 @@ function useDecorMaterials(theme: OfficeTheme) {
       curb: new THREE.MeshStandardMaterial({ color: theme.glow ? '#101822' : '#3b2734', roughness: 0.9, metalness: 0.15 }),
       beam: new THREE.MeshStandardMaterial({ color: theme.glow ? '#0d141d' : '#33202c', roughness: 0.95 }),
       foliage: new THREE.MeshStandardMaterial({ color: p.foliage, roughness: 0.85 }),
+      /** The deck's own edge lighting, the same hue as the wall trim inside
+       *  so the platform and the rooms read as one built thing. */
+      edge: new THREE.MeshBasicMaterial({ color: theme.wallTrim, toneMapped: false }),
+      /** Deck sides — a shade under the curb, so the platform has a top face
+       *  and a dark flank instead of one flat colour all the way round. */
+      deck: new THREE.MeshStandardMaterial({ color: theme.glow ? '#0b1119' : '#33212c', roughness: 0.85, metalness: 0.2 }),
+      /** The walkway between the rooms. Lighter than the deck's flanks: it
+       *  is the only large surface between rooms, and at the curb's own
+       *  near-black it swallowed everything crossing it — agents walking a
+       *  corridor disappeared between one door and the next. */
+      walkway: new THREE.MeshStandardMaterial({ color: theme.glow ? '#141d28' : '#3d2836', roughness: 0.9, metalness: 0.1 }),
     }
   }, [theme])
 }
@@ -79,21 +93,59 @@ function DeskClutter({ x, z, w, mats }: { x: number; z: number; w: number; mats:
   )
 }
 
-/** Emissive panels hung on the inside faces of a room's walls. Wall tiles
- *  are already solid, and a panel at chest height on a 1.3-high wall never
- *  meets the floor, so this is pure surface. Two walls rather than four:
- *  the deck can be turned now, and something on every wall would mean the
- *  near wall is always a lit slab blocking the room behind it. */
-function WallScreens({ room, mats }: { room: Room; mats: Mats }) {
-  const panels = useMemo(() => {
-    const out: { x: number; z: number; ry: number; w: number }[] = []
-    for (let i = 1; i <= 3; i += 1) {
-      const t = i / 4
-      if (hash(room.x, room.y, i) > 0.35) {
-        out.push({ x: room.x + room.w * t, z: room.y + 0.42, ry: 0, w: 1.5 + hash(room.x, room.y, i + 40) })
-      }
-      if (hash(room.x, room.y, i + 20) > 0.45) {
-        out.push({ x: room.x + 0.42, z: room.y + room.h * t, ry: Math.PI / 2, w: 1.5 + hash(room.x, room.y, i + 60) })
+/* The wall panels that used to live here moved into RoomMeshes' `WallRunMesh`.
+ * They were positioned against the north and west faces at a fixed height,
+ * which was fine while every wall was the same knee-high box. Now a wall
+ * drops to a curb when the viewer turns to look through it, and a panel that
+ * does not drop with it is a screen hanging in mid-air over an open room.
+ * A thing mounted on a wall belongs to that wall. */
+
+/**
+ * The stuff along the walls.
+ *
+ * `world.ts` gives a department three desks, a shelf, a rack and a plant in
+ * a 22x14 room, and that is the honest reason the rooms read as emptier
+ * than the reference sheets: those show every wall lined with low storage,
+ * counters and boxes, and the floor space left for people to move through.
+ * Nothing here can be added to `PROPS` to fix that — `buildGrid` blocks
+ * every prop tile, so lining the walls with furniture there would wall the
+ * rooms in and strand the pathfinder.
+ *
+ * So the units are hung on the WALL tiles, which are already blocked, and
+ * kept shallow enough to stay over them. Same rule as the rest of this
+ * file: placed only where an agent can never be.
+ */
+const UNIT_D = 0.34
+const UNIT_H = 0.86
+const LOCKER_H = 1.62
+
+function WallUnits({ room, mats }: { room: Room; mats: Mats }) {
+  const units = useMemo(() => {
+    const out: { x: number; z: number; ry: number; len: number; h: number; boxes: number }[] = []
+    for (const run of wallRuns(room)) {
+      if (run.length < 4) continue
+      const [nx, nz] = sideNormal(run.side)
+      const inset = WALL_T / 2 + UNIT_D / 2
+      // Along-run axis, in world terms.
+      const ax = run.alongX ? 1 : 0
+      const az = run.alongX ? 0 : 1
+      // One or two segments, never the whole wall: a continuous ring of
+      // cabinets is a corridor, not a room someone works in.
+      const segments = hash(run.length, Math.round(run.x + run.z), 2) > 0.5 ? 2 : 1
+      for (let i = 0; i < segments; i += 1) {
+        const r = hash(Math.round(run.x * 4), Math.round(run.z * 4), i + 9)
+        if (r < 0.22) continue
+        const len = Math.min(run.length / (segments + 0.6), 2.2 + r * 2.4)
+        // Spread the segments along the run rather than stacking them.
+        const t = segments === 1 ? (r - 0.5) * (run.length - len) * 0.6 : (i - 0.5) * (run.length - len) * 0.55
+        out.push({
+          x: run.x - nx * inset + ax * t,
+          z: run.z - nz * inset + az * t,
+          ry: run.alongX ? 0 : Math.PI / 2,
+          len,
+          h: r > 0.78 ? LOCKER_H : UNIT_H,
+          boxes: r > 0.78 ? 0 : Math.round(r * 3),
+        })
       }
     }
     return out
@@ -101,10 +153,23 @@ function WallScreens({ room, mats }: { room: Room; mats: Mats }) {
 
   return (
     <>
-      {panels.map((p, i) => (
-        <group key={i} position={[p.x, WALL_H * 0.68, p.z]} rotation={[0, p.ry, 0]}>
-          <mesh castShadow geometry={BOX} material={mats.dark} scale={[p.w, 0.62, 0.06]} />
-          <mesh geometry={PLANE} material={mats.screen} position={[0, 0, 0.04]} scale={[p.w - 0.12, 0.5, 1]} />
+      {units.map((u, i) => (
+        <group key={i} position={[u.x, 0, u.z]} rotation={[0, u.ry, 0]}>
+          <mesh castShadow receiveShadow geometry={BOX} material={mats.dark} position={[0, u.h / 2, 0]} scale={[u.len, u.h, UNIT_D]} />
+          {/* A lighter top, which is what stops a run of these reading as a
+              second, shorter wall. */}
+          <mesh geometry={BOX} material={mats.light} position={[0, u.h + 0.02, 0]} scale={[u.len + 0.06, 0.04, UNIT_D + 0.06]} />
+          {Array.from({ length: u.boxes }, (_, b) => (
+            <mesh
+              key={b}
+              castShadow
+              geometry={BOX}
+              material={b % 2 ? mats.paper : mats.light}
+              position={[(-u.len / 2 + 0.3) + b * 0.5, u.h + 0.16, 0]}
+              rotation={[0, hash(b, Math.round(u.x), 21) * 0.5 - 0.25, 0]}
+              scale={[0.28, 0.22, 0.24]}
+            />
+          ))}
         </group>
       ))}
     </>
@@ -130,12 +195,27 @@ function Beams({ room, mats }: { room: Room; mats: Mats }) {
   )
 }
 
-/** The ground the whole deck stands on, plus a planted perimeter. All of it
- *  is outside the COLS x ROWS walkable grid, so it cannot be stood on. */
+/**
+ * The platform the office is built on.
+ *
+ * The reference renders do not show rooms floating on a plane — they show a
+ * deck: a slab with real thickness, a stepped skirt, a parapet round the
+ * edge, and a line of lights along it. That silhouette is most of what makes
+ * the thing read as an object you could pick up, and it is entirely outside
+ * the COLS x ROWS walkable grid, so none of it can be stood on or routed
+ * through.
+ */
+const DECK_MARGIN = 3
+const DECK_W = COLS + DECK_MARGIN * 2
+const DECK_D = ROWS + DECK_MARGIN * 2
+const DECK_DROP = 0.9
+const PARAPET_H = 0.55
+const PARAPET_T = 0.7
+
 function Exterior({ mats }: { mats: Mats }) {
   const planters = useMemo(() => {
     const out: { x: number; z: number; s: number }[] = []
-    const margin = 5
+    const margin = DECK_MARGIN - 1
     for (let x = -margin; x <= COLS + margin; x += 9) {
       out.push({ x, z: -margin, s: 0.6 + hash(x, -margin, 3) * 0.5 })
       out.push({ x, z: ROWS + margin, s: 0.6 + hash(x, ROWS + margin, 5) * 0.5 })
@@ -147,26 +227,88 @@ function Exterior({ mats }: { mats: Mats }) {
     return out
   }, [])
 
+  /** The four parapet walls, as centre + span. Written once and mapped
+   *  rather than four near-identical JSX blocks, so the two long sides and
+   *  the two short ones cannot drift apart. */
+  const rails = useMemo(() => {
+    const cx = COLS / 2
+    const cz = ROWS / 2
+    const halfW = DECK_W / 2
+    const halfD = DECK_D / 2
+    return [
+      { x: cx, z: cz - halfD + PARAPET_T / 2, w: DECK_W, d: PARAPET_T },
+      { x: cx, z: cz + halfD - PARAPET_T / 2, w: DECK_W, d: PARAPET_T },
+      { x: cx - halfW + PARAPET_T / 2, z: cz, w: PARAPET_T, d: DECK_D - PARAPET_T * 2 },
+      { x: cx + halfW - PARAPET_T / 2, z: cz, w: PARAPET_T, d: DECK_D - PARAPET_T * 2 },
+    ]
+  }, [])
+
+  /** Lights set into the top of the parapet at a fixed spacing. In the
+   *  references these are the brightest thing at the deck's edge and they
+   *  are what stops the platform dissolving into the background. */
+  const edgeLights = useMemo(() => {
+    const out: { x: number; z: number }[] = []
+    const step = 6
+    for (let x = -DECK_MARGIN + 2; x < COLS + DECK_MARGIN - 1; x += step) {
+      out.push({ x, z: -DECK_MARGIN + PARAPET_T / 2 })
+      out.push({ x, z: ROWS + DECK_MARGIN - PARAPET_T / 2 })
+    }
+    for (let z = -DECK_MARGIN + 2; z < ROWS + DECK_MARGIN - 1; z += step) {
+      out.push({ x: -DECK_MARGIN + PARAPET_T / 2, z })
+      out.push({ x: COLS + DECK_MARGIN - PARAPET_T / 2, z })
+    }
+    return out
+  }, [])
+
   return (
     <group>
       <mesh
         receiveShadow
         geometry={PLANE}
         material={mats.ground}
-        position={[COLS / 2, -0.06, ROWS / 2]}
+        position={[COLS / 2, -DECK_DROP - 1.4, ROWS / 2]}
         rotation={[-Math.PI / 2, 0, 0]}
-        scale={[COLS + 34, ROWS + 34, 1]}
+        scale={[COLS + 60, ROWS + 60, 1]}
       />
-      {/* A low plinth under the office footprint: the deck reads as sitting
-          ON something rather than hovering over a plane. */}
+      {/* The slab itself, with real thickness. A plane has none, and an
+          isometric camera reads a zero-height platform as a painted shape. */}
+      <mesh
+        receiveShadow
+        castShadow
+        geometry={BOX}
+        material={mats.deck}
+        position={[COLS / 2, -DECK_DROP / 2, ROWS / 2]}
+        scale={[DECK_W, DECK_DROP, DECK_D]}
+      />
+      {/* A wider step under it. Two edges instead of one is the difference
+          between a slab and a plinth. */}
       <mesh
         receiveShadow
         castShadow
         geometry={BOX}
         material={mats.curb}
-        position={[COLS / 2, -0.03, ROWS / 2]}
-        scale={[COLS + 4, 0.06, ROWS + 4]}
+        position={[COLS / 2, -DECK_DROP - 0.28, ROWS / 2]}
+        scale={[DECK_W + 2.4, 0.56, DECK_D + 2.4]}
       />
+      {/* The floor of the deck — what the rooms actually stand on, and the
+          surface that catches their shadows. */}
+      <mesh
+        receiveShadow
+        geometry={PLANE}
+        material={mats.walkway}
+        position={[COLS / 2, -0.02, ROWS / 2]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        scale={[DECK_W, DECK_D, 1]}
+      />
+      {rails.map((r, i) => (
+        <group key={i}>
+          <mesh castShadow receiveShadow geometry={BOX} material={mats.curb} position={[r.x, PARAPET_H / 2, r.z]} scale={[r.w, PARAPET_H, r.d]} />
+          <mesh geometry={BOX} material={mats.dark} position={[r.x, PARAPET_H + 0.03, r.z]} scale={[r.w + 0.12, 0.06, r.d + 0.12]} />
+        </group>
+      ))}
+      {edgeLights.map((l, i) => (
+        <mesh key={i} geometry={BOX} material={mats.edge} position={[l.x, PARAPET_H + 0.08, l.z]} scale={[0.34, 0.05, 0.34]} />
+      ))}
       {planters.map((p, i) => (
         <group key={i} position={[p.x, 0, p.z]}>
           <mesh castShadow receiveShadow geometry={BOX} material={mats.curb} position={[0, 0.16, 0]} scale={[1.7, 0.32, 1.7]} />
@@ -190,7 +332,7 @@ export function RoomDecor() {
       ))}
       {ROOMS.map((room) => (
         <group key={room.id}>
-          <WallScreens room={room} mats={mats} />
+          <WallUnits room={room} mats={mats} />
           <Beams room={room} mats={mats} />
         </group>
       ))}

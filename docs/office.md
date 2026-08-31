@@ -91,6 +91,29 @@ lib/office-conversations.ts            real agent_messages rendered as pings
 lib/office-artifact-flights.ts         real deliverables rendered as flights
 ```
 
+The rooms are **dollhouse cutaways**: walls stand at room height, and the two
+sides between the viewer and a room drop to a curb so you can see in. Which
+two those are is derived from the camera's own forward vector every frame, so
+turning the deck (Q/E) raises the walls that rotate out of the way and drops
+the ones that rotate into it. `game3d/walls.ts` holds the arithmetic — where
+the runs are, where the doors break them, how tall a wall facing the camera
+should be — as pure functions with `tests/office-walls.test.ts` on them,
+because the alternative is checking it by screenshot.
+
+Two constraints in that file are not taste and should not be changed without
+re-deriving them:
+
+- **Wall height is bounded by the gaps BETWEEN rooms.** At this isometric
+  elevation a wall of height H hides about 0.74·H tiles of ground behind it,
+  and the tightest gap in `game/world.ts` is the two tiles between the
+  owner's office and the first department row.
+- **Anything added for density goes where the collision grid is ALREADY
+  solid** — on wall tiles, on desks, at ceiling height, or off the walkable
+  grid entirely. `buildGrid` blocks every entry in `PROPS`, so furnishing a
+  room by adding props there walls it in and strands the pathfinder. That is
+  the whole reason `RoomDecor.tsx` exists as a separate file from
+  `RoomProps.tsx`.
+
 ## Running itself
 
 Three things an office can be told to manage without a human touching a
