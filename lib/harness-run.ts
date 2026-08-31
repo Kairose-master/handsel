@@ -253,3 +253,63 @@ export function appendEvents(existing: readonly RunEvent[], incoming: readonly R
   const merged = [...existing, ...incoming].sort((a, b) => a.at - b.at)
   return merged.length > MAX_EVENTS_KEPT ? merged.slice(merged.length - MAX_EVENTS_KEPT) : merged
 }
+
+/** One node of the workspace tree the console draws — a directory (with
+ *  children) or a file (with the event timestamp that put it there). */
+export type FileTreeNode = {
+  name: string
+  /** Full repo-relative path — the stable key, and the hover title. */
+  path: string
+  /** Present on directories only. */
+  children?: FileTreeNode[]
+  /** Present on files only: when the worker last reported touching it. */
+  at?: number
+}
+
+/**
+ * The touched-file list as a tree, the way an editor's explorer draws it.
+ *
+ * Built from the same `touchedFiles` events — nothing here is a directory
+ * listing of anyone's machine. The platform only ever knows the paths the
+ * worker chose to report; a directory node exists because a reported path
+ * runs through it, never because it was scanned.
+ *
+ * Directories sort before files, then alphabetical — editor convention,
+ * pinned by test so the console cannot quietly reshuffle mid-run.
+ */
+export function buildFileTree(files: readonly { path: string; at: number }[]): FileTreeNode[] {
+  type Dir = { node: FileTreeNode; dirs: Map<string, Dir> }
+  const root: Dir = { node: { name: '', path: '', children: [] }, dirs: new Map() }
+
+  for (const f of files) {
+    const parts = f.path.split('/').filter(Boolean)
+    if (parts.length === 0) continue
+    let cur = root
+    for (let i = 0; i < parts.length - 1; i++) {
+      const name = parts[i]
+      let next = cur.dirs.get(name)
+      if (!next) {
+        const node: FileTreeNode = { name, path: parts.slice(0, i + 1).join('/'), children: [] }
+        cur.node.children!.push(node)
+        next = { node, dirs: new Map() }
+        cur.dirs.set(name, next)
+      }
+      cur = next
+    }
+    const leaf = parts[parts.length - 1]
+    const existing = cur.node.children!.find((c) => !c.children && c.name === leaf)
+    if (existing) existing.at = Math.max(existing.at ?? 0, f.at)
+    else cur.node.children!.push({ name: leaf, path: f.path, at: f.at })
+  }
+
+  const sortRec = (nodes: FileTreeNode[]): FileTreeNode[] => {
+    nodes.sort((a, b) => {
+      const aDir = a.children ? 0 : 1
+      const bDir = b.children ? 0 : 1
+      return aDir - bDir || a.name.localeCompare(b.name)
+    })
+    for (const n of nodes) if (n.children) sortRec(n.children)
+    return nodes
+  }
+  return sortRec(root.node.children!)
+}

@@ -42,6 +42,9 @@ export type ConsoleRun = {
   passed: boolean | null
   /** Seconds, as recorded by the callback. */
   executionTime: number | null
+  /** The submitted deliverable itself — already ours (it is what got graded),
+   *  so showing it costs no new trust. Clamped; null until submission. */
+  output: string | null
 }
 
 function firstLine(task: string): string {
@@ -100,6 +103,7 @@ export async function getHarnessRuns(limit = 12): Promise<ConsoleRun[]> {
       diff: fenced ? diffStat(fenced) : null,
       passed: typeof result?.evaluation?.passed === 'boolean' ? result.evaluation.passed : null,
       executionTime: typeof result?.executionTime === 'number' ? result.executionTime : null,
+      output: task?.output ? task.output.slice(0, 20_000) : null,
     }
   })
 }

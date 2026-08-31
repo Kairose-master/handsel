@@ -25,13 +25,40 @@ import { getHarnessRuns, type ConsoleRun } from '@/app/actions/harness-runs'
 import { Chip, PageHead, Panel, Readout, StatusDot } from '@/components/deck'
 import { PhaseRail, RUN_LABEL, RUN_TONE } from '@/components/harness-live'
 import {
+  buildFileTree,
   elapsedLabel,
   furthestPhase,
   phaseIndex,
   runStatus,
   tokenLabel,
   touchedFiles,
+  type FileTreeNode,
 } from '@/lib/harness-run'
+
+/** The explorer view of what the worker reported writing. Only PATHS exist
+ *  here — file contents stay on the worker's machine, and a directory node
+ *  exists because a reported path runs through it, never from a scan. */
+function FileTree({ nodes, depth = 0 }: { nodes: FileTreeNode[]; depth?: number }) {
+  return (
+    <ul className={depth === 0 ? 'py-1' : ''}>
+      {nodes.map((n) => (
+        <li key={n.path}>
+          <div
+            className="flex items-baseline gap-1.5 truncate px-3 py-1 font-mono text-[11px]"
+            style={{ paddingLeft: `${12 + depth * 12}px` }}
+            title={n.path}
+          >
+            <span aria-hidden className="shrink-0 text-muted-foreground">
+              {n.children ? '▸' : '·'}
+            </span>
+            <span className={n.children ? 'text-muted-foreground' : ''}>{n.name}</span>
+          </div>
+          {n.children && <FileTree nodes={n.children} depth={depth + 1} />}
+        </li>
+      ))}
+    </ul>
+  )
+}
 
 /** A bar only when there is a reading. An empty gauge reads as "idle". */
 function Gauge({ label, pct, caption }: { label: string; pct: number | null; caption: string | null }) {
@@ -84,19 +111,15 @@ function RunDetail({ item, now }: { item: ConsoleRun; now: number }) {
         </Panel>
 
         <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
-          <Panel title="Files" icon={<FileCode2 />} bodyClassName="p-0">
+          <Panel title="Workspace" icon={<FileCode2 />} bodyClassName="p-0">
             {files.length === 0 ? (
               <p className="p-3 text-xs text-muted-foreground">
                 Nothing written yet. Paths appear as <code>git status</code> sees them in the checkout.
               </p>
             ) : (
-              <ul className="max-h-72 divide-y divide-border overflow-y-auto">
-                {files.map((f) => (
-                  <li key={f.path} className="truncate px-3 py-1.5 font-mono text-[11px]" title={f.path}>
-                    {f.path}
-                  </li>
-                ))}
-              </ul>
+              <div className="max-h-72 overflow-y-auto">
+                <FileTree nodes={buildFileTree(files)} />
+              </div>
             )}
           </Panel>
 
@@ -132,6 +155,18 @@ function RunDetail({ item, now }: { item: ConsoleRun; now: number }) {
             </div>
           </Panel>
         </div>
+
+        {/* The submitted deliverable — the one file content this console CAN
+            show without new trust, because submitting it is what sent it here
+            (it is the exact artifact the grader read). Everything else the
+            harness wrote stays on the worker's machine, paths only. */}
+        {item.output && (
+          <Panel title="Deliverable" icon={<FileCode2 />} bodyClassName="p-0">
+            <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words px-3 py-2 font-mono text-[11px] leading-relaxed">
+              {item.output}
+            </pre>
+          </Panel>
+        )}
       </div>
 
       <div className="min-w-0 space-y-4">

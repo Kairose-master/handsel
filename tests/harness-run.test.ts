@@ -204,3 +204,38 @@ describe('elapsed', () => {
     expect(elapsedLabel(-5)).toBe('0s')
   })
 })
+
+describe('buildFileTree', () => {
+  it('nests reported paths into an explorer tree, dirs first then alphabetical', async () => {
+    const { buildFileTree } = await import('@/lib/harness-run')
+    const tree = buildFileTree([
+      { path: 'src/routes/gateway.ts', at: 3 },
+      { path: 'README.md', at: 1 },
+      { path: 'src/services/deposit.ts', at: 2 },
+      { path: 'tests/gateway.test.ts', at: 4 },
+    ])
+    expect(tree.map((n) => n.name)).toEqual(['src', 'tests', 'README.md'])
+    const src = tree[0]
+    expect(src.children!.map((n) => n.name)).toEqual(['routes', 'services'])
+    expect(src.children![0].children![0]).toMatchObject({ name: 'gateway.ts', path: 'src/routes/gateway.ts', at: 3 })
+  })
+
+  it('keeps one node per file, newest touch wins — a re-write is not a second file', async () => {
+    const { buildFileTree } = await import('@/lib/harness-run')
+    const tree = buildFileTree([
+      { path: 'a.ts', at: 1 },
+      { path: 'a.ts', at: 9 },
+    ])
+    expect(tree).toHaveLength(1)
+    expect(tree[0].at).toBe(9)
+  })
+
+  it('never invents directories nothing reported through', async () => {
+    const { buildFileTree } = await import('@/lib/harness-run')
+    expect(buildFileTree([])).toEqual([])
+    // A directory exists only because a reported path runs through it.
+    const tree = buildFileTree([{ path: 'deep/only/file.ts', at: 1 }])
+    expect(tree[0].name).toBe('deep')
+    expect(tree[0].children![0].name).toBe('only')
+  })
+})
