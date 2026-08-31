@@ -59,7 +59,14 @@ export async function autoMineTick(
     .where(and(eq(agentTask.agentId, agent.id), inArray(agentTask.status, ['queued', 'running', 'processing'])))
   const maxSlots = opts?.maxSlots ?? resolveMiningConcurrency()
   let free = freeMiningSlots(active.length, maxSlots)
-  if (free <= 0) return false
+  if (free <= 0) {
+    // Say WHY the sweep skipped, or a full-slot agent with a doomed accepted
+    // job is indistinguishable from a healthy busy one in the logs — the
+    // exact ambiguity that made the self-heal look broken while it was
+    // actually never reached.
+    console.info(`[auto-mine] ${agent.name}: ${active.length}/${maxSlots} slots in flight — skipping sweep (heal included)`)
+    return false
+  }
 
   const { isLaborMarketConfigured } = await import('@/lib/onchain/config')
   if (!isLaborMarketConfigured()) return false
