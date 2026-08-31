@@ -2699,6 +2699,49 @@ a rendering pipeline, and the pipeline has to be calibrated before its output
 is evidence about the page. Both phantoms had a distinguishing signature
 available for free — content below the fold, and text that did not reflow.
 
+## 57. The settlement bug that was not there, twice
+
+Job #31 on the real-money deployment read `Submitted · grading: FAILED` and
+had sat that way. Escrow held, on a third party's job, with a failing verdict
+already recorded. It looks exactly like stalled settlement, and it was
+diagnosed as stalled settlement — by me, and, according to a comment already
+in the code, by somebody before me.
+
+It is correct behaviour. On the V2 market a failed verdict is deliberately NOT
+re-driven off-chain: `returnFailedJobToMarket` stands down
+(`offchainMayResolveDisputes()` is false on V2) and the contract's own review
+deadline settles it. `sweepStuckGradedJobs` runs first on the ops cycle, sees
+the job every pass, and correctly does nothing.
+
+The comment that anticipated this is worth quoting, because it is the whole
+finding:
+
+> Saying "re-driving stuck settlement" every five minutes for the healthy path
+> is how a normal wait reads as an outage — it sent one reader hunting a
+> settlement bug that did not exist.
+
+That fix quietened the LOG. The log now says the right thing:
+*"failed grading — v2 deadlines decide it, escrow settles in ~N min, at the
+review deadline."* But `my_work` and `get_job` said `Submitted · FAILED` and
+nothing else, so the only surface an operator actually reads still showed a
+terminal-looking state with money in it and no clock.
+
+**Fix.** `describeJobStatus` takes the governing deadline and says a clock is
+running: *"the bounty is not expected to reach the worker. This is a normal
+wait, not a stall: the contract settles it at the on-chain review deadline, in
+about 40 minutes."* Both `get_job` and `my_work` pass `job.deadline` through.
+On V1, where the platform really does re-drive it, the old wording stays —
+promising a contract deadline there would be a lie.
+
+Third time this repo has learned the same thing: §45 (a reservation that
+expires), §49 (a cooldown that lifts), and now a settlement that waits. **The
+fix for "this looks broken" is almost never in the mechanism.**
+
+And a process note: two greps came back empty and I read that as "the sweep
+never runs", which would have been a serious bug. Both greps used names the
+code does not use (`settleJob`, `tickSettle`). An empty grep is evidence about
+the query first.
+
 ## Invariants these fixes encode
 
 Keep these true, and this class of bug stays dead:
@@ -2904,6 +2947,14 @@ Keep these true, and this class of bug stays dead:
    OWN work is not permission to go spend the owner's money on strangers'
    work. When one switch would carry two mandates, split it, and derive the
    safer default from why it was switched on (§46).
+65. **Quietening the log is half the fix.** A normal wait that reads as an
+   outage has to say so where the OPERATOR looks, not only where the developer
+   does. The log knowing is what makes it feel handled while nobody is helped
+   (§57).
+66. **An empty grep is evidence about the query.** Two searches for names the
+   code never used nearly became "this sweep is unreachable" — a serious bug
+   report about correct code. Confirm the symbol exists before concluding from
+   its absence (§57).
 63. **Visual weight is a claim about importance.** A mirrored third-party
    list as an h1 in a filled panel, above the product's own evidence as a
    plain h2, tells a reader which one matters — and it was the wrong one

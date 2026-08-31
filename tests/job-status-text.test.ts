@@ -93,7 +93,7 @@ describe('the tools that report a job actually use it', () => {
 
   it('get_job describes the status from the grading verdict, not a static map', () => {
     const body = jobsHandler()
-    expect(body).toMatch(/describeJobStatus\(job\.status, verdict\)/)
+    expect(body).toMatch(/describeJobStatus\(job\.status, verdict[,)]/)
     expect(body).toMatch(/verdictOf\(spec\?\.testResult\)/)
     // The map that caused the bug is gone, not merely shadowed.
     expect(body).not.toContain('const statusHint')
@@ -111,5 +111,78 @@ describe('the tools that report a job actually use it', () => {
     const body = readFileSync('lib/labor-dispatch.ts', 'utf8')
     expect(body).toMatch(/await claimRefusalReason\(spec\.specHash\)/)
     expect(body).not.toContain('it is not open to anyone else.')
+  })
+})
+
+describe('a failed verdict still Submitted is a wait, not a stall', () => {
+  // The third time this repo has learned that a temporary state must name its
+  // deadline (§45 reservations, §49 cooldowns, this). On V2 a failed verdict
+  // is deliberately NOT re-driven off-chain — returnFailedJobToMarket stands
+  // down and the contract's review deadline settles it. The server log has
+  // always said so; nothing an operator can see did, and the comment beside
+  // that log line records it "sent one reader hunting a settlement bug that
+  // did not exist". It did it again.
+  const NOW = Date.parse('2026-08-30T12:00:00Z')
+
+  it('says a clock is running, and roughly how long', () => {
+    const { hint } = describeJobStatus('Submitted', false, {
+      deadlineSec: Math.floor(NOW / 1000) + 40 * 60,
+      now: NOW,
+    })
+    expect(hint).toMatch(/not a stall/i)
+    expect(hint).toMatch(/about 40 minutes/)
+    expect(hint).toMatch(/review deadline/)
+  })
+
+  it('names the hour scale rather than 300 minutes', () => {
+    const { hint } = describeJobStatus('Submitted', false, {
+      deadlineSec: Math.floor(NOW / 1000) + 5 * 3600,
+      now: NOW,
+    })
+    expect(hint).toMatch(/about 5 hours/)
+  })
+
+  it('still says what settles it when the market gave no deadline', () => {
+    // Unknown timing is not a reason to withhold the mechanism.
+    const { hint } = describeJobStatus('Submitted', false, { deadlineSec: null })
+    expect(hint).toMatch(/review deadline/)
+    expect(hint).not.toMatch(/about \d/)
+  })
+
+  it('does not report a negative wait once the deadline has passed', () => {
+    const { hint } = describeJobStatus('Submitted', false, {
+      deadlineSec: Math.floor(NOW / 1000) - 9999,
+      now: NOW,
+    })
+    expect(hint).not.toMatch(/-\d/)
+    expect(hint).toMatch(/has passed/)
+  })
+
+  it('keeps the old wording on a market where the platform does re-drive it', () => {
+    // On V1 offchainMayResolveDisputes() is true and the sweep really does
+    // settle it, so promising a contract deadline would be a lie.
+    const { hint } = describeJobStatus('Submitted', false, { deadlinesDecide: false })
+    expect(hint).toMatch(/awaiting settlement/)
+    expect(hint).not.toMatch(/review deadline/)
+  })
+
+  it('never claims payment either way', () => {
+    for (const ctx of [{ deadlinesDecide: true }, { deadlinesDecide: false }]) {
+      expect(describeJobStatus('Submitted', false, ctx).hint).toMatch(/not expected to reach the worker/)
+      expect(describeJobStatus('Submitted', false, ctx).proofExpected).toBe(false)
+    }
+  })
+
+  it('is unchanged for every other status', () => {
+    const ctx = { deadlineSec: Math.floor(NOW / 1000) + 600, now: NOW }
+    for (const [status, verdict] of [['Open', null], ['Accepted', null], ['Submitted', true], ['Completed', true]] as const) {
+      expect(describeJobStatus(status, verdict, ctx)).toEqual(describeJobStatus(status, verdict))
+    }
+  })
+
+  it('both operator surfaces pass the deadline through', () => {
+    const body = readFileSync('lib/mcp/handlers/jobs.ts', 'utf8')
+    expect(body).toMatch(/describeJobStatus\(job\.status, verdict, \{ deadlineSec: job\.deadline \}\)/)
+    expect(body).toMatch(/describeJobStatus\('Submitted', false, \{ deadlineSec: job\.deadline \}\)/)
   })
 })

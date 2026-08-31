@@ -128,7 +128,11 @@ export async function handleJobs(
       // read it. (`lib/job-status-text.ts`)
       const { describeJobStatus, verdictOf, verdictLine } = await import('@/lib/job-status-text')
       const verdict = verdictOf(spec?.testResult)
-      const { hint } = describeJobStatus(job.status, verdict)
+      // job.deadline is the governing deadline for the CURRENT status, so on
+      // a Submitted job it is the review deadline — the one that settles a
+      // failed verdict on V2. Passing it is what stops a normal wait reading
+      // as money stuck.
+      const { hint } = describeJobStatus(job.status, verdict, { deadlineSec: job.deadline })
 
       // Whether an Open job is actually claimable, and if not, until when.
       // A reservation is a temporary priority window, but nothing said so:
@@ -268,6 +272,7 @@ export async function handleJobs(
       // approved — and until this marker there was nothing anywhere that said
       // so. Compared on the on-chain requester, lowercased on both sides:
       // addresses are case-insensitive and the chain returns them checksummed.
+      const { describeJobStatus } = await import('@/lib/job-status-text')
       const myAddresses = new Set(
         agents.map((a) => a.smartAccountAddress?.toLowerCase()).filter((a): a is string => Boolean(a)),
       )
@@ -277,7 +282,14 @@ export async function handleJobs(
         const grade = s.testResult ? (s.testResult.passed === true ? 'passed' : s.testResult.passed === false ? 'FAILED' : 'ungraded') : '—'
         const foreign = Boolean(job && !myAddresses.has(job.requester.toLowerCase()))
         if (foreign) outside += 1
-        return `#${s.onchainJobId ?? '?'} · ${s.title.slice(0, 50)} · ${job?.status ?? '?'} · grading: ${grade} · agent: ${mine.get(s.workerAgentId!)?.name}${foreign ? ' · ⚠ outside job (posted by another account)' : ''}`
+        // A failed verdict still sitting Submitted is the V2 review window
+        // running, not a stall — and without saying so this row is exactly
+        // what makes someone go hunting a settlement bug that is not there.
+        const waiting =
+          job?.status === 'Submitted' && s.testResult?.passed === false
+            ? ` · ${describeJobStatus('Submitted', false, { deadlineSec: job.deadline }).hint.replace(/^graded NOT PASSED — /, '')}`
+            : ''
+        return `#${s.onchainJobId ?? '?'} · ${s.title.slice(0, 50)} · ${job?.status ?? '?'} · grading: ${grade} · agent: ${mine.get(s.workerAgentId!)?.name}${foreign ? ' · ⚠ outside job (posted by another account)' : ''}${waiting}`
       })
       const outsideNote = outside
         ? `\n\n${outside} of these ${outside === 1 ? 'is' : 'are'} an outside job — posted by another account, with your agent's bond and credit score staked on it. ` +
