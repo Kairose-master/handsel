@@ -231,12 +231,12 @@ no perspective, no colour variation between icons, no frames around the icons.
 
 | block | file(s) |
 |---|---|
-| A · office look, tactical | `docs/assets/ref-office-tactical.png` |
-| B · office look, diorama | `docs/assets/ref-office-diorama.png` |
+| A · office look, tactical | `docs/assets/ref-office-tactical.png`, and `public/art/theme-tactical.webp` — **the theme button's preview** |
+| B · office look, diorama | `docs/assets/ref-office-diorama.png`, and `public/art/theme-diorama.webp` — **the theme button's preview** |
 | C · agent sheet, tactical | `docs/assets/ref-agents-tactical.png` |
 | D · agent sheet, diorama | `docs/assets/ref-agents-diorama.png` |
 | E · desk cards | `public/office-cards/<template-id>.png` × 8 — **shipped**, rendered in the office template picker |
-| F · hero | `docs/assets/hero.png` — top of the README |
+| F · hero | `docs/assets/hero.png` (README) and `public/art/hero.webp` — **the /guest hero image** |
 | G · department glyphs | `public/dept/<dept-id>.png` × 9 |
 
 E and G are named by ID, not by label, and `tests/office-art.test.ts` fails the
@@ -245,8 +245,11 @@ behind for one that no longer exists. Art referenced by id and stored by file
 name drifts silently otherwise: someone adds a ninth template, the picker
 renders a broken image, and nothing complains.
 
-A–D and F are reference sheets: the target the real-time scene builds toward,
-not assets it loads. What has actually been built toward them so far:
+C and D stay reference sheets — character design the avatars are built toward,
+not something the app loads. A, B and F are BOTH: the labelled sheet lives in
+`docs/assets`, and a label-cropped, webp copy ships from `public/art`. The two
+are deliberately separate files, because a product surface must not carry a
+reference sheet's caption. What has actually been built toward them so far:
 
 | from | change |
 |---|---|

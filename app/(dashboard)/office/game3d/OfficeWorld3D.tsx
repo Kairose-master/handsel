@@ -217,6 +217,9 @@ export default function OfficeWorld3D({
   const rotate = useSceneStore((s) => s.rotate)
   const theme = THEMES[themeId]
   const coarse = useCoarsePointer()
+  // The theme the button switches TO — the one worth previewing.
+  const themeIds = Object.keys(THEMES) as (keyof typeof THEMES)[]
+  const otherTheme = THEMES[themeIds[(themeIds.indexOf(themeId) + 1) % themeIds.length]]
 
   const dragRef = useRef({ px: 0, py: 0, moved: false })
   const selectDragRef = useRef(false)
@@ -437,8 +440,19 @@ export default function OfficeWorld3D({
           <button title="Turn the deck right (E)" onClick={() => rotate(1)}>
             [ ⟳ ]
           </button>
-          <button title={`Theme: ${theme.label} — click to cycle`} onClick={cycleTheme}>
-            [ 🎨 <span className="hud-label">{theme.label.toUpperCase()} </span>]
+          {/* Cycling blind is why the second theme was invisible: the button
+              said a name and the only way to know what it looked like was to
+              press it and lose your place. There is a render of each theme —
+              they were the reference sheets the scene was built toward — so
+              the button shows the one it will switch TO. */}
+          <button
+            title={`Theme: ${theme.label} — click to switch to ${otherTheme.label}`}
+            onClick={cycleTheme}
+            className="hud-theme"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={`/art/theme-${otherTheme.id}.webp`} alt="" aria-hidden width={44} height={20} />
+            <span className="hud-label">{otherTheme.label.toUpperCase()}</span>
           </button>
         </div>
         <div className="world-hint">

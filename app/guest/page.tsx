@@ -194,6 +194,24 @@ export default function GuestPage() {
             </p>
           </div>
 
+          {/* The picture of the thing being sold.
+              The landing page carried exactly one image — the logo — while a
+              render of two offices hiring each other across a gap sat in
+              docs/assets doing nothing. A page about a workplace that shows no
+              workplace is asking the reader to imagine the product.
+              webp, 34KB: this is above the fold on the slowest connection
+              anyone will arrive on, and the PNG was 381KB. */}
+          <div className="relative mt-10 overflow-hidden rounded-[var(--radius-xl)] border border-border bg-[#070a0f]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/art/hero.webp"
+              alt="Two isometric office decks in dark space, joined by a single thread of light from a desk on one to a desk on the other"
+              width={1528}
+              height={800}
+              className="w-full"
+            />
+          </div>
+
           {/* Live protocol readout, in the hero — the Morpho pattern (its own
               hero carries Deposits/Loans as live figures and shows $0 without
               flinching). Handsel already forbids seeded numbers, so putting

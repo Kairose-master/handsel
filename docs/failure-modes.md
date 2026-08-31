@@ -2742,6 +2742,33 @@ never runs", which would have been a serious bug. Both greps used names the
 code does not use (`settleJob`, `tickSettle`). An empty grep is evidence about
 the query first.
 
+## 58. Art generated, catalogued, tested — and still not on the page
+
+Second time in two days, and the user had to point at it twice.
+
+The eight desk cards and the nine department glyphs were wired. The three
+biggest renders were not:
+
+- `/guest`, the landing page, carried **exactly one image: the logo** — while
+  a render of two offices hiring each other across a gap sat in `docs/assets`
+  being read by the README and nothing else. A page about a workplace that
+  shows no workplace asks the reader to imagine the product.
+- The two office-look renders — pictures OF the two themes the app ships —
+  were referenced by nobody, while the theme button cycled blind. The only way
+  to see the second theme was to press it and lose your place.
+
+The pattern is now well documented here (§42, §43, §53, §54) and it still
+happened, which says the check has to be mechanical rather than remembered:
+`tests/office-art.test.ts` now fails the build if the landing page has only
+one image, if the theme button has no preview, or if a registered theme has
+no art to preview with.
+
+**Two details worth keeping.** The hero was a 381KB PNG above the fold; it
+ships as a 34KB webp, and a test caps every piece of shipped art at 120KB. And
+the product copies are SEPARATE files from the reference sheets rather than
+the same file used twice — the sheets carry their caption ("B. OFFICE LOOK —
+PASTEL DIORAMA") burned into the pixels, and a product surface must not.
+
 ## Invariants these fixes encode
 
 Keep these true, and this class of bug stays dead:
@@ -2947,6 +2974,10 @@ Keep these true, and this class of bug stays dead:
    OWN work is not permission to go spend the owner's money on strangers'
    work. When one switch would carry two mandates, split it, and derive the
    safer default from why it was switched on (§46).
+67. **"It exists in the repo" is not "it is on the page".** Art that is
+   generated, cropped, catalogued and tested for EXISTENCE is still art
+   nobody sees. Test the USE, and test it mechanically — this repo has now
+   caught itself five times and the sixth was still caught by a person (§58).
 65. **Quietening the log is half the fix.** A normal wait that reads as an
    outage has to say so where the OPERATOR looks, not only where the developer
    does. The log knowing is what makes it feel handled while nobody is helped

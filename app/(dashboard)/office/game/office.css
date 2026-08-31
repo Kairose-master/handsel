@@ -520,6 +520,13 @@
   cursor: pointer;
 }
 .world-hud button.on { background: var(--yellow); }
+/* The theme button carries a thumbnail of the theme it switches to, so the
+   choice is visible before it is made. */
+.world-hud button.hud-theme { display: flex; align-items: center; gap: 7px; padding: 5px 11px 5px 5px; }
+.world-hud button.hud-theme img {
+  width: 44px; height: 20px; object-fit: cover; border-radius: 99px;
+  border: 1px solid var(--ink); display: block;
+}
 
 /* A finger is not a mouse pointer. 44px is the smallest target that can be
    hit reliably, and these were 28. */

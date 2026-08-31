@@ -49,3 +49,44 @@ describe('the glyphs are worn, not filed', () => {
     }
   })
 })
+
+describe('the generated art is used, not filed', () => {
+  const read = (p: string) => readFileSync(p, 'utf8')
+
+  it('the landing page shows the product, not just the logo', () => {
+    // /guest carried exactly one image — the logo — while a render of two
+    // offices hiring each other sat in docs/assets doing nothing. A page
+    // about a workplace that shows no workplace asks the reader to imagine
+    // the product.
+    const guest = read('app/guest/page.tsx')
+    expect(guest).toMatch(/\/art\/hero\.webp/)
+    const imgs = guest.match(/<img\b/g) ?? []
+    expect(imgs.length).toBeGreaterThan(1)
+  })
+
+  it('the theme button previews the theme it switches to', () => {
+    // Cycling blind is why the second theme was invisible: the only way to
+    // see it was to press the button and lose your place.
+    expect(read('app/(dashboard)/office/game3d/OfficeWorld3D.tsx')).toMatch(/\/art\/theme-\$\{otherTheme\.id\}\.webp/)
+  })
+
+  it('every registered theme has a preview to show', () => {
+    // A third theme added without art would render a broken thumbnail in the
+    // HUD, which is worse than the name it replaced.
+    for (const id of ['tactical', 'diorama']) {
+      expect(existsSync(`public/art/theme-${id}.webp`), `public/art/theme-${id}.webp`).toBe(true)
+    }
+    const themes = read('app/(dashboard)/office/game3d/theme.ts')
+    const ids = [...themes.matchAll(/^\s{2}id: '([a-z-]+)',$/gm)].map((m) => m[1])
+    for (const id of ids) expect(existsSync(`public/art/theme-${id}.webp`), id).toBe(true)
+  })
+
+  it('ships the art as webp, not as third-of-a-megabyte PNGs', () => {
+    // The hero is above the fold on the slowest connection anyone arrives on.
+    // As a PNG it was 381KB.
+    for (const f of ['hero', 'theme-tactical', 'theme-diorama']) {
+      expect(existsSync(`public/art/${f}.png`), `${f}.png should not ship`).toBe(false)
+      expect(statSync(`public/art/${f}.webp`).size).toBeLessThan(120_000)
+    }
+  })
+})
