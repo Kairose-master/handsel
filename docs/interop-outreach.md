@@ -295,6 +295,17 @@ grading/provenance layer for another protocol's reward — the
 `docs/external-grading.md` / `docs/taskmarket-evaluator.md` posture, arriving
 inbound instead of us pitching it.
 
+**Update (2026-08-31) — maintainer said yes, scoped.** With the operator's
+explicit approval, replied
+([comment 5475315351](https://github.com/Kairose-master/handsel/issues/8#issuecomment-5475315351))
+committing to steps 2–4 on four stated bounds: provider = our own image lane
+(the demo endpoint's worker + vision grader); grading ours, settlement and
+acceptance entirely AIPOU's under their published criteria; `workReceiptId`
+accepted as issuer-asserted audit reference only, and symmetrically we never
+present an AIPOU reference as their endorsement of us; one sample bounty, no
+integration, no ongoing obligation. **Next move: theirs** — their visual-fit
+review of a sample plus their bounty spec. Don't bump.
+
 ## Standing rules for new threads
 
 ## Standing rules for new threads
