@@ -14,7 +14,7 @@ import { agent, delegation, creditTransaction, agentEvent, jobSpec } from '@/lib
 import { and, eq, inArray } from 'drizzle-orm'
 import type { OfficeSnapshot, OfficeStaffMember } from '@/lib/office-world-data'
 import { officeSlotsByAgentId, roleIdsByAgentId } from '@/lib/office'
-import { departmentFor, type AgentActivitySignals } from '@/lib/office-functional-departments'
+import { departmentFor, type HarnessSignal, type AgentActivitySignals } from '@/lib/office-functional-departments'
 import { artifactFlightsFor, type FlightSubtask } from '@/lib/office-artifact-flights'
 import type { DelegationSubtask } from '@/lib/delegation'
 
@@ -135,6 +135,63 @@ export async function buildOfficeSnapshot(userId: string, ownerName: string, slo
       return new Map<string, string>()
     })
 
+  /**
+   * What each agent's worker is doing RIGHT NOW.
+   *
+   * The office used to read a job row and say "on a job — accepted" while
+   * the worker's own telemetry knew it was three minutes into `code`,
+   * writing a named file. Two views of one moment, on two pages, neither
+   * aware of the other. This is the join.
+   *
+   * Only LIVE runs are passed through. A finished run is history and the
+   * job row already says how it ended; a stalled one is passed through on
+   * purpose, because a worker that went quiet mid-run is a fact about this
+   * agent worth seeing rather than hiding behind its last known job status.
+   *
+   * Same failure posture as every other gather here: unreadable telemetry
+   * means the signal is absent this pass, never a broken page.
+   */
+  const liveRuns = await (async () => {
+    const out = new Map<string, HarnessSignal>()
+    try {
+      const [{ runsForAgents }, { furthestPhase, runStatus }] = await Promise.all([
+        import('@/lib/harness-run-server'),
+        import('@/lib/harness-run'),
+      ])
+      const now = Date.now()
+      // An agent can have several runs in flight — --concurrency exists. The
+      // office shows ONE desk per agent, so pick deliberately rather than
+      // letting iteration order decide: a running run beats a stalled one,
+      // and among equals the one that spoke most recently wins. Written out
+      // because the obvious loop (set() per run, last one wins) silently
+      // showed a dead run over a live one whenever the dead one sorted last.
+      const best = new Map<string, { run: (typeof runs)[number]; live: 'running' | 'stalled' }>()
+      const runs = await runsForAgents(agentIds, 50)
+      for (const run of runs) {
+        const status = runStatus(run, now)
+        if (status !== 'running' && status !== 'stalled') continue
+        const prev = best.get(run.agentId)
+        const better =
+          !prev ||
+          (prev.live === 'stalled' && status === 'running') ||
+          (prev.live === status && run.updatedAt > prev.run.updatedAt)
+        if (better) best.set(run.agentId, { run, live: status })
+      }
+      for (const [agentId, { run, live }] of best) {
+        const last = run.events.length > 0 ? run.events[run.events.length - 1] : null
+        out.set(agentId, {
+          harnessId: run.harnessId,
+          phase: furthestPhase(run.events, run.phase),
+          live,
+          lastLine: last ? last.text.slice(0, 90) : null,
+        })
+      }
+    } catch (error) {
+      console.error('[office-world] harness telemetry read failed:', error)
+    }
+    return out
+  })()
+
   const deptHasLead = new Set<string>()
   const staff: OfficeStaffMember[] = myAgents.map((a) => {
     const signals: AgentActivitySignals = {
@@ -148,6 +205,7 @@ export async function buildOfficeSnapshot(userId: string, ownerName: string, slo
       recentSkillInstall: recentSkillInstalls.get(a.id) ?? null,
       autoMine: Boolean(a.autoMine),
       isExternalRuntime: Boolean(a.runtimeType && a.runtimeType !== 'platform'),
+      harness: liveRuns.get(a.id) ?? null,
     }
     const { deptId, statusLine } = departmentFor(signals)
 

@@ -103,3 +103,20 @@ export async function getHarnessRuns(limit = 12): Promise<ConsoleRun[]> {
     }
   })
 }
+
+/**
+ * The run happening on one agent right now, for the office.
+ *
+ * Selecting a desk in the diorama and reading "on a job — accepted" while a
+ * separate page knew the harness was three minutes into `code` was the whole
+ * complaint: two views of one moment that did not know about each other.
+ * This is the read behind the desk panel, and it deliberately returns the
+ * SAME `ConsoleRun` the console renders so both draw from one shape.
+ *
+ * Returns the newest run for the agent, live or not — a desk you just
+ * watched finish should still show what it did rather than going blank.
+ */
+export async function getAgentRun(agentId: string): Promise<ConsoleRun | null> {
+  const runs = await getHarnessRuns(24)
+  return runs.find((r) => r.run.agentId === agentId) ?? null
+}

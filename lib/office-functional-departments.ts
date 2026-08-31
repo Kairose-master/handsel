@@ -27,6 +27,8 @@
  * dimensions, and idle is not a room.
  */
 
+import type { RunPhase } from '@/lib/harness-run'
+
 export type FunctionalDeptId =
   | 'research'
   | 'strategy'
@@ -89,6 +91,55 @@ export type AgentActivitySignals = {
   autoMine: boolean
   /** agent.runtimeType !== 'platform' */
   isExternalRuntime: boolean
+  /**
+   * A harness run happening RIGHT NOW on this agent's worker
+   * (lib/harness-run.ts), or null.
+   *
+   * The office and the harness console were describing the same moment from
+   * two sides and neither knew about the other: the diorama read a job row
+   * and said "on a job — accepted", while the worker's own telemetry knew it
+   * was three minutes into `code`, writing `src/routes/gateway.ts`. One of
+   * those is what the agent is doing; the other is what it was hired for.
+   */
+  harness: HarnessSignal | null
+}
+
+export type HarnessSignal = {
+  /** Registry id from lib/worker-harness.ts, or null for the built-in loop. */
+  harnessId: string | null
+  phase: RunPhase
+  /** A finished run is not a live signal and is never passed in. A stalled
+   *  one IS, because a worker that stopped talking mid-run is a fact about
+   *  this agent that the office should show rather than hide. */
+  live: 'running' | 'stalled'
+  /** The most recent line the harness printed, already sanitized. */
+  lastLine: string | null
+}
+
+/**
+ * Where a harness phase puts an agent, when nothing more specific has
+ * already claimed it.
+ *
+ * This is the join that makes the two features one. The rooms were named
+ * for what an agent is doing, and a harness announces exactly that on a
+ * cadence of seconds — so a run walks its agent across the office: plan in
+ * Strategy, code on the Engineering Floor, tests in QA, review in the
+ * Verification Court, ship at the Market gate.
+ */
+const PHASE_ROOM: Record<RunPhase, FunctionalDeptId> = {
+  plan: 'strategy',
+  code: 'engineering',
+  test: 'qa',
+  review: 'verification',
+  deploy: 'market',
+}
+
+/** How a live run reads on a status bubble. */
+function harnessLine(h: HarnessSignal): string {
+  const who = h.harnessId ?? 'its worker'
+  if (h.live === 'stalled') return `${who} stopped reporting during ${h.phase} — no signal.`
+  if (h.lastLine) return `${who} · ${h.phase} — ${h.lastLine}`
+  return `${who} · ${h.phase}.`
 }
 
 export type DepartmentAssignment = { deptId: FunctionalDeptId | null; statusLine: string }
@@ -102,6 +153,26 @@ export type DepartmentAssignment = { deptId: FunctionalDeptId | null; statusLine
  * `{ deptId: null, ... }` (idle — no room) rather than a guessed default.
  */
 export function departmentFor(s: AgentActivitySignals): DepartmentAssignment {
+  const base = baseDepartmentFor(s)
+  const h = s.harness
+  if (!h) return base
+
+  // A live harness run REFINES the placement, it does not replace it.
+  //
+  // Replacing was the first instinct and it is wrong: an agent red-teaming a
+  // peer's work through its harness reports phase `code`, and letting the
+  // phase win would move it from QA to the Engineering Floor — losing the
+  // more specific fact about WHY it is running. So the room only moves when
+  // the cascade had nothing sharper to say than "this agent is working",
+  // which is exactly the generic engineering placement.
+  const line = harnessLine(h)
+  if (base.deptId === 'engineering' || base.deptId === null) {
+    return { deptId: PHASE_ROOM[h.phase], statusLine: line }
+  }
+  return { deptId: base.deptId, statusLine: line }
+}
+
+function baseDepartmentFor(s: AgentActivitySignals): DepartmentAssignment {
   const disputed = s.jobs.find((j) => j.status === 'Disputed')
   if (disputed) {
     return { deptId: 'verification', statusLine: 'A job is in dispute — under adjudication.' }

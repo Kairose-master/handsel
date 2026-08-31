@@ -22,64 +22,16 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { Cpu, FileCode2, MemoryStick, RefreshCw, Terminal } from 'lucide-react'
 import { getHarnessRuns, type ConsoleRun } from '@/app/actions/harness-runs'
-import { Chip, PageHead, Panel, Readout, StatusDot, type DeckTone } from '@/components/deck'
+import { Chip, PageHead, Panel, Readout, StatusDot } from '@/components/deck'
+import { PhaseRail, RUN_LABEL, RUN_TONE } from '@/components/harness-live'
 import {
-  RUN_PHASES,
   elapsedLabel,
   furthestPhase,
   phaseIndex,
   runStatus,
   tokenLabel,
   touchedFiles,
-  type RunStatus,
 } from '@/lib/harness-run'
-
-const STATUS_TONE: Record<RunStatus, DeckTone> = {
-  running: 'accent',
-  stalled: 'warn',
-  passed: 'ok',
-  failed: 'bad',
-}
-
-const STATUS_LABEL: Record<RunStatus, string> = {
-  running: 'Running',
-  // Not "Running" and not "Failed": the worker stopped talking, which is a
-  // third thing and the one a person needs to act on.
-  stalled: 'No signal',
-  passed: 'Passed',
-  failed: 'Failed',
-}
-
-/** Plan → Code → Test → Review → Deploy, with the reached steps filled. */
-function PhaseRail({ at }: { at: number }) {
-  return (
-    <ol className="flex items-center gap-1.5">
-      {RUN_PHASES.map((phase, i) => {
-        const done = i < at
-        const here = i === at
-        return (
-          <li key={phase} className="flex min-w-0 flex-1 items-center gap-1.5">
-            <span
-              className={`size-1.5 shrink-0 rounded-full ${
-                here ? 'bg-primary' : done ? 'bg-[var(--success)]' : 'bg-border'
-              }`}
-            />
-            <span
-              className={`truncate font-mono text-[10px] uppercase tracking-[0.12em] ${
-                here ? 'text-primary' : done ? 'text-foreground' : 'text-muted-foreground'
-              }`}
-            >
-              {phase}
-            </span>
-            {i < RUN_PHASES.length - 1 && (
-              <span className={`h-px min-w-2 flex-1 ${done ? 'bg-[var(--success)]' : 'bg-border'}`} />
-            )}
-          </li>
-        )
-      })}
-    </ol>
-  )
-}
 
 /** A bar only when there is a reading. An empty gauge reads as "idle". */
 function Gauge({ label, pct, caption }: { label: string; pct: number | null; caption: string | null }) {
@@ -126,7 +78,7 @@ function RunDetail({ item, now }: { item: ConsoleRun; now: number }) {
       <div className="min-w-0 space-y-4">
         <Panel
           title={item.title}
-          actions={<StatusDot tone={STATUS_TONE[status]} label={STATUS_LABEL[status]} pulse={status === 'running'} />}
+          actions={<StatusDot tone={RUN_TONE[status]} label={RUN_LABEL[status]} pulse={status === 'running'} />}
         >
           <PhaseRail at={phaseIndex(furthestPhase(run.events, run.phase))} />
         </Panel>
@@ -350,7 +302,7 @@ export default function HarnessRunsPage() {
                     >
                       <span className="block truncate text-xs font-medium">{item.title}</span>
                       <span className="mt-1 flex items-center gap-2">
-                        <StatusDot tone={STATUS_TONE[status]} label={STATUS_LABEL[status]} pulse={status === 'running'} />
+                        <StatusDot tone={RUN_TONE[status]} label={RUN_LABEL[status]} pulse={status === 'running'} />
                         <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
                           {elapsedLabel((item.run.finishedAt ?? now) - item.run.startedAt)}
                         </span>
