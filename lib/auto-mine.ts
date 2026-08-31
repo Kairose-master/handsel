@@ -129,16 +129,19 @@ export async function autoMineTick(
     if (!spec) continue
     let taskStatus: string | null = null
     let taskAgeMs: number | null = null
+    let taskReportedSuccess: boolean | null = null
     if (spec.agentTaskId) {
       const [t] = await db
-        .select({ status: agentTask.status, updatedAt: agentTask.updatedAt })
+        .select({ status: agentTask.status, updatedAt: agentTask.updatedAt, result: agentTask.result })
         .from(agentTask)
         .where(eq(agentTask.id, spec.agentTaskId))
       taskStatus = t?.status ?? null
       taskAgeMs = t?.updatedAt ? Date.now() - t.updatedAt.getTime() : null
+      const success = (t?.result as { success?: unknown } | null)?.success
+      taskReportedSuccess = typeof success === 'boolean' ? success : null
     }
     const { shouldHealAcceptedJob } = await import('@/lib/mining-scheduler')
-    if (shouldHealAcceptedJob({ hasTask: Boolean(spec.agentTaskId), taskStatus, taskAgeMs })) {
+    if (shouldHealAcceptedJob({ hasTask: Boolean(spec.agentTaskId), taskStatus, taskAgeMs, taskReportedSuccess })) {
       if (spec.agentTaskId) {
         console.info(`[auto-mine] re-dispatching job ${j.id} for ${agent.name} — previous dispatch failed`)
       }

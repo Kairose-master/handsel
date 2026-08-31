@@ -254,3 +254,27 @@ describe('shouldHealAcceptedJob', () => {
     }
   })
 })
+
+describe('shouldHealAcceptedJob — completed-but-worker-reported-failure', () => {
+  it('heals a completed task whose worker said success:false — the callback never marks these failed', async () => {
+    const { shouldHealAcceptedJob, REDISPATCH_COOLDOWN_MS } = await import('@/lib/mining-scheduler')
+    expect(
+      shouldHealAcceptedJob({
+        hasTask: true,
+        taskStatus: 'completed',
+        taskReportedSuccess: false,
+        taskAgeMs: REDISPATCH_COOLDOWN_MS + 1,
+      }),
+    ).toBe(true)
+  })
+
+  it('never touches a completed task whose worker reported success, or one with unknown success', async () => {
+    const { shouldHealAcceptedJob } = await import('@/lib/mining-scheduler')
+    expect(
+      shouldHealAcceptedJob({ hasTask: true, taskStatus: 'completed', taskReportedSuccess: true, taskAgeMs: 10 ** 9 }),
+    ).toBe(false)
+    expect(
+      shouldHealAcceptedJob({ hasTask: true, taskStatus: 'completed', taskReportedSuccess: null, taskAgeMs: 10 ** 9 }),
+    ).toBe(false)
+  })
+})

@@ -198,6 +198,17 @@ export const REDISPATCH_COOLDOWN_MS = 10 * 60_000
  * A task still queued/running/processing is genuinely in flight — never
  * double-dispatch over it (reapStuckTasks owns hung ones, marking them
  * failed, which routes them back here next sweep).
+ *
+ * Second finding, same incident: the runtime callback marks a task
+ * `completed` even when the worker reported `success: false` — "the
+ * worker's part is over" is that route's contract, and the failure lives in
+ * `result.success`. So a dispatch that ran and reported its own failure
+ * never reads as status 'failed' at all. Heal it by the pair
+ * (status completed, reportedSuccess false) — while the on-chain job this
+ * verdict is being asked about is still Accepted, that pair means "the
+ * dispatch is over and produced nothing submittable". A completed task
+ * whose worker reported success stays untouched: its submission or
+ * settlement is someone else's in-flight work.
  */
 export function shouldHealAcceptedJob(input: {
   hasTask: boolean
@@ -205,8 +216,13 @@ export function shouldHealAcceptedJob(input: {
   taskStatus?: string | null
   /** ms since the linked task last changed, when hasTask. */
   taskAgeMs?: number | null
+  /** `result.success` as the worker reported it; undefined/null = unknown. */
+  taskReportedSuccess?: boolean | null
 }): boolean {
   if (!input.hasTask) return true
-  if (input.taskStatus !== 'failed') return false
+  const deadDispatch =
+    input.taskStatus === 'failed' ||
+    (input.taskStatus === 'completed' && input.taskReportedSuccess === false)
+  if (!deadDispatch) return false
   return (input.taskAgeMs ?? 0) > REDISPATCH_COOLDOWN_MS
 }
