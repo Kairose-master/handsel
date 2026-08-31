@@ -48,6 +48,20 @@ export async function POST(request: Request) {
     await recordHarness(agentId, body.harness).catch(() => {})
   }
 
+  // What this machine can actually DO, probed by the worker rather than
+  // promised at registration. A worker that declares 'video' without ffmpeg
+  // gets matched to media jobs it will fail, and a failed job costs the
+  // agent its own credit score — so the declaration is refreshed on every
+  // poll, the same reasoning as the harness id above.
+  if (Array.isArray(body?.capabilities)) {
+    const { normalizeCapabilities } = await import('@/lib/artifacts')
+    await db
+      .update(agent)
+      .set({ capabilities: normalizeCapabilities(body.capabilities), updatedAt: new Date() })
+      .where(eq(agent.id, agentId))
+      .catch(() => {})
+  }
+
   // Run telemetry: what the harness is doing right now, drained by the
   // worker on this same round trip. Best-effort for the same reason the
   // harness id is — this endpoint's job is handing out paid work, and a
@@ -129,6 +143,35 @@ export async function POST(request: Request) {
     }
   } catch { /* pre-migration DB — text is always right */ }
 
+  // A media job's recipe, COMPILED HERE.
+  //
+  // The worker gets an argv array, not a spec to interpret. One
+  // implementation of "what ffmpeg invocation does this job mean"
+  // (lib/media-recipe.ts) instead of a platform copy and a worker copy that
+  // drift until the same job grades differently depending on which side
+  // built the command. The worker's whole contribution to a media job is a
+  // machine with ffmpeg on it, and that is the point: it substitutes its own
+  // input and output paths into the two placeholders and runs the binary
+  // directly — never through a shell.
+  let media: { args: string[]; must: unknown; source_url: string; input_token: string; output_token: string } | null = null
+  try {
+    const { extractMediaSpec, ffmpegArgs, MEDIA_INPUT_TOKEN, MEDIA_OUTPUT_TOKEN } = await import('@/lib/media-recipe')
+    const spec = extractMediaSpec(candidate.task)
+    if (spec) {
+      media = {
+        args: ffmpegArgs(spec, MEDIA_INPUT_TOKEN, MEDIA_OUTPUT_TOKEN),
+        must: spec.must,
+        source_url: spec.sourceUrl,
+        input_token: MEDIA_INPUT_TOKEN,
+        output_token: MEDIA_OUTPUT_TOKEN,
+      }
+    }
+  } catch {
+    // A malformed media block is the requester's problem and it surfaces at
+    // grading, not by withholding the task: the worker still gets the brief
+    // and can fail it with a message a person can act on.
+  }
+
   return Response.json({
     task: {
       task_id: candidate.id,
@@ -136,6 +179,7 @@ export async function POST(request: Request) {
       task: candidate.task,
       deliverable_kind: deliverableKind,
       repo,
+      media,
     },
   })
 }

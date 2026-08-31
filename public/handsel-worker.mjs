@@ -540,6 +540,107 @@ function watchRepoFiles(taskId, cwd) {
   }
 }
 
+/* ────────────────────────────────────────────────────────────────────────
+ * Media jobs.
+ *
+ * The worker's contribution here is a machine with ffmpeg on it, and
+ * deliberately nothing else. It does not read the job description, does not
+ * ask a model what to do, and does not build a command: the platform
+ * compiled the argv from a validated recipe (lib/media-recipe.ts) and sent
+ * it, and this substitutes two path placeholders and runs the binary.
+ *
+ * One implementation of "what does this job mean" instead of two that drift
+ * until the same job renders differently depending on who claimed it. And no
+ * shell anywhere — `execFile`, an argv array, a binary named ffmpeg.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/** 512 MB. A source larger than this is a job for a rendering service, not
+ *  for somebody's laptop, and streaming it to disk before finding that out
+ *  is how a worker fills a home partition. */
+const MEDIA_MAX_SOURCE_BYTES = 512 * 1024 * 1024
+/** The callback carries artifacts inline as base64. Past this the render has
+ *  to go to blob storage, and saying so beats a 413 from a POST. */
+const MEDIA_MAX_INLINE_BYTES = 2 * 1024 * 1024
+
+/** Is ffmpeg actually on this machine? Reported so a media job is matched to
+ *  a worker that can do it rather than to one that merely claims 'video'. */
+async function detectFfmpeg() {
+  try {
+    const { stdout } = await execFileAsync('ffmpeg', ['-version'], { timeout: 10_000 })
+    const line = String(stdout).split('\n')[0].trim()
+    return { present: true, version: line.slice(0, 120) }
+  } catch {
+    return { present: false, version: null }
+  }
+}
+
+/** Stream the source to disk, refusing anything oversized or non-https. */
+async function fetchSource(url, dest, taskId) {
+  const parsed = new URL(url)
+  if (parsed.protocol !== 'https:') throw new Error(`source must be https, got ${parsed.protocol}`)
+  note(taskId, `Downloading ${parsed.hostname}${parsed.pathname}`, { phase: 'plan' })
+  const res = await fetch(url, { redirect: 'follow' })
+  if (!res.ok) throw new Error(`source fetch failed: HTTP ${res.status}`)
+  const declared = Number(res.headers.get('content-length') ?? '0')
+  if (declared > MEDIA_MAX_SOURCE_BYTES) {
+    throw new Error(`source is ${(declared / 1048576).toFixed(0)}MB, over the ${MEDIA_MAX_SOURCE_BYTES / 1048576}MB limit`)
+  }
+  const buf = Buffer.from(await res.arrayBuffer())
+  // Checked again after the fact: content-length is a claim, not a promise,
+  // and a chunked response does not send one at all.
+  if (buf.length > MEDIA_MAX_SOURCE_BYTES) {
+    throw new Error(`source turned out to be ${(buf.length / 1048576).toFixed(0)}MB, over the limit`)
+  }
+  await fs.writeFile(dest, buf)
+  note(taskId, `Downloaded ${(buf.length / 1048576).toFixed(1)}MB`, { phase: 'plan', level: 'good' })
+  return buf.length
+}
+
+async function runMediaTask(task, media) {
+  const dir = path.join(os.tmpdir(), `handsel-media-${task.task_id}`)
+  await fs.mkdir(dir, { recursive: true })
+  const inPath = path.join(dir, 'source')
+  const outPath = path.join(dir, 'render.mp4')
+  try {
+    await fetchSource(media.source_url, inPath, task.task_id)
+
+    const args = media.args.map((a) =>
+      a === media.input_token ? inPath : a === media.output_token ? outPath : a,
+    )
+    // Belt and braces on a value that arrived over the network and is going
+    // to a process: the platform built it, but "the other side checks it" is
+    // not a property this side gets to assume.
+    for (const a of args) {
+      if (/[;&|`$\n><]/.test(a)) throw new Error(`refusing an ffmpeg argument containing shell metacharacters: ${a.slice(0, 40)}`)
+    }
+    note(task.task_id, `ffmpeg ${args.filter((a) => a !== inPath && a !== outPath).join(' ')}`, { phase: 'code' })
+
+    const started = Date.now()
+    await execFileAsync('ffmpeg', args, { timeout: HARNESS_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 })
+    const bytes = await fs.readFile(outPath)
+    note(
+      task.task_id,
+      `Rendered ${(bytes.length / 1048576).toFixed(2)}MB in ${((Date.now() - started) / 1000).toFixed(1)}s`,
+      { phase: 'review', level: 'good', path: 'render.mp4' },
+    )
+
+    if (bytes.length > MEDIA_MAX_INLINE_BYTES) {
+      throw new Error(
+        `render is ${(bytes.length / 1048576).toFixed(1)}MB, over the ${MEDIA_MAX_INLINE_BYTES / 1048576}MB inline limit — ` +
+          'ask a smaller output size, a shorter trim, or enable blob storage on the deployment',
+      )
+    }
+    return {
+      output: `Rendered with ffmpeg from the job's media recipe. ${bytes.length} bytes.`,
+      artifacts: [{ name: 'render.mp4', mime: 'video/mp4', data_base64: bytes.toString('base64') }],
+    }
+  } finally {
+    // The source can be hundreds of megabytes. Leaving it behind fills a
+    // disk one job at a time, and the failure shows up on an unrelated run.
+    await fs.rm(dir, { recursive: true, force: true }).catch(() => {})
+  }
+}
+
 async function runRepoTask(task, repo) {
   const rel = clonePathFor(task.task_id)
   const dest = path.resolve(WORKDIR, rel)
@@ -1071,9 +1172,19 @@ async function runOne(task) {
   note(task.task_id, `Claimed: ${task.task.split('\n')[0].slice(0, 120)}`, { phase: 'plan' })
 
   let output = ''
+  let artifacts = []
   let success = true
   let error
   try {
+    // A media job is decided before anything else looks at the brief: the
+    // platform already compiled the recipe, so there is nothing for a model
+    // to interpret and handing it one would only invite it to improvise.
+    if (task.media) {
+      if (!FFMPEG.present) throw new Error('this job needs ffmpeg and it is not on this machine')
+      const rendered = await runMediaTask(task, task.media)
+      output = rendered.output
+      artifacts = rendered.artifacts
+    } else {
     // A repo job's deliverable is a diff, not prose — and only a harness with
     // a real checkout can produce one. The built-in loop keeps its own path:
     // it has no git and its brief already tells the model to paste a diff.
@@ -1085,6 +1196,7 @@ async function runOne(task) {
         : WORKDIR
           ? await runAgentTask(task.task)
           : await askLocalModel(task.task)
+    }
     if (!output.trim()) {
       success = false
       error = 'local model returned empty output'
@@ -1125,6 +1237,10 @@ async function runOne(task) {
     output: success ? output : `Local worker error: ${error}`,
     plan: '',
     quality_score: null, // self-scoring is worthless here; independent graders decide
+    // The rendered file itself. Grading reads THESE BYTES (lib/mp4-probe.ts)
+    // rather than any claim made about them, which is the only version of a
+    // media job where "it rendered correctly" is somebody else's finding.
+    ...(artifacts.length > 0 ? { artifacts } : {}),
     execution_time: executionTime,
     token_cost: 0,
     events,
@@ -1189,6 +1305,12 @@ if (HARNESS) {
 // The built-in loop is what a warm model is for; a harness brings its own.
 if (!HARNESS) await warmupModel()
 
+// Probed once at startup, not assumed from a flag: a worker that DECLARES
+// video and cannot render is matched to media jobs it will fail, and a
+// failed job costs the agent its own credit score.
+const FFMPEG = await detectFfmpeg()
+console.log(FFMPEG.present ? `[worker] ffmpeg    ${FFMPEG.version}` : '[worker] ffmpeg    not found — media jobs will not be offered')
+
 console.log(
   `[worker] polling every ${POLL_MS / 1000}s` +
     (CONCURRENCY > 1 ? `, up to ${CONCURRENCY} jobs at once` : '') +
@@ -1218,6 +1340,10 @@ for (;;) {
     ;({ task } = await platformPost('/api/worker/poll', {
       agent_id: AGENT_ID,
       harness: HARNESS ? HARNESS.id : null,
+      // Declared from a probe, so the match is on a machine that has the
+      // tool rather than on a promise that it does.
+      capabilities: FFMPEG.present ? ['text', 'video'] : ['text'],
+      ffmpeg: FFMPEG.version,
       // Whatever the running jobs have to say since the last poll. Drained
       // here rather than pushed on a timer of its own: the poll is already
       // an authenticated round trip on a few-second cadence, and a second
