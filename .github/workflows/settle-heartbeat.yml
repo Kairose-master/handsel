@@ -8,6 +8,12 @@
 #   variable PLATFORM_URL  — this deployment's origin, e.g. https://xxx.vercel.app
 # Settings → Secrets and variables → Actions.
 #
+# One repo, two deployments (the mainnet market and the testnet rehearsal),
+# one schedule: the optional variable PLATFORM_URL_2 adds a second origin to
+# the same beat. Both must accept the SAME CRON_SECRET — set the identical
+# value in both Vercel projects. One deployment failing still beats the
+# other, and the run then fails loudly for the one that broke.
+#
 # PLATFORM_URL used to be a hardcoded hostname, which was fine while there was
 # one deployment and actively dangerous once there were two: a second repo
 # created from this one inherits the workflow and would drive the FIRST
@@ -53,11 +59,29 @@ jobs:
             exit 0
           fi
           # pipefail so a curl failure is reported as a curl failure. The grep
-          # below would catch it either way — an empty result.json has no
+          # below would catch it either way — an empty result has no
           # "ok":true — but "grep found nothing" is a worse first clue than
           # "the request failed".
+          #
+          # Sequential over every configured origin, and one origin failing
+          # never skips the next — a broken testnet must not stop mainnet
+          # settlement (or the reverse). The run still FAILS at the end if
+          # any beat failed: a check that cannot fail is not a check.
           set -o pipefail
-          curl -sS --max-time 300 \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            "${{ vars.PLATFORM_URL }}/api/cron/settle" | tee result.json
-          grep -q '"ok":true' result.json
+          failed=0
+          i=0
+          for url in "${{ vars.PLATFORM_URL }}" "${{ vars.PLATFORM_URL_2 }}"; do
+            [ -z "$url" ] && continue
+            i=$((i+1))
+            echo "── beat $i: $url"
+            if curl -sS --max-time 300 \
+                 -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+                 "$url/api/cron/settle" | tee "result-$i.json" \
+               && grep -q '"ok":true' "result-$i.json"; then
+              echo "── beat $i ok"
+            else
+              echo "::error title=Settlement heartbeat failed::$url/api/cron/settle did not return ok:true"
+              failed=1
+            fi
+          done
+          exit "$failed"
