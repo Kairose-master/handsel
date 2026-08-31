@@ -479,14 +479,24 @@ async function handoffDispatchExecution(taskId: string, callbackUrl: string): Pr
   const secret = process.env.CRON_SECRET
   if (!secret) return false
   try {
-    const response = await fetch(new URL('/api/runtime/execute', callbackUrl), {
+    // absoluteUrl (the deployment's own PUBLIC origin), NOT the callback
+    // URL's host: a cron-invoked request can carry a deployment-specific
+    // host, and on a project with deployment protection that host answers
+    // with the auth wall's 401 before our route ever runs — measured live,
+    // first handoff attempt, all three refused. The public production
+    // origin is the one host proven to reach the route.
+    const { absoluteUrl } = await import('@/lib/origin')
+    const response = await fetch(absoluteUrl('/api/runtime/execute'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${secret}` },
       body: JSON.stringify({ task_id: taskId }),
       signal: AbortSignal.timeout(10_000),
     })
     if (response.status === 202) return true
-    console.warn(`[agent-tasks] execute handoff for ${taskId} refused (${response.status}) — dispatching inline`)
+    // The body names WHICH layer refused — our route answers JSON, an edge
+    // auth wall answers HTML — and that distinction is the whole diagnosis.
+    const body = (await response.text().catch(() => '')).slice(0, 120)
+    console.warn(`[agent-tasks] execute handoff for ${taskId} refused (${response.status}: ${body}) — dispatching inline`)
     return false
   } catch (error) {
     if (error instanceof Error && error.name === 'TimeoutError') {

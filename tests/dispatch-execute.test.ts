@@ -39,6 +39,15 @@ describe('runAgentTask hands cloud/mcp dispatch to its own invocation', () => {
     expect(timeoutBranch.indexOf('return true')).toBeLessThan(timeoutBranch.indexOf('return false'))
   })
 
+  it('the handoff targets the PUBLIC origin, never the callback URL host', () => {
+    // A cron-invoked request can carry a deployment-protected host; every
+    // URL built from it answers 401 at the edge. Measured live: the first
+    // three handoffs all refused this way.
+    const body = src.slice(src.indexOf('async function handoffDispatchExecution'))
+    expect(body).toContain("absoluteUrl('/api/runtime/execute')")
+    expect(body).not.toContain("new URL('/api/runtime/execute', callbackUrl)")
+  })
+
   it('executeDispatch refuses anything that is not a running cloud/mcp task', () => {
     const body = src.slice(src.indexOf('export async function executeDispatch'))
     expect(body).toContain("taskRow.status !== 'running'")
@@ -58,5 +67,17 @@ describe('POST /api/runtime/execute', () => {
   it('derives the callback URL from its own host, never from the body', () => {
     expect(src).toContain("x-forwarded-host")
     expect(src).not.toMatch(/body[^\n]*callback/i)
+  })
+})
+
+describe('the cron hands the ops cycle a PUBLIC origin', () => {
+  it('runOpsCycle gets origin(), not the request host', () => {
+    // Same edge-401 defect from the other side: the cron request's own host
+    // can be deployment-protected, and the ops origin becomes every runtime
+    // callback's target — which is how cron-context dispatches died with no
+    // callback while visitor-traffic dispatches completed.
+    const src = code('app/api/cron/settle/route.ts')
+    expect(src).toContain('runOpsCycle(origin())')
+    expect(src).not.toMatch(/runOpsCycle\(`\$\{proto\}/)
   })
 })
