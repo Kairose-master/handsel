@@ -165,11 +165,29 @@ export async function runAgentTask(input: {
       // there's no external server to do the work on, so we do it
       // ourselves and call our own callback endpoint exactly like a
       // webhook agent's server would.
-      after(() => dispatchToCloudApi(agent, taskId, effectiveTask, callbackUrl))
+      //
+      // "Ourselves" is, whenever possible, a SEPARATE function invocation
+      // (POST /api/runtime/execute) rather than this one's after(): after()
+      // shares the calling request's duration budget, and four office
+      // dispatches queued behind one cron tick all died with it — measured
+      // live, 2026-08-31: every task still 'running' at the 30-minute reap,
+      // zero callbacks. Handing the work to our own HTTP endpoint gives each
+      // dispatch a full budget of its own. The inline path stays as the
+      // fallback when the handoff cannot happen (no CRON_SECRET, refused).
+      after(async () => {
+        if (!(await handoffDispatchExecution(taskId, callbackUrl))) {
+          await dispatchToCloudApi(agent, taskId, effectiveTask, callbackUrl)
+        }
+      })
     } else if (agent.runtimeType === 'mcp' && agent.mcpServerUrl && agent.mcpToolName) {
-      // An external MCP server does the work. Same fire-and-forget shape as
-      // cloud: we call the tool, then POST our own callback with the result.
-      after(() => dispatchToMcpWorker(agent, taskId, effectiveTask, callbackUrl))
+      // An external MCP server does the work. Same handoff-then-fallback
+      // shape as cloud: the execute endpoint calls the tool in its own
+      // invocation, then POSTs our own callback with the result.
+      after(async () => {
+        if (!(await handoffDispatchExecution(taskId, callbackUrl))) {
+          await dispatchToMcpWorker(agent, taskId, effectiveTask, callbackUrl)
+        }
+      })
     } else {
       const { resolveUserAnthropicKey } = await import('@/lib/user-keys')
       const apiKey = await resolveUserAnthropicKey(agent.userId)
@@ -439,4 +457,91 @@ async function dispatchToMcpWorker(agentRow: AgentRow, taskId: string, task: str
   } catch (callbackError) {
     console.error('[agent-tasks] mcp dispatch callback failed:', callbackError)
   }
+}
+
+/**
+ * Hand a cloud/mcp dispatch to POST /api/runtime/execute — our own endpoint,
+ * our own separate function invocation, a full duration budget per dispatch.
+ *
+ * Returns true when the execute endpoint accepted the work (202); the caller
+ * must then NOT run the dispatch inline. False means "run it yourself":
+ * no CRON_SECRET to authenticate with, or the endpoint refused.
+ *
+ * A timeout is counted as handed off, not as failure: the request most
+ * likely reached the endpoint, and the wrong way to resolve the ambiguity is
+ * to also run inline — a double execution calls one external MCP tool twice
+ * and races two callbacks (the second is ignored, but the tool call is not
+ * free). If the request truly never arrived, the task sits 'running' until
+ * reapStuckTasks fails it and auto-mine's heal re-dispatches — the exact
+ * recovery chain this incident built.
+ */
+async function handoffDispatchExecution(taskId: string, callbackUrl: string): Promise<boolean> {
+  const secret = process.env.CRON_SECRET
+  if (!secret) return false
+  try {
+    const response = await fetch(new URL('/api/runtime/execute', callbackUrl), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${secret}` },
+      body: JSON.stringify({ task_id: taskId }),
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (response.status === 202) return true
+    console.warn(`[agent-tasks] execute handoff for ${taskId} refused (${response.status}) — dispatching inline`)
+    return false
+  } catch (error) {
+    if (error instanceof Error && error.name === 'TimeoutError') {
+      console.warn(`[agent-tasks] execute handoff for ${taskId} timed out awaiting the 202 — assuming it arrived`)
+      return true
+    }
+    console.warn(`[agent-tasks] execute handoff for ${taskId} failed — dispatching inline:`, error)
+    return false
+  }
+}
+
+/**
+ * Run the actual work for an already-inserted cloud/mcp task, in whatever
+ * invocation is calling — the body of POST /api/runtime/execute. Recomposes
+ * the effective (instruction-prefixed) task by the same rules runAgentTask
+ * used, because the stored row keeps the RAW task for these runtimes.
+ *
+ * Refuses anything that is not a 'running' cloud/mcp task: 'running' is the
+ * claim — a completed, failed, or reaped task must not be executed again,
+ * and the callback route's own idempotence (it only lands on a 'running'
+ * row) backs this up if two executions ever race.
+ */
+export async function executeDispatch(
+  taskId: string,
+  callbackUrl: string,
+): Promise<{ ok: true } | { ok: false; why: string }> {
+  const [taskRow] = await db.select().from(agentTask).where(eq(agentTask.id, taskId))
+  if (!taskRow) return { ok: false, why: `no task ${taskId}` }
+  if (taskRow.status !== 'running') return { ok: false, why: `task is ${taskRow.status}, not running` }
+  const [agentRow] = await db.select().from(agent).where(eq(agent.id, taskRow.agentId))
+  if (!agentRow) return { ok: false, why: `task ${taskId} has no agent` }
+
+  let skillsBlock = ''
+  if (agentRow.runtimeType !== 'mcp') {
+    try {
+      const { skillsForPrompt, renderSkillsBlock } = await import('@/lib/agent-skills')
+      skillsBlock = renderSkillsBlock(await skillsForPrompt(agentRow.id))
+    } catch (error) {
+      console.error('[agent-tasks] skill read failed (executing without skills):', error)
+    }
+  }
+  const { composeEffectiveTask } = await import('@/lib/agent-skills')
+  const effectiveTask = composeEffectiveTask({
+    customInstructions: agentRow.customInstructions ?? null,
+    skillsBlock,
+    task: taskRow.task,
+  })
+
+  if (agentRow.runtimeType === 'cloud' && agentRow.cloudBaseUrl && agentRow.cloudApiKeyEnc) {
+    await dispatchToCloudApi(agentRow, taskId, effectiveTask, callbackUrl)
+    return { ok: true }
+  }
+  if (agentRow.runtimeType === 'mcp' && agentRow.mcpServerUrl && agentRow.mcpToolName) {
+    await dispatchToMcpWorker(agentRow, taskId, effectiveTask, callbackUrl)
+    return { ok: true }
+  }
+  return { ok: false, why: `runtime '${agentRow.runtimeType}' does not execute here — only cloud/mcp dispatches do` }
 }
