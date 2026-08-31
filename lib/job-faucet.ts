@@ -253,8 +253,9 @@ let cachedFaucetAgentId: string | null = null
 
 /** Find-or-create the faucet's owning user + agent. The user row has no
  *  password, so nobody can ever log into it — it exists only to own the
- *  agent. Idempotent. */
-async function ensureFaucetAgent(): Promise<typeof agent.$inferSelect | null> {
+ *  agent. Idempotent. Exported for the benchmark loop
+ *  (lib/benchmark-loop-server.ts), which posts from the same house wallet. */
+export async function ensureFaucetAgent(): Promise<typeof agent.$inferSelect | null> {
   if (cachedFaucetAgentId) {
     const [cached] = await db.select().from(agent).where(eq(agent.id, cachedFaucetAgentId))
     if (cached) return cached

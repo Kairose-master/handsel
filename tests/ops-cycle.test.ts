@@ -39,8 +39,11 @@ describe('OPS_STEPS', () => {
     // has carried the same
     // justification, and it is CHECKED below rather than asserted here: the
     // step frees escrow a visitor can feel, and it is capped by a constant it
-    // owns.
-    expect(OPS_STEPS.filter((s) => s.fast).length).toBeLessThanOrEqual(12)
+    // owns. 13 is `selfOps`, whose justification is different and stronger:
+    // it does not free escrow, but it is the one step that CANNOT live on the
+    // cron — a dead heartbeat cannot report itself from inside the heartbeat —
+    // and every read it makes is bounded by its own 3s `within` cap.
+    expect(OPS_STEPS.filter((s) => s.fast).length).toBeLessThanOrEqual(13)
   })
 
   it('bounds the expensive fast steps by a cap they control', () => {

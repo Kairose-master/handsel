@@ -33,6 +33,21 @@ export type OpsStep = {
 
 export const OPS_STEPS: OpsStep[] = [
   {
+    // The platform noticing its own operational failures (lib/self-ops.ts):
+    // a heartbeat that stopped beating, an oracle wallet too dry to fund a
+    // new agent's first transaction, every storefront closed. FAST on
+    // purpose — a dead heartbeat cannot report itself from inside the
+    // heartbeat, so this must ride visitor traffic; every read inside is
+    // time-bounded and best-effort. Reports only, never fixes.
+    name: 'selfOps',
+    fast: true,
+    run: async () => {
+      const { runSelfOpsSweep } = await import('@/lib/self-ops-server')
+      const { findings, report } = await runSelfOpsSweep()
+      return findings.length === 0 ? 'all clear' : report
+    },
+  },
+  {
     name: 'sweep',
     fast: true,
     run: async () => {
@@ -322,6 +337,17 @@ export const OPS_STEPS: OpsStep[] = [
     run: async () => {
       const { tickJobFaucet } = await import('@/lib/job-faucet')
       return tickJobFaucet({ force: true })
+    },
+  },
+  {
+    // Refresh stale per-tool receipts by posting small graded jobs from the
+    // house wallet (lib/benchmark-loop.ts). Full cycle only — it escrows
+    // money on-chain. Off unless BENCHMARK_LOOP=true, budget-capped, and
+    // refused on real money without its own explicit opt-in.
+    name: 'benchmarks',
+    run: async () => {
+      const { runBenchmarkSweep } = await import('@/lib/benchmark-loop-server')
+      return runBenchmarkSweep()
     },
   },
   {
