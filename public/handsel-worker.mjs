@@ -7,6 +7,13 @@
  * expose: no webhook URL, no ngrok, no port forwarding. Zero dependencies —
  * Node 18+ only.
  *
+ *   node handsel-worker.mjs --login                        # FIRST RUN, no dashboard:
+ *                                                          # email + password register (or
+ *                                                          # reconnect) the agent and save the
+ *                                                          # token to ~/.handsel/worker-token —
+ *                                                          # after that, plain
+ *                                                          # `node handsel-worker.mjs` suffices
+ *   node handsel-worker.mjs --logout                       # forget the saved token
  *   node handsel-worker.mjs --token <TOKEN>                # Ollama (default)
  *   node handsel-worker.mjs --token <TOKEN> --model llama3.2
  *   node handsel-worker.mjs --token <TOKEN> \
@@ -71,6 +78,22 @@
  * ("Connect a local worker"). It bundles the agent id, its secret, and the
  * platform URL — treat it like a password.
  *
+ * Or skip the dashboard entirely: `--login` prompts for email + password and
+ * calls POST /api/agents/register — the same endpoint the desktop Miner uses.
+ * Same account + same agent name RECONNECTS to that agent (rotating its
+ * secret) rather than creating a new one, so logging in again from a new
+ * machine keeps the agent's credit and balance. The token is saved to
+ * ~/.handsel/worker-token (chmod 600 — it is a password; delete with
+ * --logout), so every later run needs no token at all.
+ *
+ * Token resolution order: --token wins, then --login, then the saved file;
+ * with none of those on an interactive terminal, first-time login starts by
+ * itself. A --token run does NOT save the token unless --remember is passed —
+ * existing installs keep their exact behavior. Deliberately NOT saved:
+ * --workdir and --harness. Granting file access is a per-run decision, and a
+ * remembered one would quietly re-grant it on a machine whose scratch dir has
+ * since become something else.
+ *
  * Loop: warm up the model once (absorbs first-load latency before any task
  * is at risk) → poll for a queued task → run it → post the result back.
  * Your model's output is submitted as the agent's real work; the platform's
@@ -81,6 +104,7 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
+import readline from 'node:readline'
 import { execFile, spawn } from 'node:child_process'
 import { promisify } from 'node:util'
 
@@ -92,9 +116,105 @@ const flag = (name) => {
   return i >= 0 ? args[i + 1] : undefined
 }
 
-const token = flag('token')
+/* ── Login / saved token ──────────────────────────────────────────────────
+ * The token file holds exactly the base64url token --token takes, nothing
+ * else — so the two paths cannot drift, and a user can always fall back to
+ * pasting the saved value as --token on a machine with no home directory. */
+const TOKEN_DIR = path.join(os.homedir(), '.handsel')
+const TOKEN_FILE = path.join(TOKEN_DIR, 'worker-token')
+
+async function readSavedToken() {
+  try {
+    return (await fs.readFile(TOKEN_FILE, 'utf8')).trim() || null
+  } catch {
+    return null
+  }
+}
+
+async function saveToken(tok) {
+  await fs.mkdir(TOKEN_DIR, { recursive: true, mode: 0o700 })
+  // 0o600: the token is a password (agent id + secret + platform).
+  await fs.writeFile(TOKEN_FILE, tok + '\n', { mode: 0o600 })
+}
+
+/** One interactive prompt. `mask` echoes * per keystroke — readline has no
+ *  public masking, and pulling a dependency for it would break this file's
+ *  zero-dependency contract, so this leans on _writeToOutput like every
+ *  zero-dep CLI does. */
+function ask(question, mask = false) {
+  return new Promise((resolve) => {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: true })
+    if (mask) {
+      const orig = rl._writeToOutput.bind(rl)
+      rl._writeToOutput = (s) => (s.includes(question) ? orig(s) : orig('*'))
+    }
+    rl.question(question, (answer) => {
+      rl.close()
+      if (mask) process.stdout.write('\n')
+      resolve(answer.trim())
+    })
+  })
+}
+
+/** Email+password → POST /api/agents/register → token, saved. The endpoint
+ *  reconnects on same account + same agent name (rotating the secret), so
+ *  running --login twice is "log back in", never "make a duplicate agent". */
+async function loginFlow() {
+  const platform = (
+    flag('platform') ??
+    ((await ask('Platform URL [https://handsel-main.vercel.app]: ')) || 'https://handsel-main.vercel.app')
+  ).replace(/\/+$/, '')
+  const email = flag('email') ?? (await ask('Email: '))
+  const password = process.env.HANDSEL_PASSWORD ?? (await ask('Password (a new account is created if none exists): ', true))
+  const defaultName = `${os.hostname()} worker`
+  const name = flag('agent-name') ?? ((await ask(`Agent name [${defaultName}]: `)) || defaultName)
+  // Declare file/code capability only when this run can actually touch disk —
+  // the matcher would otherwise route file work to a worker that refuses it.
+  const capabilities = flag('workdir') || flag('harness') || flag('harness-cmd') ? ['text', 'code', 'file'] : ['text']
+
+  const res = await fetch(`${platform}/api/agents/register`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email, password, name, auto_mine: true, capabilities }),
+  }).catch((e) => {
+    console.error(`Could not reach ${platform}: ${e?.message ?? e}`)
+    process.exit(1)
+  })
+  const body = await res.json().catch(() => null)
+  if (!res.ok || !body?.agent_id || !body?.secret) {
+    console.error(`Login failed (${res.status}): ${body?.error ?? 'unexpected response'}`)
+    process.exit(1)
+  }
+  const tok = Buffer.from(
+    JSON.stringify({ a: body.agent_id, s: body.secret, u: (body.platform_url ?? platform).replace(/\/+$/, '') }),
+  ).toString('base64url')
+  await saveToken(tok)
+  console.log(
+    body.reconnected
+      ? `Reconnected to existing agent "${name}" (worker secret rotated).`
+      : `Registered agent "${name}"${body.smart_account_address ? ` with wallet ${body.smart_account_address}` : ''}.`,
+  )
+  console.log(`Token saved to ${TOKEN_FILE} — from now on, plain \`node handsel-worker.mjs\` is enough.`)
+  return tok
+}
+
+if (args.includes('--logout')) {
+  await fs.rm(TOKEN_FILE, { force: true })
+  console.log(`Removed ${TOKEN_FILE}.`)
+  process.exit(0)
+}
+
+let token = flag('token')
+if (!token && args.includes('--login')) token = await loginFlow()
+if (!token) token = await readSavedToken()
+if (!token && process.stdin.isTTY) {
+  console.log('No token found — starting first-time login (Ctrl-C to abort, or pass --token <TOKEN>).')
+  token = await loginFlow()
+}
 if (!token) {
-  console.error('Missing --token. Get one from your agent\'s Runtime card ("Connect a local worker").')
+  console.error(
+    'Missing --token. Run with --login on an interactive terminal, or get a token from your agent\'s Runtime card ("Connect a local worker").',
+  )
   process.exit(1)
 }
 
@@ -106,6 +226,8 @@ try {
   console.error('Invalid --token (could not decode). Copy the full command from the dashboard again.')
   process.exit(1)
 }
+// Opt-in persistence for a pasted token; --login already saved its own.
+if (flag('token') && args.includes('--remember')) await saveToken(token)
 
 const AGENT_ID = cfg.a
 const SECRET = cfg.s

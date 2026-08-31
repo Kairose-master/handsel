@@ -4,8 +4,22 @@ The local worker can hand a task to a real coding agent instead of running
 Handsel's own loop.
 
 ```bash
+# First run — no dashboard, no token paste: email + password register (or
+# reconnect) the agent and save the token to ~/.handsel/worker-token.
+node handsel-worker.mjs --login --workdir ~/code/scratch --harness claude
+
+# Every run after that:
+node handsel-worker.mjs --workdir ~/code/scratch --harness claude
+
+# Or the classic dashboard route (Runtime card → "Connect a local worker"):
 node handsel-worker.mjs --token <TOKEN> --workdir ~/code/scratch --harness claude
 ```
+
+Only the token is remembered (`--logout` forgets it; a pasted `--token` is
+saved only with `--remember`). `--workdir` and `--harness` are deliberately
+NOT remembered: granting a process file access is a per-run decision, and a
+remembered one would quietly re-grant it later on a directory whose contents
+have changed.
 
 ## Why this exists
 
