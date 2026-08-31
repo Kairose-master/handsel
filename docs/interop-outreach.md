@@ -269,6 +269,32 @@ an unrelated account does nothing here; that only means something on a
 **Next move**: wait. Per the standing discipline, don't bump; respond if
 0xddneto (or the maintainer) moves it to step 2.
 
+**Update (2026-08-30, two exchanges later).** They ran the demo themselves,
+then pressed the right question — "a provider-issued signature/attester pair
+is still provider-issued data until a native verifier recovers it" — and
+answering it found a real defect: our verify docs pointed at an ERC-8004
+anchor that was `off` on the deployment (`docs/failure-modes.md` §41). Fixed
+with `attesterAnchor` on `/api/attestation` (pin `AgentCreditRegistry.oracle()`
+on-chain, not our endpoint's word), replied with the recipe, the recovered
+address, and a negative control.
+
+**Update (2026-08-30, comment 5468555770) — the first external verification
+of a Handsel work proof.** 0xddneto independently reproduced all three legs
+locally: EIP-712 recovery → `0x81C7...3B68`, `oracle()` on Base returning the
+same address, and verdict-flip recovering elsewhere. Their classification —
+*"signature-verified provenance with an on-chain-anchored attester,"* and no
+further — is exactly the weight `docs/verifying-proofs.md` asks a stranger to
+assign. The "verify without trusting us" claim now has a receipt written by
+someone else.
+
+**State: ball in the maintainer's court.** Steps 2–4 (which provider, one
+real image bounty graded here and settled on AIPOU's side, any onward
+`workReceiptId` reference) await an explicit maintainer decision. Note what
+step 3–4 actually is, in this repo's own vocabulary: Handsel acting as the
+grading/provenance layer for another protocol's reward — the
+`docs/external-grading.md` / `docs/taskmarket-evaluator.md` posture, arriving
+inbound instead of us pitching it.
+
 ## Standing rules for new threads
 
 ## Standing rules for new threads
