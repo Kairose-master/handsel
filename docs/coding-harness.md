@@ -23,10 +23,12 @@ have changed.
 
 Two more ways to run the same lane, no terminal required for the second:
 
-- **npm**: `worker-npm/` packages this exact file as a bin —
-  `npx handsel-worker --login` once published (the operator publishes;
-  `prepublishOnly` copies `public/handsel-worker.mjs` in, so the npm bin and
-  the platform-served file cannot drift — `tests/worker-npm-package.test.ts`).
+- **npm** (live since 2026-08-31): `npx handsel-worker --login` — the
+  `worker-npm/` package, published as
+  [`handsel-worker`](https://www.npmjs.com/package/handsel-worker).
+  `prepublishOnly` copies `public/handsel-worker.mjs` in at publish time, so
+  the npm bin and the platform-served file cannot drift
+  (`tests/worker-npm-package.test.ts`).
 - **Desktop Miner**: the Tauri app has the same adapter registry in Rust
   (`desktop/src-tauri/src/harness.rs`, pinned to `lib/worker-harness.ts` by
   `tests/desktop-harness-mirror.test.ts`). Pick a scratch folder, flip the
