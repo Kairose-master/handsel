@@ -18,6 +18,10 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
+import { getAgentRun, type ConsoleRun } from '@/app/actions/harness-runs'
+import { StatusDot } from '@/components/deck'
+import { PhaseRail, RunLines, RUN_LABEL, RUN_TONE } from '@/components/harness-live'
+import { elapsedLabel, furthestPhase, phaseIndex, runStatus, touchedFiles } from '@/lib/harness-run'
 import { Copy, RefreshCw, Loader2, UserPlus, Building2, Plus, X, Maximize2, Minimize2, Plug, Unplug, Coins, Fuel, Network } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -2683,6 +2687,7 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
           <div className="mt-3 rounded-md border border-border bg-muted/50 p-3 text-sm">
             <div className="font-semibold">{selected.name}</div>
             <div className="text-muted-foreground">{selected.status}</div>
+            <DeskRun agentId={selected.id} />
           </div>
         )}
         {selectedRoom && selectedRoom.id !== 'treasury' && (
@@ -2934,6 +2939,75 @@ function OfficeTabs({
           {slotsError} Showing the office you were on — reload to try again.
         </p>
       )}
+    </div>
+  )
+}
+
+/**
+ * What this desk is doing, from the worker's own mouth.
+ *
+ * The office read a job row and said "on a job — accepted" while the harness
+ * console, on another page, knew the run was three minutes into `code` and
+ * had just written a named file. Two views of one moment. The placement half
+ * of that join lives in lib/office-functional-departments.ts — a live run now
+ * decides which room the agent stands in. This is the rest of it: select the
+ * desk and you get the same phase rail and the same log the console shows,
+ * drawn by the same components so the two cannot drift.
+ *
+ * Renders nothing at all when the agent has no run. Most agents are not
+ * local workers, and an empty terminal on every desk would teach people to
+ * ignore the panel that matters on the desks that have one.
+ */
+function DeskRun({ agentId }: { agentId: string }) {
+  const [item, setItem] = useState<ConsoleRun | null>(null)
+  const [now, setNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    let dead = false
+    setItem(null)
+    const load = () =>
+      getAgentRun(agentId)
+        .then((r) => !dead && setItem(r))
+        .catch(() => {})
+    load()
+    const poll = setInterval(load, 4000)
+    // Separate tick: elapsed time and the staleness cutoff come from the
+    // clock, not from a fetch.
+    const clock = setInterval(() => setNow(Date.now()), 1000)
+    return () => {
+      dead = true
+      clearInterval(poll)
+      clearInterval(clock)
+    }
+  }, [agentId])
+
+  if (!item) return null
+  const { run } = item
+  const status = runStatus(run, now)
+  const files = touchedFiles(run.events)
+
+  return (
+    <div className="mt-3 space-y-2 border-t border-border pt-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+          {run.harnessId ?? 'worker'}
+        </span>
+        <StatusDot tone={RUN_TONE[status]} label={RUN_LABEL[status]} pulse={status === 'running'} />
+      </div>
+      <PhaseRail at={phaseIndex(furthestPhase(run.events, run.phase))} />
+      <div className="rounded-md bg-background/60 p-2">
+        <RunLines events={run.events} limit={5} />
+      </div>
+      <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+        <span className="truncate">
+          {files.length > 0 ? files[0].path : 'no files yet'}
+          {files.length > 1 && ` +${files.length - 1}`}
+        </span>
+        <span className="shrink-0 tabular-nums">{elapsedLabel((run.finishedAt ?? now) - run.startedAt)}</span>
+      </div>
+      <Link href="/mine/runs" className="inline-block text-[11px] text-primary hover:underline">
+        Full console →
+      </Link>
     </div>
   )
 }

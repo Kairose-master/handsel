@@ -10,6 +10,7 @@ const base: AgentActivitySignals = {
   hasCreditDraw: false,
   settledRecently: false,
   recentSkillInstall: null,
+  harness: null,
   autoMine: false,
   isExternalRuntime: false,
 }
@@ -199,5 +200,88 @@ describe('purity and totality', () => {
     const before = JSON.stringify(s)
     departmentFor(s)
     expect(JSON.stringify(s)).toBe(before)
+  })
+})
+
+describe('a live harness run and the office are one thing', () => {
+  const run = (over: Partial<NonNullable<AgentActivitySignals['harness']>> = {}) => ({
+    harnessId: 'claude',
+    phase: 'code' as const,
+    live: 'running' as const,
+    lastLine: 'Wrote src/routes/gateway.ts',
+    ...over,
+  })
+
+  it('walks the agent across the office as the run changes phase', () => {
+    // The rooms were named for what an agent is doing, and a harness
+    // announces exactly that every few seconds. This is the join that makes
+    // the diorama a view of execution rather than of job rows.
+    const at = (phase: 'plan' | 'code' | 'test' | 'review' | 'deploy') =>
+      departmentFor({ ...base, harness: run({ phase }) }).deptId
+    expect(at('plan')).toBe('strategy')
+    expect(at('code')).toBe('engineering')
+    expect(at('test')).toBe('qa')
+    expect(at('review')).toBe('verification')
+    expect(at('deploy')).toBe('market')
+  })
+
+  it('says what the harness is actually doing, not what the job row says', () => {
+    const working = { ...base, jobs: [{ status: 'Accepted', specHash: '0xa', repoJob: true }] }
+    expect(departmentFor(working).statusLine).toMatch(/repo job/i)
+    const live = departmentFor({ ...working, harness: run() }).statusLine
+    expect(live).toContain('claude')
+    expect(live).toContain('code')
+    expect(live).toContain('gateway.ts')
+  })
+
+  it('refines a specific placement instead of overriding it', () => {
+    // An agent red-teaming a peer's work through its harness reports phase
+    // `code`. Letting the phase win would move it to the Engineering Floor
+    // and lose the more specific fact about WHY it is running.
+    const reviewing: AgentActivitySignals = {
+      ...base,
+      roleId: 'red-team-lead',
+      jobs: [{ status: 'Submitted', specHash: '0xrev', repoJob: false }],
+      officeReviewSpecHashes: new Set(['0xrev']),
+    }
+    expect(departmentFor(reviewing).deptId).toBe('qa')
+    const withRun = departmentFor({ ...reviewing, harness: run({ phase: 'code' }) })
+    expect(withRun.deptId).toBe('qa')
+    // …but the status line is still the live truth.
+    expect(withRun.statusLine).toContain('gateway.ts')
+  })
+
+  it('never lets a run outrank a dispute', () => {
+    const disputed = { ...base, jobs: [{ status: 'Disputed', specHash: '0xd', repoJob: false }] }
+    expect(departmentFor({ ...disputed, harness: run() }).deptId).toBe('verification')
+  })
+
+  it('places an idle agent by its run rather than leaving it in the lounge', () => {
+    expect(departmentFor(base).deptId).toBeNull()
+    expect(departmentFor({ ...base, harness: run({ phase: 'test' }) }).deptId).toBe('qa')
+  })
+
+  it('shows a silent worker as silent instead of as working', () => {
+    // A worker that stopped talking mid-run is a fact worth seeing, not one
+    // to hide behind its last known job status.
+    const stalled = departmentFor({ ...base, harness: run({ live: 'stalled' }) })
+    expect(stalled.statusLine).toMatch(/no signal/i)
+    expect(stalled.statusLine).not.toContain('gateway.ts')
+  })
+
+  it('names the built-in loop rather than printing null', () => {
+    expect(departmentFor({ ...base, harness: run({ harnessId: null }) }).statusLine).toContain('its worker')
+  })
+
+  it('is unchanged for every agent with no run — the whole existing cascade still decides', () => {
+    for (const signals of [
+      { ...base, autoMine: true },
+      { ...base, hasCreditDraw: true },
+      { ...base, settledRecently: true },
+      { ...base, isDelegationPrime: true },
+      { ...base, recentSkillInstall: 'sql' },
+    ]) {
+      expect(departmentFor(signals)).toEqual(departmentFor({ ...signals, harness: null }))
+    }
   })
 })
