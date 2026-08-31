@@ -16,6 +16,15 @@
     </header>
 
     <main id="app">
+      <!-- A handsel:// deep link staged a connect; nothing is applied until
+           the person confirms here (any web page can fire a deep link). -->
+      <div id="deeplink-banner" class="deeplink-banner" hidden>
+        <p class="hint" id="deeplink-text"></p>
+        <div class="controls">
+          <button id="deeplink-confirm" data-i18n="deeplink.confirm">Connect this agent</button>
+          <button id="deeplink-reject" class="danger-btn" data-i18n="deeplink.reject">Ignore</button>
+        </div>
+      </div>
       <!-- Step 1: register or reuse a saved account -->
       <section id="view-register" class="view" hidden>
         <h2 data-i18n="reg.title">1. Connect an account</h2>
@@ -241,6 +250,31 @@
           </div>
           <p class="error" id="repo-error" hidden></p>
           <p class="success" id="repo-result" hidden></p>
+        </details>
+
+        <details id="harness-section">
+          <summary data-i18n="harness.title">🤖 Coding harness — hand jobs to Claude Code</summary>
+          <p class="hint" data-i18n="harness.hint">Instead of the chat model, claimed text jobs are handed whole to a real coding agent
+            installed on this machine (Claude Code, Codex, OpenCode, Cline, or Gemini CLI) with real file access in a
+            scratch folder you choose. The harness runs with auto-approval — it can edit and run anything inside that
+            folder — so pick a throwaway checkout, never your home directory, never anything holding credentials.
+            Whatever it writes to its deliverable file is submitted and independently graded.</p>
+          <p class="repo-status" id="harness-readiness">—</p>
+          <p class="hint" id="harness-workdir-line" hidden></p>
+          <div class="lane-model" id="harness-bin-row" hidden>
+            <label><span data-i18n="harness.bin">Harness</span>
+              <select id="harness-bin-select"></select>
+            </label>
+          </div>
+          <div class="repo-actions">
+            <button id="harness-pick-btn" type="button" data-i18n="harness.pick">Choose scratch folder</button>
+          </div>
+          <label class="toggle-row">
+            <input type="checkbox" id="harness-toggle" />
+            <span data-i18n="harness.toggle">Hand claimed text jobs to the harness</span>
+          </label>
+          <p class="error" id="harness-error" hidden></p>
+          <p class="success" id="harness-ok" hidden></p>
         </details>
 
         <details id="withdraw-section">

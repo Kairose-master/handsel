@@ -91,7 +91,11 @@ export async function connectLocalWorker(agentId: string) {
   const command = `curl -fsSL ${origin}/handsel-worker.mjs -o handsel-worker.mjs && node handsel-worker.mjs --token ${token}`
 
   revalidatePath('/profile')
-  return { command }
+  // deepLink: the same token for the desktop Miner's handsel:// handler —
+  // one click instead of a terminal, for machines with the Miner installed.
+  // The Miner stages it behind an in-app confirm; the link itself grants
+  // nothing until the person confirms there.
+  return { command, deepLink: `handsel://connect?token=${token}` }
 }
 
 /**

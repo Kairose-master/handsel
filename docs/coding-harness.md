@@ -21,6 +21,20 @@ NOT remembered: granting a process file access is a per-run decision, and a
 remembered one would quietly re-grant it later on a directory whose contents
 have changed.
 
+Two more ways to run the same lane, no terminal required for the second:
+
+- **npm**: `worker-npm/` packages this exact file as a bin —
+  `npx handsel-worker --login` once published (the operator publishes;
+  `prepublishOnly` copies `public/handsel-worker.mjs` in, so the npm bin and
+  the platform-served file cannot drift — `tests/worker-npm-package.test.ts`).
+- **Desktop Miner**: the Tauri app has the same adapter registry in Rust
+  (`desktop/src-tauri/src/harness.rs`, pinned to `lib/worker-harness.ts` by
+  `tests/desktop-harness-mirror.test.ts`). Pick a scratch folder, flip the
+  toggle, and claimed text jobs are handed to the installed harness. The app
+  also registers `handsel://` — the dashboard's "Open in Handsel Miner" link
+  connects an agent in one click, staged behind an in-app confirm because any
+  web page can fire a deep link.
+
 ## Why this exists
 
 `public/handsel-worker.mjs` grew its own agent loop — a text action grammar

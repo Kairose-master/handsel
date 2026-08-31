@@ -1434,6 +1434,7 @@ function RuntimeCard({ agentId }: { agentId: string }) {
   const [urlInput, setUrlInput] = useState('')
   const [revealedSecret, setRevealedSecret] = useState<string | null>(null)
   const [localCommand, setLocalCommand] = useState<string | null>(null)
+  const [localDeepLink, setLocalDeepLink] = useState<string | null>(null)
   const [lastPollAt, setLastPollAt] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
@@ -1528,8 +1529,9 @@ function RuntimeCard({ agentId }: { agentId: string }) {
     setBusy(true)
     setMsg(null)
     try {
-      const { command } = await connectLocalWorker(agentId)
+      const { command, deepLink } = await connectLocalWorker(agentId)
       setLocalCommand(command)
+      setLocalDeepLink(deepLink ?? null)
       await load()
     } catch (error) {
       setMsg(error instanceof Error ? error.message : String(error))
@@ -1885,6 +1887,15 @@ function RuntimeCard({ agentId }: { agentId: string }) {
             LM Studio etc). The token is a credential; don&apos;t share it.
           </p>
           <code className="block break-all font-mono select-all">{localCommand}</code>
+          {localDeepLink && (
+            <p className="mt-2">
+              Have the Handsel Miner desktop app installed?{' '}
+              <a href={localDeepLink} className="text-primary underline">
+                Open in Handsel Miner
+              </a>{' '}
+              — one click; the app asks you to confirm before anything connects.
+            </p>
+          )}
         </div>
       )}
 

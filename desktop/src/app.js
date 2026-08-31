@@ -4,6 +4,13 @@ const { listen } = window.__TAURI__.event
 // ---------- i18n (EN default, KO toggle) ----------
 
 const KO = {
+  'harness.title': '🤖 코딩 하네스 — 클로드 코드에게 일 맡기기',
+  'harness.hint': '채팅 모델 대신, claim한 텍스트 잡을 이 컴퓨터에 설치된 진짜 코딩 에이전트(Claude Code, Codex, OpenCode, Cline, Gemini CLI)에게 통째로 넘깁니다 — 여러분이 고른 스크래치 폴더 안에서 실제 파일을 읽고 씁니다. 하네스는 자동승인 모드로 돌아 그 폴더 안에서 뭐든 편집·실행할 수 있으니, 버려도 되는 폴더만 고르세요 — 홈 디렉터리나 자격증명이 있는 곳은 절대 금지. 하네스가 결과 파일에 쓴 내용이 제출되고 독립 채점됩니다.',
+  'harness.pick': '스크래치 폴더 선택',
+  'harness.toggle': 'claim한 텍스트 잡을 하네스에게 넘기기',
+  'harness.bin': '하네스',
+  'deeplink.confirm': '이 에이전트 연결',
+  'deeplink.reject': '무시',
   'repo.title': '🐙 레포 작업 — diff로 돈 받기',
   'repo.hint': 'GitHub 레포 작업은 요청자의 CI를 통과하는 PR에 값을 지불합니다. 이 컴퓨터가 공개 레포를 여러분이 고른 폴더에 클론하고, 현상금을 상한으로 한 예산 안에서 Foreman으로 작업한 뒤, 통합 diff를 제출합니다. 저장소 자격증명은 절대 받지 않고 푸시도 할 수 없습니다 — PR은 플랫폼이 열고, 머지가 에스크로를 풉니다.',
   'repo.pick': '작업 폴더 선택',
@@ -1771,6 +1778,7 @@ function initMiningView() {
 
 async function enterMiningView() {
   refreshRepoLane().catch(() => {})
+  refreshHarnessLane().catch(() => {})
   const cfg = await invoke('load_config')
   if (!cfg.agent) return showView('register')
   if (!cfg.backend) return enterBackendView()
@@ -1873,6 +1881,101 @@ function initRepoView() {
 }
 
 
+// ── Harness lane ────────────────────────────────────────────────────────
+
+function harnessSay(kind, text) {
+  const err = document.getElementById('harness-error')
+  const ok = document.getElementById('harness-ok')
+  err.hidden = kind !== 'error'
+  ok.hidden = kind !== 'ok'
+  if (kind === 'error') err.textContent = text
+  if (kind === 'ok') ok.textContent = text
+}
+
+async function refreshHarnessLane() {
+  try {
+    const st = await invoke('harness_status')
+    document.getElementById('harness-readiness').textContent = st.detail
+    const line = document.getElementById('harness-workdir-line')
+    line.hidden = !st.workdir
+    if (st.workdir) line.textContent = `Scratch folder: ${st.workdir}`
+    const row = document.getElementById('harness-bin-row')
+    const sel = document.getElementById('harness-bin-select')
+    row.hidden = st.installed.length === 0
+    sel.innerHTML = ''
+    for (const bin of st.installed) {
+      const opt = document.createElement('option')
+      opt.value = bin
+      opt.textContent = bin
+      if (bin === st.chosen) opt.selected = true
+      sel.appendChild(opt)
+    }
+    const toggle = document.getElementById('harness-toggle')
+    toggle.checked = st.enabled
+    // Turning OFF must always be possible, even when no longer "ready".
+    toggle.disabled = !st.ready && !st.enabled
+  } catch (e) {
+    document.getElementById('harness-readiness').textContent = String(e)
+  }
+}
+
+function initHarnessView() {
+  document.getElementById('harness-pick-btn').addEventListener('click', async () => {
+    try {
+      const picked = await invoke('pick_harness_workdir')
+      if (picked) harnessSay('ok', `Scratch folder set to ${picked}. The harness works there and nowhere else you chose.`)
+    } catch (e) {
+      harnessSay('error', String(e))
+    }
+    await refreshHarnessLane()
+  })
+  const apply = async (enabled) => {
+    const bin = document.getElementById('harness-bin-select').value || null
+    try {
+      harnessSay(null, '')
+      await invoke('set_harness', { enabled, bin })
+    } catch (e) {
+      harnessSay('error', String(e))
+    }
+    await refreshHarnessLane()
+  }
+  document.getElementById('harness-toggle').addEventListener('change', (e) => apply(e.target.checked))
+  document.getElementById('harness-bin-select').addEventListener('change', () => {
+    if (document.getElementById('harness-toggle').checked) apply(true)
+  })
+}
+
+// ── Deep link (handsel://connect) ───────────────────────────────────────
+
+function showDeepLinkBanner(info) {
+  const banner = document.getElementById('deeplink-banner')
+  document.getElementById('deeplink-text').textContent =
+    `A dashboard link wants to connect agent ${info.agent_id} on ${info.platform_url} to this Miner. ` +
+    'Only confirm if YOU clicked that link just now — this machine would mine into that agent\'s wallet.'
+  banner.hidden = false
+}
+
+function initDeepLink() {
+  listen('deep-link-connect', (event) => showDeepLinkBanner(event.payload))
+  // A cold-start deep link can arrive before this listener exists — the
+  // pending connect survives in Rust, so ask once at boot.
+  invoke('pending_connect_info')
+    .then((info) => { if (info) showDeepLinkBanner(info) })
+    .catch(() => {})
+  document.getElementById('deeplink-confirm').addEventListener('click', async () => {
+    try {
+      await invoke('confirm_pending_connect')
+      window.location.reload() // re-enter the boot flow with the new agent
+    } catch (e) {
+      document.getElementById('deeplink-text').textContent = String(e)
+    }
+  })
+  document.getElementById('deeplink-reject').addEventListener('click', async () => {
+    await invoke('reject_pending_connect').catch(() => {})
+    document.getElementById('deeplink-banner').hidden = true
+  })
+}
+
 async function boot() {
   applyLang()
   document.getElementById('lang-toggle').addEventListener('click', () => {
@@ -1888,6 +1991,8 @@ async function boot() {
   initDelegateView()
   initGovernanceView()
   initRepoView()
+  initHarnessView()
+  initDeepLink()
 
   document.getElementById('pet-wrap').addEventListener('click', onPetClick)
   document.getElementById('shop-toggle').addEventListener('click', () => {

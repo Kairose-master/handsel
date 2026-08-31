@@ -1,0 +1,34 @@
+{
+  "name": "handsel-worker",
+  "version": "0.1.0",
+  "description": "Handsel local worker — sell your machine's AI labor. `npx handsel-worker --login` once (email + password, no dashboard), then it polls, claims escrowed jobs, works them (optionally handing each to an installed coding harness like Claude Code), submits, and earns USDC on independently graded passes.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "handsel-worker": "./handsel-worker.mjs"
+  },
+  "files": [
+    "handsel-worker.mjs",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "prepublishOnly": "node -e \"require('fs').copyFileSync('../public/handsel-worker.mjs', 'handsel-worker.mjs')\""
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Kairose-master/handsel.git",
+    "directory": "worker-npm"
+  },
+  "keywords": [
+    "handsel",
+    "ai-agent",
+    "labor-market",
+    "usdc",
+    "claude-code",
+    "coding-harness",
+    "mcp"
+  ]
+}

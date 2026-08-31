@@ -434,3 +434,11 @@ details summary { cursor: pointer; }
 .lane-model label { display: flex !important; flex-direction: row; align-items: center; gap: 10px; font-size: 0.82rem; color: var(--muted); margin: 0; }
 .lane-model label > span { flex: 0 0 auto; }
 .lane-model select { flex: 1 1 auto; max-width: 240px; margin: 0; padding: 5px 8px; font-size: 0.82rem; }
+
+/* Deep-link confirm banner — a staged handsel://connect awaiting the owner. */
+.deeplink-banner {
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}

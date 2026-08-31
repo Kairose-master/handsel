@@ -1,6 +1,7 @@
 // Prevents an extra console window from popping up on Windows in release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod harness;
 mod protocol;
 mod repo_lane;
 
@@ -54,6 +55,16 @@ struct StoredConfig {
     /// is never defaulted to the cwd or a guessed home directory.
     #[serde(default)]
     repo_workspace: Option<String>,
+    /// Harness lane (src/harness.rs): hand text jobs to an installed coding
+    /// agent instead of the chat model. Off until the owner both picks a
+    /// scratch folder AND flips the toggle — the folder is the permission
+    /// boundary, same shape as repo_workspace, and it is never defaulted.
+    #[serde(default)]
+    harness_enabled: bool,
+    #[serde(default)]
+    harness_bin: Option<String>,
+    #[serde(default)]
+    harness_workdir: Option<String>,
 }
 
 fn config_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -91,6 +102,11 @@ struct AppState {
     // executor slots (see run_mining_loop); polling stays serial so the
     // platform's in-poll on-chain accepts don't collide on this agent's nonce.
     concurrency: Arc<AtomicU64>,
+    // A handsel:// deep link's decoded connect payload, held here until the
+    // person confirms IN THE APP. Never applied on receipt: any web page can
+    // fire a deep link, and silently swapping the configured agent for an
+    // attacker's would have this machine mining into someone else's wallet.
+    pending_connect: Mutex<Option<AgentConfig>>,
 }
 
 impl Default for AppState {
@@ -100,6 +116,7 @@ impl Default for AppState {
             is_mining: Mutex::new(false),
             poll_interval: Arc::new(AtomicU64::new(POLL_INTERVAL_SECS)),
             concurrency: Arc::new(AtomicU64::new(MINING_CONCURRENCY)),
+            pending_connect: Mutex::new(None),
         }
     }
 }
@@ -497,10 +514,33 @@ async fn run_one_task(
             Err(e) => (false, format!("Audio generation failed: {e}"), vec![]),
         }
     } else {
-        match protocol::ask_model(backend, &task.task).await {
-            Ok(text) if !text.trim().is_empty() => (true, text, vec![]),
-            Ok(_) => (false, "Local model returned empty output".to_string(), vec![]),
-            Err(e) => (false, format!("Local worker error: {e}"), vec![]),
+        // Harness lane first, when the owner turned it on and it is still
+        // genuinely runnable. A lane that stopped being ready (folder
+        // deleted, binary uninstalled) falls back to the chat model with a
+        // log line — a claimed task always gets a real attempt.
+        let hstatus = harness::status(
+            lane_cfg.harness_enabled,
+            lane_cfg.harness_bin.as_deref(),
+            lane_cfg.harness_workdir.as_deref(),
+        );
+        if lane_cfg.harness_enabled && hstatus.ready {
+            let bin = hstatus.chosen.expect("ready implies a harness is installed");
+            let workdir = std::path::PathBuf::from(lane_cfg.harness_workdir.clone().expect("ready implies a workdir"));
+            emit_event(app, MiningEvent::Log { line: format!("Handing task {} to {} in {}…", task.task_id, bin, workdir.display()) });
+            let outcome = harness::run_task(&bin, &workdir, &task.task_id, &task.task, 1800).await;
+            if outcome.success && outcome.source == "stdout" {
+                emit_event(app, MiningEvent::Log { line: "Harness wrote no deliverable file — submitting its output instead.".into() });
+            }
+            (outcome.success, outcome.output, vec![])
+        } else {
+            if lane_cfg.harness_enabled {
+                emit_event(app, MiningEvent::Log { line: format!("Harness lane not runnable ({}) — using the chat model for this task.", hstatus.detail) });
+            }
+            match protocol::ask_model(backend, &task.task).await {
+                Ok(text) if !text.trim().is_empty() => (true, text, vec![]),
+                Ok(_) => (false, "Local model returned empty output".to_string(), vec![]),
+                Err(e) => (false, format!("Local worker error: {e}"), vec![]),
+            }
         }
     };
     let elapsed = started.elapsed().as_secs();
@@ -685,8 +725,154 @@ async fn run_repo_job(
     .await)
 }
 
+// ── Harness lane ────────────────────────────────────────────────────────
+
+#[tauri::command]
+fn harness_status(app: tauri::AppHandle) -> harness::HarnessStatus {
+    let cfg = load_stored_config(&app);
+    harness::status(cfg.harness_enabled, cfg.harness_bin.as_deref(), cfg.harness_workdir.as_deref())
+}
+
+/// Ask the owner for the harness scratch folder. The dialog IS the consent —
+/// same boundary as the repo lane's workspace, and for a stronger reason:
+/// every harness runs with its auto-approval flag.
+#[tauri::command]
+async fn pick_harness_workdir(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let handle = app.clone();
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        handle
+            .dialog()
+            .file()
+            .set_title("Choose a THROWAWAY scratch folder for harness jobs")
+            .blocking_pick_folder()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let Some(path) = picked.and_then(|p| p.into_path().ok()) else {
+        return Ok(None); // cancelled — not an error, nothing stored
+    };
+    let display = path.display().to_string();
+    let mut cfg = load_stored_config(&app);
+    cfg.harness_workdir = Some(display.clone());
+    save_stored_config(&app, &cfg)?;
+    Ok(Some(display))
+}
+
+/// Turn the harness lane on/off and optionally pin which harness. Enabling
+/// also declares code/file capability so the matcher routes real engineering
+/// work here; disabling withdraws it — a declared-but-unfulfillable lane
+/// just claims-and-fails jobs.
+#[tauri::command]
+async fn set_harness(
+    app: tauri::AppHandle,
+    enabled: bool,
+    bin: Option<String>,
+) -> Result<harness::HarnessStatus, String> {
+    let mut cfg = load_stored_config(&app);
+    let agent = cfg.agent.clone().ok_or_else(|| "No agent registered yet.".to_string())?;
+    if enabled && cfg.harness_workdir.as_deref().map(|w| std::path::Path::new(w).exists()) != Some(true) {
+        return Err("Choose a scratch folder first — it is the harness's permission boundary.".into());
+    }
+    let mut caps: Vec<&str> = vec!["text"];
+    if cfg.image_mining {
+        caps.push("image");
+    }
+    if enabled {
+        caps.push("code");
+        caps.push("file");
+    }
+    protocol::update_capabilities(&agent.platform_url, &agent.agent_id, &agent.secret, &caps).await?;
+    cfg.harness_enabled = enabled;
+    cfg.harness_bin = bin.filter(|s| !s.is_empty());
+    save_stored_config(&app, &cfg)?;
+    Ok(harness::status(cfg.harness_enabled, cfg.harness_bin.as_deref(), cfg.harness_workdir.as_deref()))
+}
+
+// ── Deep link (handsel://connect?token=…) ───────────────────────────────
+
+/// Decode the dashboard's worker token — the same base64url {a,s,u} payload
+/// --token takes on the Node worker — into an AgentConfig. Name/email are
+/// unknown to the token; the name is fetched later, the email stays empty
+/// (withdraw/delegation prompt to reconnect, as for any pre-email install).
+fn parse_connect_token(token: &str) -> Option<AgentConfig> {
+    use base64::Engine;
+    let raw = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(token.trim().trim_end_matches('='))
+        .ok()?;
+    let v: serde_json::Value = serde_json::from_slice(&raw).ok()?;
+    let a = v.get("a")?.as_str()?.to_string();
+    let s = v.get("s")?.as_str()?.to_string();
+    let u = v.get("u")?.as_str()?.trim_end_matches('/').to_string();
+    if a.is_empty() || s.is_empty() || !u.starts_with("https://") {
+        return None;
+    }
+    Some(AgentConfig { platform_url: u, agent_id: a, secret: s, name: String::new(), email: String::new() })
+}
+
+/// The pending deep-link connect, for the UI's confirm banner. Secret never
+/// leaves the Rust side — the frontend only sees what it must display.
+#[tauri::command]
+async fn pending_connect_info(state: State<'_, AppState>) -> Result<Option<serde_json::Value>, String> {
+    let pending = state.pending_connect.lock().await;
+    Ok(pending.as_ref().map(|c| {
+        serde_json::json!({ "agent_id": c.agent_id, "platform_url": c.platform_url })
+    }))
+}
+
+#[tauri::command]
+async fn confirm_pending_connect(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let Some(mut connect) = state.pending_connect.lock().await.take() else {
+        return Err("Nothing pending.".into());
+    };
+    // Best-effort display name from the public agent card.
+    if let Ok(card) = protocol::agent_card(&connect.platform_url, &connect.agent_id).await {
+        connect.name = card.name;
+    }
+    let mut cfg = load_stored_config(&app);
+    cfg.agent = Some(connect);
+    save_stored_config(&app, &cfg)
+}
+
+#[tauri::command]
+async fn reject_pending_connect(state: State<'_, AppState>) -> Result<(), String> {
+    *state.pending_connect.lock().await = None;
+    Ok(())
+}
+
+fn handle_deep_link(app: &tauri::AppHandle, url: &tauri::Url) {
+    if url.scheme() != "handsel" {
+        return;
+    }
+    // handsel://connect?token=… — host carries "connect" for a scheme URL.
+    let action = url.host_str().unwrap_or_else(|| url.path().trim_start_matches('/'));
+    if action != "connect" {
+        return;
+    }
+    let Some(token) = url.query_pairs().find(|(k, _)| k == "token").map(|(_, v)| v.to_string()) else {
+        return;
+    };
+    let Some(connect) = parse_connect_token(&token) else {
+        emit_event(app, MiningEvent::Log { line: "Ignored a handsel:// link with an unreadable token.".into() });
+        return;
+    };
+    let display = serde_json::json!({ "agent_id": connect.agent_id, "platform_url": connect.platform_url });
+    let app_c = app.clone();
+    tauri::async_runtime::spawn(async move {
+        *app_c.state::<AppState>().pending_connect.lock().await = Some(connect);
+        let _ = app_c.emit("deep-link-connect", display);
+        if let Some(w) = app_c.get_webview_window("main") {
+            let _ = w.show();
+            let _ = w.unminimize();
+            let _ = w.set_focus();
+        }
+    });
+}
+
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState::default())
@@ -720,8 +906,30 @@ fn main() {
             pick_repo_workspace,
             clear_repo_workspace,
             run_repo_job,
+            harness_status,
+            pick_harness_workdir,
+            set_harness,
+            pending_connect_info,
+            confirm_pending_connect,
+            reject_pending_connect,
         ])
         .setup(|app| {
+            // handsel:// deep links: register at runtime where the OS allows
+            // (Linux/Windows; macOS reads it from the bundle), then listen.
+            // Every received link only STAGES a connect — see pending_connect.
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                #[cfg(any(target_os = "linux", target_os = "windows"))]
+                if let Err(e) = app.deep_link().register_all() {
+                    eprintln!("[miner] deep-link registration unavailable: {e}");
+                }
+                let handle = app.handle().clone();
+                app.deep_link().on_open_url(move |event| {
+                    for url in event.urls() {
+                        handle_deep_link(&handle, &url);
+                    }
+                });
+            }
             // System tray: the Miner's real home. Closing the window hides
             // it here and mining keeps running — a background earner, not a
             // window you have to babysit. BEST-EFFORT: on Linux the tray
