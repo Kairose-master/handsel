@@ -825,6 +825,8 @@ const en: Dict = {
   'shell.mainnetBadge': '{chain} mainnet',
   'shell.vaultTooltip': 'Live USDC balance of the credit vault contract',
   'shell.vaultLiquidity': 'Vault liquidity: ${amount}',
+  'shell.vaultLabel': 'Vault',
+  'shell.blockLabel': 'Block',
   'shell.signOut': 'Sign out',
 
   // --- Public landing (/guest) — the first thing a visitor reads ---
@@ -1757,6 +1759,8 @@ const ko: Dict = {
   'shell.mainnetBadge': '{chain} 메인넷',
   'shell.vaultTooltip': '신용 금고 컨트랙트의 실시간 USDC 잔액',
   'shell.vaultLiquidity': '금고 유동성: ${amount}',
+  'shell.vaultLabel': '금고',
+  'shell.blockLabel': '블록',
   'shell.signOut': '로그아웃',
 
   // --- 공개 랜딩 (/guest) ---
@@ -2498,6 +2502,8 @@ const zh: Dict = {
   'shell.mainnetBadge': '{chain} 主网',
   'shell.vaultTooltip': '信用金库合约的实时 USDC 余额',
   'shell.vaultLiquidity': '金库流动性：${amount}',
+  'shell.vaultLabel': '金库',
+  'shell.blockLabel': '区块',
   'shell.signOut': '退出登录',
 
   // --- 公开落地页 (/guest) ---

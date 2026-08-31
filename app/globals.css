@@ -111,52 +111,67 @@
   --glass-throw: rgba(22, 24, 26, 0.07);
 }
 
-/* Dark theme — "Quarry Night". Deep neutral, never pure black behind text;
-   the accent lifts to stay legible on it. */
+/* Dark theme — "Office Deck".
+ *
+ * Not a darkened copy of the light theme, and no longer the old neutral
+ * "Quarry Night": every value below is lifted from the 3D office's own
+ * `tactical` preset (app/(dashboard)/office/game3d/theme.ts), so the chrome
+ * around the diorama is made of the same navy and the same cyan as the
+ * diorama itself. The scene used to sit in the page like a screenshot pasted
+ * onto a different product; sharing one palette is what makes the page read
+ * as a single console instead of two designs.
+ *
+ * `tests/deck-theme.test.ts` pins the pairing — change a colour in the scene
+ * theme without changing it here and the test says so, which is the only
+ * reason two files are allowed to agree about a hex code. */
 .dark {
   color-scheme: dark;
-  --background: #0e1011;
-  --foreground: #eceeed;
-  --card: #15181a;
-  --card-foreground: #eceeed;
-  --popover: #15181a;
-  --popover-foreground: #eceeed;
-  --primary: #5fbfab;
-  --primary-foreground: #08201c;
-  --secondary: #1b1f21;
-  --secondary-foreground: #eceeed;
-  --muted: #1b1f21;
-  --muted-foreground: #9aa2a4;
-  --accent: #1e2624;
-  --accent-foreground: #b9ded5;
-  --destructive: #e5645a;
-  --destructive-foreground: #1a0f0e;
-  --success: #57b585;
-  --success-foreground: #071a11;
-  --warning: #d3a05a;
-  --warning-foreground: #1c1408;
-  --border: #262b2d;
-  --input: #262b2d;
-  --ring: #5fbfab;
-  --chart-1: #5fbfab;
-  --chart-2: #57b585;
-  --chart-3: #d3a05a;
-  --chart-4: #e5645a;
-  --chart-5: #8b949a;
-  --radius: 0.75rem;
-  --sidebar: #101314;
-  --sidebar-foreground: #d9dddc;
-  --sidebar-primary: #5fbfab;
-  --sidebar-primary-foreground: #08201c;
-  --sidebar-accent: #1e2624;
-  --sidebar-accent-foreground: #eceeed;
-  --sidebar-border: #22282a;
-  --sidebar-ring: #5fbfab;
-  --glass-sheen: rgba(255, 255, 255, 0.045);
-  --glass-rim: rgba(255, 255, 255, 0.075);
-  --glass-inner: rgba(255, 255, 255, 0.035);
-  --glass-contact: rgba(0, 0, 0, 0.35);
-  --glass-throw: rgba(0, 0, 0, 0.45);
+  --background: #070a0f;
+  --foreground: #dff4ff;
+  --card: #0d151d;
+  --card-foreground: #dff4ff;
+  --popover: #101b25;
+  --popover-foreground: #dff4ff;
+  --primary: #4fd8ff;
+  --primary-foreground: #04141c;
+  --secondary: #16222e;
+  --secondary-foreground: #dff4ff;
+  --muted: #16222e;
+  --muted-foreground: #7f97ab;
+  --accent: #14252f;
+  --accent-foreground: #bfe6ff;
+  --destructive: #ff3b3b;
+  --destructive-foreground: #1c0505;
+  --success: #57ffb0;
+  --success-foreground: #04180f;
+  --warning: #ffb84f;
+  --warning-foreground: #1b1103;
+  --border: #1e2c3a;
+  --input: #1e2c3a;
+  --ring: #4fd8ff;
+  --chart-1: #4fd8ff;
+  --chart-2: #57ffb0;
+  --chart-3: #ffb84f;
+  --chart-4: #ff3b3b;
+  --chart-5: #38506a;
+  --sidebar: #090e15;
+  --sidebar-foreground: #b8cede;
+  --sidebar-primary: #4fd8ff;
+  --sidebar-primary-foreground: #04141c;
+  --sidebar-accent: #14252f;
+  --sidebar-accent-foreground: #dff4ff;
+  --sidebar-border: #1a2734;
+  --sidebar-ring: #4fd8ff;
+  /* Tighter than ledger paper's 0.75rem, and the one structural value the
+     two identities are allowed to disagree about. Soft corners read as
+     friendly, which is right for a page explaining the product to a
+     stranger and wrong for a console someone works in for an hour. */
+  --radius: 0.5rem;
+  --glass-sheen: rgba(120, 200, 255, 0.05);
+  --glass-rim: rgba(140, 210, 255, 0.09);
+  --glass-inner: rgba(160, 220, 255, 0.035);
+  --glass-contact: rgba(0, 0, 0, 0.45);
+  --glass-throw: rgba(0, 0, 0, 0.55);
 }
 
 @layer base {

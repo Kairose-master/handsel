@@ -5,6 +5,7 @@ import { LocaleProvider } from '@/lib/i18n'
 import './globals.css'
 import { origin } from '@/lib/origin'
 import { isRealMoney } from '@/lib/onchain/real-money'
+import { PUBLIC_ROUTE_PREFIXES } from '@/lib/public-routes'
 
 // Geist Sans, replacing Inter (2026-08-25). The Nocturne handoff specified
 // Inter, and that is a real decision being overridden here, so the reason is
@@ -56,10 +57,23 @@ export const viewport: Viewport = {
   themeColor: '#faf8f3',
 }
 
-/** Runs before paint so the stored theme applies without a flash.
- *  Light ("ledger paper") is the default now — friendlier for first-time,
- *  non-technical visitors; dark is opt-in and remembered per browser. */
-const themeInit = `try{var t=localStorage.getItem('theme');document.documentElement.classList.toggle('dark',t==='dark')}catch(e){}`
+/**
+ * Runs before paint so the theme applies without a flash.
+ *
+ * The default is now decided by WHICH SITE the URL belongs to, because the
+ * app has two jobs and one default cannot serve both. Public pages stay
+ * light ("ledger paper") — a marketing page that opens black reads as a
+ * developer tool to the first-time, non-technical visitor those pages exist
+ * for. Everything behind the session check opens on the deck, the dark
+ * navy-and-cyan console the 3D office is built from; an operations surface
+ * that opens white reads as a form, and the diorama sitting in the middle of
+ * it read as a screenshot pasted onto a different product.
+ *
+ * An explicit choice still wins in both directions and is remembered per
+ * browser — this only changes what happens when there is no choice yet.
+ * `lib/public-routes.ts` owns the classification and a test keeps it honest.
+ */
+const themeInit = `try{var p=${JSON.stringify(PUBLIC_ROUTE_PREFIXES)};var t=localStorage.getItem('theme');var pub=p.indexOf(location.pathname.split('/')[1])>=0;document.documentElement.classList.toggle('dark',t==='dark'||(t!=='light'&&!pub))}catch(e){}`
 
 export default function RootLayout({
   children,

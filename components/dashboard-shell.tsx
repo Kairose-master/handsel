@@ -37,6 +37,7 @@ import { RiskBanner } from "@/components/risk-banner"
 import { SiteFooter } from "@/components/site-footer"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { LanguageSwitcher, useI18n } from "@/lib/i18n"
+import { Readout, StatusDot } from "@/components/deck"
 
 type ShellStatus = Awaited<ReturnType<typeof getShellStatus>>
 
@@ -314,18 +315,33 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
               </span>
             ))}
 
-          <div className="ml-auto flex items-center gap-2">
+          {/* Instrument readouts, not chips.
+
+              Both are live queries (app/actions/shell.ts) and both render
+              NOTHING when the read failed — a console whose gauges keep
+              showing the last good number, or a zero, is worse than one with
+              a gap in it. There is deliberately no burn-rate readout beside
+              them however good it would look: nothing on this platform
+              measures one, and a figure invented to fill a slot is the exact
+              defect this header was rebuilt once already to remove. */}
+          <div className="ml-auto flex items-center gap-4 md:gap-5">
+            {status?.vaultUsd !== null && status?.vaultUsd !== undefined && (
+              <div className="hidden sm:block">
+                <Readout
+                  label={t('shell.vaultLabel')}
+                  value={`$${status.vaultUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
+                  tone="ok"
+                  hint={t('shell.vaultTooltip')}
+                />
+              </div>
+            )}
+            {status?.chain && (
+              <div className="hidden md:block">
+                <Readout label={t('shell.blockLabel')} value={`#${status.chain.block.toLocaleString()}`} />
+              </div>
+            )}
             <LanguageSwitcher />
             <ThemeToggle />
-            {status?.vaultUsd !== null && status?.vaultUsd !== undefined && (
-              <span
-                className="hidden items-center gap-1.5 rounded-md border border-border bg-secondary/50 px-2.5 py-1.5 text-xs font-medium tabular-nums text-muted-foreground sm:flex"
-                title={t('shell.vaultTooltip')}
-              >
-                <span className="size-1.5 rounded-full bg-success" />{' '}
-                {t('shell.vaultLiquidity', { amount: status.vaultUsd.toLocaleString(undefined, { maximumFractionDigits: 0 }) })}
-              </span>
-            )}
             <div className="relative">
               <button
                 onClick={() => setUserMenuOpen(!userMenuOpen)}
