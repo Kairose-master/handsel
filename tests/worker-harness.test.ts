@@ -265,13 +265,35 @@ describe('the worker ships the same command lines', () => {
     // worker's own copy and compare it.
     const src = worker.match(/function deliverablePathFor\(taskId\) \{[\s\S]*?\n\}/)
     expect(src, 'deliverablePathFor missing from the worker').not.toBe(null)
-    const theirs = new Function(
-      `const DELIVERABLE_DIR = '.handsel'; ${src![0]}; return deliverablePathFor`,
-    )() as (id: string) => string
+    const build = (custom: string | null) =>
+      new Function(
+        `const DELIVERABLE_DIR = '.handsel'; const HARNESS_DELIVERABLE = ${JSON.stringify(custom)}; ${src![0]}; return deliverablePathFor`,
+      )() as (id: string) => string
+
+    const theirs = build(null)
     for (const id of ['abc', 'a-b_c', '../../etc/passwd', '', '...', 'x'.repeat(200)]) {
       expect(theirs(id), id).toBe(deliverablePathFor(id))
     }
     expect(DELIVERABLE_PATH.startsWith('.handsel/')).toBe(true)
+  })
+
+  it('keeps the per-task suffix when a user-defined harness names its own file', () => {
+    // --concurrency runs several tasks in one directory. A custom
+    // deliverable path that is the SAME filename for every task means a
+    // leftover from the previous job is submitted to the next client as
+    // their work — the exact bug the suffix exists to prevent, reintroduced
+    // by letting someone choose the name.
+    const src = worker.match(/function deliverablePathFor\(taskId\) \{[\s\S]*?\n\}/)
+    const build = (custom: string | null) =>
+      new Function(
+        `const DELIVERABLE_DIR = '.handsel'; const HARNESS_DELIVERABLE = ${JSON.stringify(custom)}; ${src![0]}; return deliverablePathFor`,
+      )() as (id: string) => string
+
+    const custom = build('out/result.md')
+    expect(custom('abc')).toBe('out/result-abc.md')
+    expect(custom('abc')).not.toBe(custom('def'))
+    // An extensionless path still gets one.
+    expect(build('out/result')('abc')).toBe('out/result-abc')
   })
 
   it('actually spawns the harness and reads that file back', () => {

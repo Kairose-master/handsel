@@ -125,6 +125,12 @@ const WORKDIR = WORKDIR_RAW ? path.resolve(WORKDIR_RAW.replace(/^~(?=$|\/)/, os.
 
 const HARNESS_ID = flag('harness') ?? null
 const HARNESS_CMD = flag('harness-cmd') ?? null
+/** Where a user-defined harness is told to write its finished work. Only
+ *  meaningful with --harness-cmd; the built-in adapters own their own. */
+const HARNESS_DELIVERABLE = flag('harness-deliverable') ?? null
+/** Pipe the brief in rather than passing it as an argument. Implied when the
+ *  --harness-cmd template contains no {brief}. */
+const HARNESS_STDIN = args.includes('--harness-stdin')
 const NO_HARNESS = args.includes('--no-harness')
 // A harness gets a hard wall-clock limit because it is a process on someone
 // else's machine that we do not control: a run that hangs holds a slot, and
@@ -214,6 +220,16 @@ const AUTODETECT_ORDER = ['claude', 'codex', 'opencode', 'cline', 'gemini']
  *  submitted to the next client as their deliverable. */
 function deliverablePathFor(taskId) {
   const safe = String(taskId).replace(/[^A-Za-z0-9_-]/g, '') || 'task'
+  // A user-defined harness names its own output file, but the per-task
+  // suffix stays: --concurrency runs several tasks in one directory, and one
+  // shared filename means a leftover from the previous task is submitted to
+  // the next client as their deliverable.
+  if (HARNESS_DELIVERABLE) {
+    const dot = HARNESS_DELIVERABLE.lastIndexOf('.')
+    const stem = dot > 0 ? HARNESS_DELIVERABLE.slice(0, dot) : HARNESS_DELIVERABLE
+    const ext = dot > 0 ? HARNESS_DELIVERABLE.slice(dot) : ''
+    return `${stem}-${safe.slice(0, 64)}${ext}`
+  }
   return `${DELIVERABLE_DIR}/deliverable-${safe.slice(0, 64)}.md`
 }
 
@@ -291,7 +307,48 @@ async function resolveHarnessAtStartup() {
       console.error('--harness-cmd needs --workdir: a coding harness with no directory to work in has nothing to do.')
       process.exit(1)
     }
-    HARNESS = { id: 'custom', label: parsed.bin, bin: parsed.bin, argv: () => parsed.argv, briefOnStdin: true }
+    // Placeholders, substituted INSIDE each already-split argument.
+    //
+    // The order is the safety property: the template is split into arguments
+    // first and tokens are replaced second, so a brief containing `; rm -rf ~`
+    // stays one argument instead of becoming several. Doing it the other way
+    // round — substitute into the string, then split — is the bug, and it is
+    // the obvious way to write this. Mirrored from lib/custom-harness.ts,
+    // which holds the same substitution as tested pure functions.
+    const usesBrief = parsed.argv.some((a) => a.includes('{brief}'))
+    if (!usesBrief && !HARNESS_STDIN) {
+      console.error(
+        'Your --harness-cmd never receives the task. Put {brief} in it, or add --harness-stdin to pipe it in.',
+      )
+      process.exit(1)
+    }
+    if (usesBrief && HARNESS_STDIN) {
+      console.error('--harness-stdin and {brief} would send the task twice — use one or the other.')
+      process.exit(1)
+    }
+    const model = flag('harness-model') ?? null
+    HARNESS = {
+      id: 'custom',
+      label: parsed.bin,
+      bin: parsed.bin,
+      briefOnStdin: HARNESS_STDIN,
+      argv: (i) =>
+        parsed.argv.map((a) =>
+          a.replace(/\{([a-z]+)\}/g, (whole, name) => {
+            if (name === 'brief') return i.brief
+            if (name === 'workdir') return i.workdir
+            if (name === 'deliverable') return HARNESS_DELIVERABLE ?? deliverablePathFor('task')
+            if (name === 'model') {
+              if (!model) {
+                // An empty string here silently runs the wrong model.
+                throw new Error('Your --harness-cmd uses {model} — start the worker with --harness-model too.')
+              }
+              return model
+            }
+            return whole
+          }),
+        ),
+    }
     return
   }
   if (HARNESS_ID) {

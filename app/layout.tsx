@@ -6,6 +6,7 @@ import './globals.css'
 import { origin } from '@/lib/origin'
 import { isRealMoney } from '@/lib/onchain/real-money'
 import { PUBLIC_ROUTE_PREFIXES } from '@/lib/public-routes'
+import { ThemeRouteSync } from '@/components/theme-route-sync'
 
 // Geist Sans, replacing Inter (2026-08-25). The Nocturne handoff specified
 // Inter, and that is a real decision being overridden here, so the reason is
@@ -86,6 +87,10 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
       </head>
       <body className="font-sans antialiased">
+        {/* The pre-paint script above handles the first load; this handles
+            every client navigation after it, which is how signing out used
+            to land on the marketing page still wearing the dark deck. */}
+        <ThemeRouteSync />
         <LocaleProvider>{children}</LocaleProvider>
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
