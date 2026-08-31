@@ -63,6 +63,7 @@ export default function SocialDeskPage() {
   const [campaign, setCampaign] = useState('')
   const [scheduledAt, setScheduledAt] = useState('')
   const [shareToFeed, setShareToFeed] = useState(true)
+  const [aiGenerated, setAiGenerated] = useState(false)
 
   const refresh = useCallback(async () => {
     const data = await getSocialDesk()
@@ -99,7 +100,7 @@ export default function SocialDeskPage() {
   }
 
   const create = async () => {
-    const payload: SocialJobPayload = { caption: caption || undefined }
+    const payload: SocialJobPayload = { caption: caption || undefined, isAiGenerated: aiGenerated || undefined }
     if (kind === 'post') {
       payload.imageUrl = mediaUrl
       payload.altText = altText || undefined
@@ -213,6 +214,10 @@ export default function SocialDeskPage() {
               Also share to the feed grid
             </label>
           )}
+          <label className="flex items-center gap-2 text-sm text-muted-foreground">
+            <input type="checkbox" checked={aiGenerated} onChange={(e) => setAiGenerated(e.target.checked)} />
+            Disclose as AI-generated media (Instagram&apos;s is_ai_generated label)
+          </label>
           <div className="flex flex-wrap items-center gap-2">
             <input
               className="rounded-lg border bg-background p-2 text-sm"

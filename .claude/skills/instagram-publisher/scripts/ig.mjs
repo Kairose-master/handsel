@@ -124,10 +124,13 @@ const commands = {
   async post() {
     const image = flag('image')
     if (typeof image !== 'string') die('post needs --image <public https url>')
-    const plan = { kind: 'post', image_url: image, caption: flag('caption'), alt_text: flag('alt') }
+    const plan = { kind: 'post', image_url: image, caption: flag('caption'), alt_text: flag('alt'), is_ai_generated: Boolean(flag('ai-generated')) }
     dryRunGate(plan)
     requireCreds()
-    const c = await api(`${ACCOUNT}/media`, { method: 'POST', params: { image_url: image, caption: flag('caption'), alt_text: flag('alt') } })
+    const c = await api(`${ACCOUNT}/media`, {
+      method: 'POST',
+      params: { image_url: image, caption: flag('caption'), alt_text: flag('alt'), is_ai_generated: Boolean(flag('ai-generated')) },
+    })
     await publishContainer(c.id)
   },
 
@@ -136,7 +139,7 @@ const commands = {
     if (typeof media !== 'string') die('carousel needs --media <url,url,…> (2–10)')
     const urls = media.split(',').map((s) => s.trim()).filter(Boolean)
     if (urls.length < 2 || urls.length > 10) die(`carousels take 2–10 items, got ${urls.length}`)
-    dryRunGate({ kind: 'carousel', items: urls, caption: flag('caption') })
+    dryRunGate({ kind: 'carousel', items: urls, caption: flag('caption'), is_ai_generated: Boolean(flag('ai-generated')) })
     requireCreds()
     const children = []
     for (const u of urls) {
@@ -151,7 +154,8 @@ const commands = {
     for (const id of children) await waitForContainer(id)
     const parent = await api(`${ACCOUNT}/media`, {
       method: 'POST',
-      params: { media_type: 'CAROUSEL', children: children.join(','), caption: flag('caption') },
+      // AI disclosure goes on the PARENT container only — the API rejects it on children.
+      params: { media_type: 'CAROUSEL', children: children.join(','), caption: flag('caption'), is_ai_generated: Boolean(flag('ai-generated')) },
     })
     await publishContainer(parent.id)
   },
@@ -165,6 +169,7 @@ const commands = {
       caption: flag('caption'),
       cover_url: flag('cover'),
       share_to_feed: Boolean(flag('share-to-feed')),
+      is_ai_generated: Boolean(flag('ai-generated')),
     }
     dryRunGate(plan)
     requireCreds()
@@ -176,6 +181,7 @@ const commands = {
         caption: flag('caption'),
         cover_url: flag('cover'),
         share_to_feed: Boolean(flag('share-to-feed')),
+        is_ai_generated: Boolean(flag('ai-generated')),
       },
     })
     await publishContainer(c.id)
@@ -185,9 +191,10 @@ const commands = {
     const image = flag('image')
     const video = flag('video')
     if (typeof image !== 'string' && typeof video !== 'string') die('story needs --image or --video')
-    dryRunGate({ kind: 'story', image_url: image, video_url: video, note: 'plain media only — no stickers/polls/music via API' })
+    dryRunGate({ kind: 'story', image_url: image, video_url: video, is_ai_generated: Boolean(flag('ai-generated')), note: 'plain media only — no stickers/polls/music via API' })
     requireCreds()
-    const params = typeof video === 'string' ? { video_url: video, media_type: 'STORIES' } : { image_url: image, media_type: 'STORIES' }
+    const ai = Boolean(flag('ai-generated'))
+    const params = typeof video === 'string' ? { video_url: video, media_type: 'STORIES', is_ai_generated: ai } : { image_url: image, media_type: 'STORIES', is_ai_generated: ai }
     const c = await api(`${ACCOUNT}/media`, { method: 'POST', params })
     await publishContainer(c.id)
   },
@@ -216,10 +223,10 @@ if (!cmd || !commands[cmd]) {
 commands:
   doctor                                     verify credentials + quota
   quota                                      publish-window usage
-  post     --image URL [--caption T] [--alt T] [--live]
-  carousel --media URL,URL,… [--caption T] [--live]
-  reel     --video URL [--caption T] [--cover URL] [--share-to-feed] [--live]
-  story    (--image URL | --video URL) [--live]
+  post     --image URL [--caption T] [--alt T] [--ai-generated] [--live]
+  carousel --media URL,URL,… [--caption T] [--ai-generated] [--live]
+  reel     --video URL [--caption T] [--cover URL] [--share-to-feed] [--ai-generated] [--live]
+  story    (--image URL | --video URL) [--ai-generated] [--live]
   status   --container ID
   insights --media ID [--metrics a,b,c]
 

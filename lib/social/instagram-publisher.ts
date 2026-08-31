@@ -107,6 +107,7 @@ async function createContainerFor(
         imageUrl: p.imageUrl!,
         caption: p.caption,
         altText: p.altText,
+        isAiGenerated: p.isAiGenerated,
       })
     case 'reel':
       return createVideoContainer(config, {
@@ -116,12 +117,14 @@ async function createContainerFor(
         shareToFeed: p.shareToFeed,
         coverUrl: p.coverUrl,
         thumbOffsetMs: p.thumbOffsetMs,
+        isAiGenerated: p.isAiGenerated,
       })
     case 'story':
       return createStoryContainer(config, {
         kind: 'story',
         imageUrl: p.imageUrl,
         videoUrl: p.videoUrl,
+        isAiGenerated: p.isAiGenerated,
       })
     case 'carousel': {
       const items = p.items ?? []
@@ -142,9 +145,11 @@ async function createContainerFor(
         )
       }
       for (const id of children) await waitForContainer(config, id, wait)
+      // AI disclosure goes on the parent ONLY — the API errors on children.
       const parent = await createCarouselContainer(config, {
         children,
         caption: p.caption,
+        isAiGenerated: p.isAiGenerated,
       })
       await checkpoint.saveContainer(parent, children)
       return parent

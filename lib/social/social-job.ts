@@ -91,6 +91,12 @@ export type SocialJobPayload = {
   coverUrl?: string
   thumbOffsetMs?: number
   shareToFeed?: boolean
+  /**
+   * Self-disclose the media as AI-generated (`is_ai_generated`). Part of
+   * the approved fingerprint — the label changes how the post presents, so
+   * flipping it after approval is a content change.
+   */
+  isAiGenerated?: boolean
 }
 
 export type SocialJob = {
@@ -169,6 +175,7 @@ export function payloadFingerprint(payload: SocialJobPayload): string {
     items: (payload.items ?? []).map((i) => ({ imageUrl: i.imageUrl ?? null, videoUrl: i.videoUrl ?? null, altText: i.altText ?? null })),
     caption: payload.caption ?? null,
     coverUrl: payload.coverUrl ?? null,
+    isAiGenerated: payload.isAiGenerated ?? null,
   })
   return createHash('sha256').update(canonical).digest('hex')
 }

@@ -72,6 +72,7 @@ export async function publishImagePost(
     imageUrl: spec.imageUrl,
     caption: spec.caption,
     altText: spec.altText,
+    isAiGenerated: spec.isAiGenerated,
   })
   await progress.onContainer?.(containerId)
   return publishContainerSafely(config, containerId, { timeoutMs: IMAGE_POLL_TIMEOUT_MS, ...poll })

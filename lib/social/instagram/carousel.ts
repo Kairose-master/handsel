@@ -46,7 +46,11 @@ export async function publishCarousel(
     await waitForContainer(config, id, { ...poll, timeoutMs: childTimeout })
   }
 
-  const parent = await createCarouselContainer(config, { children, caption: spec.caption })
+  const parent = await createCarouselContainer(config, {
+    children,
+    caption: spec.caption,
+    isAiGenerated: spec.isAiGenerated,
+  })
   await progress.onContainer?.(parent)
 
   return publishContainerSafely(config, parent, { ...poll, timeoutMs: childTimeout })

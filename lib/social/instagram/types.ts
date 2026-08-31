@@ -52,6 +52,8 @@ export type PostSpec = {
   caption?: string
   /** Accessibility text. Supported by the API for images only (since 2025-03-24). */
   altText?: string
+  /** Self-disclose AI-generated media (`is_ai_generated`). */
+  isAiGenerated?: boolean
 }
 
 /** 2–10 images/videos published as one carousel. */
@@ -59,6 +61,8 @@ export type CarouselSpec = {
   kind: 'carousel'
   items: Array<{ imageUrl?: string; videoUrl?: string; altText?: string }>
   caption?: string
+  /** AI disclosure. Set on the PARENT container only — a child carrying it is an API error. */
+  isAiGenerated?: boolean
 }
 
 /** A Reel: vertical 9:16 MP4. */
@@ -72,6 +76,8 @@ export type ReelSpec = {
   coverUrl?: string
   /** Frame offset (ms) to use as the cover instead of coverUrl. */
   thumbOffsetMs?: number
+  /** Self-disclose AI-generated media (`is_ai_generated`). */
+  isAiGenerated?: boolean
 }
 
 /**
@@ -83,6 +89,8 @@ export type StorySpec = {
   kind: 'story'
   imageUrl?: string
   videoUrl?: string
+  /** Self-disclose AI-generated media (`is_ai_generated`). */
+  isAiGenerated?: boolean
 }
 
 export type PublishSpec = PostSpec | CarouselSpec | ReelSpec | StorySpec

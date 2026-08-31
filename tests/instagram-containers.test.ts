@@ -59,6 +59,28 @@ describe('container creation', () => {
     expect(body).toContain('cover_url=')
   })
 
+  it('AI disclosure is sent for a standalone image but STRIPPED from carousel children (API error otherwise)', async () => {
+    // A fresh Response per call — a Response body is single-read.
+    const fetchImpl = vi.fn().mockImplementation(() => Promise.resolve(jsonResponse({ id: 'c9' })))
+    await createImageContainer(cfg(fetchImpl), { imageUrl: 'https://cdn.example/a.png', isAiGenerated: true })
+    expect(String((fetchImpl.mock.calls[0] as [string, RequestInit])[1].body)).toContain('is_ai_generated=true')
+
+    await createImageContainer(cfg(fetchImpl), {
+      imageUrl: 'https://cdn.example/a.png',
+      isAiGenerated: true,
+      isCarouselItem: true,
+    })
+    const childBody = String((fetchImpl.mock.calls[1] as [string, RequestInit])[1].body)
+    expect(childBody).toContain('is_carousel_item=true')
+    expect(childBody).not.toContain('is_ai_generated')
+  })
+
+  it('carousel parent carries the AI disclosure', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ id: 'parent' }))
+    await createCarouselContainer(cfg(fetchImpl), { children: ['a', 'b'], isAiGenerated: true })
+    expect(String((fetchImpl.mock.calls[0] as [string, RequestInit])[1].body)).toContain('is_ai_generated=true')
+  })
+
   it('carousel parent refuses fewer than 2 or more than 10 children without any network call', async () => {
     const fetchImpl = vi.fn()
     await expect(createCarouselContainer(cfg(fetchImpl), { children: ['a'] })).rejects.toThrow(/2–10/)

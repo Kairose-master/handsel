@@ -155,6 +155,10 @@ social queue:
    was approved. Changing the asset afterwards voids the approval.
 4. **Publisher** — the queue + `lib/social/instagram-publisher.ts` publish
    via the official API; the job card on `/social` shows the lifecycle.
+   AI-generated media sets Instagram's `is_ai_generated` disclosure
+   (`isAiGenerated` on the job payload) — an AI-agent-economy account does
+   not pass synthetic media off as capture, and the flag is part of what
+   approval fingerprints.
 5. **Analyst** — `getMediaInsights` reads performance back; results feed
    the next round (and the Growth Office's `memory/analytics.md`).
 

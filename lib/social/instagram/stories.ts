@@ -12,10 +12,14 @@ import type { InstagramConfig, PollOptions, PublishResult, StorySpec } from './t
 
 export async function createStoryContainer(config: InstagramConfig, spec: StorySpec): Promise<string> {
   if (spec.videoUrl) {
-    return createVideoContainer(config, { videoUrl: spec.videoUrl, mediaType: 'STORIES' })
+    return createVideoContainer(config, {
+      videoUrl: spec.videoUrl,
+      mediaType: 'STORIES',
+      isAiGenerated: spec.isAiGenerated,
+    })
   }
   if (spec.imageUrl) {
-    return createStoryImageContainer(config, { imageUrl: spec.imageUrl })
+    return createStoryImageContainer(config, { imageUrl: spec.imageUrl, isAiGenerated: spec.isAiGenerated })
   }
   throw new Error('Story needs imageUrl or videoUrl')
 }

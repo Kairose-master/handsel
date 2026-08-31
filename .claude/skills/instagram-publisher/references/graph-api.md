@@ -17,12 +17,16 @@ GET  /{media_id}?fields=id,permalink,media_type,timestamp
 
 | Kind | Required | Optional |
 |---|---|---|
-| Image post | `image_url` (public https, JPEG) | `caption`, `alt_text`, `is_carousel_item` |
-| Reel | `video_url`, `media_type=REELS` | `caption`, `share_to_feed`, `cover_url` XOR `thumb_offset` |
-| Story image | `image_url`, `media_type=STORIES` | — (no stickers/polls/music/links via API) |
-| Story video | `video_url`, `media_type=STORIES` | — |
-| Carousel item | `image_url`/`video_url`(+`media_type=VIDEO`), `is_carousel_item=true` | `alt_text` (images) |
-| Carousel parent | `media_type=CAROUSEL`, `children=<id,id,…>` (2–10) | `caption` |
+| Image post | `image_url` (public https, JPEG) | `caption`, `alt_text`, `is_carousel_item`, `is_ai_generated` |
+| Reel | `video_url`, `media_type=REELS` | `caption`, `share_to_feed`, `cover_url` XOR `thumb_offset`, `is_ai_generated` |
+| Story image | `image_url`, `media_type=STORIES` | `is_ai_generated` (no stickers/polls/music/links via API) |
+| Story video | `video_url`, `media_type=STORIES` | `is_ai_generated` |
+| Carousel item | `image_url`/`video_url`(+`media_type=VIDEO`), `is_carousel_item=true` | `alt_text` (images) — **NEVER `is_ai_generated`** (API error on children) |
+| Carousel parent | `media_type=CAROUSEL`, `children=<id,id,…>` (2–10) | `caption`, `is_ai_generated` |
+
+Carousel crop: every slide is cropped to the FIRST slide's aspect ratio
+(default 1:1) — export all slides at one ratio. Meta's recommended poll
+cadence: ~once/minute, up to 5 minutes.
 
 ## Container status codes
 

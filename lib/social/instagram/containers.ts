@@ -18,6 +18,12 @@ export type ImageContainerParams = {
   altText?: string
   /** True when this image is one slide of a carousel. */
   isCarouselItem?: boolean
+  /**
+   * AI self-disclosure (`is_ai_generated`). NEVER combine with
+   * isCarouselItem — the API rejects the flag on carousel children; it
+   * belongs on the parent container only.
+   */
+  isAiGenerated?: boolean
 }
 
 export async function createImageContainer(
@@ -35,6 +41,7 @@ export async function createImageContainer(
         caption: p.caption,
         alt_text: p.altText,
         is_carousel_item: p.isCarouselItem ? true : undefined,
+        is_ai_generated: p.isAiGenerated && !p.isCarouselItem ? true : undefined,
       },
     },
     options,
@@ -51,6 +58,8 @@ export type VideoContainerParams = {
   coverUrl?: string
   thumbOffsetMs?: number
   isCarouselItem?: boolean
+  /** AI self-disclosure — parent/standalone containers only, never carousel children. */
+  isAiGenerated?: boolean
 }
 
 export async function createVideoContainer(
@@ -71,6 +80,7 @@ export async function createVideoContainer(
         cover_url: p.coverUrl,
         thumb_offset: p.thumbOffsetMs,
         is_carousel_item: p.isCarouselItem ? true : undefined,
+        is_ai_generated: p.isAiGenerated && !p.isCarouselItem ? true : undefined,
       },
     },
     options,
@@ -78,7 +88,7 @@ export async function createVideoContainer(
   return res.id
 }
 
-export type StoryImageContainerParams = { imageUrl: string }
+export type StoryImageContainerParams = { imageUrl: string; isAiGenerated?: boolean }
 
 export async function createStoryImageContainer(
   config: InstagramConfig,
@@ -88,16 +98,23 @@ export async function createStoryImageContainer(
   const res = await igFetch<CreateContainerResponse>(
     config,
     `${config.accountId}/media`,
-    { method: 'POST', params: { image_url: p.imageUrl, media_type: 'STORIES' } },
+    {
+      method: 'POST',
+      params: { image_url: p.imageUrl, media_type: 'STORIES', is_ai_generated: p.isAiGenerated ? true : undefined },
+    },
     options,
   )
   return res.id
 }
 
-/** The parent container binding 2–10 already-created child containers. */
+/**
+ * The parent container binding 2–10 already-created child containers.
+ * AI disclosure lives HERE for carousels — setting it on a child is an API
+ * error, so the child creators strip it and this is the only door.
+ */
 export async function createCarouselContainer(
   config: InstagramConfig,
-  p: { children: string[]; caption?: string },
+  p: { children: string[]; caption?: string; isAiGenerated?: boolean },
   options?: RequestOptions,
 ): Promise<string> {
   if (p.children.length < 2 || p.children.length > 10) {
@@ -106,7 +123,15 @@ export async function createCarouselContainer(
   const res = await igFetch<CreateContainerResponse>(
     config,
     `${config.accountId}/media`,
-    { method: 'POST', params: { media_type: 'CAROUSEL', children: p.children.join(','), caption: p.caption } },
+    {
+      method: 'POST',
+      params: {
+        media_type: 'CAROUSEL',
+        children: p.children.join(','),
+        caption: p.caption,
+        is_ai_generated: p.isAiGenerated ? true : undefined,
+      },
+    },
     options,
   )
   return res.id

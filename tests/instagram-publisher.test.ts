@@ -126,6 +126,44 @@ describe('publishWithConfig — a post, end to end', () => {
   })
 })
 
+describe('publishWithConfig — carousel with AI disclosure', () => {
+  it('creates children WITHOUT the flag, the parent WITH it, and publishes once', async () => {
+    const { checkpoint } = recordingCheckpoint()
+    const creationBodies: string[] = []
+    let containerCount = 0
+    const fetchImpl = graphFetch([
+      quotaRoute(0),
+      {
+        match: (u, m) => m === 'POST' && /\/178\/media$/.test(u),
+        respond: (_u, body) => {
+          creationBodies.push(body)
+          return { id: body.includes('media_type=CAROUSEL') ? 'parent1' : `child${++containerCount}` }
+        },
+      },
+      { match: (u, m) => m === 'GET' && /\/(child\d|parent1)\?/.test(u), respond: () => ({ id: 'x', status_code: 'FINISHED' }) },
+      { match: (u, m) => m === 'POST' && u.includes('media_publish'), respond: () => ({ id: 'media_car' }) },
+      { match: (u, m) => m === 'GET' && u.includes('/media_car?'), respond: () => ({ id: 'media_car' }) },
+    ])
+    const carousel = job({
+      kind: 'carousel',
+      payload: {
+        items: [{ imageUrl: 'https://cdn.example/1.png' }, { imageUrl: 'https://cdn.example/2.png' }],
+        caption: 'two slides',
+        isAiGenerated: true,
+      },
+    })
+    const out = await publishWithConfig(cfg(fetchImpl), carousel, checkpoint)
+    expect(out.ok).toBe(true)
+    const children = creationBodies.filter((b) => b.includes('is_carousel_item=true'))
+    const parents = creationBodies.filter((b) => b.includes('media_type=CAROUSEL'))
+    expect(children).toHaveLength(2)
+    expect(parents).toHaveLength(1)
+    // The doc's rule: is_ai_generated on the parent only — a child carrying it is an API error.
+    for (const b of children) expect(b).not.toContain('is_ai_generated')
+    expect(parents[0]).toContain('is_ai_generated=true')
+  })
+})
+
 describe('publishWithConfig — failure classification', () => {
   it('an expired container comes back as containerExpired (checkpoint must be discarded)', async () => {
     const { checkpoint } = recordingCheckpoint()

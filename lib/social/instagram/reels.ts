@@ -16,6 +16,7 @@ export async function createReelContainer(config: InstagramConfig, spec: ReelSpe
     shareToFeed: spec.shareToFeed,
     coverUrl: spec.coverUrl,
     thumbOffsetMs: spec.thumbOffsetMs,
+    isAiGenerated: spec.isAiGenerated,
   })
 }
 

@@ -156,6 +156,21 @@ attachment store) or any public host. Requirements: images JPEG ≤8MB
 - Insights metric names change across API versions; the defaults in
   `insights.ts` are overridable per call.
 - Development-mode apps publish only to accounts holding an app role.
+- Meta's recommended container-poll cadence is ~once per minute for up to
+  5 minutes; our poll backs off 2s → 30s within a bounded per-tick budget
+  and resumes the same container next tick, which stays inside that spirit
+  for video while keeping image publishes fast.
+- Carousel images are all cropped to the FIRST slide's aspect ratio
+  (default 1:1) — export every slide at the same ratio.
+- **AI disclosure is supported**: `is_ai_generated=true` self-labels
+  AI-generated media (payload field `isAiGenerated`; `--ai-generated` in
+  the skill CLI). For carousels the flag goes on the parent container ONLY
+  — the API errors if a child carries it, and the code strips it there.
+- Facebook-Login route only: an IG account connected to a Page that
+  requires **Page Publishing Authorization (PPA)** cannot be published to
+  until PPA is completed — complete it preemptively; the API gives no way
+  to detect the requirement in advance. (Trial reels `trial_params` and
+  partnership-ads labels are also FB-Login-only; not implemented.)
 
 ## Testing
 
