@@ -229,3 +229,28 @@ describe('the auto-mine scope gate', () => {
     expect(isEligibleBlock(candidate({ requester: '0xstranger' }), input([]))).toBe(true)
   })
 })
+
+describe('shouldHealAcceptedJob', () => {
+  it('heals a taskless accepted job — the original crash-between-accept-and-dispatch case', async () => {
+    const { shouldHealAcceptedJob } = await import('@/lib/mining-scheduler')
+    expect(shouldHealAcceptedJob({ hasTask: false })).toBe(true)
+  })
+
+  it('re-dispatches a FAILED dispatch after the cooldown — the dead-model-key incident', async () => {
+    const { shouldHealAcceptedJob, REDISPATCH_COOLDOWN_MS } = await import('@/lib/mining-scheduler')
+    expect(
+      shouldHealAcceptedJob({ hasTask: true, taskStatus: 'failed', taskAgeMs: REDISPATCH_COOLDOWN_MS + 1 }),
+    ).toBe(true)
+    // Inside the cooldown: the world probably has not changed yet.
+    expect(
+      shouldHealAcceptedJob({ hasTask: true, taskStatus: 'failed', taskAgeMs: REDISPATCH_COOLDOWN_MS - 1 }),
+    ).toBe(false)
+  })
+
+  it('never double-dispatches over a task that is genuinely in flight', async () => {
+    const { shouldHealAcceptedJob } = await import('@/lib/mining-scheduler')
+    for (const status of ['queued', 'running', 'processing', 'completed']) {
+      expect(shouldHealAcceptedJob({ hasTask: true, taskStatus: status, taskAgeMs: 10 ** 9 })).toBe(false)
+    }
+  })
+})

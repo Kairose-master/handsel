@@ -116,13 +116,32 @@ export async function autoMineTick(
   let didWork = false
 
   // Self-heal first: jobs this agent already accepted on-chain whose dispatch
-  // never happened (e.g. a timeout between accept and runAgentTask). Dispatch
-  // is off-chain, so healing several is nonce-safe; each consumes a slot.
+  // never happened (a crash between accept and runAgentTask) — or whose
+  // dispatch ran and FAILED off-chain (e.g. every assisted write 400ing while
+  // the model key was out of credits): both leave escrow Accepted-but-doomed
+  // until the deadline refunds it. shouldHealAcceptedJob (pure, tested) says
+  // which is which; dispatch is off-chain, so healing several is nonce-safe;
+  // each consumes a slot.
   for (const j of jobs) {
     if (free <= 0) break
     if (j.status !== 'Accepted' || j.worker.toLowerCase() !== myAddress) continue
     const [spec] = await db.select().from(jobSpec).where(eq(jobSpec.specHash, j.specHash))
-    if (spec && !spec.agentTaskId) {
+    if (!spec) continue
+    let taskStatus: string | null = null
+    let taskAgeMs: number | null = null
+    if (spec.agentTaskId) {
+      const [t] = await db
+        .select({ status: agentTask.status, updatedAt: agentTask.updatedAt })
+        .from(agentTask)
+        .where(eq(agentTask.id, spec.agentTaskId))
+      taskStatus = t?.status ?? null
+      taskAgeMs = t?.updatedAt ? Date.now() - t.updatedAt.getTime() : null
+    }
+    const { shouldHealAcceptedJob } = await import('@/lib/mining-scheduler')
+    if (shouldHealAcceptedJob({ hasTask: Boolean(spec.agentTaskId), taskStatus, taskAgeMs })) {
+      if (spec.agentTaskId) {
+        console.info(`[auto-mine] re-dispatching job ${j.id} for ${agent.name} — previous dispatch failed`)
+      }
       await dispatchAcceptedJob(agent, j.id, spec, callbackUrl)
       free -= 1
       didWork = true

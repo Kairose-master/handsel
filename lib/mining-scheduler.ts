@@ -175,3 +175,38 @@ export function resolveSweepConcurrency(): number {
   if (!Number.isFinite(raw) || raw < 1) return 4
   return Math.min(Math.floor(raw), 8)
 }
+
+/** How long a FAILED dispatch must have sat before the self-heal tries the
+ *  job again. The bound on retries is the pair (this cooldown, the job's
+ *  own claim deadline): spaced attempts until the chain itself closes the
+ *  window, rather than a counter nothing persists. */
+export const REDISPATCH_COOLDOWN_MS = 10 * 60_000
+
+/**
+ * Should auto-mine's self-heal (re-)dispatch an on-chain Accepted job this
+ * agent already holds?
+ *
+ * Two heals, found months apart:
+ *  - no task at all — a crash between accept and dispatch (the original);
+ *  - a task that FAILED — dispatch ran and died off-chain, e.g. every
+ *    assisted write 400ing while the platform model key was out of credits
+ *    (live, 2026-08-31). The escrow sat Accepted-but-doomed until the
+ *    deadline refunded it, because the heal saw an agentTaskId and moved on.
+ *    A failed task is not a dispatched job; it is a dispatch that needs
+ *    doing again, once the cooldown says the world may have changed.
+ *
+ * A task still queued/running/processing is genuinely in flight — never
+ * double-dispatch over it (reapStuckTasks owns hung ones, marking them
+ * failed, which routes them back here next sweep).
+ */
+export function shouldHealAcceptedJob(input: {
+  hasTask: boolean
+  /** The linked task's status, when hasTask. */
+  taskStatus?: string | null
+  /** ms since the linked task last changed, when hasTask. */
+  taskAgeMs?: number | null
+}): boolean {
+  if (!input.hasTask) return true
+  if (input.taskStatus !== 'failed') return false
+  return (input.taskAgeMs ?? 0) > REDISPATCH_COOLDOWN_MS
+}
