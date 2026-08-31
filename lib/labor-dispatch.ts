@@ -358,6 +358,24 @@ export async function acceptAndDispatchJob(
 
   await assertNotSelfDeal(worker, job?.requester, job?.specHash)
 
+  // Visibility and permission are two axes of the same scope: a job whose
+  // spec is office-scoped (jobSpec.officeOwnerId) is curated OFF a
+  // stranger's board by the read paths, and this is the write half — the
+  // same rule as a refusal, so an actor who learned the job id anyway
+  // cannot claim through the API what they were never shown. Honest limit:
+  // the CONTRACT stays permissionless (no on-chain allowlist), but the
+  // brief's content never leaves this database — on-chain there is only a
+  // hash — so the API is where both the reading and the claiming of a
+  // scoped brief are actually decided.
+  if (spec?.officeOwnerId) {
+    const { canSeeOfficeOnlyJob } = await import('@/lib/office')
+    if (!(await canSeeOfficeOnlyJob(spec.officeOwnerId, worker.userId))) {
+      throw new Error(
+        'This job is scoped to its office and its connected offices — it is not open to the public market.',
+      )
+    }
+  }
+
   await assertNotFailedLineage(worker, spec?.failedWorkerIds)
 
   // Capability, runtime liveness, repo permission, deadline, recent-failure
@@ -450,6 +468,18 @@ export async function acceptJobForExternalWorker(
   if (!spec) throw new Error('Job has no off-chain spec — nothing to actually do')
 
   await assertNotSelfDeal(worker, job.requester, job.specHash)
+
+  // Same office-scope gate as acceptAndDispatchJob: the on-chain contract is
+  // permissionless, but the brief lives only here, and this call is what
+  // hands it over — so this is where the claim-permission level is enforced.
+  if (spec.officeOwnerId) {
+    const { canSeeOfficeOnlyJob } = await import('@/lib/office')
+    if (!(await canSeeOfficeOnlyJob(spec.officeOwnerId, worker.userId))) {
+      throw new Error(
+        'This job is scoped to its office and its connected offices — it is not open to the public market.',
+      )
+    }
+  }
 
   await assertNotFailedLineage(worker, spec.failedWorkerIds)
   // Same single gate as acceptAndDispatchJob: capability, runtime liveness,

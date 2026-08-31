@@ -875,16 +875,21 @@ async function postOneSubtask(
     nanoid(),
   )
   const specHash = sealed.specHash
-  // Office-scoped review (lib/office.ts): only a reviewOf subtask the planner
-  // marked officeOnly gets curated off the public board — every other job
-  // (including an ordinary review) keeps today's unrestricted behavior.
+  // Office scoping (lib/office.ts): any subtask marked officeOnly is curated
+  // off the public board and refused to outside claimants — visible only to
+  // its owner and connected offices. The PLANNER may still only set it on a
+  // reviewOf step (parseSubtasks enforces that; an LLM must not get to hide
+  // market work), but server-side constructors mark whole pipelines: an
+  // office hire scopes every step, because a desk's internal briefs are the
+  // owner's business material, not board content. Everything unmarked keeps
+  // today's unrestricted behavior.
   const { ensureJobSpecColumns } = await import('@/lib/db/ensure-columns')
   await ensureJobSpecColumns()
   await db.insert(jobSpec).values({
     ...sealed,
     requesterAgentId: payerAgentId,
     autoApprove: autoVerify || Boolean(st.testCode),
-    officeOwnerId: st.reviewOf && st.officeOnly ? ownerId : null,
+    officeOwnerId: st.officeOnly ? ownerId : null,
     splitSpec: st.splitSpec ?? null,
   })
   // The step's lane, written before the job exists on-chain. Same ordering
