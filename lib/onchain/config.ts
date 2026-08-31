@@ -96,6 +96,13 @@ const EAS_DEFAULTS: Record<number, `0x${string}`> = {
 
 export const onchainEnv = {
   rpcUrl: process.env.ONCHAIN_RPC_URL ?? process.env.SEPOLIA_RPC_URL ?? '',
+  /**
+   * Comma-separated backup chain-RPC URLs, tried in order when the primary
+   * fails (measured failure mode: 429 from a rate-limited provider — see
+   * lib/onchain/transport.ts). Optional; unset means primary-only, exactly
+   * the previous behavior.
+   */
+  rpcFallbackUrls: process.env.ONCHAIN_RPC_FALLBACK_URLS ?? '',
   zerodevRpc: process.env.ZERODEV_RPC ?? '', // legacy name: ZeroDev's URL was bundler AND paymaster
   /**
    * The bundler, whoever runs it.

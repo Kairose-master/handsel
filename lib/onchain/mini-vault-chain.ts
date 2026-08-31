@@ -8,10 +8,11 @@
  * writes. The deployed address is stored in platform_secrets
  * ('minivault_address') so no env change or redeploy is needed to adopt it.
  */
-import { createWalletClient, formatEther, http, parseEther, type Address, type Hex } from 'viem'
+import { createWalletClient, formatEther, parseEther, type Address, type Hex } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { MINIVAULT_ABI, MINIVAULT_BYTECODE } from './minivault-artifact'
-import { CHAIN, onchainEnv } from './config'
+import { CHAIN } from './config'
+import { chainTransport } from './transport'
 import { oracleWallet, publicClient } from './clients'
 import { getPlatformSecret, setPlatformSecret } from '@/lib/platform-secret'
 
@@ -124,7 +125,7 @@ async function liquidatorAccount() {
 }
 
 function walletFor(account: ReturnType<typeof privateKeyToAccount>) {
-  return createWalletClient({ account, chain: CHAIN, transport: http(onchainEnv.rpcUrl) })
+  return createWalletClient({ account, chain: CHAIN, transport: chainTransport() })
 }
 
 /** Step 1 — prep: ensure the demo liquidator has gas ETH and gUSD to burn.

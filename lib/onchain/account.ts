@@ -22,6 +22,7 @@
  * Kernel mode targets @zerodev/sdk ^5.5 with EntryPoint v0.7 / Kernel v3.1.
  */
 import { concat, createWalletClient, http, keccak256, toHex, type Address, type Hex } from 'viem'
+import { chainTransport } from './transport'
 import { privateKeyToAccount } from 'viem/accounts'
 import {
   createKernelAccount,
@@ -141,7 +142,7 @@ async function sendEoaCall(
 ): Promise<Hex> {
   const account = agentEoaAccount(agentId)
   await ensureAgentGas(account.address, agentId, lane)
-  const wallet = createWalletClient({ account, chain: CHAIN, transport: http(onchainEnv.rpcUrl) })
+  const wallet = createWalletClient({ account, chain: CHAIN, transport: chainTransport() })
   const hash = await wallet.sendTransaction({
     to: call.to,
     data: call.data,
