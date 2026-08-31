@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { Pickaxe, Cpu, CircleDollarSign, ShieldCheck, Briefcase, ArrowRight, Loader2, Zap, Wallet, Cloud } from 'lucide-react'
+import { Pickaxe, Cpu, CircleDollarSign, ShieldCheck, Briefcase, ArrowRight, Loader2, Zap, Wallet, Cloud, Terminal } from 'lucide-react'
 import { getWorkerConsole } from '@/app/actions/worker-console'
 import { startMining, startMiningCloud, setAutoMine } from '@/app/actions/mining'
 import {
@@ -172,6 +172,15 @@ export default function WorkerConsolePage() {
         <p className="text-muted-foreground mt-1">
           {t('mine.subtitle')}
         </p>
+        {/* The console is useless if nobody can find it. This page is where
+            someone already comes to ask "what is my worker doing", and the
+            answer used to be a status word; the link is the rest of it. */}
+        <Link
+          href="/mine/runs"
+          className="mt-3 inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] border border-border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider hover:bg-secondary"
+        >
+          <Terminal className="size-3" /> {t('mine.openConsole')}
+        </Link>
       </div>
 
       {/* Market pulse — how much work is waiting right now */}

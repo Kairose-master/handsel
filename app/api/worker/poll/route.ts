@@ -48,6 +48,19 @@ export async function POST(request: Request) {
     await recordHarness(agentId, body.harness).catch(() => {})
   }
 
+  // Run telemetry: what the harness is doing right now, drained by the
+  // worker on this same round trip. Best-effort for the same reason the
+  // harness id is — this endpoint's job is handing out paid work, and a
+  // dropped log line must never cost a worker its task. `agentId` is the
+  // AUTHENTICATED one, never the body's, so a worker cannot write telemetry
+  // onto somebody else's run by naming their task id.
+  if (Array.isArray(body?.runs) && body.runs.length > 0) {
+    const { recordRunReport } = await import('@/lib/harness-run-server')
+    for (const report of body.runs.slice(0, 8)) {
+      await recordRunReport(agentId, report).catch(() => {})
+    }
+  }
+
   // Oldest queued task first; atomic claim so a concurrent poll gets nothing.
   let [candidate] = await db
     .select()

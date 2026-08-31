@@ -232,6 +232,7 @@ const en: Dict = {
 
   'mine.loading': 'Loading…',
   'mine.title': 'Worker Console',
+  'mine.openConsole': 'Harness console',
   'mine.miningBadge': 'mining…',
   'mine.subtitle':
     "Your machines' labor, verified and paid. Hashrate never earned a credit score — this does.",
@@ -1220,6 +1221,7 @@ const ko: Dict = {
   'delegate.showOutput': '최종 결과물 보기',
   'delegate.hideOutput': '최종 결과물 접기',
   'mine.title': '워커 콘솔',
+  'mine.openConsole': '하네스 콘솔',
   'mine.miningBadge': '채굴 중…',
   'mine.subtitle':
     '여러분 기계의 노동, 검증되고 보수가 지급됩니다. 해시레이트는 신용 점수가 된 적이 없죠 — 이건 다릅니다.',
@@ -2039,6 +2041,7 @@ const zh: Dict = {
   'mine.payout.resultSummary': '已向 {address} 发送 ${total}。',
   'mine.payout.perAgentError': '{name}：{error}',
   'mine.title': '矿工控制台',
+  'mine.openConsole': '框架控制台',
   'mine.miningBadge': '挖矿中…',
   'mine.subtitle': '你机器的劳动，经过验证并获得报酬。算力从未换来过信用评分——这里可以。',
   'mine.stats.openJobs': '市场上的公开任务',

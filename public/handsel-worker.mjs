@@ -387,6 +387,159 @@ async function git(args, cwd) {
  * --concurrency two jobs share a workdir, and one clone between them would
  * put each one's changes in the other's submission.
  */
+/* ────────────────────────────────────────────────────────────────────────
+ * Run telemetry.
+ *
+ * This worker knew everything interesting about a run and threw all of it
+ * away: which phase it was in, which files the harness touched, what the
+ * harness printed, how hard this machine was working. The owner watching
+ * from the dashboard got "running", then four minutes of nothing, then
+ * "done" — and if the process was killed halfway, "running" forever.
+ *
+ * No new connection is needed for any of it. The poll loop already POSTs to
+ * the platform every few seconds with this agent's secret; it just had
+ * nothing to say. Everything below fills that message.
+ *
+ * Two rules, both mirrored on the server in lib/harness-run.ts:
+ *   - A reading we could not take is NULL, never 0. "0% CPU" is a claim
+ *     about an idle machine; "no reading" is the truth.
+ *   - Nothing here may break a run. Telemetry rides along with paid work;
+ *     if it throws, the work still has to finish.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/** taskId → what we have to say about that run on the next poll. */
+const runs = new Map()
+
+function beginRun(taskId) {
+  runs.set(taskId, { phase: 'plan', events: [], finished: false, ok: null })
+}
+
+/** Record one thing that happened. Never throws — see the rule above. */
+function note(taskId, text, opts = {}) {
+  try {
+    const run = runs.get(taskId)
+    if (!run || !text) return
+    if (opts.phase) run.phase = opts.phase
+    // Bounded here as well as on the server: a harness that prints a
+    // megabyte a second must not grow this process's memory between polls.
+    if (run.events.length > 200) run.events.splice(0, run.events.length - 200)
+    run.events.push({
+      at: Date.now(),
+      phase: opts.phase ?? run.phase,
+      text: String(text).slice(0, 300),
+      path: opts.path ?? null,
+      level: opts.level ?? 'info',
+    })
+  } catch {
+    /* telemetry must never take down a run */
+  }
+}
+
+function endRun(taskId, ok) {
+  const run = runs.get(taskId)
+  if (run) {
+    run.finished = true
+    run.ok = ok
+  }
+}
+
+/**
+ * CPU load since the previous call, from os.cpus() cumulative tick counters.
+ *
+ * Returns null rather than 0 when there is no interval to measure across —
+ * the first call after startup has nothing to diff against, and reporting
+ * that as an idle machine would be inventing a measurement.
+ */
+let lastCpuTimes = os.cpus().map((c) => c.times)
+function cpuPercent() {
+  try {
+    const now = os.cpus().map((c) => c.times)
+    let idle = 0
+    let total = 0
+    for (let i = 0; i < now.length; i += 1) {
+      const a = lastCpuTimes[i]
+      const b = now[i]
+      if (!a) continue
+      idle += b.idle - a.idle
+      for (const k of Object.keys(b)) total += b[k] - a[k]
+    }
+    lastCpuTimes = now
+    if (total <= 0) return null
+    return Math.max(0, Math.min(100, Math.round((1 - idle / total) * 100)))
+  } catch {
+    return null
+  }
+}
+
+function resourceSample() {
+  try {
+    const totalMb = Math.round(os.totalmem() / 1048576)
+    return {
+      cpuPct: cpuPercent(),
+      memUsedMb: Math.round((os.totalmem() - os.freemem()) / 1048576),
+      memTotalMb: totalMb,
+    }
+  } catch {
+    return { cpuPct: null, memUsedMb: null, memTotalMb: null }
+  }
+}
+
+/**
+ * Everything worth saying since the last poll, and reset.
+ *
+ * Events are cleared once handed over so a slow poll cannot re-send them,
+ * and a finished run is dropped after its final report — the platform keeps
+ * the history, this process does not need to.
+ */
+function drainRuns() {
+  const out = []
+  const sample = resourceSample()
+  for (const [taskId, run] of runs) {
+    out.push({
+      taskId,
+      harnessId: HARNESS ? HARNESS.id : null,
+      model: flag('harness-model') ?? MODEL ?? null,
+      phase: run.phase,
+      events: run.events.splice(0, 40),
+      sample,
+      finished: run.finished,
+      ok: run.ok,
+    })
+    if (run.finished && run.events.length === 0) runs.delete(taskId)
+  }
+  return out
+}
+
+/**
+ * Which files the harness has actually changed, straight from git.
+ *
+ * Reading the checkout beats scanning the harness's own chatter for
+ * filenames: `git status` is the ground truth about what is on disk, it
+ * needs no per-harness output format, and it cannot be fooled by a model
+ * that says it wrote a file it never wrote.
+ */
+function watchRepoFiles(taskId, cwd) {
+  const seen = new Set()
+  const tick = async () => {
+    try {
+      const out = await git(['status', '--porcelain'], cwd)
+      for (const line of out.split('\n')) {
+        const file = line.slice(3).trim()
+        if (!file || seen.has(file)) continue
+        seen.add(file)
+        note(taskId, `Wrote ${file}`, { phase: 'code', path: file })
+      }
+    } catch {
+      /* the checkout may be mid-write; try again on the next tick */
+    }
+  }
+  const timer = setInterval(tick, 5000)
+  return () => {
+    clearInterval(timer)
+    return tick()
+  }
+}
+
 async function runRepoTask(task, repo) {
   const rel = clonePathFor(task.task_id)
   const dest = path.resolve(WORKDIR, rel)
@@ -394,6 +547,7 @@ async function runRepoTask(task, repo) {
   await fs.mkdir(path.dirname(dest), { recursive: true })
 
   console.log(`\n[worker] cloning ${repo.fullName}${repo.baseBranch ? `@${repo.baseBranch}` : ' (default branch)'} → ${rel}`)
+  note(task.task_id, `Cloning ${repo.fullName}`, { phase: 'plan' })
   await git(
     [
       'clone',
@@ -421,7 +575,18 @@ async function runRepoTask(task, repo) {
     'the diff is taken from the checkout with git once you are done, so what is on disk IS the deliverable.',
   ].join('\n')
 
-  const { stdout } = await spawnHarness(brief, dest)
+  note(task.task_id, `Checked out ${branch} at ${baseSha.slice(0, 7)}`, { phase: 'plan', level: 'good' })
+
+  const stopWatching = watchRepoFiles(task.task_id, dest)
+  let stdout
+  try {
+    ;({ stdout } = await spawnHarness(brief, dest, task.task_id))
+  } finally {
+    // Always drain the watcher, including on a throw: the last tick is the
+    // one that sees the files written just before the harness died, which is
+    // exactly what someone reading a failed run needs.
+    await stopWatching()
+  }
 
   // Stage first: a diff that silently omits CREATED files is the most common
   // way a repo-job submission fails review, and it reads as the worker having
@@ -444,6 +609,7 @@ async function runRepoTask(task, repo) {
 
   const summary = extractHarnessText(stdout).trim().slice(0, 1500)
   console.log(`\n[worker] diff: ${diff.split('\n').length} lines from ${rel}`)
+  note(task.task_id, `Diff ready — ${diff.split('\n').length} lines`, { phase: 'review', level: 'good' })
   return [summary, summary ? '' : null, '```diff', diff.trimEnd(), '```'].filter((l) => l !== null).join('\n')
 }
 
@@ -462,8 +628,9 @@ async function runRepoTask(task, repo) {
  * share a workdir, and one clone between them would put each job's changes in
  * the other's submission.
  */
-async function spawnHarness(brief, cwd) {
+async function spawnHarness(brief, cwd, taskId = null) {
   const argv = HARNESS.argv({ brief, workdir: cwd, model: flag('harness-model') ?? null })
+  note(taskId, `${HARNESS.label} started`, { phase: 'code' })
   const { out, code, errTail } = await new Promise((resolve, reject) => {
     const child = spawn(HARNESS.bin, argv, {
       // The CALLER's directory, not WORKDIR: a repo job runs the harness
@@ -484,9 +651,18 @@ async function spawnHarness(brief, cwd) {
       reject(new Error(`${HARNESS.label} exceeded --harness-timeout (${Math.round(HARNESS_TIMEOUT_MS / 1000)}s)`))
     }, HARNESS_TIMEOUT_MS)
     if (HARNESS.briefOnStdin) child.stdin.end(brief)
+    // The same bytes go to two places now: the owner's console, as before,
+    // and the run log, so somebody watching from the dashboard sees the same
+    // progress the person sitting at the machine does. Line-buffered, since
+    // a chunk boundary is not a log entry.
+    let pending = ''
     child.stdout.on('data', (d) => {
       out += d
       process.stdout.write(d)
+      pending += d
+      const lines = pending.split('\n')
+      pending = lines.pop() ?? ''
+      for (const line of lines) if (line.trim()) note(taskId, line, { phase: 'code' })
     })
     child.stderr.on('data', (d) => {
       errTail = (errTail + d).slice(-2000)
@@ -502,6 +678,7 @@ async function spawnHarness(brief, cwd) {
       // exit non-zero on a turn limit having already written a usable
       // deliverable. The file decides; the code only colours the log.
       if (code !== 0) console.log(`\n[worker] ${HARNESS.label} exited ${code}`)
+      note(taskId, `${HARNESS.label} exited ${code}`, { phase: 'code', level: code === 0 ? 'good' : 'bad' })
       resolve({ out, code, errTail })
     })
   })
@@ -517,7 +694,7 @@ async function runHarnessTask(task) {
   await fs.unlink(abs).catch(() => {})
 
   const brief = harnessBrief(`Working directory: ${WORKDIR}\n\nTask:\n${task.task}`, rel)
-  const { stdout, code, errTail } = await spawnHarness(brief, WORKDIR)
+  const { stdout, code, errTail } = await spawnHarness(brief, WORKDIR, task.task_id)
 
   let file = null
   try {
@@ -890,6 +1067,8 @@ async function runOne(task) {
   const startedAt = Date.now()
   console.log(`\n[worker] task ${task.task_id}:`)
   console.log(`  ${task.task.split('\n')[0].slice(0, 100)}…`)
+  beginRun(task.task_id)
+  note(task.task_id, `Claimed: ${task.task.split('\n')[0].slice(0, 120)}`, { phase: 'plan' })
 
   let output = ''
   let success = true
@@ -917,6 +1096,16 @@ async function runOne(task) {
 
   process.stdout.write('\n')
   const executionTime = Math.round((Date.now() - startedAt) / 1000)
+  note(
+    task.task_id,
+    success ? `Submitted after ${executionTime}s` : `Failed: ${String(error).slice(0, 200)}`,
+    { phase: 'review', level: success ? 'good' : 'bad' },
+  )
+  // Marked finished BEFORE the callback, so the very next poll carries the
+  // final report even if the callback itself is what fails. A run that ends
+  // without one sits on the console as "Running" until it goes stale, which
+  // is a worse answer than "failed".
+  endRun(task.task_id, success)
   const events = [
     event(task.task_id, 'TASK_STARTED', true, { task: task.task.slice(0, 200) }),
     {
@@ -1029,6 +1218,11 @@ for (;;) {
     ;({ task } = await platformPost('/api/worker/poll', {
       agent_id: AGENT_ID,
       harness: HARNESS ? HARNESS.id : null,
+      // Whatever the running jobs have to say since the last poll. Drained
+      // here rather than pushed on a timer of its own: the poll is already
+      // an authenticated round trip on a few-second cadence, and a second
+      // channel would be a second thing to get wrong.
+      runs: drainRuns(),
     }))
     consecutiveErrors = 0
   } catch (e) {
