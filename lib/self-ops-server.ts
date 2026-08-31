@@ -76,7 +76,15 @@ export async function collectPlatformVitals(): Promise<PlatformVitals> {
     // stays false — a misread here only softens wording, never a threshold
   }
 
-  return { now, lastFullCycleAt, oracleWei, onchainConfigured, openStorefronts, realMoney }
+  let modelCall: PlatformVitals['modelCall'] = null
+  try {
+    const { readModelCallHealth } = await import('@/lib/model-key-health')
+    modelCall = await within(3_000, readModelCallHealth())
+  } catch {
+    modelCall = null
+  }
+
+  return { now, lastFullCycleAt, oracleWei, onchainConfigured, openStorefronts, realMoney, modelCall }
 }
 
 /** The ops step body: collect, judge, say so where the operator will look.

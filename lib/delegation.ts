@@ -1433,6 +1433,11 @@ async function tickDelegationLocked(
           if (!output) continue // submitted on-chain but output not yet recorded — next tick
           complete = complete ?? (await resolveLlm(row.userId))
           passed = (await verifySubmission(complete, st, output)).pass
+          // The verifier call is this tick's most reliable LLM canary — one
+          // record per outcome lets self-ops say "the model key is dead"
+          // instead of "all clear" while every grading silently 400s.
+          const { recordModelCallOutcome } = await import('@/lib/model-key-health')
+          await recordModelCallOutcome(true)
         }
 
         if (passed === true) {
@@ -1466,6 +1471,10 @@ async function tickDelegationLocked(
         // test run, and null means grading was simply unavailable).
       } catch (error) {
         console.error('[delegation] verify/approve failed:', error)
+        // Best-effort; only a key-shaped failure becomes a standing finding
+        // (isKeyDeadReason) — a 429 here records but never alarms.
+        const { recordModelCallOutcome } = await import('@/lib/model-key-health')
+        await recordModelCallOutcome(false, error)
       }
     }
   }

@@ -8,6 +8,7 @@ import { describe, it, expect } from 'vitest'
 import {
   detectSelfOpsFindings,
   formatSelfOpsReport,
+  isKeyDeadReason,
   HEARTBEAT_STALE_MS,
   ORACLE_DRY_WEI,
   ORACLE_LOW_WEI,
@@ -24,6 +25,7 @@ function vitals(overrides: Partial<PlatformVitals> = {}): PlatformVitals {
     onchainConfigured: true,
     openStorefronts: 1,
     realMoney: false,
+    modelCall: { ok: true, reason: null, at: NOW - 60_000 },
     ...overrides,
   }
 }
@@ -81,6 +83,31 @@ describe('detectSelfOpsFindings', () => {
     )
   })
 
+  it('flags a dead model key as critical — the live incident this vital was cut from', () => {
+    const f = detectSelfOpsFindings(
+      vitals({
+        modelCall: {
+          ok: false,
+          reason: 'Your credit balance is too low to access the Anthropic API.',
+          at: NOW - 60_000,
+        },
+      }),
+    )
+    const finding = f.find((x) => x.id === 'model-key-dead')!
+    expect(finding.severity).toBe('critical')
+    expect(finding.detail).toMatch(/credit/i)
+  })
+
+  it('does not alarm on a transient model failure or a missing record', () => {
+    // A 429 is a moment, not a state.
+    expect(
+      detectSelfOpsFindings(
+        vitals({ modelCall: { ok: false, reason: 'HTTP 429 Too Many Requests', at: NOW } }),
+      ).map((x) => x.id),
+    ).not.toContain('model-key-dead')
+    expect(detectSelfOpsFindings(vitals({ modelCall: null })).map((x) => x.id)).not.toContain('model-key-dead')
+  })
+
   it('formats worst-first', () => {
     const f = detectSelfOpsFindings(
       vitals({ openStorefronts: 0, lastFullCycleAt: null, oracleWei: ORACLE_LOW_WEI - 1n }),
@@ -88,6 +115,17 @@ describe('detectSelfOpsFindings', () => {
     const lines = formatSelfOpsReport(f).split('\n')
     expect(lines[0]).toContain('[critical]')
     expect(lines[lines.length - 1]).toContain('[notice]')
+  })
+})
+
+describe('isKeyDeadReason', () => {
+  it('separates key states from request moments', () => {
+    expect(isKeyDeadReason('Your credit balance is too low to access the Anthropic API.')).toBe(true)
+    expect(isKeyDeadReason('authentication_error: invalid x-api-key')).toBe(true)
+    expect(isKeyDeadReason('401 Unauthorized')).toBe(true)
+    expect(isKeyDeadReason('HTTP 429 Too Many Requests')).toBe(false)
+    expect(isKeyDeadReason('fetch failed: ETIMEDOUT')).toBe(false)
+    expect(isKeyDeadReason(null)).toBe(false)
   })
 })
 

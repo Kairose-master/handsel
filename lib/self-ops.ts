@@ -25,6 +25,18 @@
  * any it detects.
  */
 
+/**
+ * Pure: does this failure text mean THE KEY is unusable — billing or auth —
+ * rather than one bad request? A 429 or a timeout is a moment; a dead key is
+ * a state, and only a state belongs in a standing finding. Lives here (not
+ * in lib/model-key-health.ts, which records the outcomes) so this module
+ * stays importable with no database behind it.
+ */
+export function isKeyDeadReason(reason: string | null | undefined): boolean {
+  if (!reason) return false
+  return /credit balance|billing|authentication_error|invalid x-api-key|api key|401/i.test(reason)
+}
+
 export type PlatformVitals = {
   /** ms epoch. */
   now: number
@@ -39,12 +51,21 @@ export type PlatformVitals = {
   /** Open storefront count; null = unreadable. */
   openStorefronts: number | null
   realMoney: boolean
+  /** Last recorded platform LLM call (lib/model-key-health.ts); null = no
+   *  call recorded yet or unreadable. */
+  modelCall: { ok: boolean; reason: string | null; at: number } | null
 }
 
 export type SelfOpsSeverity = 'critical' | 'warning' | 'notice'
 
 export type SelfOpsFinding = {
-  id: 'heartbeat-never' | 'heartbeat-stale' | 'oracle-dry' | 'oracle-low' | 'storefront-all-closed'
+  id:
+    | 'heartbeat-never'
+    | 'heartbeat-stale'
+    | 'oracle-dry'
+    | 'oracle-low'
+    | 'storefront-all-closed'
+    | 'model-key-dead'
   severity: SelfOpsSeverity
   /** One sentence: what is wrong AND the operator action that fixes it. */
   detail: string
@@ -98,6 +119,21 @@ export function detectSelfOpsFindings(v: PlatformVitals): SelfOpsFinding[] {
         detail: 'The oracle wallet is under ten gas top-ups of headroom — top it up before it decides an outcome.',
       })
     }
+  }
+
+  // Only a key-shaped failure (billing/auth — a STATE) alarms; a 429 or a
+  // timeout is a moment and stays out of standing findings. Found live: the
+  // heartbeat was healthy and every grading died on "credit balance is too
+  // low" while this module said "all clear" — the exact silent-inert failure
+  // this file exists to name.
+  if (v.modelCall && !v.modelCall.ok && isKeyDeadReason(v.modelCall.reason)) {
+    findings.push({
+      id: 'model-key-dead',
+      severity: 'critical',
+      detail:
+        'The platform model key is unusable — grading, assisted MCP writes and auto-replies all silently fail. ' +
+        `Last error: "${(v.modelCall.reason ?? '').slice(0, 160)}". Top up API credits or replace the key.`,
+    })
   }
 
   // Notice, not warning: closing every desk is a legitimate operator choice.
