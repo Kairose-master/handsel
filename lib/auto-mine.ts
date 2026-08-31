@@ -155,6 +155,13 @@ export async function autoMineTick(
       await dispatchAcceptedJob(agent, j.id, spec, callbackUrl)
       free -= 1
       didWork = true
+    } else {
+      // An Accepted job the heal looked at and left alone must say why, or a
+      // doomed one is indistinguishable from one whose worker is mid-run —
+      // the exact silence that hid this path's wiring gaps twice already.
+      console.info(
+        `[auto-mine] job ${j.id} (${agent.name}): heal declined — task=${taskStatus ?? 'none'} reportedSuccess=${taskReportedSuccess ?? 'unknown'} age=${taskAgeMs === null ? '?' : Math.round(taskAgeMs / 60_000)}m`,
+      )
     }
   }
   if (free <= 0) return didWork
@@ -396,6 +403,7 @@ export async function tickCloudAutoMineAgents(callbackUrl: string): Promise<void
     .from(agent)
     .where(and(inArray(agent.runtimeType, ['cloud', 'mcp']), eq(agent.autoMine, true)))
   if (candidates.length === 0) return
+  console.info(`[auto-mine] sweep: ${candidates.length} push-based auto-mine agents`)
 
   // ONE on-chain read shared across the whole sweep (phase 3b) — otherwise N
   // agents each call readJobs(), multiplying RPC load exactly when many agents
