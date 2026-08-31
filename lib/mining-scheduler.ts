@@ -209,7 +209,21 @@ export const REDISPATCH_COOLDOWN_MS = 10 * 60_000
  * dispatch is over and produced nothing submittable". A completed task
  * whose worker reported success stays untouched: its submission or
  * settlement is someone else's in-flight work.
+ *
+ * Third finding, same incident: healing into a deadline that cannot be met.
+ * The two-stage fix above shipped hours after the original dispatches died,
+ * and the re-dispatch it finally fired had ~10 minutes of on-chain runway —
+ * not enough for a dispatch (up to 4 minutes), a submission, and grading.
+ * The work ran, the deadline sweep refunded the escrow anyway, and the
+ * dispatch budget was pure waste. Same judgement assertFitToClaim makes at
+ * claim time (deadline feasibility), applied at re-dispatch time: when the
+ * governing deadline is known and closer than HEAL_MIN_RUNWAY_MS, let the
+ * refund happen — that is the correct economic outcome, and the requester
+ * reposts into a fresh window. Unknown runway never blocks (a V1 market has
+ * no deadlines; an RPC gap must not freeze the heal).
  */
+export const HEAL_MIN_RUNWAY_MS = 15 * 60_000
+
 export function shouldHealAcceptedJob(input: {
   hasTask: boolean
   /** The linked task's status, when hasTask. */
@@ -218,7 +232,11 @@ export function shouldHealAcceptedJob(input: {
   taskAgeMs?: number | null
   /** `result.success` as the worker reported it; undefined/null = unknown. */
   taskReportedSuccess?: boolean | null
+  /** ms until the job's governing on-chain deadline; undefined/null =
+   *  unknown, which does not block. */
+  deadlineRunwayMs?: number | null
 }): boolean {
+  if (input.deadlineRunwayMs != null && input.deadlineRunwayMs < HEAL_MIN_RUNWAY_MS) return false
   if (!input.hasTask) return true
   const deadDispatch =
     input.taskStatus === 'failed' ||

@@ -148,7 +148,10 @@ export async function autoMineTick(
       taskReportedSuccess = typeof success === 'boolean' ? success : null
     }
     const { shouldHealAcceptedJob } = await import('@/lib/mining-scheduler')
-    if (shouldHealAcceptedJob({ hasTask: Boolean(spec.agentTaskId), taskStatus, taskAgeMs, taskReportedSuccess })) {
+    // The on-chain deadline is unix seconds; a market without deadlines (V1)
+    // reports none, and unknown never blocks the heal.
+    const deadlineRunwayMs = j.deadline ? j.deadline * 1000 - Date.now() : null
+    if (shouldHealAcceptedJob({ hasTask: Boolean(spec.agentTaskId), taskStatus, taskAgeMs, taskReportedSuccess, deadlineRunwayMs })) {
       if (spec.agentTaskId) {
         console.info(`[auto-mine] re-dispatching job ${j.id} for ${agent.name} — previous dispatch failed`)
       }
@@ -160,7 +163,7 @@ export async function autoMineTick(
       // doomed one is indistinguishable from one whose worker is mid-run —
       // the exact silence that hid this path's wiring gaps twice already.
       console.info(
-        `[auto-mine] job ${j.id} (${agent.name}): heal declined — task=${taskStatus ?? 'none'} reportedSuccess=${taskReportedSuccess ?? 'unknown'} age=${taskAgeMs === null ? '?' : Math.round(taskAgeMs / 60_000)}m`,
+        `[auto-mine] job ${j.id} (${agent.name}): heal declined — task=${taskStatus ?? 'none'} reportedSuccess=${taskReportedSuccess ?? 'unknown'} age=${taskAgeMs === null ? '?' : Math.round(taskAgeMs / 60_000)}m runway=${deadlineRunwayMs === null ? '?' : Math.round(deadlineRunwayMs / 60_000)}m`,
       )
     }
   }

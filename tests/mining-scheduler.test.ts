@@ -278,3 +278,33 @@ describe('shouldHealAcceptedJob — completed-but-worker-reported-failure', () =
     ).toBe(false)
   })
 })
+
+describe('shouldHealAcceptedJob — deadline runway', () => {
+  it('declines any heal into a deadline that cannot be met — the wasted re-dispatch of the same incident', async () => {
+    const { shouldHealAcceptedJob, HEAL_MIN_RUNWAY_MS, REDISPATCH_COOLDOWN_MS } = await import('@/lib/mining-scheduler')
+    // Otherwise-perfect heal candidates, both kinds, refused on runway alone.
+    expect(shouldHealAcceptedJob({ hasTask: false, deadlineRunwayMs: HEAL_MIN_RUNWAY_MS - 1 })).toBe(false)
+    expect(
+      shouldHealAcceptedJob({
+        hasTask: true,
+        taskStatus: 'failed',
+        taskAgeMs: REDISPATCH_COOLDOWN_MS + 1,
+        deadlineRunwayMs: HEAL_MIN_RUNWAY_MS - 1,
+      }),
+    ).toBe(false)
+    // A lapsed deadline is negative runway — same refusal, not an exception.
+    expect(shouldHealAcceptedJob({ hasTask: false, deadlineRunwayMs: -60_000 })).toBe(false)
+  })
+
+  it('heals when the runway is generous, and when it is unknown (V1 market, RPC gap) — unknown never blocks', async () => {
+    const { shouldHealAcceptedJob, HEAL_MIN_RUNWAY_MS } = await import('@/lib/mining-scheduler')
+    expect(shouldHealAcceptedJob({ hasTask: false, deadlineRunwayMs: HEAL_MIN_RUNWAY_MS + 1 })).toBe(true)
+    expect(shouldHealAcceptedJob({ hasTask: false, deadlineRunwayMs: null })).toBe(true)
+    expect(shouldHealAcceptedJob({ hasTask: false })).toBe(true)
+  })
+
+  it('gives a floor a dispatch can actually live inside — the 4-minute cloud call plus grading', async () => {
+    const { HEAL_MIN_RUNWAY_MS } = await import('@/lib/mining-scheduler')
+    expect(HEAL_MIN_RUNWAY_MS).toBeGreaterThanOrEqual(10 * 60_000)
+  })
+})
