@@ -87,6 +87,13 @@ export type AgentActivitySignals = {
    *  Skill Gym, which docs/office-departments.md carried as "reserved, not
    *  populated" until installs became real. */
   recentSkillInstall: string | null
+  /**
+   * True iff this agent has a social publish job in flight or queued
+   * (lib/social/social-queue-server.ts — the Publisher role of the social
+   * desk). Optional because most gather sites predate the social queue;
+   * absent reads as false.
+   */
+  socialPublishing?: boolean
   /** agent.autoMine */
   autoMine: boolean
   /** agent.runtimeType !== 'platform' */
@@ -223,6 +230,15 @@ function baseDepartmentFor(s: AgentActivitySignals): DepartmentAssignment {
   // recalculation. It is not retrieval, and the room says so.
   if (s.settledRecently) {
     return { deptId: 'memory', statusLine: 'Settled recently — wrote to the credit ledger.' }
+  }
+
+  // The Publisher at work: an approved social job is moving through the
+  // queue under this agent's name. Market on purpose — publishing to an
+  // external audience is the boundary with the outside economy, same as
+  // selling over x402 or answering the mail desk. A real queue row, never
+  // an inferred "is probably posting".
+  if (s.socialPublishing) {
+    return { deptId: 'market', statusLine: 'Publishing approved content to an external channel.' }
   }
 
   if (s.autoMine) {

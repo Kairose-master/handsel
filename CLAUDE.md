@@ -144,6 +144,7 @@ enforces it.
 | Auto-refreshing the per-tool receipts on `/directory` | `lib/benchmark-loop.ts` (pure) / `-server.ts` — house-posted graded jobs at stale tool records; off unless `BENCHMARK_LOOP=true`, budget-capped, refused on real money without `BENCHMARK_ALLOW_REAL_MONEY` |
 | Collecting the protocol fee — the one balance no sweep touches | `docs/fee-withdrawal.md`, `scripts/fee-withdraw.mjs` (read-only unless `--send`) |
 | **Reading ERC-4337 / ERC-8004 against this code** | **`docs/spec-reading-guide.md`** — spec concept → the file it already runs in |
+| **Publish to Instagram (the Social Desk)** | **`docs/social/instagram.md`** (architecture · Meta setup · limits), `docs/social/instagram-brand.md` (the editorial spec), `lib/social/social-job.ts` (pure queue rules) / `social-queue-server.ts`, `lib/social/instagram/` (official Graph API, zero deps), `/social` page, `socialQueue` ops step. Approval-gated: nothing publishes that a human didn't approve, and the approved payload is fingerprinted |
 | Setup self-check | `app/(dashboard)/doctor/page.tsx`, `lib/github-doctor.ts` |
 
 ## The collaboration layer (read `docs/collaboration.md`)
@@ -279,6 +280,7 @@ office, and the only lane a stranger's real money has moved through is the
 | Skill | Origin | Notes |
 |---|---|---|
 | `handsel-agent-contract` | authored here | The contract grammar — what a job promises, which half binds, and how a route advances. Read it before touching `lib/agent-contract.ts` or `lib/trade-instruments.ts`. |
+| `instagram-publisher` | authored here | Publish to the official Handsel Instagram over the official Graph API. Dry-run by default; `--live` only after an explicit human go-ahead. Prefers the Social Desk queue (`/social`) for anything scheduled or agent-produced. |
 | `auto-research` | vendored, `sickn33/antigravity-awesome-skills` @ `5cf4dfe` | Explicit-consent research gate. **Half of it is inoperable here** — its ChatGPT-via-Playwright path needs a browser the agent proxy won't carry. See its `ORIGIN.md`. |
 | `efficient-web-research` | vendored, same repo/commit | Layered fetch protocol (skim → escalate → stop) over `WebSearch`/`WebFetch`. No browser, no third-party submission. |
 

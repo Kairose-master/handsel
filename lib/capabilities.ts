@@ -33,6 +33,7 @@ export type CapabilityKey =
   | 'platformLlm'
   | 'solanaMarket'
   | 'solanaWrite'
+  | 'instagram'
 
 /**
  * How a capability behaves when its configuration is absent.
@@ -112,6 +113,19 @@ export const CAPABILITIES: Capability[] = [
       'The week-3 write path (docs/solana-port.md): the deployment that serves /solana can run the ' +
       'money loop itself via POST /api/admin/solana-loop. Devnet-only in code — write.ts refuses any ' +
       'real-money cluster regardless of what the env says.',
+  },
+  {
+    key: 'instagram',
+    label: 'Publishing approved content to the official Instagram account',
+    requires: ['INSTAGRAM_ACCESS_TOKEN', 'INSTAGRAM_ACCOUNT_ID'],
+    optional: true,
+    mode: 'gated',
+    note:
+      'The Social Desk (/social, docs/social/instagram.md). Off, the queue still drafts and approves — ' +
+      'jobs simply park at NEEDS_AUTH instead of publishing. The env pair is the documented fallback; ' +
+      'the encrypted platform_secrets KV (instagram_access_token / instagram_account_id) wins when set, ' +
+      'and this predicate reads only the env half, so a KV-only deployment shows OFF here while ' +
+      'publishing fine — prefer the KV plus the env pair on the deployment that publishes.',
   },
   {
     key: 'creditRegistry',
@@ -240,6 +254,7 @@ export async function capabilityStatus(): Promise<CapabilityStatus[]> {
   const mailDesk = await import('@/lib/mail-desk')
   const solana = await import('@/lib/onchain/solana/config')
   const solanaWrite = await import('@/lib/onchain/solana/write')
+  const instagram = await import('@/lib/social/instagram')
 
   const gates: Record<CapabilityKey, () => boolean | Promise<boolean>> = {
     onchain: config.isOnchainConfigured,
@@ -255,6 +270,7 @@ export async function capabilityStatus(): Promise<CapabilityStatus[]> {
     mailDesk: mailDesk.isMailDeskConfigured,
     solanaMarket: solana.isSolanaConfigured,
     solanaWrite: solanaWrite.isSolanaWriteConfigured,
+    instagram: instagram.isInstagramConfigured,
     // The two with no predicate to call. There is nothing to ask because
     // nothing asks — the code reaches for the variable and throws if it is not
     // there. So this checks presence directly, and the length floor mirrors the
