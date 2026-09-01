@@ -347,14 +347,17 @@ describe('a wave posts only what its payer can afford — checked at posting tim
   // wave surfaced as an opaque on-chain revert retry loop that consumed the
   // whole delegation tick. The pre-check turns that into the same
   // actionable row error the confirm path already produces.
-  it('postOneSubtask reads the payer balance before the on-chain post', () => {
+  it('postOneSubtask reads the payer balance before the post — as ADVICE, never the gate', () => {
     const { readFileSync } = require('node:fs') as typeof import('node:fs')
     const src = readFileSync('lib/delegation.ts', 'utf8')
     const body = src.slice(src.indexOf('async function postOneSubtask'), src.indexOf('export async function postDelegationJobs'))
     const checkAt = body.indexOf('usdcBalanceOf')
     expect(checkAt).toBeGreaterThan(-1)
     expect(checkAt).toBeLessThan(body.indexOf('await postJob('))
-    // Unreadable balance lets the chain decide — same rule as the confirm check.
+    // The gating version held a fully-funded wave hostage to a provider
+    // serving five-minute-old state. A short read logs and posts anyway.
+    expect(body).toContain('posting anyway; the chain decides')
+    expect(body).not.toContain('mint test USDC on that agent')
     expect(body).toContain('posting balance pre-check failed (continuing)')
   })
 })

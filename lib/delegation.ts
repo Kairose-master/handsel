@@ -953,21 +953,27 @@ async function postOneSubtask(
   // an opaque 'Execution reverted' retry loop that ate the whole tick.
   // Same message shape as the confirm check so the row's error says what to
   // do; an unreadable balance falls through and lets the chain decide.
+  // ADVISORY, never the gate: the first version of this check refused to
+  // post when the read came back short — and the read came back short from
+  // a provider serving five-minute-old state, holding a fully-funded wave
+  // hostage to a stale node. The chain is the authority on affordability;
+  // this read only decorates the eventual revert with the actionable
+  // sentence, and a short-looking balance is logged, not obeyed.
   try {
     const { usdcBalanceOf } = await import('@/lib/onchain/treasury')
     const [payerRow] = await db
       .select({ smartAccountAddress: agent.smartAccountAddress })
       .from(agent)
       .where(eq(agent.id, payerAgentId))
-    if (!payerRow?.smartAccountAddress) throw new Error('payer wallet unknown')
-    const balance = await usdcBalanceOf(payerRow.smartAccountAddress as `0x${string}`)
-    if (balance < st.bountyUsd) {
-      throw new Error(
-        `${payerName}'s wallet holds $${balance.toFixed(2)} but this step escrows $${st.bountyUsd.toFixed(2)} (plus the posting fee) — mint test USDC on that agent's Treasury card first`,
-      )
+    if (payerRow?.smartAccountAddress) {
+      const balance = await usdcBalanceOf(payerRow.smartAccountAddress as `0x${string}`)
+      if (balance < st.bountyUsd) {
+        console.warn(
+          `[delegation] ${payerName} reads $${balance.toFixed(2)} against a $${st.bountyUsd.toFixed(2)} step — posting anyway; the chain decides (a stale provider under-reports)`,
+        )
+      }
     }
   } catch (error) {
-    if (error instanceof Error && error.message.includes('mint test USDC')) throw error
     console.error('[delegation] posting balance pre-check failed (continuing):', error)
   }
   // Bundler rate-limits back-to-back userops (free tier) — space them.
