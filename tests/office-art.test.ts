@@ -81,12 +81,38 @@ describe('the generated art is used, not filed', () => {
     for (const id of ids) expect(existsSync(`public/art/theme-${id}.webp`), id).toBe(true)
   })
 
+  it('the tactical painted view ships its backdrop and all ten tokens', () => {
+    // The default /office renderer composites a live layer over this
+    // painting — a missing file is a black stage, not a degraded one.
+    expect(existsSync('public/art/office-backdrop.webp')).toBe(true)
+    for (let i = 0; i < 10; i += 1) {
+      expect(existsSync(`public/art/agent-token-${i}.webp`), `agent-token-${i}`).toBe(true)
+    }
+  })
+
+  it('the tactical backdrop is worn by the renderer, not filed', () => {
+    // Same trap as the dept glyphs (docs/failure-modes.md 42-43): committed
+    // art referenced by nothing fails silently forever.
+    const view = read('app/(dashboard)/office/game/TacticalView.tsx')
+    expect(view).toMatch(/\/art\/office-backdrop\.webp/)
+    expect(view).toMatch(/\/art\/agent-token-\$\{/)
+    // And the renderer itself must be reachable from the office page.
+    expect(read('app/(dashboard)/office/page.tsx')).toMatch(/<TacticalView\b/)
+  })
+
   it('ships the art as webp, not as third-of-a-megabyte PNGs', () => {
     // The hero is above the fold on the slowest connection anyone arrives on.
     // As a PNG it was 381KB.
     for (const f of ['hero', 'theme-tactical', 'theme-diorama']) {
       expect(existsSync(`public/art/${f}.png`), `${f}.png should not ship`).toBe(false)
       expect(statSync(`public/art/${f}.webp`).size).toBeLessThan(120_000)
+    }
+    // The tactical backdrop is a full scene, so it gets a bigger budget than
+    // the thumbnails — but its 1.5MB source PNG must never ship.
+    expect(existsSync('public/art/office-backdrop.png'), 'office-backdrop.png should not ship').toBe(false)
+    expect(statSync('public/art/office-backdrop.webp').size).toBeLessThan(250_000)
+    for (let i = 0; i < 10; i += 1) {
+      expect(statSync(`public/art/agent-token-${i}.webp`).size).toBeLessThan(20_000)
     }
   })
 })

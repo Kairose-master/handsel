@@ -1,0 +1,304 @@
+/* Tactical painted office renderer (TacticalView.tsx).
+ *
+ * Scoped by the tac- prefix, same convention as office.css. Palette is
+ * THEMES.tactical from game3d/theme.ts by value — CSS cannot import it, so
+ * the hexes are repeated here; tests/deck-theme.test.ts pins the same set
+ * against the deck for exactly this reason.
+ *
+ * The scene div is a FIXED 1412x684 canvas (the backdrop's native size);
+ * every live-layer child positions in that space and the camera transform
+ * maps it onto the viewport. Nothing in here may animate on its own except
+ * pure light (the sweep) — activity animation is driven from real data in
+ * the component. */
+
+.tac-viewport {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #070a0f;
+  user-select: none;
+}
+
+.tac-camera {
+  position: absolute;
+  inset: 0;
+}
+
+.tac-scene {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  margin-left: -706px; /* -SCENE_W/2 */
+  margin-top: -342px; /* -SCENE_H/2 */
+  will-change: transform;
+  filter: saturate(1.05);
+}
+
+.tac-scene.ready {
+  transition: transform 0.9s cubic-bezier(0.3, 0, 0.2, 1);
+}
+
+.tac-backdrop {
+  display: block;
+  width: 1412px;
+  height: 684px;
+  pointer-events: none;
+}
+
+/* Painted-in light: a cool key from the screen wall and a floor vignette.
+ * Pure presentation over the painting, carries no data. */
+.tac-light {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(70% 55% at 62% 30%, rgba(79, 216, 255, 0.1), transparent 60%),
+    radial-gradient(120% 90% at 50% 105%, rgba(0, 0, 0, 0.45), transparent 55%);
+}
+
+.tac-sweep {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  background: linear-gradient(100deg, transparent 30%, rgba(79, 216, 255, 0.07) 46%, transparent 62%);
+  background-size: 280% 100%;
+  animation: tac-sweep 9s linear infinite;
+}
+
+@keyframes tac-sweep {
+  from {
+    background-position: 120% 0;
+  }
+  to {
+    background-position: -160% 0;
+  }
+}
+
+.tac-dept {
+  position: absolute;
+  transform: translate(-50%, 0);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: #7f97ab;
+  background: rgba(7, 10, 15, 0.66);
+  border: 1px solid #1e2c3a;
+  border-radius: 6px;
+  padding: 3px 8px;
+  text-transform: uppercase;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.tac-dept:hover {
+  color: #dff4ff;
+  border-color: #1c6b85;
+}
+
+.tac-agent {
+  position: absolute;
+  width: 46px;
+  height: 46px;
+  margin: -23px 0 0 -23px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid #1c6b85;
+  box-shadow:
+    0 6px 18px rgba(0, 0, 0, 0.6),
+    0 0 14px rgba(79, 216, 255, 0.25);
+  background-color: #0d151d;
+  background-size: cover;
+  background-position: center;
+  cursor: pointer;
+}
+
+.tac-scene.ready .tac-agent {
+  transition:
+    left 2.6s cubic-bezier(0.45, 0.05, 0.25, 1),
+    top 2.6s cubic-bezier(0.45, 0.05, 0.25, 1);
+}
+
+.tac-agent::after {
+  content: '';
+  position: absolute;
+  inset: -7px;
+  border-radius: 50%;
+  border: 2px solid rgba(79, 216, 255, 0);
+  transition: border-color 0.3s;
+}
+
+.tac-agent.busy {
+  border-color: #4fd8ff;
+}
+
+.tac-agent.busy::after {
+  border-color: rgba(79, 216, 255, 0.45);
+  animation: tac-ping 1.6s ease-out infinite;
+}
+
+.tac-agent.selected {
+  border-color: #dff4ff;
+  box-shadow:
+    0 6px 18px rgba(0, 0, 0, 0.6),
+    0 0 22px rgba(79, 216, 255, 0.6);
+}
+
+@keyframes tac-ping {
+  0% {
+    transform: scale(0.7);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+.tac-tag {
+  position: absolute;
+  left: 50%;
+  top: -24px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: #7f97ab;
+  background: rgba(7, 10, 15, 0.8);
+  border: 1px solid #1e2c3a;
+  border-radius: 99px;
+  padding: 2px 8px;
+  pointer-events: none;
+}
+
+.tac-tag em {
+  font-style: normal;
+  color: #4fd8ff;
+  margin-left: 4px;
+}
+
+.tac-pulse {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  border-radius: 50%;
+  background: #57ffb0;
+  box-shadow: 0 0 18px #57ffb0;
+  animation: tac-fadeout 1.8s ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes tac-fadeout {
+  from {
+    opacity: 0.95;
+    transform: scale(0.7);
+  }
+  to {
+    opacity: 0;
+    transform: scale(2.4);
+  }
+}
+
+.tac-hud {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.tac-brand {
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  font-size: 12px;
+  color: #dff4ff;
+}
+
+.tac-brand em {
+  color: #4fd8ff;
+  font-style: normal;
+}
+
+.tac-live {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 11px;
+  color: #7f97ab;
+  letter-spacing: 0.08em;
+}
+
+.tac-live .tac-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff3b3b;
+  animation: tac-blink 1.4s infinite;
+}
+
+.tac-live.degraded {
+  color: #ffb84f;
+}
+
+.tac-live.degraded .tac-dot {
+  background: #ffb84f;
+  animation: none;
+}
+
+@keyframes tac-blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.tac-feed {
+  position: absolute;
+  left: 16px;
+  bottom: 14px;
+  width: min(440px, 75%);
+  pointer-events: none;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tac-row {
+  background: rgba(13, 21, 29, 0.86);
+  border: 1px solid #1e2c3a;
+  border-left: 3px solid #1c6b85;
+  border-radius: 8px;
+  padding: 6px 11px;
+  font-size: 12px;
+  color: #7f97ab;
+  animation: tac-rise 0.35s ease-out;
+  backdrop-filter: blur(4px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tac-row b {
+  color: #dff4ff;
+  font-weight: 600;
+}
+
+.tac-row.ok {
+  border-left-color: #57ffb0;
+}
+
+@keyframes tac-rise {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
