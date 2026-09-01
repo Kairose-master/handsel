@@ -29,8 +29,40 @@
  * vendor-specific UserOperation state, so rotating providers mid-flight is
  * not the safe no-op it is for plain chain reads.
  */
-import { fallback, http, type HttpTransport, type Transport } from 'viem'
+import { fallback, http, type Transport } from 'viem'
 import { onchainEnv } from './config'
+
+/**
+ * Methods whose result is NEVER legitimately null/undefined. A degraded
+ * provider (measured live, 2026-09-01: Infura answering 200 with an empty
+ * result) hands viem `undefined`, and the crash happens ABOVE the transport
+ * — `BigInt(undefined)` in fee estimation — where `fallback()` cannot see
+ * it, so the healthy endpoint one entry down never gets asked. Promoting a
+ * malformed result to a thrown error INSIDE the transport is what lets the
+ * fallback rotate.
+ *
+ * Deliberately a whitelist: eth_getTransactionReceipt is null while pending
+ * and eth_getBlockByNumber is null for a future block — null is an ANSWER
+ * there. "latest" is the exception: the chain always has a latest block.
+ */
+const NEVER_NULL_METHODS = new Set([
+  'eth_blockNumber',
+  'eth_chainId',
+  'eth_gasPrice',
+  'eth_maxPriorityFeePerGas',
+  'eth_getBalance',
+  'eth_getTransactionCount',
+  'eth_estimateGas',
+  'eth_call',
+])
+
+/** Pure: is this (method, params, result) a malformed provider answer? */
+export function isMalformedRpcResult(method: string, params: unknown, result: unknown): boolean {
+  if (result !== null && result !== undefined) return false
+  if (NEVER_NULL_METHODS.has(method)) return true
+  if (method === 'eth_getBlockByNumber' && Array.isArray(params) && params[0] === 'latest') return true
+  return false
+}
 
 /**
  * Retry/batch options for one chain-RPC endpoint. Worst case adds ~2.8s of
@@ -66,10 +98,29 @@ export function rpcUrlList(primary: string, fallbackCsv: string): string[] {
  * market. (With no configured URL at all the default was already the only
  * entry; this just stops it disappearing the moment a primary is set.)
  */
+/** Wrap one http transport so a malformed (null-where-impossible) result is
+ *  thrown as an error the surrounding `fallback()` can rotate on. */
+function guardedHttp(url: string | undefined): Transport {
+  const inner = http(url, CHAIN_HTTP_OPTIONS)
+  return (cfg) => {
+    const t = inner(cfg)
+    return {
+      ...t,
+      async request(args: { method: string; params?: unknown }) {
+        const result = await t.request(args as never)
+        if (isMalformedRpcResult(args.method, args.params, result)) {
+          throw new Error(`RPC returned ${result === null ? 'null' : 'undefined'} for ${args.method} — malformed provider response`)
+        }
+        return result
+      },
+    } as typeof t
+  }
+}
+
 export function buildChainTransport(urls: string[]): Transport {
-  const transports: HttpTransport[] = [...urls, ''].map((u) =>
+  const transports: Transport[] = [...urls, ''].map((u) =>
     // viem treats an empty URL as "use the chain's default RPC".
-    http(u || undefined, CHAIN_HTTP_OPTIONS),
+    guardedHttp(u || undefined),
   )
   if (transports.length === 1) return transports[0]
   return fallback(transports)

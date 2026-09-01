@@ -14,7 +14,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { base } from 'viem/chains'
-import { buildChainTransport, CHAIN_HTTP_OPTIONS, rpcUrlList } from '@/lib/onchain/transport'
+import { buildChainTransport, isMalformedRpcResult, CHAIN_HTTP_OPTIONS, rpcUrlList } from '@/lib/onchain/transport'
 
 describe('rpcUrlList', () => {
   it('returns the primary alone when no fallbacks are configured', () => {
@@ -108,5 +108,23 @@ describe('call sites use chainTransport()', () => {
   it('the bundler transport stays a plain http transport (vendor-specific state must not rotate)', () => {
     const src = readFileSync('lib/onchain/account.ts', 'utf8')
     expect(src).toContain('bundlerTransport: http(onchainEnv.bundlerRpc)')
+  })
+})
+
+describe('isMalformedRpcResult — a 200 with an impossible null is a transport failure', () => {
+  it('flags null/undefined where the chain always has an answer', () => {
+    expect(isMalformedRpcResult('eth_getBalance', ['0xabc', 'latest'], undefined)).toBe(true)
+    expect(isMalformedRpcResult('eth_estimateGas', [{}], null)).toBe(true)
+    expect(isMalformedRpcResult('eth_getBlockByNumber', ['latest', false], null)).toBe(true)
+  })
+
+  it('lets legitimate nulls through — pending receipts, future blocks', () => {
+    expect(isMalformedRpcResult('eth_getTransactionReceipt', ['0xhash'], null)).toBe(false)
+    expect(isMalformedRpcResult('eth_getBlockByNumber', ['0xfffffff', false], null)).toBe(false)
+  })
+
+  it('never flags a real result', () => {
+    expect(isMalformedRpcResult('eth_getBalance', ['0xabc', 'latest'], '0x0')).toBe(false)
+    expect(isMalformedRpcResult('eth_getBlockByNumber', ['latest', false], { number: '0x1' })).toBe(false)
   })
 })
