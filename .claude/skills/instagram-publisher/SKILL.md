@@ -81,3 +81,19 @@ required (never re-publish an old one — the duplicate guard exists because
 
 Details: `references/graph-api.md` (endpoints, error codes, limits) and
 `docs/social/instagram.md` (architecture, Meta app setup runbook).
+
+## Comment-to-DM campaigns (Private Replies)
+
+The comment-triggered DM flow lives in the repo, not in this skill's
+scripts: `lib/social/instagram/dm.ts` (pure triage/dedupe/linting),
+`lib/social/instagram-dm-server.ts` (campaigns + sending),
+`app/api/webhooks/instagram/route.ts` (the comments webhook). Setup, key
+list and the anti-spam guardrails: `docs/social/instagram-dm-automation.md`.
+
+Campaign copy is never improvised: draft ONE template with
+`prompts/dm-reply-generation.md`, get the human's approval, then register it
+with `addDmCampaign(campaign, approvedBy)` — the linter refuses copy that
+does not self-identify as Handsel. `prompts/comment-triage.md` is the
+optional classification tier; it never writes messages. The mechanism ships
+dark until `INSTAGRAM_DM_ENABLED=true` (and `INSTAGRAM_DM_DISABLED` always
+wins).

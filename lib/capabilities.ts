@@ -34,6 +34,7 @@ export type CapabilityKey =
   | 'solanaMarket'
   | 'solanaWrite'
   | 'instagram'
+  | 'instagramDm'
 
 /**
  * How a capability behaves when its configuration is absent.
@@ -126,6 +127,18 @@ export const CAPABILITIES: Capability[] = [
       'the encrypted platform_secrets KV (instagram_access_token / instagram_account_id) wins when set, ' +
       'and this predicate reads only the env half, so a KV-only deployment shows OFF here while ' +
       'publishing fine — prefer the KV plus the env pair on the deployment that publishes.',
+  },
+  {
+    key: 'instagramDm',
+    label: 'Comment-triggered Instagram DMs (Private Replies)',
+    requires: ['INSTAGRAM_DM_ENABLED', 'INSTAGRAM_WEBHOOK_VERIFY_TOKEN', 'META_APP_SECRET'],
+    optional: true,
+    mode: 'gated',
+    note:
+      'The comment-to-DM flow (docs/social/instagram-dm-automation.md). Deliberately double-gated: the ' +
+      'publish capability being ON does not turn this on — INSTAGRAM_DM_ENABLED is a separate, explicit ' +
+      'opt-in because it messages people, and INSTAGRAM_DM_DISABLED always wins as the kill switch. ' +
+      'Off, the webhook still answers 200 (Meta stays subscribed) and simply does nothing.',
   },
   {
     key: 'creditRegistry',
@@ -255,6 +268,7 @@ export async function capabilityStatus(): Promise<CapabilityStatus[]> {
   const solana = await import('@/lib/onchain/solana/config')
   const solanaWrite = await import('@/lib/onchain/solana/write')
   const instagram = await import('@/lib/social/instagram')
+  const instagramDm = await import('@/lib/social/instagram-dm-server')
 
   const gates: Record<CapabilityKey, () => boolean | Promise<boolean>> = {
     onchain: config.isOnchainConfigured,
@@ -271,6 +285,7 @@ export async function capabilityStatus(): Promise<CapabilityStatus[]> {
     solanaMarket: solana.isSolanaConfigured,
     solanaWrite: solanaWrite.isSolanaWriteConfigured,
     instagram: instagram.isInstagramConfigured,
+    instagramDm: instagramDm.isDmAutomationEnabled,
     // The two with no predicate to call. There is nothing to ask because
     // nothing asks — the code reaches for the variable and throws if it is not
     // there. So this checks presence directly, and the length floor mirrors the
