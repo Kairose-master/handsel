@@ -1704,7 +1704,7 @@ async function tickDelegationLocked(
       // reading a state nobody expected — say the state, per reviewed target.
       if (finalReviewerFor(subtasks, target.title) && target.reviewVerdict === undefined && target.onchainJobId !== undefined) {
         console.info(
-          `[delegation] "${target.title.slice(0, 60)}": resolution gate — awaitingReview=${target.awaitingReview ?? false} verdict=${target.reviewVerdict ?? 'none'} rerunTask=${target.reviewRerunTaskId ?? 'none'} revising=${target.revising ?? false} round=${target.revisionRound ?? 0}`,
+          `[delegation] ${row.id} job ${target.onchainJobId ?? '?'} "${target.title.slice(0, 40)}": resolution gate — awaitingReview=${target.awaitingReview ?? false} verdict=${target.reviewVerdict ?? 'none'} rerunTask=${target.reviewRerunTaskId ?? 'none'} revising=${target.revising ?? false} round=${target.revisionRound ?? 0}`,
         )
       }
       continue
@@ -1732,7 +1732,7 @@ async function tickDelegationLocked(
       // here too: a held escrow whose reviewer never answers must say which
       // task it is waiting on, or the wait is indistinguishable from a bug.
       console.info(
-        `[delegation] "${target.title}": review verdict not in yet` +
+        `[delegation] ${row.id} job ${target.onchainJobId ?? '?'} "${target.title.slice(0, 40)}": review verdict not in yet` +
           (target.reviewRerunTaskId ? ` (re-review task ${target.reviewRerunTaskId})` : ' (reviewer output empty)'),
       )
       continue
@@ -1794,7 +1794,7 @@ async function tickDelegationLocked(
     const { approve, note } = parseReviewVerdict(verdictText)
     const decision = decideRevision({ approve, samePerson, round: target.revisionRound ?? 0 })
     console.info(
-      `[delegation] "${target.title}": review verdict ${approve ? 'APPROVE' : 'REVISE'}` +
+      `[delegation] ${row.id} job ${target.onchainJobId ?? '?'} "${target.title.slice(0, 40)}": review verdict ${approve ? 'APPROVE' : 'REVISE'}` +
         (samePerson ? ' (discarded — same author)' : '') +
         ` → ${decision} (round ${target.revisionRound ?? 0})`,
     )
