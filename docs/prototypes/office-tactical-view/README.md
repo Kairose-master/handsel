@@ -18,19 +18,21 @@ Run it: `python3 -m http.server 8777` in this directory → open
   verification → settle → reputation). Every mock line corresponds to a real
   event source.
 
-## Porting into Kairose-master/handsel
+## Ported — this now runs in the app
 
-1. Drop `office-tactical.html`'s scene/agent/feed layers into
-   `app/(dashboard)/office/game/` as a third renderer preset
-   (`tactical-painted`) beside the DOM and R3F ones; register the backdrop +
-   tokens in `tests/office-art.test.ts` (unreferenced-asset rule).
-2. Replace the mock loop: bind DEPT anchors to the room layout and feed
-   events from `buildOfficeSnapshot()` / `agent_events` — the anchors are
-   already keyed by real `FunctionalDeptId`s and the feed rows are shaped
-   like ops-step lines, so the swap is mechanical.
-3. Bigger backdrop: re-run the art pipeline (docs/reference-images.md prompts
-   derive from game3d/theme.ts) at 2-4K for a crisper base — the current
-   backdrop is the 766px committed reference upscaled 2x.
-4. Same layer stack works as a recording rig for reels: the AD1 storyboard's
-   "camera over the office while agents work" beat becomes a real screen
-   recording instead of a Ken Burns still.
+The port landed as `app/(dashboard)/office/game/TacticalView.tsx` (+
+`office-tactical.css`), the DEFAULT `/office` renderer beside the classic
+DOM tile view and the R3F diorama. The mock loop did not come along: in the
+app, tokens are the real polled roster, feed rows are status lines and
+artifact flights that actually changed between polls, and the LIVE dot is
+the poll-health signal. Assets ship as `public/art/office-backdrop.webp` +
+`public/art/agent-token-{0..9}.webp`, pinned by `tests/office-art.test.ts`.
+
+This HTML file stays as-is on purpose: its mock loop and `#cam=` keyframed
+camera make it the recording rig for reels (HS-AD1/AD2 footage), which the
+data-driven app view deliberately cannot fake.
+
+Still open from the original porting plan: re-run the art pipeline
+(docs/reference-images.md prompts derive from game3d/theme.ts) at 2-4K for
+a crisper base — the current backdrop is the 766px committed reference
+upscaled 2x.

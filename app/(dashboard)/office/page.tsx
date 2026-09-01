@@ -78,9 +78,10 @@ import { getGithubConnection } from '@/app/actions/repo-jobs'
 import type { GithubConnection } from '@/lib/github-identity'
 import dynamic from 'next/dynamic'
 import OfficeWorld from './game/OfficeWorld'
+import TacticalView from './game/TacticalView'
 // R3F/Three.js diorama — code-split and client-only: three.js is a heavy
 // bundle nobody should pay for until they actually opt into the 3D view
-// (the toggle below defaults to the DOM renderer), and <Canvas> touches
+// (the switch below defaults to the tactical painted renderer), and <Canvas> touches
 // WebGL/window during its first mount, which next/dynamic's ssr:false
 // keeps off the server render entirely rather than relying on Canvas's own
 // SSR guard.
@@ -104,6 +105,7 @@ import {
   type HireOfficeTemplateResult,
 } from '@/lib/office-world-data'
 import './game/office.css'
+import './game/office-tactical.css'
 
 const POLL_MS = 12_000
 
@@ -2491,14 +2493,14 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
   const [pollTrigger, setPollTrigger] = useState(0)
   const stageRef = useRef<HTMLDivElement | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
-  // R3F diorama is opt-in, not a replacement — it shares the exact same
-  // props/callbacks as the DOM renderer (both take agents/selection/
-  // flights and report the same picks back), so this toggle is the only
-  // thing that changes between them. Defaults to the DOM renderer, which
-  // has years of production traffic behind it; the 3D view is new and
-  // this sandbox has no real account data to test it against end-to-end,
-  // so real users are its first real-data test, by choice, not omission.
-  const [use3D, setUse3D] = useState(false)
+  // Three renderers share the exact same props/callbacks (agents/selection/
+  // flights in, the same picks back), so this switch is the only thing that
+  // changes between them. The tactical painted view is the default — the
+  // owner's explicit call after seeing the tile and mesh renderers next to
+  // the painted prototype ("make the web actually render at that quality").
+  // The DOM tile view keeps its years of production traffic behind the
+  // 'classic' option, and the R3F diorama stays the opt-in it always was.
+  const [view, setView] = useState<'tactical' | 'classic' | '3d'>('tactical')
 
   // Track the real state rather than assuming our own toggle won — Esc and
   // the browser's own control both exit without going through the button.
@@ -2624,8 +2626,14 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
           <p className="text-xs text-muted-foreground">{ceoLine || 'Loading your agents…'}</p>
         </div>
         <div className="flex gap-2">
-          <Button size="sm" variant="outline" onClick={() => setUse3D((v) => !v)}>
-            {use3D ? '🖼️ Classic view' : '🧊 3D view'}
+          {/* Cycles tactical → classic → 3D, labeled with what you GET by
+              pressing it — same affordance the old two-way toggle had. */}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setView((v) => (v === 'tactical' ? 'classic' : v === 'classic' ? '3d' : 'tactical'))}
+          >
+            {view === 'tactical' ? '🖼️ Classic view' : view === 'classic' ? '🧊 3D view' : '🗺️ Tactical view'}
           </Button>
           <Link href="/office/orders">
             <Button size="sm" variant="outline">
@@ -2651,7 +2659,7 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
           style={{ height: 480 }}
           className="relative overflow-hidden rounded-lg border border-border [&:fullscreen]:h-screen [&:fullscreen]:rounded-none"
         >
-          {use3D ? (
+          {view === '3d' ? (
             <OfficeWorld3D
               agents={agents}
               selectedId={selected?.id ?? null}
@@ -2663,7 +2671,7 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
               conversations={conversations}
               healthy={pollHealthy}
             />
-          ) : (
+          ) : view === 'classic' ? (
             <OfficeWorld
               agents={agents}
               selectedId={selected?.id ?? null}
@@ -2672,6 +2680,16 @@ function OfficeWorldPanel({ slot }: { slot: number }) {
               onSelectRoom={handleSelectRoom}
               onSelectMany={handleSelectMany}
               flights={flights}
+            />
+          ) : (
+            <TacticalView
+              agents={agents}
+              selectedId={selected?.id ?? null}
+              selectedRoomId={selectedRoom?.id ?? null}
+              onSelect={handleSelectAgent}
+              onSelectRoom={handleSelectRoom}
+              flights={flights}
+              healthy={pollHealthy}
             />
           )}
           <button
