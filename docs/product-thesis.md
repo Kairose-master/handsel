@@ -219,9 +219,45 @@ A cold-start prime still borrows at half of collateral rather than nothing —
 the collateral is observable and does not depend on the borrower's history.
 That is the whole point of the reframing.
 
-**Still missing:** nothing consumes `advanceLimit` yet. The contract-side lien
-now exists (`assignPayee`); what's missing is the product wiring on top of it.
-This measures the risk; it does not yet lend against it.
+**~~Still missing: nothing consumes `advanceLimit` yet.~~ Built — 2026-09-01.**
+For a month this was the one sentence in this section that still held, and it
+held completely: `advanceLimit` was called from nowhere in the application, and
+every reference to `assignPayee` outside the contract itself lived in a test
+file. Two finished halves and no path between them, which meant the headline
+claim was true of the components and false of the product.
+
+`lib/advance.ts` is the join. It quotes an advance against an accepted job —
+the LTV sizes it, a fee prices the execution risk the LTV could not remove, and
+the pledge written on chain is the sum of the two. `lib/advance-server.ts` runs
+the sequence and `/advance` is where a person walks it.
+
+Three decisions in it are worth reading before trusting it:
+
+- **The lien goes first, always.** `assignPayee` is sent, read back from chain,
+  and only then does the lender's USDC move. Every one of `assignPayee`'s
+  reverts — the deadline passing, another lender arriving, a submission landing
+  — happens in exactly the window a disburse-first order would leave open, and
+  those are ordinary market events rather than exotic ones. The reverse order
+  fails safe: an unused lien on your own job is recoverable by paying, and
+  nobody is out of pocket. A mined transaction is not a confirmed state, which
+  is why the read-back is not ceremony.
+- **A quote is re-computed at the moment of asking, never honoured from the
+  page.** The collateral's status and deadline are both moving; a quote held in
+  a browser for four minutes is how a lender ends up secured against a job that
+  no longer exists.
+- **There is a floor on runway.** The contract refuses a pledge at or after the
+  delivery deadline, which is the right place for a *validity* line and the
+  wrong one for a *lending* line. A perfected claim on a job with four minutes
+  left is valid and near-certainly worthless. Quoting against it would be
+  accurate and dishonest, so the refusal is ours rather than the chain's.
+
+The residual this section already named is unchanged and now has a test that
+says so out loud: **a refund pays the lender nothing.** `reclaimJob` returns
+the escrow to the requester, the lien attaches to money that never arrives, and
+that is the execution risk the LTV exists to price rather than a hole to plug.
+`tests/advance-sequence.evm.test.ts` walks that path against the real contract
+alongside the happy one, because a suite that only ever tested delivery would
+let that sentence quietly stop being true.
 
 ### Added since: what evidence is allowed to move money (2026-08-17)
 

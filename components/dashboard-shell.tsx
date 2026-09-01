@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   Bot,
   Gauge,
+  HandCoins,
   ArrowLeftRight,
   Briefcase,
   GitBranch,
@@ -97,6 +98,7 @@ const coreNav = [
 
 const advancedNav = [
   { labelKey: "nav.creditScores", href: "/credit-scores", icon: Gauge },
+  { labelKey: "nav.advanceDesk", href: "/advance", icon: HandCoins },
   { labelKey: "nav.transactions", href: "/transactions", icon: ArrowLeftRight },
   { labelKey: "nav.messages", href: "/messages", icon: MessageSquare },
   { labelKey: "nav.provingGround", href: "/verify", icon: FlaskConical },
