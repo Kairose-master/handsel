@@ -206,6 +206,27 @@ export const TOOLS = [
     },
   },
   {
+    name: 'connect_local_worker',
+    description:
+      'Turn one of your agents into a LOCAL worker driven by a real coding harness (Claude Code, Codex, OpenCode, ' +
+      'Cline, Gemini) on your own machine — the strongest runtime for work that has to pass strict grading, because ' +
+      'the harness reads and writes real files over as many steps as it needs. Jobs dispatched to the agent queue ' +
+      'here until your worker process polls them; nothing runs on our servers. Returns the one-line ' +
+      '`npx handsel-worker --token …` command with a fresh worker secret embedded (shown once — the worker saves it). ' +
+      'This is how an office role (e.g. the synthesis or review desk) gets seated with a full harness instead of a ' +
+      'single-call connector: hire_office wires the roster, this hands one role to your machine, set_auto_mine ' +
+      '(scope "own") lets an idle poll claim its reserved pipeline steps by itself.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Which of your agents becomes the local worker, by id (preferred). Required with agent_name absent — this rotates the worker secret, so no default target.' },
+        agent_name: { type: 'string', description: 'Which agent, by name (used only if agent_id is omitted).' },
+      },
+      required: [],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'set_auto_mine',
     description:
       'Turn N-slot auto-mining on or off for one of your agents. When on, the agent claims qualifying open jobs by ' +

@@ -233,6 +233,57 @@ export async function handleWorker(
           ` The platform grades the result either way. Call set_auto_mine to have it claim jobs on its own.`,
       )
     }
+    case 'connect_local_worker': {
+      // The missing join between the two onboarding lanes: office roles are
+      // wired to MCP servers (wire_office_agent), and local harness workers
+      // register via email+password (/api/agents/register) — so an assistant
+      // that stood an office up over OAuth had NO way to seat a Claude
+      // Code/Codex harness in one of its roles without the account password.
+      // This is that way: same reconnect semantics as the register route
+      // (runtimeType 'local', rotate the worker secret), authenticated by the
+      // OAuth session that already owns the agent, returning the one-line
+      // worker command. The secret is shown once, exactly like "Connect a
+      // local worker" in the dashboard.
+      const agents = await db.select().from(agent).where(eq(agent.userId, auth.userId))
+      const wantedId = args.agent_id ? String(args.agent_id) : null
+      const wanted = args.agent_name ? String(args.agent_name) : null
+      const target = wantedId
+        ? agents.find((a) => a.id === wantedId)
+        : wanted
+          ? agents.find((a) => a.name.toLowerCase() === wanted.toLowerCase())
+          : null
+      if (!target) {
+        return toolText(
+          id,
+          wantedId
+            ? `No agent with id "${wantedId}".`
+            : wanted
+              ? `No agent named "${wanted}".`
+              : 'Pass agent_id or agent_name — switching an agent to a local worker rotates its secret, so it must be named on purpose, never defaulted.',
+          true,
+        )
+      }
+
+      const { generateWebhookSecret, encryptWebhookSecret } = await import('@/lib/webhook')
+      const secret = generateWebhookSecret()
+      await db
+        .update(agent)
+        .set({ runtimeType: 'local', webhookSecretEnc: encryptWebhookSecret(secret), updatedAt: new Date() })
+        .where(eq(agent.id, target.id))
+
+      const { origin } = await import('@/lib/origin')
+      const token = Buffer.from(JSON.stringify({ a: target.id, s: secret, u: origin() })).toString('base64url')
+      return toolText(
+        id,
+        `${target.name} is now a LOCAL worker: its jobs queue on this platform until a worker process you run polls them, does the work with a real coding harness (Claude Code, Codex, OpenCode, Cline, Gemini), and submits. Nothing runs on our servers.\n\n` +
+          `Start it on the machine that should do the work:\n\n` +
+          `  npx handsel-worker --token ${token}\n\n` +
+          `Add --harness-cmd "claude --print --permission-mode acceptEdits" (or another harness) to choose how the work runs, and --workdir <dir> to scope its file access. This token embeds a fresh worker secret — shown once, so save it (the worker's --remember does). Reconnecting later rotates it again.` +
+          (target.autoMine
+            ? ' Auto-mine is already on: an idle poll claims this agent\'s qualifying jobs by itself.'
+            : ' Call set_auto_mine to have an idle poll claim qualifying jobs by itself.'),
+      )
+    }
     case 'set_auto_mine': {
       const enabled = args.enabled === undefined ? true : Boolean(args.enabled)
       const agents = await db.select().from(agent).where(eq(agent.userId, auth.userId))
