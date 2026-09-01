@@ -40,14 +40,25 @@ const str = (v: unknown): string | undefined =>
 /**
  * Is `jobId` the on-chain job of a subtask that still owes a peer sign-off?
  *
- * Held when some other subtask names this one in `reviewOf` and has not yet
- * recorded a verdict. A verdict of any kind — approve OR revise — ends the
- * hold: 'revise' has its own route (back to the worker), and keeping the
- * money frozen here would strand it behind a gate that already opened.
+ * The verdict lives on the TARGET — `tickDelegation`'s resolution loop writes
+ * `target.reviewVerdict` and nothing ever writes a reviewer's own field. The
+ * first version of this predicate read the REVIEWER's `reviewVerdict`, which
+ * is undefined for the life of every delegation, so the hold could never
+ * lift: found on the first pipeline that ever carried a review to its end
+ * (2026-09-01, job #25 — graded passed, review conversation finished,
+ * settlement re-driving forever against a field nobody writes).
+ *
+ * Three states of the target's verdict:
+ *  - undefined with reviewers assigned → held, verdict pending;
+ *  - 'revise' → STILL held: the conversation ended without approval and the
+ *    escrow is the OWNER's to judge (docs/collaboration.md) — auto-release on
+ *    the grade here would overrule the reviewer the pipeline paid;
+ *  - 'approve' → no hold (the tick normally released already; settlement is
+ *    the backstop when that release failed).
  *
  * Tiers (`reviewTier`) need no special handling. Tier N is not posted until
- * tier N-1 approves, and a tier that has not been posted has no verdict, so
- * the hold simply persists until the last tier records one.
+ * tier N-1 approves, and an unresolved chain leaves the target's verdict
+ * unset, so the hold simply persists until the chain records one.
  */
 export function heldForPeerReview(
   subtasks: readonly ReviewableSubtask[],
@@ -67,15 +78,21 @@ export function heldForPeerReview(
   // review), so it never holds.
   if (str(target.reviewOf)) return { hold: false }
 
-  const pending = subtasks.filter(
-    (s) => str(s.reviewOf) === title && s.reviewVerdict === undefined,
-  )
-  if (!pending.length) return { hold: false }
+  const reviewers = subtasks.filter((s) => str(s.reviewOf) === title)
+  if (!reviewers.length) return { hold: false }
+
+  if (target.reviewVerdict === 'approve') return { hold: false }
+  if (target.reviewVerdict === 'revise') {
+    return {
+      hold: true,
+      reason: `"${title}" — peer review ended without approval; the escrow is held for the owner to judge`,
+    }
+  }
   return {
     hold: true,
     reason:
-      pending.length === 1
-        ? `"${title}" is peer-reviewed by "${str(pending[0].title) ?? 'an unnamed reviewer'}", which has not returned a verdict`
-        : `"${title}" has ${pending.length} peer reviewers that have not returned a verdict`,
+      reviewers.length === 1
+        ? `"${title}" is peer-reviewed by "${str(reviewers[0].title) ?? 'an unnamed reviewer'}", which has not returned a verdict`
+        : `"${title}" has ${reviewers.length} peer reviewers that have not returned a verdict`,
   }
 }

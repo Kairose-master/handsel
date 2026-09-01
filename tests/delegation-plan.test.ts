@@ -202,6 +202,18 @@ describe('parseReviewVerdict', () => {
     expect(parseReviewVerdict('REVISE: tighten the second sentence').approve).toBe(false)
     expect(parseReviewVerdict('I would approve it, but please REVISE the ending').approve).toBe(false)
   })
+  it("a first-line APPROVE is not overruled by REVISE-shaped words in the body", () => {
+    // Live (2026-09-01): the reviewer opened with APPROVE and then discussed
+    // the previously FAILED sourcing being fixed — the anywhere-scan read
+    // "failed" as a REVISE and burned a revision round against an approval.
+    // The brief puts the verdict on the first line; the first line decides.
+    expect(parseReviewVerdict('APPROVE — every figure now sourced.\nThe previously failed numbers were fixed in round 1.').approve).toBe(true)
+    // Within the first line REVISE still outranks APPROVE ("approve only if…").
+    expect(parseReviewVerdict('APPROVE only if X, otherwise REVISE\ndetails…').approve).toBe(false)
+    // No verdict on the first line: the body scan remains, REVISE winning.
+    expect(parseReviewVerdict('Summary of findings\nplease revise the ending').approve).toBe(false)
+    expect(parseReviewVerdict('Summary of findings\nI approve this').approve).toBe(true)
+  })
   it('treats an unclear verdict as a revision — silence is not approval', () => {
     expect(parseReviewVerdict('hmm, interesting work').approve).toBe(false)
   })

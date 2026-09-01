@@ -36,14 +36,26 @@ describe('heldForPeerReview', () => {
     expect(heldForPeerReview([target(), notPosted], 25).hold).toBe(true)
   })
 
-  it('releases once the reviewer has returned APPROVE', () => {
-    expect(heldForPeerReview([target(), reviewer({ reviewVerdict: 'approve' })], 25).hold).toBe(false)
+  it("releases once the TARGET carries the reviewer's APPROVE", () => {
+    // The verdict lives on the TARGET — tickDelegation's resolution loop
+    // writes target.reviewVerdict and nothing ever writes the reviewer's own
+    // field. The first version of this predicate read the reviewer's, which
+    // stays undefined forever, so the hold could never lift (live, job #25,
+    // 2026-09-01: grading passed, review conversation finished, settlement
+    // re-driving eternally). These fixtures put the verdict where the code
+    // that produces it actually puts it.
+    expect(heldForPeerReview([target({ reviewVerdict: 'approve' }), reviewer()], 25).hold).toBe(false)
+    // A verdict on the reviewer row alone means nothing.
+    expect(heldForPeerReview([target(), reviewer({ reviewVerdict: 'approve' })], 25).hold).toBe(true)
   })
 
-  it('releases on REVISE too — that verdict has its own route', () => {
-    // A revise sends the work back to its worker. Holding here as well would
-    // freeze the escrow behind a gate that has already given its answer.
-    expect(heldForPeerReview([target(), reviewer({ reviewVerdict: 'revise' })], 25).hold).toBe(false)
+  it("still holds on terminal REVISE — the escrow is the owner's to judge", () => {
+    // Rounds spent without approval = hand-to-owner (docs/collaboration.md).
+    // Auto-releasing on the grade here would overrule the reviewer the
+    // pipeline paid; the hold stays, with a reason that says whose call it is.
+    const v = heldForPeerReview([target({ reviewVerdict: 'revise' }), reviewer()], 25)
+    expect(v.hold).toBe(true)
+    expect(v.hold && v.reason).toContain('owner')
   })
 
   it('does not hold a job that belongs to no delegation', () => {
@@ -59,12 +71,14 @@ describe('heldForPeerReview', () => {
     expect(heldForPeerReview([target(), reviewer({ onchainJobId: 28 })], 28).hold).toBe(false)
   })
 
-  it('holds every tier until the last one has a verdict', () => {
+  it("holds a tier chain until the chain writes the target's verdict", () => {
+    // Tier resolution also lands on the target: the chain's deciding verdict
+    // is what tickDelegation records there. Reviewer-row verdicts alone —
+    // whatever tier — keep the hold.
     const t1 = reviewer({ title: 'Review tier 1', reviewVerdict: 'approve' })
     const t2 = reviewer({ title: 'Review tier 2' }) // not posted yet
     expect(heldForPeerReview([target(), t1, t2], 25).hold).toBe(true)
-    const t2done = reviewer({ title: 'Review tier 2', reviewVerdict: 'approve' })
-    expect(heldForPeerReview([target(), t1, t2done], 25).hold).toBe(false)
+    expect(heldForPeerReview([target({ reviewVerdict: 'approve' }), t1, t2], 25).hold).toBe(false)
   })
 
   it('names the count when more than one reviewer is outstanding', () => {

@@ -322,13 +322,28 @@ ${input.priorNote.slice(0, 2_000)}
 }
 
 /** Parse a peer reviewer's free-text verdict into a decision. Pure. Defaults
- *  to 'revise' when no clear approval is present — silence is not approval. */
+ *  to 'revise' when no clear approval is present — silence is not approval.
+ *
+ *  The FIRST LINE decides when it carries a verdict, because the first line
+ *  is where the brief tells the reviewer to put it ("Replies APPROVE or
+ *  REVISE on the first line"). The old anywhere-scan let REVISE-shaped words
+ *  in the BODY overrule an explicit first-line APPROVE — a reviewer writing
+ *  "APPROVE — the previously failed sourcing is fixed" was parsed as REVISE,
+ *  and on the first live review conversation (2026-09-01) that burned
+ *  revision rounds against approvals. The body scan survives only as the
+ *  fallback for a reviewer that ignored the format. */
 export function parseReviewVerdict(text: string): { approve: boolean; note: string } {
   const t = (text ?? '').trim()
   const firstLine = t.split('\n')[0]?.slice(0, 240) ?? ''
-  // An explicit REVISE anywhere wins; otherwise require an explicit APPROVE.
-  if (/\brevise\b|\breject\b|\bchanges? needed\b|\bfail(ed)?\b/i.test(t)) return { approve: false, note: firstLine }
-  if (/\bapprove(d)?\b|\baccept(ed)?\b|\blgtm\b|\bpass(ed)?\b/i.test(t)) return { approve: true, note: firstLine }
+  const revisePat = /\brevise\b|\breject\b|\bchanges? needed\b|\bfail(ed)?\b/i
+  const approvePat = /\bapprove(d)?\b|\baccept(ed)?\b|\blgtm\b|\bpass(ed)?\b/i
+  // First line first — REVISE outranks APPROVE within it ("APPROVE only if…,
+  // otherwise REVISE" openers must not read as approval).
+  if (revisePat.test(firstLine)) return { approve: false, note: firstLine }
+  if (approvePat.test(firstLine)) return { approve: true, note: firstLine }
+  // No verdict on the first line: scan the body, REVISE winning.
+  if (revisePat.test(t)) return { approve: false, note: firstLine }
+  if (approvePat.test(t)) return { approve: true, note: firstLine }
   return { approve: false, note: firstLine || 'no clear verdict — treated as revision requested' }
 }
 
