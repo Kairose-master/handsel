@@ -107,11 +107,25 @@ describe('the Cloud Options Desk', () => {
     }
   })
 
-  it('points each reader at a different vendor — one server would defeat the desk', () => {
-    const hosts = t.roles
-      .filter((r) => r.defaultConnector)
-      .map((r) => new URL(r.defaultConnector!.serverUrl).host)
+  it('points each READER at a different vendor — one server would defeat the desk', () => {
+    // The uniqueness rule is about the four reading roles: each must quote
+    // its OWN vendor (aws/azure/cloudflare) or none (independent). The
+    // synthesis and review roles legitimately share a general search tool —
+    // their job is writing and checking, not vendor retrieval — and they
+    // gained default connectors precisely so they stop hiring as un-runnable
+    // 'platform' agents (docs/failure-modes.md section 61).
+    const hosts = ['aws', 'azure', 'cloudflare', 'independent']
+      .map((id) => t.roles.find((r) => r.id === id)?.defaultConnector)
+      .filter((c): c is NonNullable<typeof c> => Boolean(c))
+      .map((c) => new URL(c.serverUrl).host)
+    expect(hosts).toHaveLength(4)
     expect(new Set(hosts).size).toBe(hosts.length)
+  })
+
+  it('the writing roles are wired too — an unwired role hires as an un-runnable platform agent', () => {
+    for (const id of ['architect', 'red-team']) {
+      expect(t.roles.find((r) => r.id === id)?.defaultConnector, id).toBeDefined()
+    }
   })
 
   it('gives every tool-backed step its own short query, not its brief', () => {

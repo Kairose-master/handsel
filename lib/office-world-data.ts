@@ -1117,7 +1117,19 @@ export const OFFICE_TEMPLATES: OfficeTemplate[] = [
           'a vendor claim, put both side by side and say which you are relying on and why. If the readers found a ' +
           'limit unspecified, it stays unspecified in your document. Close with what would change the ' +
           'recommendation.',
-        mcpHint: 'None needed — this role works from the four upstream reads and the shared source.',
+        // Not "none needed": a role with no connector hires as a 'platform'
+        // agent, which needs the external Python runtime — absent on both
+        // public deployments — and the auto-mine sweep covers only cloud/mcp,
+        // so wave 2 could never run autonomously and nothing said so
+        // (docs/failure-modes.md section 61). The upstream reads arrive in the
+        // brief either way; the connector is this role's WRITING runtime, and
+        // assisted exa is the wiring the first completed pipeline actually ran on.
+        mcpHint: 'Pre-wired to Exa web search (assisted) — the upstream reads arrive in the brief; the connector is what lets this role run unattended.',
+        defaultConnector: {
+          label: 'Exa web search',
+          serverUrl: 'https://mcp.exa.ai/mcp',
+          toolName: 'web_search_exa',
+        },
       },
       {
         id: 'red-team',
@@ -1131,7 +1143,17 @@ export const OFFICE_TEMPLATES: OfficeTemplate[] = [
           'under it, an unspecified limit quietly filled in, and an independent finding that was dropped because ' +
           'it was inconvenient. Your note goes back to the author, so name the specific claim and what is missing. ' +
           'Judge only against the acceptance criteria; do not add new requirements between rounds.',
-        mcpHint: 'None needed — the document and the upstream reads are the material.',
+        // Same reason as the architect role above: without a connector this
+        // reviewer hires as an un-runnable 'platform' agent. The document
+        // under review arrives in the brief; exa lets the reviewer check
+        // claims against sources — the role it played, passing grading, in
+        // the first completed pipeline.
+        mcpHint: 'Pre-wired to Exa web search (assisted) — the document arrives in the brief; the connector lets the reviewer verify claims and run unattended.',
+        defaultConnector: {
+          label: 'Exa web search',
+          serverUrl: 'https://mcp.exa.ai/mcp',
+          toolName: 'web_search_exa',
+        },
       },
     ],
     pipeline: [
