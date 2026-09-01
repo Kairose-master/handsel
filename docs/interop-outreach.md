@@ -159,6 +159,47 @@ touches its implementation or `RewardVault.sol` itself — PR #12's fix
 remains unabsorbed. Anchors going forward: SWE-AF HEAD `0c64fe7`,
 taskmarket-contracts HEAD `f2bd878`.
 
+**Verified 2026-09-01, git-only. SWE-AF unchanged; taskmarket-contracts moved,
+and the contract itself was touched — reportable by the standing rule, though
+neither of our threads was absorbed.**
+
+SWE-AF: `main` HEAD is still `0c64fe7`, byte-identical since 08-26 — six
+consecutive checks with nothing landing at all, so the scorer/table
+divergence sits exactly where the merge left it.
+
+taskmarket-contracts: HEAD `f2bd878` → `3eaa4e7`, two new syncs (`79fd4bd`,
+`3eaa4e7`). Both threads still unabsorbed, checked the way the cadence note
+demands rather than by filename:
+
+- **Thread 1 (#11):** `.gitmodules` still absent.
+- **Thread 2 (#12):** grepped the whole diff for `RewardVault`/`claimTask` as
+  TEXT. `claimTask` has zero changed lines anywhere in `src/`. The four
+  `RewardVault` hits are all `+///` — doc-comment prose inside a *new* file,
+  `script/UpgradeRewardHook.s.sol`. Mentions, not modifications. This is the
+  third check in a row where the honest answer needed the mentions/modifies
+  distinction; the filename-level read would have called it absorbed.
+
+What did land is substantive and worth recording even though it is not ours:
+
+- **Rev021 — "zero awards are recipient-inert"** (`EvaluatorFacet`).
+  `task.worker` is now the first validated award with a **nonzero** amount,
+  and a zero-only final verdict on Bounty/Benchmark **clears** `task.worker`
+  rather than leaving a recipient selected by an earlier verdict. Their own
+  wording: zero-valued awards never create payment, completed-task, or reward
+  accounting for their recipient. That is the same instinct our credit model
+  is built on — a settlement that paid nothing must not mint a completed-work
+  record — reached independently by another team on another chain. Convergent
+  evidence for the stance, not a change to any claim we make.
+- **Reward-hook staleness fix** (`TaskTokenRewardHook._reserveForWorker` now
+  takes `rewardUsd` from the current task context instead of the value stored
+  at `createTask`). The bug it closes: a requester who lowered a task's reward
+  and took the USDC refund while it was still Open would still have had the
+  later DREAMS reservation computed from the original, higher figure —
+  over-reserving against the vault.
+
+Anchors going forward: SWE-AF HEAD `0c64fe7`, taskmarket-contracts HEAD
+`3eaa4e7`.
+
 ## Inbound, for the first time (2026-08-18)
 
 Everything above is outbound — us contacting other projects. This is the first
