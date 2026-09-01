@@ -45,11 +45,15 @@ export async function GET(request: Request) {
   const { requireOperator } = await import('@/lib/admin-route')
   const auth = requireOperator(request, { mutating: false })
   if (!auth.ok) return auth.response
-  const url = new URL(request.url)
-
-  const proto = request.headers.get('x-forwarded-proto') ?? url.protocol.replace(':', '')
-  const host = request.headers.get('x-forwarded-host') ?? request.headers.get('host') ?? url.host
-  const report = await runOpsCycle(`${proto}://${host}`)
+  // The deployment's own PUBLIC origin — not this request's host. A Vercel
+  // Cron invocation can arrive on a deployment-specific host, and on a
+  // project with deployment protection every URL later built from that host
+  // (runtime callbacks, the execute handoff) answers with the auth wall's
+  // 401 instead of our route. That is why cron-context dispatches died with
+  // no callback while identical dispatches riding visitor traffic — whose
+  // requests carry the public host — completed (2026-08-31, measured).
+  const { origin } = await import('@/lib/origin')
+  const report = await runOpsCycle(origin())
 
   return Response.json({ ok: true, ...report })
 }

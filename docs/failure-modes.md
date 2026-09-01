@@ -2769,6 +2769,55 @@ the product copies are SEPARATE files from the reference sheets rather than
 the same file used twice — the sheets carry their caption ("B. OFFICE LOOK —
 PASTEL DIORAMA") burned into the pixels, and a product surface must not.
 
+## 59. Every RPC failure for a week was the same three digits
+
+"RPC keeps dying" was the report, and it was vague enough to mean anything —
+flaky provider, dead endpoint, the §33 lookalike where a simulation revert
+reads as an RPC fault. So it was measured before it was fixed: Vercel's
+runtime error clusters for the last 7 days, both deployments.
+
+**Mainnet: 212 RPC-shaped errors, 212 of them HTTP 429** from
+`base-mainnet.infura.io` (plus a handful through the ZeroDev bundler URL).
+**Testnet: 54 of 54, also 429**, from `base-sepolia.infura.io`. Zero
+timeouts, zero connection resets, zero 5xx. Not flake — a rate limit, hit
+steadily by treasury pages reading two balances per agent in parallel, gas
+readiness probes, and mining sweeps, each call its own HTTP request.
+
+Two things made it worse than it had to be:
+
+1. **Every call site built its own transport.** `http(onchainEnv.rpcUrl)`
+   appeared in four files with viem's defaults — retryCount 3 at 150ms base,
+   so a 429 was retried at 150/300/600ms, which re-hits a *per-second* limit
+   while it is still saying no. Tuning the transport meant editing four files,
+   so nobody had.
+2. **No second provider existed even as an option.** When the primary said
+   429 for the fourth time, the read failed — onto money-adjacent paths
+   (`escrowSolvency`, gas readiness, auto-mine claims) that each had to
+   carry their own "the chain didn't answer" handling.
+
+**Fix: `lib/onchain/transport.ts`**, the one place the chain transport is
+built, used by every read/write client:
+
+- `batch: true` — same-tick reads coalesce into one JSON-RPC batch request,
+  so the request-per-second limit sees one request instead of N.
+- retry tuned for rate limits (400ms base, doubling) instead of blips.
+- `ONCHAIN_RPC_FALLBACK_URLS` — optional comma-separated backup endpoints;
+  exhausting the primary's retries fails over instead of failing the read.
+  Unset, behavior is unchanged.
+
+The bundler transport is deliberately excluded: a bundler holds
+vendor-specific UserOperation state, and rotating providers mid-flight is not
+the safe no-op it is for a plain `eth_getBalance`.
+
+`tests/rpc-transport.test.ts` pins the parsing, the transport shapes, and —
+because this regresses by someone innocently writing `http(onchainEnv.rpcUrl)`
+again — that no client file rebuilds a default transport from the raw URL.
+
+The other half of the fix is operational and cannot live in this repo: the
+free-tier limit is the actual constraint, so either the Infura plan grows or
+`ONCHAIN_RPC_FALLBACK_URLS` gets a second provider's keyed URL on both
+deployments.
+
 ## Invariants these fixes encode
 
 Keep these true, and this class of bug stays dead:

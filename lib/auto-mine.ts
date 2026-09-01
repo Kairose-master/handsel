@@ -59,7 +59,14 @@ export async function autoMineTick(
     .where(and(eq(agentTask.agentId, agent.id), inArray(agentTask.status, ['queued', 'running', 'processing'])))
   const maxSlots = opts?.maxSlots ?? resolveMiningConcurrency()
   let free = freeMiningSlots(active.length, maxSlots)
-  if (free <= 0) return false
+  if (free <= 0) {
+    // Say WHY the sweep skipped, or a full-slot agent with a doomed accepted
+    // job is indistinguishable from a healthy busy one in the logs — the
+    // exact ambiguity that made the self-heal look broken while it was
+    // actually never reached.
+    console.info(`[auto-mine] ${agent.name}: ${active.length}/${maxSlots} slots in flight — skipping sweep (heal included)`)
+    return false
+  }
 
   const { isLaborMarketConfigured } = await import('@/lib/onchain/config')
   if (!isLaborMarketConfigured()) return false
@@ -129,22 +136,35 @@ export async function autoMineTick(
     if (!spec) continue
     let taskStatus: string | null = null
     let taskAgeMs: number | null = null
+    let taskReportedSuccess: boolean | null = null
     if (spec.agentTaskId) {
       const [t] = await db
-        .select({ status: agentTask.status, updatedAt: agentTask.updatedAt })
+        .select({ status: agentTask.status, updatedAt: agentTask.updatedAt, result: agentTask.result })
         .from(agentTask)
         .where(eq(agentTask.id, spec.agentTaskId))
       taskStatus = t?.status ?? null
       taskAgeMs = t?.updatedAt ? Date.now() - t.updatedAt.getTime() : null
+      const success = (t?.result as { success?: unknown } | null)?.success
+      taskReportedSuccess = typeof success === 'boolean' ? success : null
     }
     const { shouldHealAcceptedJob } = await import('@/lib/mining-scheduler')
-    if (shouldHealAcceptedJob({ hasTask: Boolean(spec.agentTaskId), taskStatus, taskAgeMs })) {
+    // The on-chain deadline is unix seconds; a market without deadlines (V1)
+    // reports none, and unknown never blocks the heal.
+    const deadlineRunwayMs = j.deadline ? j.deadline * 1000 - Date.now() : null
+    if (shouldHealAcceptedJob({ hasTask: Boolean(spec.agentTaskId), taskStatus, taskAgeMs, taskReportedSuccess, deadlineRunwayMs })) {
       if (spec.agentTaskId) {
         console.info(`[auto-mine] re-dispatching job ${j.id} for ${agent.name} — previous dispatch failed`)
       }
       await dispatchAcceptedJob(agent, j.id, spec, callbackUrl)
       free -= 1
       didWork = true
+    } else {
+      // An Accepted job the heal looked at and left alone must say why, or a
+      // doomed one is indistinguishable from one whose worker is mid-run —
+      // the exact silence that hid this path's wiring gaps twice already.
+      console.info(
+        `[auto-mine] job ${j.id} (${agent.name}): heal declined — task=${taskStatus ?? 'none'} reportedSuccess=${taskReportedSuccess ?? 'unknown'} age=${taskAgeMs === null ? '?' : Math.round(taskAgeMs / 60_000)}m runway=${deadlineRunwayMs === null ? '?' : Math.round(deadlineRunwayMs / 60_000)}m`,
+      )
     }
   }
   if (free <= 0) return didWork
@@ -386,6 +406,7 @@ export async function tickCloudAutoMineAgents(callbackUrl: string): Promise<void
     .from(agent)
     .where(and(inArray(agent.runtimeType, ['cloud', 'mcp']), eq(agent.autoMine, true)))
   if (candidates.length === 0) return
+  console.info(`[auto-mine] sweep: ${candidates.length} push-based auto-mine agents`)
 
   // ONE on-chain read shared across the whole sweep (phase 3b) — otherwise N
   // agents each call readJobs(), multiplying RPC load exactly when many agents

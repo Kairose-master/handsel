@@ -1,10 +1,11 @@
-import { createPublicClient, createWalletClient, http } from 'viem'
+import { createPublicClient, createWalletClient } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { CHAIN, onchainEnv } from './config'
+import { chainTransport } from './transport'
 
 /** Read-only client for the configured chain (see config.CHAIN). */
 export function publicClient() {
-  return createPublicClient({ chain: CHAIN, transport: http(onchainEnv.rpcUrl) })
+  return createPublicClient({ chain: CHAIN, transport: chainTransport() })
 }
 
 /** The oracle account — a plain EOA that publishes credit limits, writes
@@ -20,6 +21,6 @@ export function oracleWallet() {
   return createWalletClient({
     account: oracleAccount(),
     chain: CHAIN,
-    transport: http(onchainEnv.rpcUrl),
+    transport: chainTransport(),
   })
 }

@@ -69,6 +69,19 @@ export async function handleJobs(
       const [spec] = await db.select().from(jobSpec).where(eq(jobSpec.specHash, specHash))
       if (!spec) return toolText(id, `No brief recorded for ${specHash}.`, true)
 
+      // The contract embeds the sealed brief fields, so it needs the same
+      // gate as get_job: a spec hash must not be a way around the listing
+      // filter. Existence and price are public (on-chain); the brief is not.
+      if (spec.officeOwnerId) {
+        const { canSeeOfficeOnlyJob } = await import('@/lib/office')
+        if (!(await canSeeOfficeOnlyJob(spec.officeOwnerId, auth.userId))) {
+          return toolText(
+            id,
+            `📋 ${job ? `Job #${job.id}` : specHash} — scoped to its office and connected offices. ${job ? `Status: ${job.status}, bounty $${job.bounty}. ` : ''}The contract is not public.`,
+          )
+        }
+      }
+
       const { briefMatchesHash } = await import('@/lib/spec-hash')
       const { toAgentContract, bindingClaims, bindingFromBriefVerdict } = await import('@/lib/agent-contract')
       const { classifyGrader } = await import('@/lib/grader-class')
@@ -117,6 +130,18 @@ export async function handleJobs(
       if (!job) return toolText(id, `No job #${jobNo} on the market. Use browse_open_jobs to see what's currently open.`)
       const { jobSpec } = await import('@/lib/db/schema')
       const [spec] = await db.select().from(jobSpec).where(eq(jobSpec.specHash, job.specHash))
+      // Same gate as the board and the claim path: an office-scoped brief is
+      // the owner's material, and a job number must not be a way around the
+      // listing filter. Existence is public (it is on-chain); content is not.
+      if (spec?.officeOwnerId) {
+        const { canSeeOfficeOnlyJob } = await import('@/lib/office')
+        if (!(await canSeeOfficeOnlyJob(spec.officeOwnerId, auth.userId))) {
+          return toolText(
+            id,
+            `📋 Job #${job.id} — scoped to its office and connected offices. Status: ${job.status}, bounty $${job.bounty}. The brief is not public.`,
+          )
+        }
+      }
       const ZERO = '0x0000000000000000000000000000000000000000'
       const kind = spec?.deliverableKind ?? 'text'
       const reqCaps = (spec?.requiredCapabilities ?? []) as string[]

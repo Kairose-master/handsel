@@ -347,6 +347,14 @@ export async function hireOfficeTemplateFor(
       // hired worker does the office's own work, instead of racing whoever
       // else is watching the public board when the job posts.
       assignedAgentId: agentIdByRoleId.get(step.roleId),
+      // Scope the whole pipeline to this office's network (lib/office.ts):
+      // a desk's internal briefs — scopes, shared-source snapshots, business
+      // context — are the owner's material, and for most of this feature's
+      // life every one of them was readable verbatim on the public board by
+      // anyone with browse_open_jobs. The steps were already RESERVED to the
+      // office's own roles, so no outside claimant loses anything; strangers
+      // lose only the read they never needed.
+      officeOnly: true,
       // A review always depends on what it reviews, whether or not the
       // template said so — a reviewer posted before its target delivers has
       // nothing to read. Deduped, so naming it in both places is harmless.

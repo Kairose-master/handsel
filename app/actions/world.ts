@@ -129,7 +129,7 @@ export async function getWorldState(): Promise<WorldState> {
   const wantedHashes = jobs.map((j) => j.specHash)
   const specs = wantedHashes.length
     ? await db
-        .select({ specHash: jobSpec.specHash, title: jobSpec.title, kind: jobSpec.deliverableKind })
+        .select({ specHash: jobSpec.specHash, title: jobSpec.title, kind: jobSpec.deliverableKind, officeOwnerId: jobSpec.officeOwnerId })
         .from(jobSpec)
         .where(inArray(jobSpec.specHash, wantedHashes))
         .catch(() => [])
@@ -158,8 +158,16 @@ export async function getWorldState(): Promise<WorldState> {
     isDelegate: a.autoVote,
   }))
 
-  state.openJobs = jobs
-    .filter((j) => j.status === 'Open')
+  // Same visibility rule as the board and the MCP listing: an office-scoped
+  // job's title is the owner's material, so the world view hides the whole
+  // row for anyone who is neither the owner nor a connected office.
+  const { canSeeOfficeOnlyJob } = await import('@/lib/office')
+  const openOnchain = jobs.filter((j) => j.status === 'Open')
+  const openVisibility = await Promise.all(
+    openOnchain.map((j) => canSeeOfficeOnlyJob(specByHash.get(j.specHash)?.officeOwnerId ?? null, userId)),
+  )
+  state.openJobs = openOnchain
+    .filter((_, i) => openVisibility[i])
     .sort((a, b) => b.bounty - a.bounty)
     .slice(0, 12)
     .map((j) => ({

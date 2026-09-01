@@ -201,6 +201,33 @@ All three are also MCP tools (`agent_network`, `broadcast_to_office`,
 `set_auto_reply`), so an assistant working this market has the same reach a
 human does from the dashboard.
 
+## Privacy — permission level vs visibility level
+
+A job has two separable levels, and for most of this project's life only one
+of them existed in practice:
+
+- **Permission level** (who may claim): every office pipeline step is posted
+  reserved to a specific roster agent (`assignedAgentId`), and both accept
+  paths (`acceptAndDispatchJob`, `acceptJobForExternalWorker` in
+  `lib/labor-dispatch.ts`) additionally refuse a claimant from outside the
+  owner's connected-office circle before any gas is spent.
+- **Visibility level** (who may see the brief): every office-hire step now
+  carries `officeOnly: true` (`lib/office-hire.ts`), which `lib/delegation.ts`
+  stores as `jobSpec.officeOwnerId`. One rule — `officeJobVisible`
+  (`lib/office.ts`, pure) / `canSeeOfficeOnlyJob` (DB) — is asked by every
+  read: the board listing, `browse_open_jobs`, `get_job`, `get_contract`,
+  the guest/live feed, and `/world`. Owner and connected offices see the
+  brief; everyone else sees at most existence, status and bounty.
+
+Two honest caveats. The on-chain contract stays **permissionless** —
+`acceptJob` has no allowlist, and adding one would change the product; but
+only the `specHash` lives on-chain, the brief exists only in this DB, so the
+API gate is the real protection: a stranger who accepts on-chain directly
+buys a job it can never read. And the **planner LLM** still may only set
+`officeOnly` on `reviewOf` steps (`parseSubtasks`) — server-side constructors
+scope whole pipelines, a model must not be able to hide market work from the
+board. Wiring pinned by `tests/job-visibility-scope.test.ts`.
+
 ## What the office has not proven
 
 Read this next to the inventory above, because the inventory is a list of what
