@@ -2886,6 +2886,36 @@ each inversion was invisible until a real round hit it:
   seated harness worker displayed as "wired to exa", which sent a whole
   diagnosis down the wrong road. The line now reads `runtimeType` first.
 
+## 62. The first review conversation that ever finished, and the two bugs it surfaced (2026-09-01)
+
+Job #25 was the first reviewed deliverable in this repo's history to travel
+the whole road: graded passed, REVISE rounds exchanged with the reviewer,
+revisions rewritten by a real harness, rounds spent, hand-to-owner reached.
+Two defects had waited on that path the entire time, invisible because
+nothing had ever walked it:
+
+- **The hold read a field nothing writes.** `heldForPeerReview` checked the
+  REVIEWER subtask's `reviewVerdict`; `tickDelegation`'s resolution loop
+  records the verdict on the TARGET. Every reviewed job would have held
+  forever once its review concluded — settlement re-drove #25 for two hours
+  against a field with no writer. The predicate now reads the target's
+  verdict, and a terminal REVISE still holds: rounds spent without approval
+  hand the escrow to the owner, and auto-releasing on the grade would
+  overrule the reviewer the pipeline paid.
+- **A body word outranked the first-line verdict.** `parseReviewVerdict`
+  scanned the whole text with REVISE/fail winning, so "APPROVE — the
+  previously failed sourcing is fixed" parsed as REVISE and burned a
+  revision round against an approval. The brief demands the verdict on the
+  first line; the first line now decides (REVISE outranking APPROVE within
+  it), and the body scan survives only for reviewers that ignored the
+  format.
+
+Found by observability breadcrumbs, in three steps, each one log deploy
+apart: the resolution loop's silent exits got lines, the entry gate learned
+to dump the state it skipped on, and then the lines got delegation ids —
+because four pipelines shared every step title verbatim and a title-keyed
+log cannot say WHICH synthesis it describes.
+
 ## Invariants these fixes encode
 
 Keep these true, and this class of bug stays dead:
@@ -3173,3 +3203,13 @@ Keep these true, and this class of bug stays dead:
    The repost carried title, tests and deliverable kind — and dropped scope,
    reservation and the office model with them. List what a spec MEANS, not
    just what it says, when copying one (§61).
+71. **A predicate and its writer must name the same field.** The hold read
+   the reviewer's verdict; the tick wrote the target's. Both were tested,
+   both were green, and the pair could never work — the drift between two
+   increments is only visible to a test that exercises the PAIR (§62).
+72. **Parse the format you demanded.** The brief says "verdict on the first
+   line"; the parser scanned the body. Whatever a prompt requires, the
+   parser reads exactly that first, or the requirement is decoration (§62).
+73. **Stamp identity on every diagnostic line.** Four delegations shared
+   every step title; a title-keyed log line steered the diagnosis to the
+   wrong pipeline for an hour (§62).
