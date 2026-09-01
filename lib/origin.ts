@@ -46,6 +46,13 @@ export function resolveOrigin(env: {
 
 /** This deployment's origin, with no trailing slash. */
 export function origin(): string {
+  // In the browser, the deployment's origin IS the page's origin — and the
+  // server env below does not exist in the client bundle (none of it is
+  // NEXT_PUBLIC_), so without this branch every 'use client' caller fell
+  // through to the localhost fallback after hydration. The visible casualty
+  // was /try's core-feature card: its Copy URL button handed real visitors
+  // `http://localhost:3000/api/mcp` to paste into Claude.
+  if (typeof window !== 'undefined') return window.location.origin
   return resolveOrigin({
     PUBLIC_ORIGIN: process.env.PUBLIC_ORIGIN,
     VERCEL_PROJECT_PRODUCTION_URL: process.env.VERCEL_PROJECT_PRODUCTION_URL,
