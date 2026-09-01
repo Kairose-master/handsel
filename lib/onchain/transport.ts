@@ -53,11 +53,22 @@ export function rpcUrlList(primary: string, fallbackCsv: string): string[] {
   return [...new Set(urls)]
 }
 
-/** Build the transport for an explicit URL list (exported for tests). */
+/** Build the transport for an explicit URL list (exported for tests).
+ *
+ * The chain's own default public RPC is ALWAYS the last resort, whether or
+ * not `ONCHAIN_RPC_FALLBACK_URLS` names anything. Measured need (2026-09-01,
+ * §60's sequel): the configured provider began answering `latest` with a
+ * null block — viem's fee estimation then throws `Cannot convert undefined
+ * to a BigInt` (or BlockNotFoundError, same root) — and every claim in the
+ * office round failed twice over while a perfectly healthy public endpoint
+ * existed one entry further down a list nobody had populated. A degraded
+ * paid provider must degrade to the chain's public RPC, not to a dead
+ * market. (With no configured URL at all the default was already the only
+ * entry; this just stops it disappearing the moment a primary is set.)
+ */
 export function buildChainTransport(urls: string[]): Transport {
-  const transports: HttpTransport[] = (urls.length > 0 ? urls : ['']).map((u) =>
-    // viem treats an empty URL as "use the chain's default RPC", which is the
-    // pre-existing behavior for an unset ONCHAIN_RPC_URL — keep it.
+  const transports: HttpTransport[] = [...urls, ''].map((u) =>
+    // viem treats an empty URL as "use the chain's default RPC".
     http(u || undefined, CHAIN_HTTP_OPTIONS),
   )
   if (transports.length === 1) return transports[0]
