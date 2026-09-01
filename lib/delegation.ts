@@ -1699,7 +1699,16 @@ async function tickDelegationLocked(
   // worker cannot review its own work — a same-agent verdict carries no
   // authority and falls back to the grade.
   for (const target of subtasks) {
-    if (!target.awaitingReview || target.reviewVerdict !== undefined) continue
+    if (!target.awaitingReview || target.reviewVerdict !== undefined) {
+      // A held escrow that never resolves has, so far, always been this gate
+      // reading a state nobody expected — say the state, per reviewed target.
+      if (finalReviewerFor(subtasks, target.title) && target.reviewVerdict === undefined && target.onchainJobId !== undefined) {
+        console.info(
+          `[delegation] "${target.title.slice(0, 60)}": resolution gate — awaitingReview=${target.awaitingReview ?? false} verdict=${target.reviewVerdict ?? 'none'} rerunTask=${target.reviewRerunTaskId ?? 'none'} revising=${target.revising ?? false} round=${target.revisionRound ?? 0}`,
+        )
+      }
+      continue
+    }
     const reviewer = finalReviewerFor(subtasks, target.title)
     if (!reviewer) continue
     // On a re-review round the verdict is in the reviewer's re-run task, not
