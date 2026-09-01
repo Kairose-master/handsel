@@ -127,8 +127,8 @@ function RunDetail({ item, now }: { item: ConsoleRun; now: number }) {
             <div ref={logRef} className="max-h-72 overflow-y-auto px-3 py-2">
               {run.events.length === 0 ? (
                 <p className="text-xs text-muted-foreground">
-                  The worker has not sent any output for this run. Older workers do not report it — update
-                  <code className="ml-1">handsel-worker.mjs</code> to see the harness&rsquo;s own log here.
+                  The worker has not sent any output for this run. Older workers do not report it — run
+                  <code className="mx-1">npx handsel-worker@latest</code> to see the harness&rsquo;s own log here.
                 </p>
               ) : (
                 <ol className="space-y-0.5 font-mono text-[11px] leading-relaxed">

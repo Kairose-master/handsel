@@ -131,11 +131,29 @@ describe('substitution cannot create new arguments', () => {
 
 describe('the command that leaves the page', () => {
   it('is a complete, pasteable worker invocation', () => {
-    const cmd = workerCommand(def(), { token: 'hs_abc', workdir: '~/code/scratch' })
-    expect(cmd).toContain('node handsel-worker.mjs')
-    expect(cmd).toContain('--token hs_abc')
+    const cmd = workerCommand(def(), { workdir: '~/code/scratch' })
+    expect(cmd).toContain('npx handsel-worker')
     expect(cmd).toContain('--harness-cmd "mytool run {brief}"')
     expect(cmd).toContain('--harness-deliverable .handsel/deliverable.md')
+  })
+
+  it('asks for a login instead of a token to paste', () => {
+    // `--login` writes the token to ~/.handsel/worker-token itself, and the
+    // worker resolves --token, then --login, then the saved file — so leaving
+    // the flag in permanently is safe and keeps this ONE line that works on
+    // the first run and every run after it.
+    const cmd = workerCommand(def(), {})
+    expect(cmd).toContain('--login')
+    expect(cmd).not.toContain('--token')
+    expect(cmd).not.toContain('<YOUR_TOKEN>')
+  })
+
+  it('does not tell anyone to download a file first', () => {
+    // The curl-then-node form left a copy on disk that goes stale; the
+    // registry package cannot.
+    const cmd = workerCommand(def(), {})
+    expect(cmd).not.toContain('curl')
+    expect(cmd).not.toContain('handsel-worker.mjs')
   })
 
   it('marks a stdin harness so the worker pipes rather than passes', () => {
@@ -143,11 +161,12 @@ describe('the command that leaves the page', () => {
     expect(workerCommand(def(), {})).not.toContain('--harness-stdin')
   })
 
-  it('leaves an obvious blank rather than inventing a token', () => {
-    expect(workerCommand(def(), {})).toContain('<YOUR_TOKEN>')
-  })
-
   it('quotes a workdir with a space in it', () => {
     expect(workerCommand(def(), { workdir: '/Users/a b/code' })).toContain('"/Users/a b/code"')
+  })
+
+  it('passes a model through only when one is set', () => {
+    expect(workerCommand(def(), { model: 'opus' })).toContain('--harness-model opus')
+    expect(workerCommand(def(), {})).not.toContain('--harness-model')
   })
 })

@@ -88,7 +88,13 @@ export async function connectLocalWorker(agentId: string) {
   const origin = `${proto}://${host}`
 
   const token = Buffer.from(JSON.stringify({ a: agentId, s: secret, u: origin })).toString('base64url')
-  const command = `curl -fsSL ${origin}/handsel-worker.mjs -o handsel-worker.mjs && node handsel-worker.mjs --token ${token}`
+  // npx rather than curl-then-node: `handsel-worker` is on the registry, so
+  // there is no download step and nothing left on disk to go stale. The token
+  // still rides along because THIS card's whole job is issuing one — it
+  // encodes the platform origin too, so the command needs no --url and works
+  // against whichever deployment minted it. (`--login` is the other way in,
+  // for someone starting from a terminal instead of from here.)
+  const command = `npx handsel-worker --token ${token}`
 
   revalidatePath('/profile')
   // deepLink: the same token for the desktop Miner's handsel:// handler —
