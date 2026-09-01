@@ -309,7 +309,25 @@ export async function hireOfficeTemplateFor(
   // so a step's brief is fixed at hire time — see lib/office.ts's
   // ensureOfficeSourceTable comment for why editing it later must not rewrite
   // an office already hired.
-  const sharedSource = await getOfficeSource(userId, slot)
+  const ownerSource = await getOfficeSource(userId, slot)
+  // The desk's memory (lib/office-memory.ts) rides in the same slot the
+  // owner's source does: verified prior deliverables, folded at settlement,
+  // reach every role's brief on the NEXT hire — round two builds on what
+  // round one was paid for instead of re-deriving it. Unreadable memory
+  // degrades to none; it must never block a hire.
+  const memoryText = await import('@/lib/office-memory-server')
+    .then((m) => m.renderedOfficeMemory(userId, slot))
+    .catch(() => '')
+  const sharedSource = memoryText
+    ? {
+        title: ownerSource?.title ?? 'Office memory',
+        body: `${ownerSource?.body ?? ''}\n\n${memoryText}`.trim(),
+        updatedAt: ownerSource?.updatedAt ?? new Date().toISOString(),
+        sourceUrl: ownerSource?.sourceUrl ?? null,
+        fetchedAt: ownerSource?.fetchedAt ?? null,
+        contentHash: ownerSource?.contentHash ?? null,
+      }
+    : ownerSource
 
   const subtasks: DelegationSubtask[] = template.pipeline.map((step) => {
     const snapshot = snapshotByRoleId.get(step.roleId)
