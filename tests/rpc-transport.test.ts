@@ -128,3 +128,18 @@ describe('isMalformedRpcResult — a 200 with an impossible null is a transport 
     expect(isMalformedRpcResult('eth_getBlockByNumber', ['latest', false], { number: '0x1' })).toBe(false)
   })
 })
+
+describe('a swallowed transaction fails loudly instead of exhausting the route budget', () => {
+  // viem's waitForTransactionReceipt polls FOREVER by default. A provider
+  // that accepted a tx (returned a hash) and never propagated it left every
+  // write path spinning until the Vercel runtime killed the invocation at
+  // 120s — funding transfers, wave posts, gas top-ups, all at once, with no
+  // error logged. Every EOA write's receipt wait is bounded.
+  it('sendEoaCall and the gas top-up wait with a timeout', () => {
+    const src = readFileSync('lib/onchain/account.ts', 'utf8')
+    expect(src).toContain('RECEIPT_TIMEOUT_MS')
+    const waits = src.match(/waitForTransactionReceipt\(\{[^}]*\}\)/g) ?? []
+    expect(waits.length).toBeGreaterThanOrEqual(2)
+    for (const w of waits) expect(w).toContain('timeout: RECEIPT_TIMEOUT_MS')
+  })
+})
