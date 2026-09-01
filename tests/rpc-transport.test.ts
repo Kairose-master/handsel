@@ -143,3 +143,19 @@ describe('a swallowed transaction fails loudly instead of exhausting the route b
     for (const w of waits) expect(w).toContain('timeout: RECEIPT_TIMEOUT_MS')
   })
 })
+
+describe('a signed transaction is broadcast to every node, not the first healthy-looking one', () => {
+  // fallback() rotates on errors — and the outage that took every write
+  // path down at once was a primary that ACCEPTED transactions (hash
+  // returned: success, no rotation) into a mempool it never propagated.
+  // A signed tx is idempotent, so eth_sendRawTransaction fans out to all
+  // configured nodes and the chain default; the first acceptance wins.
+  it('buildChainTransport special-cases eth_sendRawTransaction with a fan-out', () => {
+    const src = readFileSync('lib/onchain/transport.ts', 'utf8')
+    expect(src).toContain("args.method === 'eth_sendRawTransaction'")
+    expect(src).toContain('Promise.allSettled')
+    // Reads stay on the ranked fallback — the fan-out is writes only.
+    const block = src.slice(src.indexOf('export function buildChainTransport'))
+    expect(block).toContain('return t.request(args as never)')
+  })
+})

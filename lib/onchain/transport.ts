@@ -123,7 +123,31 @@ export function buildChainTransport(urls: string[]): Transport {
     guardedHttp(u || undefined),
   )
   if (transports.length === 1) return transports[0]
-  return fallback(transports)
+  const ranked = fallback(transports)
+  // eth_sendRawTransaction goes to EVERY node, not just the first healthy-
+  // looking one. fallback() rotates on ERRORS — and the failure that took
+  // every write path down at once was a primary that accepted transactions
+  // (returned the hash: success, no rotation) into a mempool it never
+  // propagated. A signed transaction is idempotent, so broadcasting it to
+  // all nodes is safe: the first acceptance wins, an "already known" from a
+  // node that has it is just another acceptance path, and the transaction
+  // reaches a mempool that actually mines. Reads keep the ranked fallback.
+  return (cfg) => {
+    const t = ranked(cfg)
+    const singles = transports.map((mk) => mk(cfg))
+    return {
+      ...t,
+      async request(args: { method: string; params?: unknown }) {
+        if (args.method === 'eth_sendRawTransaction') {
+          const results = await Promise.allSettled(singles.map((s) => s.request(args as never)))
+          const ok = results.find((r): r is PromiseFulfilledResult<unknown> => r.status === 'fulfilled')
+          if (ok) return ok.value
+          throw (results[0] as PromiseRejectedResult).reason
+        }
+        return t.request(args as never)
+      },
+    } as typeof t
+  }
 }
 
 /** The transport every chain read/write client should use. */
