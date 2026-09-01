@@ -133,3 +133,13 @@ describe('starvation order and the soft budget', () => {
     expect(loop.indexOf('skippedForBudget.push')).toBeLessThan(loop.indexOf('await step.run'))
   })
 })
+
+describe('one hanging delegation tick cannot starve the rows after it', () => {
+  it('each row runs under a timeout, with a start log naming the row', () => {
+    const src = readFileSync('lib/ops-cycle.ts', 'utf8')
+    const step = src.slice(src.indexOf("name: 'delegations'"), src.indexOf("name: 'fleetTick'"))
+    expect(step).toContain('TICK_TIMEOUT_MS')
+    expect(step).toContain('Promise.race')
+    expect(step).toContain('delegation tick start')
+  })
+})

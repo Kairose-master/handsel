@@ -248,8 +248,24 @@ export const OPS_STEPS: OpsStep[] = [
       const jobs = await readJobs().catch(() => [])
       let ticked = 0
       let failed = 0
+      // Per-row timeout, because one hanging tick starves every row after
+      // it — observed live: an invocation died mid-step with exactly one
+      // tick logged, and a finished pipeline three rows later could not
+      // post its next wave for an hour. The start log is deliberate: when a
+      // row DOES hang, the last "tick start" line names it. The timed-out
+      // promise is abandoned, not cancelled — the cycle lease serialises
+      // cycles and the tick's writes are guarded against double-posting
+      // (docs/failure-modes.md §35), so an orphan finishing late is
+      // recorded work, not duplicated work.
+      const TICK_TIMEOUT_MS = 90_000
       for (const row of active) {
-        await tickDelegation(row, jobs)
+        console.info(`[ops-cycle] delegation tick start ${row.id}`)
+        await Promise.race([
+          tickDelegation(row, jobs),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error(`tick timed out after ${TICK_TIMEOUT_MS / 1000}s`)), TICK_TIMEOUT_MS),
+          ),
+        ])
           .then(() => { ticked++ })
           .catch((e) => {
             failed++
