@@ -167,3 +167,22 @@ describe('untilText', () => {
     expect(untilText(0, 5_000)).toBe('in under a minute')
   })
 })
+
+describe('deterministic self-deals are filtered before any claim attempt', () => {
+  // assertNotSelfDeal refuses every same-account claim except the one agent
+  // the assignment names — no TTL, no luck. The Architect worker spent an
+  // evening (2026-09-01) attempting its desk's reader steps every 3-second
+  // poll once their priority window lapsed: guaranteed refusal, full claim
+  // attempt, stack trace each time. The tick must drop those candidates
+  // before selection; a stranger's lapsed reservation stays fair game.
+  it('auto-mine drops own-account candidates assigned to a sibling', () => {
+    const src = readFileSync('lib/auto-mine.ts', 'utf8')
+    const at = src.indexOf('claimableCandidates')
+    expect(at).toBeGreaterThan(-1)
+    const block = src.slice(at - 400, at + 400)
+    expect(block).toContain('ownAddresses.has(c.job.requester.toLowerCase())')
+    expect(block).toContain('assignedBy.get(c.spec.specHash) !== agent.id')
+    // The filter must run BEFORE block selection ever sees the candidates.
+    expect(at).toBeLessThan(src.indexOf('selectMiningBlocks({'))
+  })
+})

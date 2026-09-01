@@ -248,18 +248,32 @@ export async function autoMineTick(
   // so a scope change takes effect on the next sweep, not the next deploy.
   const { effectiveMineScope } = await import('@/lib/mine-scope-server')
   const { scope } = await effectiveMineScope(agent.id).catch(() => ({ scope: 'market' as const }))
-  // Only the `own` scope needs to know who the account's agents are, so an
-  // open-market worker pays nothing for the feature.
-  let ownAddresses: Set<string> | null = null
-  if (scope === 'own') {
-    // `agent` is the ROW here (the parameter shadows the schema table), so
-    // the table has to come in under another name.
-    const { agent: agentTbl } = await import('@/lib/db/schema')
-    const siblings = await db
-      .select({ addr: agentTbl.smartAccountAddress })
-      .from(agentTbl)
-      .where(eq(agentTbl.userId, agent.userId))
-    ownAddresses = new Set(siblings.map((a) => a.addr?.toLowerCase()).filter((a): a is string => Boolean(a)))
+  // Who the account's agents are — needed by the `own` scope AND by the
+  // self-deal pre-filter below, so built for every tick.
+  // `agent` is the ROW here (the parameter shadows the schema table), so
+  // the table has to come in under another name.
+  const { agent: agentTbl } = await import('@/lib/db/schema')
+  const siblings = await db
+    .select({ addr: agentTbl.smartAccountAddress })
+    .from(agentTbl)
+    .where(eq(agentTbl.userId, agent.userId))
+  const ownAddresses = new Set(siblings.map((a) => a.addr?.toLowerCase()).filter((a): a is string => Boolean(a)))
+
+  // A same-account job is claimable by exactly one agent: the one its
+  // assignment names — assertNotSelfDeal refuses every other sibling, with
+  // no TTL and no luck involved. Attempting anyway is what the Architect
+  // worker did to its desk's reader steps every 3-second poll once their
+  // priority window lapsed: a guaranteed refusal, logged with a stack trace,
+  // after a full claim attempt — pure noise and pure spend. Deterministic
+  // refusals get filtered before anything is attempted; strangers' lapsed
+  // reservations stay fair game exactly as before.
+  const beforeDoomFilter = candidates.length
+  const claimableCandidates = candidates.filter(
+    (c) => !(ownAddresses.has(c.job.requester.toLowerCase()) && assignedBy.get(c.spec.specHash) !== agent.id),
+  )
+  if (claimableCandidates.length < beforeDoomFilter) {
+    candidates.length = 0
+    candidates.push(...claimableCandidates)
   }
 
   // Fitness: can this agent actually DO these jobs (lib/claim-fitness.ts)?
