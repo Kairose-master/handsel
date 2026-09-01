@@ -301,6 +301,28 @@ export async function autoMineTick(
     candidates.push(...claimableCandidates)
   }
 
+  // The same doom class for the visibility split: an office-scoped job is
+  // claimable only inside its circle — acceptAndDispatchJob refuses everyone
+  // else, deterministically, after a full claim attempt with a stack trace
+  // in the log. The day the split shipped, a stranger's miner hammered one
+  // scoped job with exactly that refusal every sweep. Visibility is resolved
+  // once per foreign office owner, not per candidate, and an unreadable
+  // check drops the job: a refusal costs this agent its claim slot, so
+  // "unknown" here is not the harmless kind.
+  const scopedOwnerIds = [...new Set(candidates.map((c) => c.spec.officeOwnerId).filter((o): o is string => Boolean(o)))]
+  if (scopedOwnerIds.length) {
+    const { canSeeOfficeOnlyJob } = await import('@/lib/office')
+    const visibleByOwner = new Map<string, boolean>()
+    for (const ownerId of scopedOwnerIds) {
+      visibleByOwner.set(ownerId, await canSeeOfficeOnlyJob(ownerId, agent.userId).catch(() => false))
+    }
+    const inCircle = candidates.filter((c) => !c.spec.officeOwnerId || visibleByOwner.get(c.spec.officeOwnerId))
+    if (inCircle.length < candidates.length) {
+      candidates.length = 0
+      candidates.push(...inCircle)
+    }
+  }
+
   // Fitness: can this agent actually DO these jobs (lib/claim-fitness.ts)?
   //
   // Built ONCE per tick and reused for every candidate — the per-agent facts

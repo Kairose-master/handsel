@@ -50,6 +50,9 @@ export interface JobSpecLike {
   /** Which machine this job is meant to run on (lib/job-lane.ts). Null on
    *  every job posted before the lane existed, which normalizes to `any`. */
   lane?: string | null
+  /** Set when the job is scoped to an office (lib/office.ts): only that
+   *  circle can claim it, so a miner outside it drops the candidate. */
+  officeOwnerId?: string | null
 }
 
 export interface MiningCandidate {
