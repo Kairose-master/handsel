@@ -30,6 +30,7 @@ import {
   Building2,
   ChevronDown,
   Network,
+  Megaphone,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getShellStatus } from "@/app/actions/shell"
@@ -104,6 +105,7 @@ const advancedNav = [
   { labelKey: "nav.governance", href: "/governance", icon: Vote },
   { labelKey: "nav.world", href: "/world", icon: Gamepad2 },
   { labelKey: "nav.directory", href: "/directory", icon: Boxes },
+  { labelKey: "nav.socialDesk", href: "/social", icon: Megaphone },
 ]
 
 function Sidebar({

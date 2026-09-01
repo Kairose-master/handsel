@@ -192,6 +192,16 @@ export async function buildOfficeSnapshot(userId: string, ownerName: string, slo
     return out
   })()
 
+  // The social desk's signal: an in-flight (or queued) social publish job
+  // attributed to an agent puts that agent at the Market gate. Same failure
+  // posture as every gather above — unreadable table, absent signal.
+  const socialAgents = await import('@/lib/social/social-queue-server')
+    .then((m) => m.agentsWithActiveSocialJobs(userId))
+    .catch((error) => {
+      console.error('[office-world] social-queue read failed:', error)
+      return new Set<string>()
+    })
+
   const deptHasLead = new Set<string>()
   const staff: OfficeStaffMember[] = myAgents.map((a) => {
     const signals: AgentActivitySignals = {
@@ -203,6 +213,7 @@ export async function buildOfficeSnapshot(userId: string, ownerName: string, slo
       hasCreditDraw: openDrawAgents.has(a.id),
       settledRecently: settledTodayAgents.has(a.id),
       recentSkillInstall: recentSkillInstalls.get(a.id) ?? null,
+      socialPublishing: socialAgents.has(a.id),
       autoMine: Boolean(a.autoMine),
       isExternalRuntime: Boolean(a.runtimeType && a.runtimeType !== 'platform'),
       harness: liveRuns.get(a.id) ?? null,

@@ -364,6 +364,19 @@ export const OPS_STEPS: OpsStep[] = [
       return revealOnchainVotes()
     },
   },
+  {
+    // The social content queue (lib/social/social-queue-server.ts): publishes
+    // approved, due posts to external platforms (Instagram first). NOT fast —
+    // it talks to the outside world and can wait on Meta's video processing.
+    // Only human-approved jobs are claimable, so this step can never publish
+    // a draft; with INSTAGRAM_* unset every job parks at NEEDS_AUTH and the
+    // step reads 'idle', per the optional-feature convention.
+    name: 'socialQueue',
+    run: async () => {
+      const { tickSocialQueue } = await import('@/lib/social/social-queue-server')
+      return tickSocialQueue()
+    },
+  },
 ]
 
 /** How long a full cycle holds the floor. Sized to the cron interval, not to
