@@ -65,6 +65,14 @@ repo leans on, none of which needed building:
    protocol. Two sessions diverged three times on 2026-09-01 and `git merge`
    resolved all three, because the work was in different files — and would
    have said so loudly if it had not been.
+
+   It then said so loudly, on the fourth. Pushing the commit that added this
+   document collided with the other session appending to `conversation.md` at
+   the same time: `CONFLICT (content): Merge conflict in conversation.md`. The
+   coordination file is the one file both sessions write, so it is the one
+   place this is guaranteed to happen — which is an argument for the mechanism,
+   not against it. Both notes were kept; no protocol was consulted; nothing was
+   lost.
 2. **Commit messages are the memory that survives context compaction.** This
    session's context was compacted mid-work. What restored it was not a
    transcript: it was `docs/failure-modes.md`, `docs/product-thesis.md`, and
