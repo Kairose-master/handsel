@@ -83,3 +83,30 @@ describe('visibility — reads redact, listings filter', () => {
     expect(src).toContain('officeOwnerId: jobSpec.officeOwnerId')
   })
 })
+
+describe('a failed office step retries as an office step (the repost path)', () => {
+  // The auto-return path (grader fails a submission → refund → repost) was
+  // written for the open market: blacklist the failed worker, repost for
+  // anyone else. Verified against the code the day the privacy split
+  // shipped: the repost insert carried NO officeOwnerId (scoped brief →
+  // public board), no reservation, and barred the desk's own agent. All
+  // three are the office model inverted, so pin the fixed shape.
+  const src = code('lib/labor-settle.ts')
+
+  it('carries the office scope onto the replacement spec', () => {
+    expect(src).toContain('officeOwnerId: spec.officeOwnerId')
+  })
+
+  it('a reserved step keeps its agent (no self-blacklist) and re-reserves before the on-chain post', () => {
+    expect(src).toContain('assignedAgentFor(spec.specHash)')
+    // Reserved: the desk's agent must NOT enter failedWorkerIds…
+    expect(src).toContain('.filter((w) => w !== reservedAgent)')
+    // …and the reservation must land before the job is publicly claimable.
+    expect(src.indexOf('reserveJobForAgent(newSpecHash')).toBeGreaterThan(-1)
+    expect(src.indexOf('reserveJobForAgent(newSpecHash')).toBeLessThan(src.indexOf('postJob(spec.requesterAgentId!, job.bounty'))
+  })
+
+  it('the open-market rule is unchanged for unreserved jobs', () => {
+    expect(src).toContain('[...new Set([...(spec.failedWorkerIds ?? []), spec.workerAgentId])]')
+  })
+})

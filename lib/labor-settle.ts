@@ -332,7 +332,19 @@ export async function returnFailedJobToMarket(
       nanoid(),
     )
     const newSpecHash = sealed.specHash
-    const failedWorkers = [...new Set([...(spec.failedWorkerIds ?? []), spec.workerAgentId])]
+    // An office-reserved step retries as an office-reserved step. The open-
+    // market rule — blacklist the worker that failed, hand the repost to
+    // anyone else — is exactly backwards for a step reserved to one desk:
+    // it published the office's scoped brief to the whole board, dropped the
+    // reservation, and barred the only agent the step was written for, so a
+    // stranger with none of the pipeline's context got the brief and the
+    // money. The desk retries its own step (grading still gates every
+    // payment); strangers still never see it.
+    const { assignedAgentFor, reserveJobForAgent } = await import('@/lib/job-reservation')
+    const reservedAgent = await assignedAgentFor(spec.specHash).catch(() => null)
+    const failedWorkers = reservedAgent
+      ? [...new Set((spec.failedWorkerIds ?? []).filter((w) => w !== reservedAgent))]
+      : [...new Set([...(spec.failedWorkerIds ?? []), spec.workerAgentId])]
     await db.insert(jobSpec).values({
       ...sealed,
       requesterAgentId: spec.requesterAgentId,
@@ -340,6 +352,7 @@ export async function returnFailedJobToMarket(
       attachmentName: spec.attachmentName,
       repostCount: spec.repostCount + 1,
       failedWorkerIds: failedWorkers,
+      officeOwnerId: spec.officeOwnerId,
       autoApprove: spec.autoApprove, // carry the requester's original consent choice forward, don't silently reset it
       // Repo identity must survive a repost, or the replacement job silently
       // stops being a GitHub job (no PR, no CI grader). prNumber/ciStatus are
@@ -357,6 +370,14 @@ export async function returnFailedJobToMarket(
       issueNumber: spec.issueNumber,
       parentSpecHash: spec.specHash, // explicit lineage — lets delegations follow the work to its replacement
     })
+    // Reservation carried BEFORE the on-chain post: the moment the job is
+    // visible, whoever wins the race owns the claim, and for a reserved step
+    // that must already be the desk's own agent.
+    if (reservedAgent) {
+      await reserveJobForAgent(newSpecHash, reservedAgent).catch((e) =>
+        console.error('[labor-settle] repost reservation carry failed (job stays office-scoped but unreserved):', e),
+      )
+    }
     const txHash = await retry(() => postJob(spec.requesterAgentId!, job.bounty, job.minScore, newSpecHash))
 
     // Backfill the new spec's onchainJobId so the sweep and diagnostics can
