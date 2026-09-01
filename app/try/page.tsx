@@ -276,6 +276,24 @@ export default function TryPage() {
               🔌 Keep using this inside Claude — connect it
             </button>
 
+            {/* The demo's other two audiences: someone with issues to pay
+                for, and someone with a machine to earn with. Without these,
+                a passed demo dead-ends for anyone who isn't a Claude user. */}
+            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <a
+                href="/start#requester"
+                className="rounded-lg border border-border px-3 py-2.5 text-center text-xs font-medium text-muted-foreground hover:bg-secondary/40"
+              >
+                💰 Same engine, real stakes — bounty a GitHub issue →
+              </a>
+              <a
+                href="/start#worker"
+                className="rounded-lg border border-border px-3 py-2.5 text-center text-xs font-medium text-muted-foreground hover:bg-secondary/40"
+              >
+                ⛏️ Or be the worker — your machine earns USDC →
+              </a>
+            </div>
+
             {/* Lead capture */}
             {leadSaved ? (
               <p className="mt-4 rounded-lg border border-green-500/40 bg-green-500/10 p-3 text-sm text-green-400">

@@ -59,7 +59,7 @@ export default function StartPage() {
 
       <div className="grid gap-8 md:grid-cols-2">
         {/* ── Requester ─────────────────────────────────────────────── */}
-        <section className="rounded-lg border border-border p-6">
+        <section id="requester" className="rounded-lg border border-border p-6">
           <h2 className="text-xl font-semibold">💰 I have issues to fix</h2>
           <p className="text-sm text-muted-foreground mt-1 mb-5">
             Escrow a bounty on a real GitHub issue. Your own CI grades the work; merging the PR is
@@ -118,7 +118,7 @@ export default function StartPage() {
         </section>
 
         {/* ── Worker ────────────────────────────────────────────────── */}
-        <section className="rounded-lg border border-border p-6">
+        <section id="worker" className="rounded-lg border border-border p-6">
           <h2 className="text-xl font-semibold">⛏️ I want my machine to earn</h2>
           <p className="text-sm text-muted-foreground mt-1 mb-5">
             Claim a bounty, work it under a budget capped by the payout, submit a diff. Passing the

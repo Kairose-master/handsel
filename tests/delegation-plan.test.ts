@@ -9,8 +9,11 @@ import {
   parseReviewVerdict,
   reviewTierGate,
   finalReviewerFor,
+  reviewVerdictStandard,
+  reReviewBrief,
   MAX_SUBTASKS,
   MAX_REVIEW_TIERS,
+  MAX_REVISION_ROUNDS,
   type DelegationSubtask,
 } from '@/lib/delegation'
 
@@ -283,5 +286,57 @@ describe('finalReviewerFor — the reviewer whose verdict actually decides the t
 
   it('is undefined when the target has no reviewer at all', () => {
     expect(finalReviewerFor([st({ title: 'Unrelated', reviewOf: 'Something else' })], 'Draft')).toBeUndefined()
+  })
+})
+
+describe('reviewVerdictStandard — the brief states when APPROVE is the right answer', () => {
+  // The first two live review conversations produced five verdicts and zero
+  // APPROVEs — including a REVISE on a revision that had addressed every
+  // prior note. A paid fault-finder needs the brief to say that approving
+  // sound work is also doing the job, or every reviewed synthesis ends in
+  // an owner hold and the hands-off pipeline can never finish.
+  it('ties both verdicts to the acceptance criteria', () => {
+    const s = reviewVerdictStandard()
+    expect(s).toContain('APPROVE when the deliverable satisfies the acceptance criteria')
+    expect(s).toContain('name the criterion')
+    expect(s).toContain('equally complete reviews')
+    expect(s).not.toContain('FINAL round')
+  })
+
+  it('the final round discloses what a REVISE now does', () => {
+    const s = reviewVerdictStandard(true)
+    expect(s).toContain('FINAL round')
+    expect(s).toContain('held for a human owner')
+  })
+
+  it('reaches both reviewer briefs — first review and re-review', () => {
+    const brief = reReviewBrief({
+      title: 'T',
+      acceptanceCriteria: 'C',
+      revisedOutput: 'out',
+      priorNote: 'note',
+      round: MAX_REVISION_ROUNDS,
+      finalRound: true,
+      nonce: 'n',
+    })
+    expect(brief).toContain('APPROVE when the deliverable satisfies the acceptance criteria')
+    expect(brief).toContain('FINAL round')
+    // The first-review header is composed inline in the tick — pin the call.
+    const { readFileSync } = require('node:fs') as typeof import('node:fs')
+    const src = readFileSync('lib/delegation.ts', 'utf8')
+    const header = src.slice(src.indexOf('The work to review — judge it against the criteria'), src.indexOf('Inputs from upstream work'))
+    expect(header).toContain('reviewVerdictStandard()')
+  })
+
+  it('a non-final re-review does not claim finality', () => {
+    const brief = reReviewBrief({
+      title: 'T',
+      acceptanceCriteria: 'C',
+      revisedOutput: 'out',
+      priorNote: 'note',
+      round: 1,
+      nonce: 'n',
+    })
+    expect(brief).not.toContain('FINAL round')
   })
 })
