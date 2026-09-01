@@ -224,6 +224,25 @@ export const REDISPATCH_COOLDOWN_MS = 10 * 60_000
  */
 export const HEAL_MIN_RUNWAY_MS = 15 * 60_000
 
+/**
+ * The OTHER way an Accepted job gets stuck with a finished task: the work
+ * completed and passed, but the on-chain `submitWork` failed (caught and
+ * logged in lib/callback/labor-market.ts — grading proceeds on the raw
+ * output, which is right for the credit signal and leaves the escrow
+ * `Accepted` with no submission recorded). Observed on Base mainnet job #3
+ * and again live on 2026-09-01 (jobs 22/23: graded `passed`, chain still
+ * `Accepted`, the sick provider had eaten the submit). Nothing re-dispatches
+ * it — the work EXISTS — and nothing settled it, because settlement starts
+ * at `Submitted`. The heal retries the submission itself.
+ */
+export function shouldResubmitAcceptedJob(input: {
+  hasTask: boolean
+  taskStatus?: string | null
+  taskReportedSuccess?: boolean | null
+}): boolean {
+  return input.hasTask && input.taskStatus === 'completed' && input.taskReportedSuccess === true
+}
+
 export function shouldHealAcceptedJob(input: {
   hasTask: boolean
   /** The linked task's status, when hasTask. */

@@ -308,3 +308,31 @@ describe('shouldHealAcceptedJob — deadline runway', () => {
     expect(HEAL_MIN_RUNWAY_MS).toBeGreaterThanOrEqual(10 * 60_000)
   })
 })
+
+describe('shouldResubmitAcceptedJob — finished work whose on-chain submission was eaten', () => {
+  it('resubmits a completed task that reported success while the job sits Accepted', async () => {
+    const { shouldResubmitAcceptedJob } = await import('@/lib/mining-scheduler')
+    expect(shouldResubmitAcceptedJob({ hasTask: true, taskStatus: 'completed', taskReportedSuccess: true })).toBe(true)
+  })
+
+  it('never resubmits anything else — failed, unknown, in flight, or taskless', async () => {
+    const { shouldResubmitAcceptedJob } = await import('@/lib/mining-scheduler')
+    expect(shouldResubmitAcceptedJob({ hasTask: false })).toBe(false)
+    expect(shouldResubmitAcceptedJob({ hasTask: true, taskStatus: 'completed', taskReportedSuccess: false })).toBe(false)
+    expect(shouldResubmitAcceptedJob({ hasTask: true, taskStatus: 'completed', taskReportedSuccess: null })).toBe(false)
+    expect(shouldResubmitAcceptedJob({ hasTask: true, taskStatus: 'running', taskReportedSuccess: true })).toBe(false)
+    expect(shouldResubmitAcceptedJob({ hasTask: true, taskStatus: 'failed', taskReportedSuccess: true })).toBe(false)
+  })
+
+  it('the heal loop asks resubmit BEFORE re-dispatch — the work exists, never redo it', async () => {
+    const { readFileSync } = await import('node:fs')
+    const src = readFileSync('lib/auto-mine.ts', 'utf8')
+    const resubmitAt = src.indexOf('shouldResubmitAcceptedJob({')
+    const healAt = src.indexOf('shouldHealAcceptedJob({')
+    expect(resubmitAt).toBeGreaterThan(-1)
+    expect(resubmitAt).toBeLessThan(healAt)
+    // Same bytes the callback would have hashed — a late landing and this
+    // retry must describe the same submission.
+    expect(src).toContain("keccak256(toHex(taskOutput || '(empty output)'))")
+  })
+})

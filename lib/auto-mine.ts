@@ -137,20 +137,45 @@ export async function autoMineTick(
     let taskStatus: string | null = null
     let taskAgeMs: number | null = null
     let taskReportedSuccess: boolean | null = null
+    let taskOutput: string | null = null
     if (spec.agentTaskId) {
       const [t] = await db
-        .select({ status: agentTask.status, updatedAt: agentTask.updatedAt, result: agentTask.result })
+        .select({ status: agentTask.status, updatedAt: agentTask.updatedAt, result: agentTask.result, output: agentTask.output })
         .from(agentTask)
         .where(eq(agentTask.id, spec.agentTaskId))
       taskStatus = t?.status ?? null
       taskAgeMs = t?.updatedAt ? Date.now() - t.updatedAt.getTime() : null
       const success = (t?.result as { success?: unknown } | null)?.success
       taskReportedSuccess = typeof success === 'boolean' ? success : null
+      taskOutput = t?.output ?? null
     }
-    const { shouldHealAcceptedJob } = await import('@/lib/mining-scheduler')
+    const { shouldHealAcceptedJob, shouldResubmitAcceptedJob } = await import('@/lib/mining-scheduler')
     // The on-chain deadline is unix seconds; a market without deadlines (V1)
     // reports none, and unknown never blocks the heal.
     const deadlineRunwayMs = j.deadline ? j.deadline * 1000 - Date.now() : null
+    // Finished work whose on-chain submitWork was eaten (lib/mining-scheduler
+    // shouldResubmitAcceptedJob): retry the SUBMISSION, never the dispatch —
+    // the deliverable exists and was graded on its way in. Same hash the
+    // callback would have recorded (lib/callback/labor-market.ts), so a late
+    // landing and this retry describe the same bytes.
+    if (shouldResubmitAcceptedJob({ hasTask: Boolean(spec.agentTaskId), taskStatus, taskReportedSuccess })) {
+      try {
+        const { keccak256, toHex } = await import('viem')
+        const { submitWork } = await import('@/lib/onchain/labor')
+        await submitWork(agent.id, j.id, keccak256(toHex(taskOutput || '(empty output)')))
+        console.info(`[auto-mine] job ${j.id} (${agent.name}): re-submitted finished work on-chain — the original submitWork never landed`)
+        await logPlatformEvent('JOB_SUBMITTED', `"${spec.title}" — finished work re-submitted after a failed on-chain submission`)
+        didWork = true
+      } catch (error) {
+        const { isUserOpPending } = await import('@/lib/onchain/account')
+        if (isUserOpPending(error)) {
+          console.warn(`[auto-mine] job ${j.id}: re-submission pending confirmation`)
+        } else {
+          console.error(`[auto-mine] job ${j.id}: re-submission failed (will retry next sweep):`, error)
+        }
+      }
+      continue
+    }
     if (shouldHealAcceptedJob({ hasTask: Boolean(spec.agentTaskId), taskStatus, taskAgeMs, taskReportedSuccess, deadlineRunwayMs })) {
       if (spec.agentTaskId) {
         console.info(`[auto-mine] re-dispatching job ${j.id} for ${agent.name} — previous dispatch failed`)
