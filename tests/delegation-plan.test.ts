@@ -340,3 +340,21 @@ describe('reviewVerdictStandard — the brief states when APPROVE is the right a
     expect(brief).not.toContain('FINAL round')
   })
 })
+
+describe('a wave posts only what its payer can afford — checked at posting time', () => {
+  // Balances move between waves: a second pipeline on the same payer spent
+  // the wallet a wave was counting on (observed live 2026-09-01), and the
+  // wave surfaced as an opaque on-chain revert retry loop that consumed the
+  // whole delegation tick. The pre-check turns that into the same
+  // actionable row error the confirm path already produces.
+  it('postOneSubtask reads the payer balance before the on-chain post', () => {
+    const { readFileSync } = require('node:fs') as typeof import('node:fs')
+    const src = readFileSync('lib/delegation.ts', 'utf8')
+    const body = src.slice(src.indexOf('async function postOneSubtask'), src.indexOf('export async function postDelegationJobs'))
+    const checkAt = body.indexOf('usdcBalanceOf')
+    expect(checkAt).toBeGreaterThan(-1)
+    expect(checkAt).toBeLessThan(body.indexOf('await postJob('))
+    // Unreadable balance lets the chain decide — same rule as the confirm check.
+    expect(body).toContain('posting balance pre-check failed (continuing)')
+  })
+})

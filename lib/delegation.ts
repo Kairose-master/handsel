@@ -947,6 +947,29 @@ async function postOneSubtask(
     const { setJobLane } = await import('@/lib/job-lane-server')
     await setJobLane(specHash, st.lane)
   }
+  // Balance check AT POSTING TIME, not just at confirm: balances move
+  // between waves — observed live when a second pipeline on the same payer
+  // spent the wallet a wave was counting on, and the wave then surfaced as
+  // an opaque 'Execution reverted' retry loop that ate the whole tick.
+  // Same message shape as the confirm check so the row's error says what to
+  // do; an unreadable balance falls through and lets the chain decide.
+  try {
+    const { usdcBalanceOf } = await import('@/lib/onchain/treasury')
+    const [payerRow] = await db
+      .select({ smartAccountAddress: agent.smartAccountAddress })
+      .from(agent)
+      .where(eq(agent.id, payerAgentId))
+    if (!payerRow?.smartAccountAddress) throw new Error('payer wallet unknown')
+    const balance = await usdcBalanceOf(payerRow.smartAccountAddress as `0x${string}`)
+    if (balance < st.bountyUsd) {
+      throw new Error(
+        `${payerName}'s wallet holds $${balance.toFixed(2)} but this step escrows $${st.bountyUsd.toFixed(2)} (plus the posting fee) — mint test USDC on that agent's Treasury card first`,
+      )
+    }
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('mint test USDC')) throw error
+    console.error('[delegation] posting balance pre-check failed (continuing):', error)
+  }
   // Bundler rate-limits back-to-back userops (free tier) — space them.
   if (spaceOut) await new Promise((r) => setTimeout(r, 2000))
   await postJob(payerAgentId, st.bountyUsd, 0, specHash)
