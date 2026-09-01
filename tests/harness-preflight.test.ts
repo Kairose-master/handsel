@@ -180,3 +180,27 @@ describe('the worker runs the same preflight this file describes', () => {
     expect(worker).not.toMatch(/writePreflightFail|ok:\s*false\s*\}\)\s*,\s*'utf8'/)
   })
 })
+
+describe('the probe cannot touch the checkout it is checking readiness for', () => {
+  const worker = readFileSync('public/handsel-worker.mjs', 'utf8')
+
+  it('runs in a throwaway directory, never --workdir', () => {
+    // Every adapter passes its harness's auto-approval flag. Probing in the
+    // real workdir would aim a tool that can edit and run anything at the
+    // owner's checkout during a readiness check — before a single job has been
+    // claimed. The brief says "do not use any tools", and an instruction is
+    // not a permission boundary.
+    expect(worker).toMatch(/mkdtemp\(path\.join\(os\.tmpdir\(\), 'handsel-preflight-'\)\)/)
+    const fn = worker.slice(worker.indexOf('async function preflightHarness()'))
+    const body = fn.slice(0, fn.indexOf('\n}\n'))
+    expect(body).not.toMatch(/const cwd = WORKDIR/)
+  })
+
+  it('removes the directory on both paths out', () => {
+    // The cached path returns early; a probe dir left behind on every start is
+    // a slow leak in ~/tmp that nobody would ever connect to preflight.
+    const fn = worker.slice(worker.indexOf('async function preflightHarness()'))
+    const body = fn.slice(0, fn.indexOf('\n}\n'))
+    expect(body.match(/fs\.rm\(cwd/g)?.length).toBeGreaterThanOrEqual(2)
+  })
+})

@@ -580,7 +580,21 @@ async function runProbe(bin, argv, briefOnStdin, brief, cwd) {
 async function preflightHarness() {
   if (!HARNESS || SKIP_PREFLIGHT) return
   const brief = probeBrief()
-  const cwd = WORKDIR || os.tmpdir()
+  // A THROWAWAY directory, never --workdir.
+  //
+  // Every adapter passes its harness's auto-approval flag, so probing in the
+  // real workdir would point a tool that can edit and run anything at the
+  // owner's checkout — during a readiness check, before a single job has been
+  // claimed. The brief says "do not use any tools", and an instruction is not
+  // a permission boundary; this codebase does not rely on one anywhere else
+  // and must not start here.
+  //
+  // It also loses nothing. The probe wants one word, not a repository. The one
+  // thing the real workdir would catch that this does not is a
+  // trust-this-directory prompt scoped to that exact path — but a harness that
+  // hangs asking to trust a directory hangs on the temp one too, so the class
+  // of failure is still caught, somewhere it cannot do damage.
+  const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'handsel-preflight-'))
   const argv = HARNESS.argv({ brief, workdir: cwd, model: flag('harness-model') ?? null })
   const stat = await binStat(HARNESS.bin)
   const key = preflightKey(HARNESS.id, HARNESS.bin, stat, HARNESS.id === 'custom' ? argv.join(' ') : null)
@@ -588,11 +602,13 @@ async function preflightHarness() {
   const cached = await readPreflightCache()
   if (cached && cached.ok && cached.key === key && cached.at <= Date.now() && Date.now() - cached.at < PREFLIGHT_TTL_MS) {
     console.log(`[worker] preflight ${HARNESS.label} verified earlier today (--no-preflight to skip entirely)`)
+    await fs.rm(cwd, { recursive: true, force: true }).catch(() => {})
     return
   }
 
   process.stdout.write(`[worker] preflight checking ${HARNESS.label}… `)
   const result = await runProbe(HARNESS.bin, argv, HARNESS.briefOnStdin, brief, cwd)
+  await fs.rm(cwd, { recursive: true, force: true }).catch(() => {})
   const v = probeVerdict(HARNESS.bin, result, HARNESS.install ?? null)
   if (v.ok) {
     console.log(`ok (${v.note})`)
