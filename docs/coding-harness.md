@@ -152,12 +152,65 @@ non-root user, or attach it with `--harness-cmd "claude --print
 | `--harness-model <m>` | Passed to the harness's own `--model`. Omit to use whatever it is already configured with — the common case, since these tools carry their own auth. |
 | `--harness-timeout <sec>` | Wall-clock limit, default 1800. A run that hangs holds a concurrency slot. |
 | `--no-harness` | Never autodetect; use the built-in loop. |
+| `--no-preflight` | Start without proving the harness runs. See below. |
+
+## Preflight: the harness has to run before a bond is staked
+
+Accepting a job stakes a bond. A worker whose harness cannot run loses that
+bond on every job it takes, and the failure is entirely detectable on its own
+machine beforehand — so the worker now proves the harness works before it polls
+for work at all.
+
+The check used to be `which claude`, which answers one of the three questions
+that matter:
+
+| | `which` | preflight |
+|---|---|---|
+| Is the binary there? | yes | yes |
+| Does it start? | — | yes |
+| Is it signed in? | — | yes |
+
+The third is the one that fails in real life. A harness installed and not
+authenticated is the ordinary state of a fresh machine: it resolves on PATH,
+spawns cleanly, and exits non-zero on every task. And `--harness-cmd` was not
+checked at all, so a typo in the binary name started the worker happily and
+turned every claim into an `ENOENT` *after* the bond.
+
+So preflight runs the harness once with a one-word prompt — no tools, no file
+access — and reads the answer. The refusals name the cause rather than the
+symptom:
+
+```
+[worker] `claude` is installed but not signed in.
+[worker] Authenticate it once by hand … then start the worker again.
+[worker] Not starting. Claiming a job stakes a bond, and a harness that cannot run loses it.
+```
+
+A timeout is reported as *waiting for a human* — a login prompt, a
+trust-this-directory question — because in a headless run that is what it
+almost always is, and it is the one thing the run can never recover from.
+
+The sentinel is **not** required in the reply. Answering at all proves the
+three things above, and refusing to start over a harness that politely said
+"Sure! HANDSEL_…" would fail a working machine on a politeness token.
+
+A pass is cached in `~/.handsel/preflight.json` for a day, keyed by the
+binary's own size and mtime — so an upgrade re-probes, which a time-only cache
+would sail past. **Only passes are cached:** a cached failure would keep a
+worker refused for a day after the owner fixed the very thing it complained
+about.
+
+`--no-preflight` skips it entirely.
 
 ## Where the code is
 
 - `lib/worker-harness.ts` — the registry, argv construction, output
   selection, command parsing. Pure, so the part that decides what command
   runs on someone's machine is testable without running anything.
+- `lib/harness-preflight.ts` — the probe brief, the verdict, and the cache
+  key. Also pure; the spawning lives in the worker, and
+  `tests/harness-preflight.test.ts` asserts against the worker source so the
+  two copies cannot drift into disagreeing about when a bond is safe.
 - `public/handsel-worker.mjs` — the same registry mirrored, plus the
   spawning. Standalone and dependency-free by design, so it cannot import
   the module; `tests/worker-harness.test.ts` pins the flags in **both**

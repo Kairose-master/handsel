@@ -417,6 +417,199 @@ function parseHarnessCommand(raw) {
  *  rather than every task failing one at a time. */
 let HARNESS = null
 
+/* ── Preflight: prove the harness runs before staking a bond on it ────────
+ * Mirrored from lib/harness-preflight.ts (tests/harness-preflight.test.ts).
+ *
+ * The check here used to be `which claude`, which answers one of the three
+ * questions that matter — is it there, does it start, is it signed in — and
+ * `--harness-cmd` was not checked at all, so a typo'd binary started the
+ * worker happily and turned every claim into an ENOENT after the bond was
+ * staked. A harness installed and not authenticated is the ordinary state of
+ * a fresh machine: on PATH, spawns cleanly, exits 1 on everything.
+ *
+ * So this RUNS it, once, with a one-word prompt, and reads the answer. The
+ * cost is one trivial call per install rather than per start, because a pass
+ * is cached against the binary's own size and mtime — a tool that changed its
+ * auth model in an upgrade is exactly what a time-only cache sails past.
+ *
+ * Only a pass is cached. A cached failure would keep a worker refused for a
+ * day after the owner fixed the very thing it complained about.
+ */
+const PROBE_SENTINEL = 'HANDSEL_PREFLIGHT_OK'
+const PROBE_TIMEOUT_MS = 90_000
+const PREFLIGHT_TTL_MS = 24 * 60 * 60 * 1000
+const SKIP_PREFLIGHT = args.includes('--no-preflight')
+
+function probeBrief() {
+  return [
+    `Reply with exactly this word and nothing else: ${PROBE_SENTINEL}`,
+    '',
+    'This is an automated readiness check, not a task. Do not use any tools,',
+    'do not read or write files, and do not explain. One word.',
+  ].join('\n')
+}
+
+const AUTH_PHRASES = [
+  'not logged in', 'not authenticated', 'unauthenticated', 'please log in', 'please login',
+  'run `login`', 'login required', 'authentication required', 'invalid api key', 'missing api key',
+  'no api key', 'api key not found', 'set anthropic_api_key', 'set openai_api_key', 'unauthorized',
+  '401', 'credentials', 'expired token', 'session expired',
+]
+const NOT_FOUND_CODES = new Set(['enoent', 'eacces', 'enotdir'])
+
+function probeVerdict(bin, result, install) {
+  const hintInstall = install ? ` Install it with: ${install}` : ''
+  const haystack = `${result.stderr}\n${result.stdout}`.toLowerCase()
+  if (result.spawnError && NOT_FOUND_CODES.has(String(result.spawnError).toLowerCase())) {
+    return { ok: false, failure: 'not-found', message: `\`${bin}\` could not be run on this machine.`,
+      hint: `Check the name and that it is on PATH.${hintInstall}` }
+  }
+  if (result.timedOut) {
+    return { ok: false, failure: 'timed-out',
+      message: `\`${bin}\` did not answer a one-word prompt within ${Math.round(PROBE_TIMEOUT_MS / 1000)}s.`,
+      hint: 'It is most likely waiting for input — a login prompt, a trust-this-directory question, or a first-run setup step. Run it once by hand in a terminal and answer whatever it asks.' }
+  }
+  // Before the exit code, because an auth failure IS a non-zero exit and
+  // "exited 1" is the least useful true thing that could be said about it.
+  if (AUTH_PHRASES.some((x) => haystack.includes(x))) {
+    return { ok: false, failure: 'not-authenticated', message: `\`${bin}\` is installed but not signed in.`,
+      hint: `Authenticate it once by hand — for most harnesses that is \`${bin} login\` or an API key in the environment — then start the worker again.` }
+  }
+  if (result.exitCode !== 0) {
+    const first = (result.stderr.split('\n').find((l) => l.trim()) ?? '').trim().slice(0, 300)
+    return { ok: false, failure: 'crashed',
+      message: `\`${bin}\` exited ${result.exitCode ?? 'without a status'} on a one-word prompt.`,
+      hint: first || 'Run the same command by hand to see what it says.' }
+  }
+  if (!`${result.stdout}${result.stderr}`.trim()) {
+    return { ok: false, failure: 'no-output', message: `\`${bin}\` exited cleanly but produced nothing.`,
+      hint: 'A harness that prints nothing cannot deliver work either. Check that it is configured with a model.' }
+  }
+  // The sentinel is not required: answering at all proves the three things
+  // this exists to prove, and refusing over "Sure! HANDSEL_…" would fail a
+  // working machine on a politeness token.
+  return { ok: true, note: String(result.stdout).includes(PROBE_SENTINEL) ? 'answered the probe exactly' : 'answered' }
+}
+
+async function binStat(bin) {
+  try {
+    const which = process.platform === 'win32' ? 'where' : 'which'
+    const { stdout } = await execFileAsync(which, [bin])
+    const resolved = stdout.split('\n')[0].trim()
+    const st = await fs.stat(resolved)
+    return { size: st.size, mtimeMs: st.mtimeMs }
+  } catch {
+    return { size: null, mtimeMs: null }
+  }
+}
+
+function preflightKey(harnessId, bin, stat, argvShape) {
+  return [harnessId, bin, stat.size ?? '?', Math.round(stat.mtimeMs ?? 0), argvShape ?? ''].join('|')
+}
+
+const PREFLIGHT_CACHE = path.join(os.homedir(), '.handsel', 'preflight.json')
+
+async function readPreflightCache() {
+  try {
+    return JSON.parse(await fs.readFile(PREFLIGHT_CACHE, 'utf8'))
+  } catch {
+    return null
+  }
+}
+
+async function writePreflightPass(key) {
+  try {
+    await fs.mkdir(path.dirname(PREFLIGHT_CACHE), { recursive: true })
+    await fs.writeFile(PREFLIGHT_CACHE, JSON.stringify({ key, at: Date.now(), ok: true }), 'utf8')
+  } catch {
+    // A cache we cannot write costs one extra probe, never a refusal to run.
+  }
+}
+
+async function runProbe(bin, argv, briefOnStdin, brief, cwd) {
+  return new Promise((resolve) => {
+    let child
+    try {
+      child = spawn(bin, argv, {
+        cwd,
+        stdio: [briefOnStdin ? 'pipe' : 'ignore', 'pipe', 'pipe'],
+        env: process.env,
+      })
+    } catch (e) {
+      resolve({ exitCode: null, stdout: '', stderr: String(e?.message ?? e), timedOut: false, spawnError: e?.code ?? 'ENOENT' })
+      return
+    }
+    let stdout = ''
+    let stderr = ''
+    let done = false
+    const finish = (r) => {
+      if (done) return
+      done = true
+      clearTimeout(timer)
+      resolve(r)
+    }
+    const timer = setTimeout(() => {
+      try {
+        child.kill()
+      } catch {
+        /* already gone */
+      }
+      finish({ exitCode: null, stdout, stderr, timedOut: true, spawnError: null })
+    }, PROBE_TIMEOUT_MS)
+    if (briefOnStdin) {
+      // A harness that never opens stdin makes this throw EPIPE, which is not
+      // a preflight failure — it is a harness that took its brief elsewhere.
+      child.stdin.on('error', () => {})
+      child.stdin.end(brief)
+    }
+    child.stdout.on('data', (d) => (stdout = (stdout + d).slice(-8000)))
+    child.stderr.on('data', (d) => (stderr = (stderr + d).slice(-8000)))
+    child.on('error', (e) => finish({ exitCode: null, stdout, stderr, timedOut: false, spawnError: e?.code ?? 'ENOENT' }))
+    child.on('close', (code) => finish({ exitCode: code, stdout, stderr, timedOut: false, spawnError: null }))
+  })
+}
+
+/**
+ * Refuse to start rather than refuse each job.
+ *
+ * Exiting here IS the claim gate: a worker that never polls never claims, and
+ * never stakes a bond it is going to lose. Failing per-task instead would let
+ * the market hand this agent work all day while its credit score paid for a
+ * missing login.
+ */
+async function preflightHarness() {
+  if (!HARNESS || SKIP_PREFLIGHT) return
+  const brief = probeBrief()
+  const cwd = WORKDIR || os.tmpdir()
+  const argv = HARNESS.argv({ brief, workdir: cwd, model: flag('harness-model') ?? null })
+  const stat = await binStat(HARNESS.bin)
+  const key = preflightKey(HARNESS.id, HARNESS.bin, stat, HARNESS.id === 'custom' ? argv.join(' ') : null)
+
+  const cached = await readPreflightCache()
+  if (cached && cached.ok && cached.key === key && cached.at <= Date.now() && Date.now() - cached.at < PREFLIGHT_TTL_MS) {
+    console.log(`[worker] preflight ${HARNESS.label} verified earlier today (--no-preflight to skip entirely)`)
+    return
+  }
+
+  process.stdout.write(`[worker] preflight checking ${HARNESS.label}… `)
+  const result = await runProbe(HARNESS.bin, argv, HARNESS.briefOnStdin, brief, cwd)
+  const v = probeVerdict(HARNESS.bin, result, HARNESS.install ?? null)
+  if (v.ok) {
+    console.log(`ok (${v.note})`)
+    await writePreflightPass(key)
+    return
+  }
+  console.log('failed')
+  console.error(`\n[worker] ${v.message}`)
+  console.error(`[worker] ${v.hint}`)
+  console.error(
+    `[worker] Not starting. Claiming a job stakes a bond, and a harness that cannot run loses it.\n` +
+      `[worker] Use --no-preflight to start anyway.`,
+  )
+  process.exit(1)
+}
+
+
 async function resolveHarnessAtStartup() {
   if (NO_HARNESS) return
   if (HARNESS_CMD) {
@@ -452,6 +645,12 @@ async function resolveHarnessAtStartup() {
       process.exit(1)
     }
     const briefOnStdin = HARNESS_STDIN || !usesBrief
+    // --harness-cmd had no existence check at all, so a typo in the binary
+    // started the worker and turned every claim into an ENOENT after the bond.
+    if (!(await onPath(parsed.bin))) {
+      console.error(`--harness-cmd needs \`${parsed.bin}\` on PATH, and it is not there. Check the name.`)
+      process.exit(1)
+    }
     const model = flag('harness-model') ?? null
     HARNESS = {
       id: 'custom',
@@ -1484,6 +1683,10 @@ if (HARNESS) {
 } else if (WORKDIR) {
   console.log(`[worker] workdir  ${WORKDIR}${ALLOW_BASH ? ' (commands allowed)' : ''} — built-in agent loop`)
 }
+
+// Before anything is claimed: a bond is staked at accept time, and a harness
+// that cannot run loses it on every job it takes.
+await preflightHarness()
 
 // The built-in loop is what a warm model is for; a harness brings its own.
 if (!HARNESS) await warmupModel()
