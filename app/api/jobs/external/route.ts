@@ -16,9 +16,13 @@ import { absoluteUrl } from '@/lib/origin'
  * API key, one paid HTTP request.
  *
  * Testnet economics are deliberately fixed-price: fee $0.10 (real x402
- * settlement on Base Sepolia) buys a $25 mUSDC bounty fronted by the
- * house agent. On mainnet this becomes bounty pass-through; the flow
- * stays identical.
+ * settlement) buys a $25 mUSDC bounty fronted by the house agent. On
+ * mainnet this becomes bounty pass-through; the flow stays identical.
+ *
+ * Pass-through does not exist yet, so on a real-money chain this route
+ * REFUSES rather than running the subsidy. 250x out for 1x in is a faucet
+ * pointed at the house agent's wallet, and the daily cap only decides how
+ * fast it empties.
  *
  * Body: { title, description?, acceptance_criteria, test_code?, min_score? }
  */
@@ -52,6 +56,30 @@ export async function POST(request: Request) {
     return Response.json(
       {
         error: 'External job posting is not enabled on this deployment (X402_PAY_TO unset)',
+        docs: DOCS_URL,
+      },
+      { status: 503 },
+    )
+  }
+
+  // A $0.10 fee that buys a $25 escrowed bounty is a deliberate testnet
+  // subsidy: the point was demand, and mUSDC costs the house nothing. On a
+  // real-money chain the same arithmetic is a faucet pointed at the house
+  // agent's wallet — 250x out for 1x in, repeatable, and the daily cap only
+  // decides how fast.
+  //
+  // The file header has said "on mainnet this becomes bounty pass-through"
+  // since the route was written, and pass-through was never built. Refusing is
+  // the honest state of that sentence: the subsidy does not silently follow
+  // the deployment onto a chain where it drains real money, and the refusal
+  // says what is missing rather than pretending the route is off.
+  const { isRealMoney } = await import('@/lib/onchain/real-money')
+  if (isRealMoney()) {
+    return Response.json(
+      {
+        error:
+          'External job posting is testnet-only on this deployment. Its fixed $0.10 fee buys a $25 escrowed bounty, ' +
+          'which is a subsidy that cannot run on a real-money chain until bounty pass-through pricing exists.',
         docs: DOCS_URL,
       },
       { status: 503 },

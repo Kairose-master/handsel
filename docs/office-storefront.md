@@ -73,9 +73,14 @@ was built for.
 
 - Sellable today: `venture-lab`, `growth-studio`, `research-desk` — a curated
   subset, because a storefront row is a promise that a real desk exists and
-  serves. The middleware network is `base-sepolia` (matching the existing
-  x402 entries), so commissions settle on the rehearsal deployment first —
-  same rehearsal-first posture as the lineage mandate.
+  serves.
+- **The paywall now settles on the chain the escrow lives on**
+  (`lib/x402-network.ts`). It used to be the literal `base-sepolia` on every
+  route, and on a Base mainnet deployment that meant a commission funded with
+  real Circle USDC could be bought with a faucet token that costs nothing to
+  mint. Rehearsal-first is still the posture — it is now a posture rather than
+  the only thing standing between the storefront and that trade. See
+  `docs/security-audit.md` F27.
 - Revenue starts at $0.00 and the ledger shows it. The first commission from
   a stranger's wallet matters as proof before it matters as money.
 - Switches: the **Storefront panel on `/office`**, or the `set_storefront`

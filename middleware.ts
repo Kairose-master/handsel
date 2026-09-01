@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { paymentMiddleware } from 'x402-next'
 import { STOREFRONT_COMMISSIONS } from '@/lib/storefront-pricing'
+import { x402NetworkFor } from '@/lib/x402-network'
 
 /**
  * x402 paywall — the first real revenue rail.
@@ -12,14 +13,22 @@ import { STOREFRONT_COMMISSIONS } from '@/lib/storefront-pricing'
  * an agent that wants another agent's credit report pays for it, no
  * account, no API key, one HTTP roundtrip.
  *
- * Payment settles on Base Sepolia (testnet USDC) via the public x402
- * facilitator — deliberately independent of ONCHAIN_CHAIN, because the
- * payment rail doesn't need to live where the credit contracts live.
+ * Payment settles via the public x402 facilitator, on the network that
+ * matches ONCHAIN_CHAIN — see lib/x402-network.ts.
+ *
+ * This used to be the literal 'base-sepolia' on every route, justified as the
+ * payment rail being "deliberately independent of ONCHAIN_CHAIN, because the
+ * payment rail doesn't need to live where the credit contracts live." True of
+ * a credit report, which is a data sale. Not true of the two routes that FUND
+ * ESCROW: on a Base mainnet deployment they answered a faucet token that costs
+ * nothing to mint with real Circle USDC locked in a real escrow. Every guard
+ * on those routes bounds how MUCH; none of them checked WHAT.
  *
  * Fully optional, same convention as the rest of the on-chain layer:
  * without X402_PAY_TO set, the paywall disappears and the report is free.
  */
 const payTo = process.env.X402_PAY_TO as `0x${string}` | undefined
+const X402_NETWORK = x402NetworkFor(process.env.ONCHAIN_CHAIN)
 const facilitatorUrl = (process.env.X402_FACILITATOR_URL ?? 'https://x402.org/facilitator') as `${string}://${string}`
 
 const x402 = payTo
@@ -28,7 +37,7 @@ const x402 = payTo
       {
         'GET /api/agents/*/report': {
           price: '$0.01',
-          network: 'base-sepolia',
+          network: X402_NETWORK,
           config: {
             description: 'Handsel agent credit report — underwritten score, graded-fact history, repayment record',
             mimeType: 'application/json',
@@ -38,7 +47,7 @@ const x402 = payTo
         // open demand, graded-pass quality), not one agent's report.
         'GET /api/market/index': {
           price: '$0.01',
-          network: 'base-sepolia',
+          network: X402_NETWORK,
           config: {
             description: 'Handsel Labor Index — real-time agent supply, open job demand, and independent-grading pass rate across the whole market',
             mimeType: 'application/json',
@@ -48,7 +57,7 @@ const x402 = payTo
         // escrowed bounty on the Labor Market. No account, no API key.
         'POST /api/jobs/external': {
           price: '$0.10',
-          network: 'base-sepolia',
+          network: X402_NETWORK,
           config: {
             description:
               'Post a job to the Handsel Labor Market ($25 testnet bounty escrowed for you). Body: {title, acceptance_criteria, description?, test_code?, min_score?}',
@@ -66,7 +75,7 @@ const x402 = payTo
             `POST /api/storefront/${c.templateId}/commission`,
             {
               price: `$${c.priceUsd.toFixed(2)}`,
-              network: 'base-sepolia' as const,
+              network: X402_NETWORK,
               config: {
                 description: `Commission the ${c.templateId} office: ${c.deliverable} Body: {scope}. Poll the returned token for the deliverable.`,
                 mimeType: 'application/json',
