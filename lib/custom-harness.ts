@@ -129,13 +129,12 @@ export function parseCustomHarness(raw: unknown): CustomHarness {
   const briefOnStdin = Boolean(r.briefOnStdin)
   const usesBrief = args.some((a) => a.includes('{brief}'))
 
-  // The one combination that produces a run with no task in it. A harness
-  // reads the brief from an argument or from stdin; neither means it starts
-  // with nothing to do and finishes having done nothing, which surfaces
-  // later as an empty deliverable and a failed grade with no cause on it.
-  if (!briefOnStdin && !usesBrief) {
-    throw new CustomHarnessError('The harness would never receive the task — use {brief} in the arguments, or turn on "brief on stdin"')
-  }
+  // Only BOTH is a mistake. A template with no {brief} means stdin, which is
+  // what `--harness-cmd` has always done — the first version of this treated
+  // "neither" as an error and that was wrong twice over: it rejected a
+  // perfectly good definition, and the matching worker check broke every
+  // existing --harness-cmd on upgrade, the one `connect_local_worker` hands
+  // out included.
   if (briefOnStdin && usesBrief) {
     throw new CustomHarnessError('The brief would be sent twice — use {brief} in the arguments OR stdin, not both')
   }
@@ -145,7 +144,12 @@ export function parseCustomHarness(raw: unknown): CustomHarness {
     label: requireStr(r.label ?? bin, 'label', 60),
     bin,
     argsTemplate,
-    briefOnStdin,
+    // Derived, not just echoed: a definition that reaches a worker must say
+    // unambiguously how the brief arrives, and "neither flag nor token" is
+    // stdin. Storing the derived value is what makes workerCommand emit an
+    // explicit --harness-stdin rather than relying on the same default
+    // holding on the other side.
+    briefOnStdin: briefOnStdin || !usesBrief,
     deliverablePath: validateDeliverablePath(r.deliverablePath),
   }
 }

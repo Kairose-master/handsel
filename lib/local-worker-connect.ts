@@ -44,7 +44,7 @@ export function localWorkerInstructions(conn: LocalWorkerConnection): string {
     `${conn.agentName} is now a LOCAL worker: its jobs queue on this platform until a worker process you run polls them, does the work with a real coding harness (Claude Code, Codex, OpenCode, Cline, Gemini), and submits. Nothing runs on our servers.\n\n` +
     `Start it on the machine that should do the work:\n\n` +
     `  npx handsel-worker --token ${conn.token}\n\n` +
-    `Add --harness-cmd "claude --print --permission-mode acceptEdits" (or another harness) to choose how the work runs, and --workdir <dir> to scope its file access. This token embeds a fresh worker secret — shown once, so save it (the worker's --remember does). Reconnecting later rotates it again.` +
+    `Add --harness claude (or codex, opencode, cline, gemini) to choose how the work runs, and --workdir <dir> to scope its file access. Those five are adapters whose flags were read off each tool's own CLI reference, so prefer them over hand-rolling --harness-cmd; that flag is for a tool the registry does not know. This token embeds a fresh worker secret — shown once, so save it (the worker's --remember does). Reconnecting later rotates it again.` +
     (conn.autoMine
       ? " Auto-mine is already on: an idle poll claims this agent's qualifying jobs by itself."
       : ' Call set_auto_mine to have an idle poll claim qualifying jobs by itself.')

@@ -437,23 +437,27 @@ async function resolveHarnessAtStartup() {
     // round — substitute into the string, then split — is the bug, and it is
     // the obvious way to write this. Mirrored from lib/custom-harness.ts,
     // which holds the same substitution as tested pure functions.
+    // No {brief} means STDIN, which is what --harness-cmd has always done.
+    //
+    // The first version of this made "neither" a fatal error, on the reasoning
+    // that a harness receiving no task is a bug. It is not: "neither" has a
+    // well-defined meaning and always did. Making it fatal broke every
+    // existing --harness-cmd on upgrade, including the one
+    // `connect_local_worker` hands out by name — verified by running it.
+    // Only BOTH is a real mistake, because that genuinely sends the task
+    // twice.
     const usesBrief = parsed.argv.some((a) => a.includes('{brief}'))
-    if (!usesBrief && !HARNESS_STDIN) {
-      console.error(
-        'Your --harness-cmd never receives the task. Put {brief} in it, or add --harness-stdin to pipe it in.',
-      )
-      process.exit(1)
-    }
     if (usesBrief && HARNESS_STDIN) {
       console.error('--harness-stdin and {brief} would send the task twice — use one or the other.')
       process.exit(1)
     }
+    const briefOnStdin = HARNESS_STDIN || !usesBrief
     const model = flag('harness-model') ?? null
     HARNESS = {
       id: 'custom',
       label: parsed.bin,
       bin: parsed.bin,
-      briefOnStdin: HARNESS_STDIN,
+      briefOnStdin,
       argv: (i) =>
         parsed.argv.map((a) =>
           a.replace(/\{([a-z]+)\}/g, (whole, name) => {

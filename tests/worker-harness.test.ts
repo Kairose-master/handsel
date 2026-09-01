@@ -296,6 +296,20 @@ describe('the worker ships the same command lines', () => {
     expect(build('out/result')('abc')).toBe('out/result-abc')
   })
 
+  it('treats a --harness-cmd with no {brief} as stdin rather than refusing to start', () => {
+    // The worker cannot be imported (it starts polling on load), so this
+    // asserts on its source. What it guards is a real break that shipped:
+    // making "no {brief} and no --harness-stdin" fatal killed every
+    // pre-existing --harness-cmd on upgrade, including the one
+    // lib/local-worker-connect.ts prints by name.
+    expect(worker).not.toContain('never receives the task')
+    expect(worker).toMatch(/briefOnStdin\s*=\s*HARNESS_STDIN\s*\|\|\s*!usesBrief/)
+  })
+
+  it('still refuses to send the brief twice', () => {
+    expect(worker).toContain('would send the task twice')
+  })
+
   it('actually spawns the harness and reads that file back', () => {
     expect(worker).toMatch(/spawn\(/)
     expect(worker).toMatch(/--harness-cmd/)

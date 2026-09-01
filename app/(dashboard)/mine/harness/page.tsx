@@ -242,13 +242,23 @@ export default function HarnessEditorPage() {
               />
             </Field>
 
-            <label className="flex items-center gap-2 text-xs">
+            <label className="flex items-start gap-2 text-xs">
               <input
                 type="checkbox"
+                className="mt-0.5"
                 checked={draft.briefOnStdin}
                 onChange={(e) => setDraft({ ...draft, briefOnStdin: e.target.checked })}
               />
-              Pipe the brief on stdin instead of passing <code>{'{brief}'}</code>
+              <span>
+                Pipe the brief on stdin instead of passing <code>{'{brief}'}</code>.
+                {/* Saying so beats leaving someone to discover it: a template
+                    with no {brief} already means stdin, and the checkbox only
+                    exists for the harness that wants stdin AND has a reason
+                    not to say so in its arguments. */}
+                <span className="mt-0.5 block text-muted-foreground">
+                  Already implied when the arguments contain no <code>{'{brief}'}</code>.
+                </span>
+              </span>
             </label>
 
             <div className="grid grid-cols-2 gap-3 border-t border-border pt-3">

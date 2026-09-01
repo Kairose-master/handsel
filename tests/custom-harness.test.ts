@@ -21,11 +21,23 @@ describe('a definition has to be runnable', () => {
     expect(def().deliverablePath).toBe(DEFAULT_DELIVERABLE_PATH)
   })
 
-  it('refuses a definition that would never receive the task', () => {
-    // Neither an argument nor stdin: the harness starts with nothing to do
-    // and finishes having done nothing, which surfaces much later as an
-    // empty deliverable and a failed grade with no cause attached.
-    expect(() => def({ argsTemplate: 'run --quiet' })).toThrow(/never receive the task/)
+  it('treats a template with no {brief} as stdin, not as an error', () => {
+    // This is what `--harness-cmd` has always done. Rejecting it broke every
+    // pre-existing --harness-cmd on upgrade — including the one
+    // `connect_local_worker` hands out — and rejected a valid definition.
+    expect(def({ argsTemplate: 'run --quiet' }).briefOnStdin).toBe(true)
+  })
+
+  it('does not mark a template that DOES carry {brief} as stdin', () => {
+    expect(def({ argsTemplate: 'run {brief}' }).briefOnStdin).toBe(false)
+  })
+
+  it('accepts the command connect_local_worker hands out', () => {
+    // Pinned by name: this exact shape is in lib/local-worker-connect.ts's
+    // user-facing text, and a validation change silently invalidating the
+    // platform's own printed instruction is the failure this pins against.
+    const claudeLike = def({ id: 'claude-like', bin: 'claude', argsTemplate: '--print --permission-mode acceptEdits' })
+    expect(claudeLike.briefOnStdin).toBe(true)
   })
 
   it('refuses to send the brief twice', () => {
