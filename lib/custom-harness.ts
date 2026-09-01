@@ -183,15 +183,23 @@ export function compileArgv(def: CustomHarness, values: TokenValues): string[] {
  * The definition is only worth anything if it can leave the page. Rather
  * than a new fetch-a-binary-name-from-the-server path — which is the worker
  * being told what to execute by something on the network — the page hands
- * back the exact `--harness-cmd` invocation, and the owner runs it on their
- * own machine having read it.
+ * back the exact invocation, and the owner runs it on their own machine
+ * having read it.
+ *
+ * No token placeholder, because there is nothing to paste any more:
+ * `--login` takes an email and password and writes the token to
+ * `~/.handsel/worker-token` itself. It is also safe to leave in the command
+ * permanently — the worker resolves `--token`, then `--login`, then the
+ * saved file, and running `--login` a second time logs back in rather than
+ * standing up a duplicate agent. So this stays one line that works on the
+ * first run and every run after it, instead of two the reader has to
+ * choose between.
  */
-export function workerCommand(def: CustomHarness, opts: { token?: string; workdir?: string; model?: string | null }): string {
+export function workerCommand(def: CustomHarness, opts: { workdir?: string; model?: string | null }): string {
   const q = (s: string) => (/[\s"']/.test(s) ? `"${s.replace(/"/g, '\\"')}"` : s)
   const cmd = [def.bin, def.argsTemplate].filter(Boolean).join(' ')
   const parts = [
-    'node handsel-worker.mjs',
-    `--token ${opts.token ?? '<YOUR_TOKEN>'}`,
+    'npx handsel-worker --login',
     `--workdir ${q(opts.workdir ?? '~/code/scratch')}`,
     `--harness-cmd ${q(cmd)}`,
     `--harness-deliverable ${q(def.deliverablePath)}`,

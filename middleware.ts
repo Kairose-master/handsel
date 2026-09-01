@@ -80,6 +80,24 @@ const x402 = payTo
   : null
 
 export default async function middleware(request: NextRequest) {
+  // m.<host> — the mobile surface. A phone hitting the root or the office
+  // gets the full-screen touch office at /m (app/(mobile)/m) instead of the
+  // desktop deck; every other path behaves the same on both hosts, so
+  // sign-in, webhooks and the API need no mobile fork. A REWRITE, not a
+  // redirect: the address bar keeps m.<host>.
+  const host = request.headers.get('host') ?? ''
+  const { pathname } = request.nextUrl
+  if (host.startsWith('m.') && (pathname === '/' || pathname === '/office')) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/m'
+    return NextResponse.rewrite(url)
+  }
+
+  // Everything past here is the x402 paywall, which prices API routes only —
+  // the page paths the matcher now also carries must not fall through into
+  // it (paymentMiddleware would pass them anyway, but that is its internal
+  // behavior, not a contract this file should lean on).
+  if (!pathname.startsWith('/api/')) return NextResponse.next()
   if (!x402) return NextResponse.next()
   return x402(request)
 }
@@ -112,5 +130,9 @@ export const config = {
     '/api/jobs/external',
     '/api/market/index',
     '/api/storefront/:template/commission',
+    // Not paywall routes: these two exist so the m.<host> rewrite above
+    // actually runs on the paths it rewrites.
+    '/',
+    '/office',
   ],
 }

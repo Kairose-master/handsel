@@ -17,6 +17,9 @@
   overflow: hidden;
   background: #070a0f;
   user-select: none;
+  /* The viewport owns every touch gesture (drag-pan, pinch-zoom) — without
+     this, a drag scrolls the page on mobile instead of the camera. */
+  touch-action: none;
 }
 
 .tac-camera {
@@ -36,6 +39,11 @@
 
 .tac-scene.ready {
   transition: transform 0.9s cubic-bezier(0.3, 0, 0.2, 1);
+}
+
+/* Direct manipulation must track the finger, not chase it 0.9s behind. */
+.tac-scene.dragging {
+  transition: none;
 }
 
 .tac-backdrop {
@@ -254,6 +262,23 @@
   50% {
     opacity: 0.25;
   }
+}
+
+.tac-recenter {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 6;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: #dff4ff;
+  background: rgba(13, 21, 29, 0.86);
+  border: 1px solid #1c6b85;
+  border-radius: 99px;
+  padding: 7px 14px;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  font-family: inherit;
 }
 
 .tac-feed {

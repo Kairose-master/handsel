@@ -29,6 +29,14 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type { Agent } from './live-engine'
 import { roomOf, type Room } from './world'
+import {
+  camTransform,
+  clampCam,
+  panCam,
+  zoomCam,
+  type TacticalCam,
+  type TacticalViewport,
+} from './tactical-camera'
 import type { ArtifactFlight } from '@/lib/office-world-data'
 
 type Props = {
@@ -144,7 +152,11 @@ export default function TacticalView({
   healthy = true,
 }: Props) {
   const viewportRef = useRef<HTMLDivElement>(null)
-  const [coverScale, setCoverScale] = useState(1)
+  const [viewSize, setViewSize] = useState({ vw: SCENE_W, vh: SCENE_H })
+  // Manual camera — set the moment a drag/pinch/wheel happens, cleared by a
+  // selection or the recenter button. While null, the camera follows the
+  // selection (auto framing), exactly as before touch controls existed.
+  const [manualCam, setManualCam] = useState<TacticalCam | null>(null)
   // Transitions (camera zoom, token walks) switch on only after the first
   // real layout pass, so the initial cover-scale fit snaps into place
   // instead of animating from the placeholder scale — the prototype's
@@ -160,6 +172,10 @@ export default function TacticalView({
   const seenFlights = useRef(new Set<string>())
   const feedSeq = useRef(0)
   const pulseTimers = useRef<Array<ReturnType<typeof setTimeout>>>([])
+  // Live pointers on the viewport (touch or mouse), for drag-pan and pinch.
+  const pointers = useRef(new Map<number, { x: number; y: number; startX: number; startY: number }>())
+  const gesture = useRef({ moved: false, pinchDist: 0 })
+  const [dragging, setDragging] = useState(false)
 
   // Scale the fixed-size scene to COVER the viewport (the painting has no
   // edges worth showing), recomputed only on resize.
@@ -169,7 +185,7 @@ export default function TacticalView({
     const compute = () => {
       const rect = viewport.getBoundingClientRect()
       if (rect.width > 0 && rect.height > 0) {
-        setCoverScale(Math.max(rect.width / SCENE_W, rect.height / SCENE_H))
+        setViewSize({ vw: rect.width, vh: rect.height })
       }
     }
     compute()
@@ -228,14 +244,16 @@ export default function TacticalView({
     return () => timers.forEach(clearTimeout)
   }, [])
 
-  // Idle parallax — a subtle perspective tilt following the pointer. Motion
-  // of the CAMERA, not of the data: it stops dead the moment the pointer
-  // leaves, and invents nothing.
+  // Idle parallax — a subtle perspective tilt following a HOVERING mouse.
+  // Motion of the CAMERA, not of the data: it stops dead the moment the
+  // pointer leaves, and invents nothing. Touch never parallaxes: on touch
+  // a moving pointer is always a drag, handled by the gesture handlers.
   useEffect(() => {
     const viewport = viewportRef.current
     const camera = cameraRef.current
     if (!viewport || !camera) return
     const onMove = (e: PointerEvent) => {
+      if (e.pointerType !== 'mouse' || pointers.current.size > 0) return
       const rect = viewport.getBoundingClientRect()
       const dx = (e.clientX - rect.left) / rect.width - 0.5
       const dy = (e.clientY - rect.top) / rect.height - 0.5
@@ -252,10 +270,39 @@ export default function TacticalView({
     }
   }, [])
 
-  // Camera: centered overview by default; a selection zooms toward the
-  // selected agent's room (or the clicked room). Same math as the prototype:
-  // translate(T) scale(S) about center moves scene point d=(u-.5)*W to
-  // S*d + T, so T = -S*d centers the focus point.
+  // Wheel zoom about the cursor. Attached manually because React registers
+  // onWheel passively at the root, and a passive listener cannot
+  // preventDefault the page scroll that a zoom gesture must swallow.
+  useEffect(() => {
+    const viewport = viewportRef.current
+    if (!viewport) return
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      const rect = viewport.getBoundingClientRect()
+      const fx = e.clientX - rect.left - rect.width / 2
+      const fy = e.clientY - rect.top - rect.height / 2
+      const factor = Math.exp(-e.deltaY * 0.0016)
+      setManualCam((cam) => zoomCam(cam ?? camRef.current, factor, fx, fy, viewRef.current))
+    }
+    viewport.addEventListener('wheel', onWheel, { passive: false })
+    return () => viewport.removeEventListener('wheel', onWheel)
+  }, [])
+
+  // Camera: centered overview by default, a selection zooms toward the
+  // selected agent's room (or the clicked room), and any drag/pinch/wheel
+  // takes over as a manual camera until the next selection or recenter.
+  // All geometry lives in tactical-camera.ts (pure, tested).
+  const view: TacticalViewport = useMemo(
+    () => ({
+      vw: viewSize.vw,
+      vh: viewSize.vh,
+      coverScale: Math.max(viewSize.vw / SCENE_W, viewSize.vh / SCENE_H),
+      sceneW: SCENE_W,
+      sceneH: SCENE_H,
+    }),
+    [viewSize],
+  )
+
   const focusRoomId = useMemo(() => {
     if (selectedId) {
       const agent = agents.find((a) => a.id === selectedId)
@@ -264,14 +311,87 @@ export default function TacticalView({
     return selectedRoomId
   }, [selectedId, selectedRoomId, agents])
 
-  const sceneTransform = useMemo(() => {
+  // A selection is a statement of intent — it reclaims the camera from
+  // whatever pan/zoom the hand left it in.
+  useEffect(() => {
+    setManualCam(null)
+  }, [focusRoomId])
+
+  const cam: TacticalCam = useMemo(() => {
+    if (manualCam) return clampCam(manualCam, view)
     const zoomed = focusRoomId !== null && focusRoomId !== undefined
-    const s = coverScale * (zoomed ? 1.65 : 1.02)
     const [u, v] = zoomed ? anchorFor(focusRoomId) : [0.5, 0.5]
-    const tx = -s * (u - 0.5) * SCENE_W
-    const ty = -s * (v - 0.5) * SCENE_H
-    return `translate(${tx}px, ${ty}px) scale(${s})`
-  }, [coverScale, focusRoomId])
+    return clampCam({ u, v, zoom: zoomed ? 1.65 : 1.02 }, view)
+  }, [manualCam, focusRoomId, view])
+
+  // Mirrors for the once-attached wheel listener and for gesture updaters
+  // that must start from the CURRENT camera even in auto mode.
+  const camRef = useRef(cam)
+  camRef.current = cam
+  const viewRef = useRef(view)
+  viewRef.current = view
+
+  const sceneTransform = camTransform(cam, view)
+
+  // -- touch/mouse camera gestures -----------------------------------------
+  // No pointer capture before a drag actually starts: capturing on
+  // pointerdown would re-target the eventual click at the viewport and
+  // silently break tapping an agent. Once movement passes the tap slop the
+  // pointer is captured so a drag that leaves the panel keeps panning.
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return
+    // A primary pointer starts a fresh gesture — drop any entry stranded by
+    // a release that happened outside the viewport before capture began.
+    if (e.isPrimary) pointers.current.clear()
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY, startX: e.clientX, startY: e.clientY })
+    if (pointers.current.size === 1) gesture.current.moved = false
+    if (pointers.current.size === 2) {
+      const [a, b] = [...pointers.current.values()]
+      gesture.current.pinchDist = Math.hypot(a.x - b.x, a.y - b.y)
+      gesture.current.moved = true // two fingers are never a tap
+    }
+    setDragging(true)
+  }
+
+  const onPointerMove = (e: React.PointerEvent) => {
+    const prev = pointers.current.get(e.pointerId)
+    if (!prev) return
+    const cur = { x: e.clientX, y: e.clientY, startX: prev.startX, startY: prev.startY }
+    pointers.current.set(e.pointerId, cur)
+    if (pointers.current.size === 1) {
+      if (!gesture.current.moved) {
+        if (Math.hypot(cur.x - prev.startX, cur.y - prev.startY) <= 5) return
+        gesture.current.moved = true
+        viewportRef.current?.setPointerCapture(e.pointerId)
+      }
+      const dx = cur.x - prev.x
+      const dy = cur.y - prev.y
+      setManualCam((c) => panCam(c ?? camRef.current, dx, dy, viewRef.current))
+    } else if (pointers.current.size === 2) {
+      const [a, b] = [...pointers.current.values()]
+      const dist = Math.hypot(a.x - b.x, a.y - b.y)
+      const prevDist = gesture.current.pinchDist || dist
+      gesture.current.pinchDist = dist
+      const rect = viewportRef.current?.getBoundingClientRect()
+      if (!rect || prevDist === 0) return
+      const mx = (a.x + b.x) / 2 - rect.left - rect.width / 2
+      const my = (a.y + b.y) / 2 - rect.top - rect.height / 2
+      setManualCam((c) => zoomCam(c ?? camRef.current, dist / prevDist, mx, my, viewRef.current))
+    }
+  }
+
+  const onPointerEnd = (e: React.PointerEvent) => {
+    pointers.current.delete(e.pointerId)
+    if (pointers.current.size < 2) gesture.current.pinchDist = 0
+    if (pointers.current.size === 0) {
+      setDragging(false)
+      // Click fires after pointerup — let it see moved=true first, so a
+      // drag's release over an agent doesn't read as picking that agent.
+      window.setTimeout(() => {
+        gesture.current.moved = false
+      }, 0)
+    }
+  }
 
   // Group agents per room so co-located tokens fan out into a ring.
   const placed = useMemo(() => {
@@ -289,10 +409,17 @@ export default function TacticalView({
   }, [agents])
 
   return (
-    <div className="tac-viewport" ref={viewportRef}>
+    <div
+      className="tac-viewport"
+      ref={viewportRef}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerEnd}
+      onPointerCancel={onPointerEnd}
+    >
       <div className="tac-camera" ref={cameraRef}>
         <div
-          className={`tac-scene${ready ? ' ready' : ''}`}
+          className={`tac-scene${ready ? ' ready' : ''}${dragging ? ' dragging' : ''}`}
           style={{ width: SCENE_W, height: SCENE_H, transform: sceneTransform }}
         >
           {/* Fixed-size scene inside a transformed camera — next/image's
@@ -302,7 +429,15 @@ export default function TacticalView({
           <div className="tac-light" />
           <div className="tac-sweep" />
 
-          <DeptLabels onPickRoom={onSelectRoom} />
+          <DeptLabels
+            onPickRoom={
+              onSelectRoom
+                ? (room) => {
+                    if (!gesture.current.moved) onSelectRoom(room)
+                  }
+                : undefined
+            }
+          />
 
           {pulses.map((p) => (
             <span key={p.key} className="tac-pulse" style={{ left: p.x, top: p.y }} />
@@ -324,7 +459,7 @@ export default function TacticalView({
               }}
               onClick={(e) => {
                 e.stopPropagation()
-                onSelect(agent)
+                if (!gesture.current.moved) onSelect(agent)
               }}
               title={agent.status || agent.role}
             >
@@ -346,6 +481,12 @@ export default function TacticalView({
           <span className="tac-dot" /> {healthy ? 'LIVE' : 'LINK DEGRADED'}
         </span>
       </div>
+
+      {manualCam && (
+        <button type="button" className="tac-recenter" onClick={() => setManualCam(null)}>
+          ⌖ recenter
+        </button>
+      )}
 
       {feed.length > 0 && (
         <div className="tac-feed">

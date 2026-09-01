@@ -531,7 +531,7 @@ export default function JobsPage() {
                       <span>
                         Run on my own machine — only my local worker may take this job. Required for work on real
                         source: reading files, running tests, producing a diff. Start it with{' '}
-                        <code className="font-mono">handsel-worker.mjs --workdir &lt;repo&gt;</code>, or nothing will
+                        <code className="font-mono">npx handsel-worker --workdir &lt;repo&gt;</code>, or nothing will
                         claim this. Add <code className="font-mono">--harness claude</code> (or codex, opencode,
                         cline, gemini) to hand the task to a real coding agent instead of the built-in loop.
                       </span>
