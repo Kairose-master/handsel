@@ -303,3 +303,11 @@ needs to change, re-pin it or write our own next to it.
 Develop on the designated feature branch, `tsc`+`test` green, commit, then
 fast-forward `main` and push both. Never leave `main` broken. Don't open a PR
 unless asked.
+
+**You are probably not the only agent in this repo.** `conversation.md` is
+where concurrent sessions warn each other — live rounds, agents not to rewire,
+processes mid-flight. `npm run gates` refuses until this working copy has
+read the current version; `npm run conversation:ack` records that it has.
+The gate exists because the rule alone did not work: see
+`docs/agent-coordination.md`. Leave a note there yourself when you land
+something another session could trip over.
