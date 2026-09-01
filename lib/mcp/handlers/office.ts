@@ -239,6 +239,7 @@ export async function handleOffice(
           name: agent.name,
           smartAccountAddress: agent.smartAccountAddress,
           autoMine: agent.autoMine,
+          runtimeType: agent.runtimeType,
           mcpServerUrl: agent.mcpServerUrl,
           mcpToolName: agent.mcpToolName,
         })
@@ -320,7 +321,20 @@ export async function handleOffice(
           else bits.push(`${money} · ready`)
         }
         if (a.autoMine) bits.push('auto-mine')
-        if (a.mcpServerUrl && a.mcpToolName) {
+        // The runtime decides how a job actually runs, so it decides this
+        // line. Rendering the leftover mcp fields for a 'local' agent showed
+        // a harness worker as "wired to exa", which sent a whole diagnosis
+        // down the wrong road the day connect_local_worker shipped —
+        // switching runtime deliberately does NOT clear the old wiring
+        // (switching back restores it), so the display must read the
+        // runtime, not the residue.
+        if (a.runtimeType === 'local') {
+          bits.push('local harness worker (jobs queue until its handsel-worker process polls)')
+        } else if (a.runtimeType === 'webhook') {
+          bits.push('webhook worker (its own server is called with each job)')
+        } else if (a.runtimeType === 'cloud') {
+          bits.push("cloud-API worker (the owner's model key does the work)")
+        } else if (a.mcpServerUrl && a.mcpToolName) {
           bits.push(
             `${a.mcpToolName} on ${a.mcpServerUrl} (${
               modes.get(a.id) === 'assisted' ? 'writes from what the tool returns' : "submits the tool's output as-is"

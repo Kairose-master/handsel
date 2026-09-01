@@ -54,6 +54,12 @@ export type PlatformVitals = {
   /** Last recorded platform LLM call (lib/model-key-health.ts); null = no
    *  call recorded yet or unreadable. */
   modelCall: { ok: boolean; reason: string | null; at: number } | null
+  /** cloud/mcp tasks sitting 'running' past the point their own dispatch
+   *  timeout could explain (see STUCK_DISPATCH_AGE_MS); null = unreadable.
+   *  This is the observable shape of every callback-death mode found on
+   *  2026-08-31 (§60): a shared budget killing dispatches, an edge 401
+   *  eating callbacks — from outside they are all "running forever". */
+  stuckDispatchTasks: number | null
 }
 
 export type SelfOpsSeverity = 'critical' | 'warning' | 'notice'
@@ -66,6 +72,7 @@ export type SelfOpsFinding = {
     | 'oracle-low'
     | 'storefront-all-closed'
     | 'model-key-dead'
+    | 'dispatches-vanishing'
   severity: SelfOpsSeverity
   /** One sentence: what is wrong AND the operator action that fixes it. */
   detail: string
@@ -74,6 +81,13 @@ export type SelfOpsFinding = {
 /** The full cycle is scheduled every 5 minutes; six missed beats is a
  *  pattern, not a blip. */
 export const HEARTBEAT_STALE_MS = 30 * 60_000
+
+/** Past a cloud/mcp dispatch's own 4-minute external-call bound plus
+ *  generous grading/callback time — a task 'running' this long has lost its
+ *  execution, not merely a slow one. */
+export const STUCK_DISPATCH_AGE_MS = 15 * 60_000
+/** One stuck task is a recycled function; this many at once is systemic. */
+export const STUCK_DISPATCH_ALARM_COUNT = 3
 
 /** One `AGENT_GAS_TOPUP` (lib/onchain/account.ts) — below this the oracle
  *  cannot fund even one new agent's first transaction. */
@@ -133,6 +147,23 @@ export function detectSelfOpsFindings(v: PlatformVitals): SelfOpsFinding[] {
       detail:
         'The platform model key is unusable — grading, assisted MCP writes and auto-replies all silently fail. ' +
         `Last error: "${(v.modelCall.reason ?? '').slice(0, 160)}". Top up API credits or replace the key.`,
+    })
+  }
+
+  // A cloud/mcp dispatch bounds its own external call at 4 minutes and posts
+  // a callback either way — success or a recorded failure. One task past 15
+  // minutes is a recycled function (reapStuckTasks owns it); SEVERAL at once
+  // is the systemic shape of 2026-08-31 (§60): dispatches dying with a
+  // shared budget, or callbacks eaten by an edge auth wall. Nobody inside
+  // the dead invocations can report it, which is why this sweep must.
+  if (v.stuckDispatchTasks !== null && v.stuckDispatchTasks >= STUCK_DISPATCH_ALARM_COUNT) {
+    findings.push({
+      id: 'dispatches-vanishing',
+      severity: 'critical',
+      detail:
+        `${v.stuckDispatchTasks} cloud/mcp dispatches have been 'running' with no callback for over ` +
+        `${Math.round(STUCK_DISPATCH_AGE_MS / 60_000)} minutes — dispatch executions are dying without reporting. ` +
+        'Check /api/runtime/execute reachability (an edge 401 means a protected host in a callback URL) and the runtime logs for the last sweep.',
     })
   }
 

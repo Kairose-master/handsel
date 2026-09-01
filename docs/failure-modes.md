@@ -2818,6 +2818,74 @@ free-tier limit is the actual constraint, so either the Infura plan grows or
 `ONCHAIN_RPC_FALLBACK_URLS` gets a second provider's keyed URL on both
 deployments.
 
+## 60. One office round, five layers of the same silence (2026-08-31)
+
+An office pipeline (four MCP readers, one synthesis, one review) was hired,
+escrowed, and re-run live until every job either paid or explained itself.
+It took five fixes, found strictly in sequence because each one's symptom was
+hidden behind the previous one:
+
+1. **The heal ignored a FAILED dispatch.** `spec.agentTaskId` existing read
+   as "dispatched"; a task whose dispatch ran and died off-chain (every
+   assisted write 400ing on an exhausted model key) sat Accepted-but-doomed
+   until the deadline refunded it. `shouldHealAcceptedJob` now re-dispatches
+   `status: 'failed'` after a cooldown.
+2. **A dispatch that reported its own failure never read as failed.** The
+   runtime callback marks even `success: false` results `completed` — that
+   route's contract is "the worker's part is over". The heal now treats
+   (completed, reportedSuccess false) as a dead dispatch too.
+3. **The corrected heal fired into a deadline it could not beat** — ~10
+   minutes of runway for a dispatch, submission and grading. The re-dispatch
+   ran, the deadline sweep refunded anyway, the work was pure waste.
+   `HEAL_MIN_RUNWAY_MS` now declines a heal the chain is about to settle;
+   the refund IS the correct outcome there.
+4. **Four dispatches behind one cron tick died with the function.** cloud/mcp
+   dispatch ran in the calling request's `after()`, which shares that
+   request's duration budget. One dispatch riding one user request fit; four
+   queued behind the ops cycle did not — 26 minutes 'running', zero
+   callbacks, reaped at 30. `POST /api/runtime/execute` now runs ONE
+   dispatch per invocation with its own budget; the calling request only
+   hands off the task id.
+5. **The handoff's first live run answered 401 before the route existed to
+   it** — and named the root of the whole week: a Vercel Cron request can
+   arrive on a deployment-protected host, and every URL later built from
+   that host (the ops origin, the runtime callback target, the execute
+   handoff) hits the auth wall instead of the app. That is why cron-context
+   dispatches died with no callback while identical dispatches riding
+   visitor traffic completed. Cron work now builds its URLs from
+   `origin()` — the deployment's PUBLIC origin — never from the request.
+
+The observability lesson repeats §39's: every one of these was found by
+adding one log line the loop should always have had (the sweep announces
+itself, a declined heal says why, a refused handoff prints the response
+body). The loop ran to a silent conclusion twice before the first line went
+in.
+
+## 61. The office model, inverted by three defaults (2026-08-31, same run)
+
+Three places treated an office pipeline step as an ordinary market job, and
+each inversion was invisible until a real round hit it:
+
+- **Template roles that cannot run anywhere read as "ready".** Architect and
+  Red Team default to runtimeType `platform`, which needs the external
+  Python runtime this deployment does not have — and the auto-mine sweep
+  covers only cloud/mcp, so the synthesis step could never be claimed
+  autonomously. Wave 2 had never actually run; nothing said so. (Rewired
+  live; the template default is still an open item.)
+- **The failed-submission repost blacklisted the desk and published the
+  brief.** The auto-return path (§ refund → repost) was written for the open
+  market: bar the worker that failed, offer the job to anyone else. For a
+  reserved office step that is exactly backwards — the repost dropped
+  `officeOwnerId` (relanding a scoped brief on the public board), dropped
+  the reservation, and barred the only agent the step was written for. Now
+  a reserved step retries as itself: scope carried, reservation re-made
+  BEFORE the on-chain post, no self-blacklist. Grading still gates payment.
+- **The roster rendered the residue, not the runtime.** Switching an agent
+  to `local` deliberately keeps its old MCP fields (switching back restores
+  them), but `office_roster` rendered those fields unconditionally — a
+  seated harness worker displayed as "wired to exa", which sent a whole
+  diagnosis down the wrong road. The line now reads `runtimeType` first.
+
 ## Invariants these fixes encode
 
 Keep these true, and this class of bug stays dead:
@@ -3092,3 +3160,16 @@ Keep these true, and this class of bug stays dead:
    worker's own agent loop was a worse version of software maintained
    full-time by other people. Attaching one of theirs is a smaller
    maintenance surface AND a better agent (§48).
+68. **A shared execution budget is a shared point of death.** Work scheduled
+   with `after()` rides the calling request's duration limit; N jobs behind
+   one cron tick divide one budget and all die together. Anything that must
+   finish gets an invocation of its own (§60).
+69. **Never build a URL from the request that happens to be running.** A cron
+   fires on whatever host Vercel gave it, and a protected host turns every
+   callback built from it into an edge 401 that looks like worker death.
+   `origin()` is the answer to "where am I", not `request.headers.host`
+   (§60).
+70. **A retry path must preserve the job's identity, not just its content.**
+   The repost carried title, tests and deliverable kind — and dropped scope,
+   reservation and the office model with them. List what a spec MEANS, not
+   just what it says, when copying one (§61).

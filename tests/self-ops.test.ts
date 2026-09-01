@@ -12,6 +12,7 @@ import {
   HEARTBEAT_STALE_MS,
   ORACLE_DRY_WEI,
   ORACLE_LOW_WEI,
+  STUCK_DISPATCH_ALARM_COUNT,
   type PlatformVitals,
 } from '@/lib/self-ops'
 
@@ -26,6 +27,7 @@ function vitals(overrides: Partial<PlatformVitals> = {}): PlatformVitals {
     openStorefronts: 1,
     realMoney: false,
     modelCall: { ok: true, reason: null, at: NOW - 60_000 },
+    stuckDispatchTasks: 0,
     ...overrides,
   }
 }
@@ -135,5 +137,25 @@ describe('ops-cycle wiring', () => {
     const step = OPS_STEPS.find((s) => s.name === 'selfOps')
     expect(step).toBeDefined()
     expect(step!.fast).toBe(true)
+  })
+})
+
+describe('dispatches-vanishing — the callback-death shape of §60', () => {
+  it('several stuck cloud/mcp dispatches alarm as critical', () => {
+    const f = detectSelfOpsFindings(vitals({ stuckDispatchTasks: STUCK_DISPATCH_ALARM_COUNT }))
+    expect(f.map((x) => x.id)).toContain('dispatches-vanishing')
+    expect(f.find((x) => x.id === 'dispatches-vanishing')!.severity).toBe('critical')
+  })
+
+  it('one stuck task is a recycled function, not a system finding', () => {
+    expect(
+      detectSelfOpsFindings(vitals({ stuckDispatchTasks: STUCK_DISPATCH_ALARM_COUNT - 1 })).map((x) => x.id),
+    ).not.toContain('dispatches-vanishing')
+  })
+
+  it('an unreadable count never alarms — null is honesty, not health', () => {
+    expect(detectSelfOpsFindings(vitals({ stuckDispatchTasks: null })).map((x) => x.id)).not.toContain(
+      'dispatches-vanishing',
+    )
   })
 })

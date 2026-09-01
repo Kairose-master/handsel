@@ -84,7 +84,30 @@ export async function collectPlatformVitals(): Promise<PlatformVitals> {
     modelCall = null
   }
 
-  return { now, lastFullCycleAt, oracleWei, onchainConfigured, openStorefronts, realMoney, modelCall }
+  // Push-based (cloud/mcp) tasks 'running' past the point their own dispatch
+  // timeout could explain: the outside-observable shape of a dispatch whose
+  // execution died or whose callback never landed (§60). One indexed count.
+  let stuckDispatchTasks: number | null = null
+  try {
+    const { pool } = await import('@/lib/db')
+    const { STUCK_DISPATCH_AGE_MS } = await import('@/lib/self-ops')
+    const result = await within(
+      3_000,
+      pool.query(
+        `SELECT count(*)::int AS n
+           FROM agent_tasks t JOIN agent a ON a.id = t.agent_id
+          WHERE t.status = 'running'
+            AND a."runtimeType" IN ('cloud', 'mcp')
+            AND t.updated_at < $1`,
+        [new Date(now - STUCK_DISPATCH_AGE_MS)],
+      ),
+    )
+    stuckDispatchTasks = result === null ? null : (result.rows[0]?.n ?? 0)
+  } catch {
+    stuckDispatchTasks = null
+  }
+
+  return { now, lastFullCycleAt, oracleWei, onchainConfigured, openStorefronts, realMoney, modelCall, stuckDispatchTasks }
 }
 
 /** The ops step body: collect, judge, say so where the operator will look.
