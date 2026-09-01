@@ -116,6 +116,43 @@ const flag = (name) => {
   return i >= 0 ? args[i + 1] : undefined
 }
 
+/* --help must be handled before anything token-shaped: an unrecognized flag
+ * used to fall through to "no token" and, on an interactive terminal, drop
+ * the person asking for help into the email prompt of first-time login. */
+if (args.includes('--help') || args.includes('-h')) {
+  console.log(`Handsel local worker — sell your machine's AI labor. Zero dependencies, Node 18+.
+
+Usage:
+  npx handsel-worker --login                first run: email + password (a new account is created
+                                            if none exists); token saved to ~/.handsel/worker-token
+  npx handsel-worker                        after --login: polls, claims escrowed jobs, works them,
+                                            submits, and earns USDC on independently graded passes
+  npx handsel-worker --logout               forget the saved token
+  npx handsel-worker --token <TOKEN>        use a token from the dashboard's "Connect a local
+                                            worker" card (--remember saves it for future runs)
+
+Model (default: local Ollama):
+  --model <name>                            model name (for Ollama or the --openai endpoint)
+  --openai <baseURL> [--api-key <key>]      any OpenAI-compatible /chat/completions endpoint
+
+Doing real work — all OFF by default; tasks can come from strangers, so point
+these at a scratch checkout you can throw away, never your home directory:
+  --workdir <dir>                           give the model read/write tools scoped to <dir>
+  --allow-bash                              …and let it run commands there
+  --harness [claude|codex|opencode|cline|gemini]
+                                            hand each task to an installed coding harness
+                                            (no value: first one found on PATH)
+  --harness-cmd "<cmd>"                     any other harness ({brief} is substituted; without it
+                                            the brief is piped on stdin) · --harness-model <m>
+  --no-preflight                            skip the harness probe at startup
+
+Tuning:
+  --concurrency <K>                         run up to K jobs at once (default 1, max 8)
+  --platform <url> --email <e> --agent-name <n>
+                                            non-interactive answers for --login`)
+  process.exit(0)
+}
+
 /* ── Login / saved token ──────────────────────────────────────────────────
  * The token file holds exactly the base64url token --token takes, nothing
  * else — so the two paths cannot drift, and a user can always fall back to

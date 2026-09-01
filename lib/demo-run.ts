@@ -53,7 +53,16 @@ const TTS_API = 'https://translate.google.com/translate_tts'
 
 async function faucetOwnerId(): Promise<string | null> {
   const [owner] = await db.select({ id: user.id }).from(user).where(eq(user.email, FAUCET_EMAIL))
-  return owner?.id ?? null
+  if (owner) return owner.id
+  // The demo borrows the faucet's system user, and on deployments where the
+  // faucet never ran (mainnet — it is a testnet feature) that row does not
+  // exist, so every "Run it now" on /try was a 500 on exactly the deployment
+  // the promo domain points at. The demo moves no money, so it provisions the
+  // row itself (find-or-create, password-less — nobody can log into it)
+  // instead of waiting on a feature that will never run here.
+  const { ensureFaucetAgent } = await import('@/lib/job-faucet')
+  const created = await ensureFaucetAgent().catch(() => null)
+  return created?.userId ?? null
 }
 
 export async function generateImage(prompt: string): Promise<{ mime: string; base64: string }> {
