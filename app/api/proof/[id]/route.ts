@@ -1,4 +1,4 @@
-import { getWorkProof } from '@/lib/work-proof-store'
+import { evidencePubliclyVisible, getWorkProof } from '@/lib/work-proof-store'
 
 /**
  * GET /api/proof/<id> — the machine-readable work proof.
@@ -18,6 +18,13 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const stored = await getWorkProof(id)
   if (!stored) return Response.json({ error: 'proof not found' }, { status: 404 })
 
+  // Office-scoped jobs (lib/office.ts): the PROOF stays public — hashes,
+  // parties, verdict and signature commit without revealing — but the
+  // evidence bundle carries the sealed spec and the deliverable, exactly the
+  // bytes the visibility split keeps off the public board. A proof id must
+  // not be a way around it.
+  const evidenceVisible = stored.evidence ? await evidencePubliclyVisible(stored.proof.jobRef) : true
+
   return Response.json({
     id: stored.id,
     proof: stored.proof,
@@ -27,7 +34,13 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     // v2 proofs carry their evidence: the bundle whose canonical-JSON keccak256
     // must equal proof.evidenceHash, and whose deliverable must hash to
     // proof.contentHash. Null on v1 proofs — those prove provenance only.
-    evidence: stored.evidence,
+    evidence: evidenceVisible ? stored.evidence : null,
+    ...(evidenceVisible
+      ? {}
+      : {
+          evidenceWithheld:
+            'this job is scoped to its office; the evidence bundle (spec + deliverable) is not public. The hashes above still commit to it — the parties who hold the material can re-derive them.',
+        }),
     verify: '/api/attestation',
   })
 }

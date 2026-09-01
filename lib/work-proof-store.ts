@@ -206,3 +206,32 @@ export async function getLatestProofForJob(jobRef: string): Promise<StoredProof 
 }
 
 export { trustedAttester }
+
+/**
+ * May this proof's EVIDENCE bundle go out on an unauthenticated surface?
+ *
+ * The proof itself — hashes, parties, verdict, signature — is public by
+ * design: commitments leak nothing. The evidence bundle is different: it
+ * carries the sealed spec text and the deliverable so third parties can
+ * re-derive the verdict, and for an office-scoped job (lib/office.ts) those
+ * are exactly the bytes the visibility split keeps off the public board.
+ * A proof id must not be a way around it. Unresolvable reads answer FALSE —
+ * withholding evidence from a public page costs a re-fetch; leaking a scoped
+ * brief cannot be taken back.
+ */
+export async function evidencePubliclyVisible(jobRef: string | null | undefined): Promise<boolean> {
+  const m = /^#(\d+)$/.exec((jobRef ?? '').trim())
+  if (!m) return true // not a market job reference — nothing to scope
+  try {
+    const { db } = await import('@/lib/db')
+    const { jobSpec } = await import('@/lib/db/schema')
+    const { eq } = await import('drizzle-orm')
+    const [spec] = await db
+      .select({ officeOwnerId: jobSpec.officeOwnerId })
+      .from(jobSpec)
+      .where(eq(jobSpec.onchainJobId, Number(m[1])))
+    return !spec?.officeOwnerId
+  } catch {
+    return false
+  }
+}

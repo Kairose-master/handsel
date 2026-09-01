@@ -110,3 +110,30 @@ describe('a failed office step retries as an office step (the repost path)', () 
     expect(src).toContain('[...new Set([...(spec.failedWorkerIds ?? []), spec.workerAgentId])]')
   })
 })
+
+describe('a proof id and a portfolio repo are not ways around the visibility split', () => {
+  // Found in the follow-up sweep (2026-09-01): both public by-products of a
+  // PAID job carried the scoped bytes out. The portfolio mirror committed
+  // title + full deliverable to a PUBLIC GitHub repo with no scope check,
+  // and GET /api/proof/<id> handed any caller the v2 evidence bundle (sealed
+  // spec + deliverable). Hashes stay public — commitments leak nothing.
+  it('the portfolio mirror skips office-scoped jobs before any GitHub write', () => {
+    const src = code('lib/agent-repo.ts')
+    const at = src.indexOf('spec?.officeOwnerId')
+    expect(at).toBeGreaterThan(-1)
+    expect(at).toBeLessThan(src.indexOf('installationTokenForRepo'))
+  })
+
+  it('the public proof route withholds the evidence bundle for scoped jobs', () => {
+    const src = code('app/api/proof/[id]/route.ts')
+    expect(src).toContain('evidencePubliclyVisible(stored.proof.jobRef)')
+    expect(src).toContain('evidenceVisible ? stored.evidence : null')
+  })
+
+  it('unresolvable scope reads withhold — a leak cannot be taken back', () => {
+    const src = code('lib/work-proof-store.ts')
+    const body = src.slice(src.indexOf('export async function evidencePubliclyVisible'))
+    expect(body).toContain('return false')
+    expect(body.indexOf('catch')).toBeLessThan(body.indexOf('return false'))
+  })
+})

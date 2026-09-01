@@ -245,6 +245,11 @@ export async function mirrorSettledJobToAgentRepo(input: {
     if (done.length > 0) return
 
     const [spec] = await db.select().from(jobSpec).where(eq(jobSpec.onchainJobId, input.jobId))
+    // An office-scoped job's title and deliverable are the owner's business
+    // material (lib/office.ts) — the same rule that keeps them off the public
+    // board keeps them out of a PUBLIC portfolio repo. The earning is still
+    // real; it just isn't résumé content. Skipped before any GitHub write.
+    if (spec?.officeOwnerId) return
     const [workerAgent] = await db.select().from(agent).where(eq(agent.id, input.agentId))
     if (!workerAgent) return
     const title = spec?.title ?? `Job #${input.jobId}`
