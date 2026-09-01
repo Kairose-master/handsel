@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Handsel — Office (tactical live view prototype)</title>
+<style>
+  /* Painted-backdrop 2.5D office: the tactical render is the scene, the live
+     layer moves on top. Tokens, pulses and the feed are data-driven — in the
+     Handsel repo they bind to buildOfficeSnapshot(); here a mock event loop
+     shaped like real ops steps drives them. Palette = THEMES.tactical.
+     Recording rig: open with #cam=reveal | #cam=work | #cam=hero for a
+     keyframed camera move (parallax off) — used to shoot reel footage. */
+  :root{
+    --bg:#070a0f; --card:#0d151d; --accent:#4fd8ff; --accent-dim:#1c6b85;
+    --text:#dff4ff; --muted:#7f97ab; --ok:#57ffb0; --warn:#ffb84f; --border:#1e2c3a;
+  }
+  *{box-sizing:border-box} html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--text);font:14px/1.45 -apple-system,'Segoe UI',Roboto,sans-serif;overflow:hidden}
+  #stage{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+  #scene{position:relative;will-change:transform;filter:saturate(1.05)}
+  #scene img.backdrop{display:block;width:min(96vw,1360px);height:auto;border-radius:14px;
+    box-shadow:0 40px 140px rgba(0,0,0,.7),0 0 0 1px var(--border)}
+  #scene .light{position:absolute;inset:0;border-radius:14px;pointer-events:none;
+    background:radial-gradient(70% 55% at 62% 30%, rgba(79,216,255,.10), transparent 60%),
+               radial-gradient(120% 90% at 50% 105%, rgba(0,0,0,.45), transparent 55%)}
+  #scene .sweep{position:absolute;inset:0;border-radius:14px;pointer-events:none;mix-blend-mode:screen;
+    background:linear-gradient(100deg, transparent 30%, rgba(79,216,255,.07) 46%, transparent 62%);
+    background-size:280% 100%;animation:sweep 9s linear infinite}
+  @keyframes sweep{from{background-position:120% 0}to{background-position:-160% 0}}
+
+  .agent{position:absolute;width:46px;height:46px;margin:-23px 0 0 -23px;border-radius:50%;
+    border:2px solid var(--accent-dim);box-shadow:0 6px 18px rgba(0,0,0,.6),0 0 14px rgba(79,216,255,.25);
+    background:#0d151d center/cover}
+  .agent.ready{transition:left 2.6s cubic-bezier(.45,.05,.25,1), top 2.6s cubic-bezier(.45,.05,.25,1)}
+  .agent::after{content:'';position:absolute;inset:-7px;border-radius:50%;
+    border:2px solid rgba(79,216,255,0);transition:border-color .3s}
+  .agent.busy{border-color:var(--accent)}
+  .agent.busy::after{border-color:rgba(79,216,255,.45);animation:ping 1.6s ease-out infinite}
+  @keyframes ping{0%{transform:scale(.7);opacity:.9}100%{transform:scale(1.5);opacity:0}}
+  .agent .tag{position:absolute;left:50%;top:-24px;transform:translateX(-50%);white-space:nowrap;
+    font-size:10px;letter-spacing:.08em;color:var(--muted);background:rgba(7,10,15,.8);
+    border:1px solid var(--border);border-radius:99px;padding:2px 8px}
+
+  .pulse{position:absolute;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;
+    background:var(--ok);box-shadow:0 0 18px var(--ok);animation:fadeout 1.8s ease-out forwards;pointer-events:none}
+  @keyframes fadeout{from{opacity:.95;transform:scale(.7)}to{opacity:0;transform:scale(2.4)}}
+
+  .dept{position:absolute;transform:translate(-50%,0);font-size:10px;letter-spacing:.14em;
+    color:var(--muted);background:rgba(7,10,15,.66);border:1px solid var(--border);
+    border-radius:6px;padding:3px 8px;text-transform:uppercase;pointer-events:none}
+
+  #hud{position:absolute;left:0;right:0;top:0;display:flex;justify-content:space-between;
+    padding:16px 22px;align-items:center;pointer-events:none;z-index:5}
+  #hud .brand{font-weight:700;letter-spacing:.22em;font-size:13px}
+  #hud .brand em{color:var(--accent);font-style:normal}
+  #hud .live{display:flex;gap:8px;align-items:center;font-size:11px;color:var(--muted)}
+  #hud .dot{width:8px;height:8px;border-radius:50%;background:#ff3b3b;animation:blink 1.4s infinite}
+  @keyframes blink{50%{opacity:.25}}
+
+  #feed{position:absolute;left:22px;bottom:18px;width:min(480px,80vw);pointer-events:none;z-index:5;
+    display:flex;flex-direction:column-reverse;gap:6px}
+  #feed .row{background:rgba(13,21,29,.86);border:1px solid var(--border);border-left:3px solid var(--accent-dim);
+    border-radius:8px;padding:7px 12px;font-size:12px;color:var(--muted);
+    animation:rise .35s ease-out;backdrop-filter:blur(4px)}
+  #feed .row b{color:var(--text);font-weight:600}
+  #feed .row.ok{border-left-color:var(--ok)} #feed .row.warn{border-left-color:var(--warn)}
+  @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+<div id="stage"><div id="scene">
+  <img class="backdrop" src="assets/office-backdrop.png" alt="Handsel office">
+  <div class="light"></div><div class="sweep"></div>
+</div></div>
+<div id="hud">
+  <div class="brand">HAND<em>SEL</em> · OFFICE</div>
+  <div class="live"><span class="dot"></span> LIVE · the AI agent economy</div>
+</div>
+<div id="feed"></div>
+<script>
+/* Department anchors in backdrop UV space, keyed by real FunctionalDeptIds.
+   In the repo these come from the office snapshot's room layout. */
+const DEPTS = {
+  research:[.14,.48], strategy:[.25,.28], engineering:[.46,.56], qa:[.61,.44],
+  verification:[.73,.24], memory:[.33,.72], treasury:[.67,.66], market:[.86,.48],
+};
+const scene = document.getElementById('scene');
+const backdrop = scene.querySelector('.backdrop');
+const feed = document.getElementById('feed');
+const uv = (u,v)=>{const r=backdrop.getBoundingClientRect();
+  return [u*r.width/(cam.scale||1), v*r.height/(cam.scale||1)];};
+// NOTE: when the camera scales #scene, getBoundingClientRect grows with it —
+// divide the scale back out so anchors stay in unscaled scene coordinates.
+
+const ROLES=['architect','builder','reviewer','grader','scout','courier','broker','sentinel'];
+const agents=[];
+const cam={scale:1};
+
+function boot(){
+  for (const [name,[u,v]] of Object.entries(DEPTS)) {
+    const el=document.createElement('div'); el.className='dept'; el.textContent=name;
+    scene.appendChild(el);
+    const place=()=>{const [x,y]=uv(u,v); el.style.left=x+'px'; el.style.top=(y+26)+'px';};
+    place(); addEventListener('resize',place);
+  }
+  const deptNames=Object.keys(DEPTS);
+  for(let i=0;i<8;i++){
+    const el=document.createElement('div'); el.className='agent';
+    el.style.backgroundImage=`url(assets/agent-${i}.png)`;
+    el.innerHTML=`<span class="tag">${ROLES[i]}</span>`;
+    scene.appendChild(el);
+    const a={el,dept:deptNames[i%deptNames.length]};
+    agents.push(a);
+    moveAgent(a,a.dept);          // placed instantly (no .ready yet)
+  }
+  // enable movement transitions only after first paint — kills the fly-in
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    agents.forEach(a=>a.el.classList.add('ready'));
+  }));
+  let step=0;
+  setInterval(()=>{SCRIPT[step%SCRIPT.length](); step++;},1600);
+}
+
+function moveAgent(a,dept){
+  a.dept=dept;
+  const [u,v]=DEPTS[dept];
+  const [x,y]=uv(u+(Math.random()-.5)*.05, v+(Math.random()-.5)*.05);
+  a.el.style.left=x+'px'; a.el.style.top=y+'px';
+}
+function pulse(dept,color){
+  const [u,v]=DEPTS[dept]; const [x,y]=uv(u,v);
+  const p=document.createElement('div'); p.className='pulse';
+  if(color){p.style.background=color; p.style.boxShadow=`0 0 18px ${color}`;}
+  p.style.left=x+'px'; p.style.top=y+'px';
+  scene.appendChild(p); setTimeout(()=>p.remove(),1900);
+}
+function log(html,cls){
+  const r=document.createElement('div'); r.className='row'+(cls?' '+cls:''); r.innerHTML=html;
+  feed.appendChild(r);
+  while(feed.children.length>5) feed.firstChild.remove();
+}
+
+const pick=()=>agents[Math.floor(Math.random()*agents.length)];
+const name=a=>a.el.querySelector('.tag').textContent;
+const SCRIPT=[
+  ()=>{const a=pick(); moveAgent(a,'engineering'); a.el.classList.add('busy');
+       log(`<b>${name(a)}</b> claimed a job → engineering`);},
+  ()=>{pulse('engineering'); log(`<b>harness</b> inspect → edit → test`);},
+  ()=>{const a=pick(); moveAgent(a,'qa'); log(`<b>${name(a)}</b> suite: 42 checks running`);},
+  ()=>{pulse('qa','#ffb84f'); log(`<b>qa</b> tests passed`,'ok');},
+  ()=>{const a=pick(); moveAgent(a,'verification'); a.el.classList.add('busy');
+       log(`<b>${name(a)}</b> → verification (independent grader)`);},
+  ()=>{pulse('verification','#57ffb0'); log(`<b>verdict</b> PASS — proof signed`,'ok');},
+  ()=>{pulse('treasury','#57ffb0'); log(`<b>treasury</b> escrow released — USDC settled`,'ok');},
+  ()=>{const a=pick(); a.el.classList.remove('busy'); moveAgent(a,'market');
+       log(`<b>${name(a)}</b> reputation updated → watching the board`);},
+];
+
+/* ---- camera ------------------------------------------------------------ */
+/* transform: translate(T) scale(S) about center => point d=(u-.5)w moves to
+   S*d + T; T = -S*d centers the focus point. Keyframes lerp with smoothstep. */
+const CAMS = {
+  reveal:{dur:8000, keys:[{t:0,s:2.0,u:.46,v:.56},{t:.65,s:1.15,u:.5,v:.5},{t:1,s:1.02,u:.5,v:.5}]},
+  work:  {dur:11000,keys:[{t:0,s:1.8,u:.46,v:.56},{t:.35,s:1.8,u:.61,v:.44},
+                          {t:.7,s:1.8,u:.73,v:.28},{t:1,s:1.5,u:.67,v:.6}]},
+  hero:  {dur:8000, keys:[{t:0,s:1.28,u:.55,v:.45},{t:1,s:1.0,u:.5,v:.5}]},
+};
+const camMode=(location.hash.match(/#cam=(\w+)/)||[])[1];
+const smooth=t=>t*t*(3-2*t);
+function runCamera(mode){
+  const c=CAMS[mode]; if(!c) return;
+  const t0=performance.now();
+  const frame=()=>{
+    const p=Math.min(1,(performance.now()-t0)/c.dur);
+    let a=c.keys[0], b=c.keys[c.keys.length-1];
+    for(let i=0;i<c.keys.length-1;i++)
+      if(p>=c.keys[i].t && p<=c.keys[i+1].t){a=c.keys[i]; b=c.keys[i+1]; break;}
+    const q=b.t===a.t?1:smooth((p-a.t)/(b.t-a.t));
+    const s=a.s+(b.s-a.s)*q, u=a.u+(b.u-a.u)*q, v=a.v+(b.v-a.v)*q;
+    cam.scale=s;
+    const r=backdrop.getBoundingClientRect();
+    const w=r.width/s, h=r.height/s;   // unscaled dimensions
+    const tx=-s*(u-.5)*w, ty=-s*(v-.5)*h;
+    scene.style.transform=`translate(${tx}px, ${ty}px) scale(${s})`;
+    if(p<1) requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+}
+
+if(!camMode){
+  addEventListener('mousemove',e=>{
+    const dx=(e.clientX/innerWidth-.5), dy=(e.clientY/innerHeight-.5);
+    scene.style.transform=`perspective(1200px) rotateY(${dx*3}deg) rotateX(${-dy*2.2}deg) scale(1.015)`;
+  });
+}
+
+if(backdrop.complete) init(); else backdrop.addEventListener('load',init);
+function init(){ boot(); if(camMode) runCamera(camMode); }
+</script>
+</body>
+</html>
