@@ -1718,7 +1718,16 @@ async function tickDelegationLocked(
       }
       verdictText = rerun?.output ?? null
     }
-    if (verdictText == null) continue // verdict not in yet
+    if (verdictText == null) {
+      // The one silent exit in this loop, and the day's lesson (§60) applies
+      // here too: a held escrow whose reviewer never answers must say which
+      // task it is waiting on, or the wait is indistinguishable from a bug.
+      console.info(
+        `[delegation] "${target.title}": review verdict not in yet` +
+          (target.reviewRerunTaskId ? ` (re-review task ${target.reviewRerunTaskId})` : ' (reviewer output empty)'),
+      )
+      continue
+    }
 
     const targetJob = jobs.find((j) => j.id === target.onchainJobId)
     const reviewerJob = jobs.find((j) => j.id === reviewer.onchainJobId)
@@ -1775,6 +1784,11 @@ async function tickDelegationLocked(
     const samePerson = sameAddress || sameAuthorVerdict !== 'no'
     const { approve, note } = parseReviewVerdict(verdictText)
     const decision = decideRevision({ approve, samePerson, round: target.revisionRound ?? 0 })
+    console.info(
+      `[delegation] "${target.title}": review verdict ${approve ? 'APPROVE' : 'REVISE'}` +
+        (samePerson ? ' (discarded — same author)' : '') +
+        ` → ${decision} (round ${target.revisionRound ?? 0})`,
+    )
     target.reviewNote = samePerson
       ? sameAddress
         ? 'peer review discarded — a worker cannot review its own work'
