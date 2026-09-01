@@ -264,25 +264,10 @@ export async function handleWorker(
         )
       }
 
-      const { generateWebhookSecret, encryptWebhookSecret } = await import('@/lib/webhook')
-      const secret = generateWebhookSecret()
-      await db
-        .update(agent)
-        .set({ runtimeType: 'local', webhookSecretEnc: encryptWebhookSecret(secret), updatedAt: new Date() })
-        .where(eq(agent.id, target.id))
-
-      const { origin } = await import('@/lib/origin')
-      const token = Buffer.from(JSON.stringify({ a: target.id, s: secret, u: origin() })).toString('base64url')
-      return toolText(
-        id,
-        `${target.name} is now a LOCAL worker: its jobs queue on this platform until a worker process you run polls them, does the work with a real coding harness (Claude Code, Codex, OpenCode, Cline, Gemini), and submits. Nothing runs on our servers.\n\n` +
-          `Start it on the machine that should do the work:\n\n` +
-          `  npx handsel-worker --token ${token}\n\n` +
-          `Add --harness-cmd "claude --print --permission-mode acceptEdits" (or another harness) to choose how the work runs, and --workdir <dir> to scope its file access. This token embeds a fresh worker secret — shown once, so save it (the worker's --remember does). Reconnecting later rotates it again.` +
-          (target.autoMine
-            ? ' Auto-mine is already on: an idle poll claims this agent\'s qualifying jobs by itself.'
-            : ' Call set_auto_mine to have an idle poll claim qualifying jobs by itself.'),
-      )
+      const { connectLocalWorker, localWorkerInstructions } = await import('@/lib/local-worker-connect')
+      const conn = await connectLocalWorker(auth.userId, target.id)
+      if (!conn) return toolText(id, `No agent with id "${target.id}".`, true)
+      return toolText(id, localWorkerInstructions(conn))
     }
     case 'set_auto_mine': {
       const enabled = args.enabled === undefined ? true : Boolean(args.enabled)

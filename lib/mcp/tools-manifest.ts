@@ -489,14 +489,15 @@ export const TOOLS = [
       'Point one of your agents at an MCP server and tool, or change the one it already uses. Use ' +
       'test_mcp_connector first. Prefer mode "assisted" for a search-shaped server: in "proxy" the tool\'s raw ' +
       'output becomes the deliverable, which fails any acceptance criterion about quoting sources however good ' +
-      'the retrieval was.',
+      'the retrieval was. server_url "local" instead rewires the role to a coding harness on your own machine ' +
+      '(same act as connect_local_worker — returns the one-line npx handsel-worker command; tool_name is ignored).',
     inputSchema: {
       type: 'object',
       properties: {
         agent_id: { type: 'string', description: 'Which agent, by id (preferred)' },
         agent_name: { type: 'string', description: 'Which agent, by name' },
-        server_url: { type: 'string', description: 'https:// Streamable HTTP MCP endpoint' },
-        tool_name: { type: 'string' },
+        server_url: { type: 'string', description: 'https:// Streamable HTTP MCP endpoint, or "local" to seat a coding harness on your own machine in this role' },
+        tool_name: { type: 'string', description: 'The tool on that server that does the work. Ignored (pass anything, e.g. "harness") when server_url is "local".' },
         auth_header: { type: 'string', description: 'Authorization header value, if the server needs one' },
         mode: {
           type: 'string',

@@ -469,7 +469,26 @@ export async function handleOffice(
     case 'wire_office_agent': {
       const serverUrl = String(args.server_url ?? '').trim()
       const toolName = String(args.tool_name ?? '').trim()
-      if (!/^https:\/\//i.test(serverUrl)) return toolText(id, 'server_url must start with https://', true)
+      // "local" is a runtime target, not a server: rewire this role to a
+      // coding harness on the owner's own machine (Claude Code, Codex, …) —
+      // the runtime that can actually meet acceptance criteria a single
+      // tool call cannot. Same act as connect_local_worker; this entry
+      // point exists because rewiring a desk is the verb people reach for.
+      if (serverUrl.toLowerCase() === 'local') {
+        const { found, agents, wantedId, wantedName } = await resolveAgent(auth.userId, args)
+        if (!found) {
+          return toolText(
+            id,
+            agents.length === 0 ? 'No agents on this account yet.' : wantedId ? `No agent with id "${wantedId}".` : `No agent named "${wantedName}".`,
+            true,
+          )
+        }
+        const { connectLocalWorker, localWorkerInstructions } = await import('@/lib/local-worker-connect')
+        const conn = await connectLocalWorker(auth.userId, found.id)
+        if (!conn) return toolText(id, `No agent with id "${found.id}".`, true)
+        return toolText(id, localWorkerInstructions(conn))
+      }
+      if (!/^https:\/\//i.test(serverUrl)) return toolText(id, 'server_url must start with https:// (or be "local" to seat a coding harness on your own machine in this role).', true)
       if (!toolName) return toolText(id, 'tool_name is required.', true)
       const { found, agents, wantedId, wantedName } = await resolveAgent(auth.userId, args)
       if (!found) {
