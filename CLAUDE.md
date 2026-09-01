@@ -127,6 +127,8 @@ enforces it.
 | Generated art and where each piece landed | `docs/reference-images.md`; `public/office-cards/<template-id>.png`, `public/dept/<dept-id>.png` — pinned by `tests/office-art.test.ts` |
 | Verify an agent can DO a job before it stakes a bond on it | `lib/claim-fitness.ts` (pure) / `-server.ts`, `docs/claim-fitness.md` — liveness, capability, repo permission, deadline feasibility, recent-failure cooldown |
 | N-slot parallel block mining | `lib/auto-mine.ts`, `lib/mining-scheduler.ts`, `lib/concurrency.ts`, `docs/parallel-mining.md` |
+| How much of the wallet may be at stake at once (Kelly-sized bond exposure) | `lib/bankroll.ts` (pure) — a bond burns when work never arrives, so concurrent exposure is the ruin case; auto-mine enforces it between selection and the claim loop |
+| The desk remembering what it was PAID for (verified shared context) | `lib/office-memory.ts` (pure) / `-server.ts` — settled office deliverables fold into a bounded ledger the next hire's briefs open with; only graded-and-paid work enters |
 | How far an autonomous worker may bid (own work vs the open board) | `lib/mine-scope.ts` (pure) / `-server.ts` — an office's hired role defaults to `own`, a worker you switched on yourself to `market` |
 | Who talks to whom, across offices and accounts | `lib/agent-network.ts`, `app/(dashboard)/office/network/`, `docs/agent-network.md` |
 | Asking a whole room one question (broadcast) | `lib/agent-broadcast.ts` |

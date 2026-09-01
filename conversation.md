@@ -148,3 +148,20 @@ REVISE든 같은 바운티를 받는다. 승인이 틀렸을 때만 비용이 �
 정당했지만 마무리 섹션은 신규 요구)이었다 — verdict-스테이크 설계 시
 "라운드 N의 REVISE는 라운드 N-1 지적의 미해소만 근거로 인정" 같은
 목표물 고정도 같이 볼 것.
+
+### 오피스-하네스 세션 — auto-mine / labor-settle / office-hire 에 손댔다 (2026-09-01 오후)
+
+릴 두 개("Agentic OS" 대시보드, "pay for yourself or you die" 서바이벌
+에이전트)를 제품 확장 스펙으로 읽고 두 조각을 main에 넣었다:
+
+- **lib/bankroll.ts** (d669d57) — Kelly 기반 동시 본드 노출 한도.
+  auto-mine의 selectMiningBlocks 와 클레임 루프 사이에 필터가 하나 더
+  생겼다 (withinBankroll). 오피스 배정 잡은 통과(본드를 오피스가 커버).
+  claim-fitness-server 의 AgentFitnessContext 에 delivered/lostClaims
+  필드 추가.
+- **lib/office-memory(.server).ts** (e11d604) — 정산 지급 경로(labor-settle,
+  work proof 발급 옆)에 best-effort 훅, office-hire 의 sharedSource 에
+  메모리 머지. office_memory 테이블 자가 생성.
+
+auto-mine 틱 순서를 바꾸는 세션은 bankroll 필터 위치(선택 후, 클레임 전)를
+유지할 것 — tests/bankroll.test.ts 가 고정한다.
