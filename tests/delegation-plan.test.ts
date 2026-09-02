@@ -382,3 +382,19 @@ describe('the model lane survives a dead Anthropic key (platform OpenAI-compat f
     expect(failover).toContain('throw error')
   })
 })
+
+describe('PREFER_OPENAI_COMPAT — the compat gateway carries the text lane, Anthropic is the net', () => {
+  it('the compat-first branch exists, gated on the env switch, with failover to the Anthropic key', () => {
+    const { readFileSync } = require('node:fs') as typeof import('node:fs')
+    const src = readFileSync('lib/delegation.ts', 'utf8')
+    const at = src.indexOf("process.env.PREFER_OPENAI_COMPAT === 'true'")
+    expect(at).toBeGreaterThan(-1)
+    const block = src.slice(at, at + 900)
+    // Gateway-first failover is deliberately wide (any throw): a self-hosted
+    // router's dominant failure is unreachability.
+    expect(block).toContain('falling back to the platform Anthropic key')
+    // …and it must come BEFORE the anthropic-first branch, or the switch is
+    // decoration.
+    expect(at).toBeLessThan(src.indexOf('Anthropic key unusable'))
+  })
+})

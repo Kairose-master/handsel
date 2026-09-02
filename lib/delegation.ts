@@ -521,23 +521,50 @@ export async function resolveLlm(userId: string): Promise<CompleteFn> {
         }
       : null
 
-  if (process.env.REQUIRE_USER_API_KEY !== 'true' && process.env.ANTHROPIC_API_KEY) {
-    const anthropic = anthropicComplete(process.env.ANTHROPIC_API_KEY)
-    if (!platformCompat) return anthropic
-    return async (system, userMsg, maxTokens) => {
-      try {
-        return await anthropic(system, userMsg, maxTokens)
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error)
-        // Billing/auth only — a model error or a bad request must surface,
-        // not be laundered through a different provider.
-        if (!/credit balance|billing|invalid x-api-key|authentication_error/i.test(msg)) throw error
-        console.warn(`[delegation] Anthropic key unusable (${msg.slice(0, 120)}) — failing over to ${platformCompat.baseUrl}`)
-        return openaiCompatComplete(platformCompat)(system, userMsg, maxTokens)
+  if (process.env.REQUIRE_USER_API_KEY !== 'true') {
+    const anthropicEnvKey = process.env.ANTHROPIC_API_KEY
+
+    // PREFER_OPENAI_COMPAT=true inverts the platform order: the compat
+    // gateway (a self-hosted router like OmniRoute, or any cheap
+    // OpenAI-compatible provider) carries the routine text lane — planning,
+    // verification, text grading, the spend that was ~70% of the bill on
+    // opus — and the Anthropic key becomes the safety net for when the
+    // gateway is down. Failover here is on ANY thrown error, deliberately
+    // wider than the billing-only rule below: a self-hosted gateway's
+    // dominant failure is unreachability, and grading pausing because a
+    // tunnel dropped is the outage this switch exists to avoid.
+    if (process.env.PREFER_OPENAI_COMPAT === 'true' && platformCompat) {
+      const compat = openaiCompatComplete(platformCompat)
+      if (!anthropicEnvKey) return compat
+      return async (system, userMsg, maxTokens) => {
+        try {
+          return await compat(system, userMsg, maxTokens)
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : String(error)
+          console.warn(`[delegation] compat gateway failed (${msg.slice(0, 120)}) — falling back to the platform Anthropic key`)
+          return anthropicComplete(anthropicEnvKey)(system, userMsg, maxTokens)
+        }
       }
     }
+
+    if (anthropicEnvKey) {
+      const anthropic = anthropicComplete(anthropicEnvKey)
+      if (!platformCompat) return anthropic
+      return async (system, userMsg, maxTokens) => {
+        try {
+          return await anthropic(system, userMsg, maxTokens)
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : String(error)
+          // Billing/auth only — a model error or a bad request must surface,
+          // not be laundered through a different provider.
+          if (!/credit balance|billing|invalid x-api-key|authentication_error/i.test(msg)) throw error
+          console.warn(`[delegation] Anthropic key unusable (${msg.slice(0, 120)}) — failing over to ${platformCompat.baseUrl}`)
+          return openaiCompatComplete(platformCompat)(system, userMsg, maxTokens)
+        }
+      }
+    }
+    if (platformCompat) return openaiCompatComplete(platformCompat)
   }
-  if (process.env.REQUIRE_USER_API_KEY !== 'true' && platformCompat) return openaiCompatComplete(platformCompat)
   throw new Error(
     'Planning needs an LLM key — add an Anthropic key or an OpenAI-compatible key (e.g. a free Groq key) in Settings',
   )
