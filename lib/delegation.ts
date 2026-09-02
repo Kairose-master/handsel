@@ -43,7 +43,11 @@ export const MIN_SUBTASK_BOUNTY_USD = 1
  *  cost the planner could stack onto one subtask. */
 export const MAX_REVIEW_TIERS = 3
 
-const PLANNER_MODEL = 'claude-opus-4-8'
+/** The platform text-lane model. Env-overridable (PLATFORM_LLM_MODEL) so the
+ *  operator can trade grading/planning quality against cost without a
+ *  deploy-by-commit — e.g. claude-sonnet-5 cuts the lane ~60%. Default stays
+ *  opus-tier: the owner's standing decision, changed only by the env. */
+const PLANNER_MODEL = process.env.PLATFORM_LLM_MODEL || 'claude-opus-4-8'
 
 export interface DelegationSubtask {
   title: string
@@ -441,7 +445,24 @@ export interface SubtaskView extends DelegationSubtask {
  *  → platform Anthropic key (unless REQUIRE_USER_API_KEY). The planner and
  *  verifier both emit strict JSON, which every chat provider can do — no
  *  reason to gate delegation on owning an Anthropic key specifically. */
-export type CompleteFn = (system: string, userMsg: string, maxTokens: number) => Promise<string>
+/** A system prompt split for prompt caching: `stable` never changes between
+ *  calls (the role text — cached, ~90% cheaper after the first call in any
+ *  5-minute window, and a sweep verifies six jobs in one burst), `volatile`
+ *  changes per call (the per-call injection-fence nonce) and rides AFTER the
+ *  cache breakpoint so it cannot invalidate the prefix. A plain string is
+ *  treated as entirely stable. */
+export type SystemSpec = string | { stable: string; volatile?: string }
+
+export type CompleteFn = (
+  system: SystemSpec,
+  userMsg: string,
+  maxTokens: number,
+  /** effort caps the thinking spend — 'low' for verdict-shaped calls
+   *  (verify/grade emit one JSON object; billed thinking at output rates was
+   *  a large share of the LLM bill), unset for planning. The OpenAI-compat
+   *  path ignores it. */
+  opts?: { effort?: 'low' | 'medium' | 'high' },
+) => Promise<string>
 
 export async function resolveLlm(userId: string): Promise<CompleteFn> {
   const { anthropicKey, openai } = await getUserByok(userId)
@@ -449,8 +470,10 @@ export async function resolveLlm(userId: string): Promise<CompleteFn> {
   const { withRetry } = await import('@/lib/retry')
   const anthropicComplete =
     (key: string): CompleteFn =>
-    async (system, userMsg, maxTokens) => {
+    async (system, userMsg, maxTokens, opts) => {
       const client = new Anthropic({ apiKey: key })
+      const stable = typeof system === 'string' ? system : system.stable
+      const volatile = typeof system === 'string' ? undefined : system.volatile
       // Retry transient overloads so verification/planning survives a spike.
       const message = await withRetry(() =>
         client.messages
@@ -458,7 +481,11 @@ export async function resolveLlm(userId: string): Promise<CompleteFn> {
             model: PLANNER_MODEL,
             max_tokens: maxTokens,
             thinking: { type: 'adaptive' },
-            system,
+            ...(opts?.effort ? { output_config: { effort: opts.effort } } : {}),
+            system: [
+              { type: 'text', text: stable, cache_control: { type: 'ephemeral' } },
+              ...(volatile ? [{ type: 'text' as const, text: volatile }] : []),
+            ],
             messages: [{ role: 'user', content: userMsg }],
           })
           .finalMessage(),
@@ -471,7 +498,9 @@ export async function resolveLlm(userId: string): Promise<CompleteFn> {
 
   const openaiCompatComplete =
     (cfg: { baseUrl: string; apiKey: string; model: string }): CompleteFn =>
-    async (system, userMsg, maxTokens) => {
+    async (systemSpec, userMsg, maxTokens) => {
+      const system =
+        typeof systemSpec === 'string' ? systemSpec : `${systemSpec.stable}${systemSpec.volatile ? ` ${systemSpec.volatile}` : ''}`
       const res = await withRetry(async () => {
         const oaBase = cfg.baseUrl.replace(/\/+$/, '')
         const oaHeaders: Record<string, string> = { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.apiKey}` }
@@ -1219,10 +1248,25 @@ async function verifySubmission(
   // output, so it is data, and an attempt to steer the verdict fails.
   const { graderInjectionClause } = await import('@/lib/untrusted-input')
   const nonce = untrustedNonce()
+  // Token hygiene, measured on the live bill: a synthesis step's description
+  // carries the collab DSL, the office memory AND four injected upstream
+  // deliverables — 25K+ input tokens per verify at opus rates, for a verdict
+  // the acceptance criteria and the output decide. The description is capped
+  // as CONTEXT (the criteria stay whole — they are the contract), the stable
+  // system text is cached (a sweep verifies a burst of jobs inside one
+  // 5-minute cache window; the per-call nonce clause rides after the
+  // breakpoint), and effort 'low' caps thinking spend on a one-JSON-object
+  // call.
+  const contextCap = 6_000
+  const description =
+    st.description.length > contextCap
+      ? `${st.description.slice(0, contextCap)}\n[context cut for verification — the full brief is on the job record; judge against the acceptance criteria]`
+      : st.description
   const raw = await complete(
-    `${VERIFIER_SYSTEM} ${graderInjectionClause(nonce)}`,
-    `Subtask: ${st.title}\n\nDescription:\n${st.description}\n\nAcceptance criteria:\n${st.acceptanceCriteria}\n\nSubmitted output:\n${fenceUntrusted('submission', output.slice(0, 20_000), nonce)}`,
+    { stable: VERIFIER_SYSTEM, volatile: graderInjectionClause(nonce) },
+    `Subtask: ${st.title}\n\nDescription:\n${description}\n\nAcceptance criteria:\n${st.acceptanceCriteria}\n\nSubmitted output:\n${fenceUntrusted('submission', output.slice(0, 20_000), nonce)}`,
     2000,
+    { effort: 'low' },
   )
   const text = raw.replace(/^```(?:json)?\s*|\s*```$/g, '')
   try {

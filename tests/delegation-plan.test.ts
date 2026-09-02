@@ -398,3 +398,39 @@ describe('PREFER_OPENAI_COMPAT — the compat gateway carries the text lane, Ant
     expect(at).toBeLessThan(src.indexOf('Anthropic key unusable'))
   })
 })
+
+describe('LLM usage hygiene — the bill-cutting invariants', () => {
+  const { readFileSync } = require('node:fs') as typeof import('node:fs')
+  const src = readFileSync('lib/delegation.ts', 'utf8')
+
+  it('the stable system text is cached; the per-call nonce rides after the breakpoint', () => {
+    // cache_control on the stable block only — a nonce inside the cached
+    // prefix would invalidate it on every call, which is how the cache hit
+    // rate was 0% for the life of the platform.
+    const at = src.indexOf("cache_control: { type: 'ephemeral' }")
+    expect(at).toBeGreaterThan(-1)
+    expect(src.slice(at - 200, at)).toContain('text: stable')
+    expect(src).toContain('volatile ? [{ type:')
+  })
+
+  it('verdict-shaped calls run at effort low; the planner does not', () => {
+    const verifier = src.slice(src.indexOf('async function verifySubmission'))
+    expect(verifier).toContain("{ effort: 'low' }")
+    const planner = src.slice(src.indexOf('const planOnce'), src.indexOf('parsePlannerOutput(text'))
+    expect(planner).not.toContain('effort')
+    const grader = readFileSync('lib/text-grading.ts', 'utf8')
+    expect(grader).toContain("{ effort: 'low' }")
+  })
+
+  it('the verifier and grader cap the description as context — criteria stay whole', () => {
+    const verifier = src.slice(src.indexOf('async function verifySubmission'))
+    expect(verifier).toContain('context cut for verification')
+    expect(verifier).toContain('${st.acceptanceCriteria}')
+    const grader = readFileSync('lib/text-grading.ts', 'utf8')
+    expect(grader).toContain('context cut for grading')
+  })
+
+  it('the text-lane model is env-overridable, defaulting to the owner-chosen tier', () => {
+    expect(src).toContain("process.env.PLATFORM_LLM_MODEL || 'claude-opus-4-8'")
+  })
+})
