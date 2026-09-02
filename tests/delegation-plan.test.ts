@@ -361,3 +361,24 @@ describe('a wave posts only what its payer can afford — checked at posting tim
     expect(body).toContain('posting balance pre-check failed (continuing)')
   })
 })
+
+describe('the model lane survives a dead Anthropic key (platform OpenAI-compat fallback)', () => {
+  // Live outage: the platform Anthropic key ran out of credits — a 400 no
+  // retry fixes — and planning, verification and text grading died together
+  // for hours. The same three values a BYOK entry stores can now come from
+  // env (OPENAI_COMPAT_BASE_URL/_API_KEY/_MODEL, e.g. OpenRouter), used as
+  // the last resort AND as an automatic failover when the Anthropic call
+  // fails on billing/auth specifically.
+  it('resolveLlm reads the platform compat env and fails over on billing errors only', () => {
+    const { readFileSync } = require('node:fs') as typeof import('node:fs')
+    const src = readFileSync('lib/delegation.ts', 'utf8')
+    expect(src).toContain('OPENAI_COMPAT_BASE_URL')
+    expect(src).toContain('OPENAI_COMPAT_API_KEY')
+    expect(src).toContain('OPENAI_COMPAT_MODEL')
+    const failover = src.slice(src.indexOf('const platformCompat'))
+    expect(failover).toContain('credit balance|billing|invalid x-api-key|authentication_error')
+    // Non-billing errors surface — they must not be laundered through a
+    // different provider.
+    expect(failover).toContain('throw error')
+  })
+})

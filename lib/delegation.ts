@@ -469,13 +469,12 @@ export async function resolveLlm(userId: string): Promise<CompleteFn> {
         .join('')
     }
 
-  if (anthropicKey) return anthropicComplete(anthropicKey)
-
-  if (openai) {
-    return async (system, userMsg, maxTokens) => {
+  const openaiCompatComplete =
+    (cfg: { baseUrl: string; apiKey: string; model: string }): CompleteFn =>
+    async (system, userMsg, maxTokens) => {
       const res = await withRetry(async () => {
-        const oaBase = openai.baseUrl.replace(/\/+$/, '')
-        const oaHeaders: Record<string, string> = { 'Content-Type': 'application/json', Authorization: `Bearer ${openai.apiKey}` }
+        const oaBase = cfg.baseUrl.replace(/\/+$/, '')
+        const oaHeaders: Record<string, string> = { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.apiKey}` }
         if (/openrouter\.ai/i.test(oaBase)) {
           oaHeaders['HTTP-Referer'] = origin()
           oaHeaders['X-Title'] = 'Handsel'
@@ -484,7 +483,7 @@ export async function resolveLlm(userId: string): Promise<CompleteFn> {
           method: 'POST',
           headers: oaHeaders,
           body: JSON.stringify({
-            model: openai.model,
+            model: cfg.model,
             max_tokens: maxTokens,
             messages: [
               { role: 'system', content: system },
@@ -501,11 +500,44 @@ export async function resolveLlm(userId: string): Promise<CompleteFn> {
       const data = await res.json()
       return String(data?.choices?.[0]?.message?.content ?? '')
     }
-  }
+
+  if (anthropicKey) return anthropicComplete(anthropicKey)
+
+  if (openai) return openaiCompatComplete(openai)
+
+  // Platform-level OpenAI-compatible fallback (OpenRouter/Groq/Together/…):
+  // the same three env vars a BYOK entry stores. Lets a deployment keep the
+  // whole model lane alive on a second provider — and, when both are set,
+  // makes an Anthropic BILLING failure fail over instead of failing: the
+  // live outage this was written under was 'credit balance is too low', a
+  // 400 that no retry fixes and that took planning, verification and text
+  // grading down together.
+  const platformCompat =
+    process.env.OPENAI_COMPAT_BASE_URL && process.env.OPENAI_COMPAT_API_KEY && process.env.OPENAI_COMPAT_MODEL
+      ? {
+          baseUrl: process.env.OPENAI_COMPAT_BASE_URL,
+          apiKey: process.env.OPENAI_COMPAT_API_KEY,
+          model: process.env.OPENAI_COMPAT_MODEL,
+        }
+      : null
 
   if (process.env.REQUIRE_USER_API_KEY !== 'true' && process.env.ANTHROPIC_API_KEY) {
-    return anthropicComplete(process.env.ANTHROPIC_API_KEY)
+    const anthropic = anthropicComplete(process.env.ANTHROPIC_API_KEY)
+    if (!platformCompat) return anthropic
+    return async (system, userMsg, maxTokens) => {
+      try {
+        return await anthropic(system, userMsg, maxTokens)
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error)
+        // Billing/auth only — a model error or a bad request must surface,
+        // not be laundered through a different provider.
+        if (!/credit balance|billing|invalid x-api-key|authentication_error/i.test(msg)) throw error
+        console.warn(`[delegation] Anthropic key unusable (${msg.slice(0, 120)}) — failing over to ${platformCompat.baseUrl}`)
+        return openaiCompatComplete(platformCompat)(system, userMsg, maxTokens)
+      }
+    }
   }
+  if (process.env.REQUIRE_USER_API_KEY !== 'true' && platformCompat) return openaiCompatComplete(platformCompat)
   throw new Error(
     'Planning needs an LLM key — add an Anthropic key or an OpenAI-compatible key (e.g. a free Groq key) in Settings',
   )
