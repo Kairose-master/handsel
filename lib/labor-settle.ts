@@ -238,6 +238,14 @@ export async function autoApprovePassedJob(
     const proof = await issueProofForJobSpec(spec)
     if (proof) console.log(`[labor-settle] issued work proof ${proof.id} (cid ${proof.cid}) for job #${spec.onchainJobId}`)
 
+    // The desk remembers what it was paid for (lib/office-memory.ts): fold
+    // the settled deliverable into the office memory the NEXT hire's briefs
+    // open with. Best-effort — memory must never affect a settled payout.
+    const { recordOfficeMemory } = await import('@/lib/office-memory-server')
+    await recordOfficeMemory(spec, job.bounty).catch((e) =>
+      console.error('[labor-settle] office memory fold failed:', e instanceof Error ? e.message : e),
+    )
+
     await logPlatformEvent(
       'JOB_AUTO_APPROVED',
       authorization === 'merge'

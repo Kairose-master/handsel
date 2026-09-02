@@ -301,6 +301,28 @@ export async function autoMineTick(
     candidates.push(...claimableCandidates)
   }
 
+  // The same doom class for the visibility split: an office-scoped job is
+  // claimable only inside its circle — acceptAndDispatchJob refuses everyone
+  // else, deterministically, after a full claim attempt with a stack trace
+  // in the log. The day the split shipped, a stranger's miner hammered one
+  // scoped job with exactly that refusal every sweep. Visibility is resolved
+  // once per foreign office owner, not per candidate, and an unreadable
+  // check drops the job: a refusal costs this agent its claim slot, so
+  // "unknown" here is not the harmless kind.
+  const scopedOwnerIds = [...new Set(candidates.map((c) => c.spec.officeOwnerId).filter((o): o is string => Boolean(o)))]
+  if (scopedOwnerIds.length) {
+    const { canSeeOfficeOnlyJob } = await import('@/lib/office')
+    const visibleByOwner = new Map<string, boolean>()
+    for (const ownerId of scopedOwnerIds) {
+      visibleByOwner.set(ownerId, await canSeeOfficeOnlyJob(ownerId, agent.userId).catch(() => false))
+    }
+    const inCircle = candidates.filter((c) => !c.spec.officeOwnerId || visibleByOwner.get(c.spec.officeOwnerId))
+    if (inCircle.length < candidates.length) {
+      candidates.length = 0
+      candidates.push(...inCircle)
+    }
+  }
+
   // Fitness: can this agent actually DO these jobs (lib/claim-fitness.ts)?
   //
   // Built ONCE per tick and reused for every candidate — the per-agent facts
@@ -392,9 +414,46 @@ export async function autoMineTick(
     )
   }
 
+  // Bankroll discipline (lib/bankroll.ts): a bond is burned when the work
+  // never arrives, so the ruin case for an unattended worker is N bonds
+  // locked when its runtime dies. canPostBond answered "can I afford this
+  // one"; this answers "how much may be at stake at once", Kelly-sized from
+  // this worker's own delivery record. Office-assigned jobs pass through —
+  // the office covers those bonds (lib/office-bond-cover.ts), so they are
+  // not this wallet's exposure.
+  let withinBankroll = selected
+  if (heldUsd !== null && bondSchedule && fitCtx) {
+    const { mayStakeBond } = await import('@/lib/bankroll')
+    const { bondForBounty } = await import('@/lib/agent-bond')
+    const openBondsUsd = jobs
+      .filter((j) => j.status === 'Accepted' && j.worker.toLowerCase() === myAddress)
+      .reduce((sum, j) => sum + bondForBounty(j.bounty, bondSchedule), 0)
+    let plannedUsd = 0
+    withinBankroll = selected.filter((c) => {
+      if (isMineByAssignment(c.job.id)) return true
+      const bondUsd = bondForBounty(c.job.bounty, bondSchedule)
+      const verdict = mayStakeBond({
+        heldUsd,
+        openBondsUsd: openBondsUsd + plannedUsd,
+        bondUsd,
+        bountyUsd: c.job.bounty,
+        delivered: fitCtx.delivered,
+        lost: fitCtx.lostClaims,
+      })
+      if (verdict.ok) {
+        plannedUsd += bondUsd
+        return true
+      }
+      console.info(
+        `[auto-mine] ${agent.name} bankroll: passing on job ${c.job.id} — $${verdict.exposureUsd.toFixed(2)} at stake would exceed the $${verdict.capUsd.toFixed(2)} cap (delivery edge ${Math.round(verdict.edge * 100)}%)`,
+      )
+      return false
+    })
+  }
+
   // Serial within the agent (shared account nonce). The off-chain claim
   // inside acceptAndDispatchJob still guards each block against other rigs.
-  for (const { job, spec } of selected) {
+  for (const { job, spec } of withinBankroll) {
     try {
       await acceptAndDispatchJob(agent, job.id, callbackUrl, { autonomous: true })
       await logPlatformEvent(

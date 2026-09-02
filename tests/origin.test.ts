@@ -50,3 +50,24 @@ describe('resolveOrigin — shapes that arrive from real config', () => {
     expect(resolveOrigin({ PUBLIC_ORIGIN: '   ', VERCEL_URL: 'x.vercel.app' })).toBe('https://x.vercel.app')
   })
 })
+
+describe('origin() in the browser is the page origin, never the env fallback', () => {
+  // lib/origin.ts reads server env that is NOT in the client bundle (none of
+  // it is NEXT_PUBLIC_), so every 'use client' caller — /try's Copy URL for
+  // the MCP connector, most visibly — hydrated to http://localhost:3000.
+  // Real visitors were handed a localhost URL to paste into Claude. In the
+  // browser the deployment's origin IS the page's origin.
+  it('prefers window.location.origin when a window exists', async () => {
+    const g = globalThis as { window?: unknown }
+    g.window = { location: { origin: 'https://www.handsel.dev' } }
+    try {
+      // dynamic import AFTER installing the fake window would be cached —
+      // origin() reads window at call time, so the already-imported module
+      // sees it too.
+      const { origin } = await import('@/lib/origin')
+      expect(origin()).toBe('https://www.handsel.dev')
+    } finally {
+      delete g.window
+    }
+  })
+})

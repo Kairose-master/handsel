@@ -20,7 +20,7 @@
  * re-opens the other's failure.
  */
 import { db } from '@/lib/db'
-import { agentEvent, jobSpec } from '@/lib/db/schema'
+import { agent, agentEvent, jobSpec } from '@/lib/db/schema'
 import { and, eq, inArray } from 'drizzle-orm'
 
 /** Bounded per pass: each miss costs a credit recalculation. */
@@ -58,10 +58,30 @@ export async function reconcileUncreditedPayouts(): Promise<ReconcileReport> {
       // Only jobs this platform actually brokered — a Completed job with no
       // spec of ours is not ours to write history about.
       const [spec] = await db
-        .select({ specHash: jobSpec.specHash })
+        .select({ specHash: jobSpec.specHash, requesterAgentId: jobSpec.requesterAgentId })
         .from(jobSpec)
         .where(and(eq(jobSpec.specHash, job.specHash), eq(jobSpec.onchainJobId, job.id)))
       if (!spec) continue
+
+      // A self-dealt job (same owner on both sides — every office pipeline)
+      // is settled BY DESIGN with no credit event: withholding the event is
+      // the self-dealing deterrent (see creditWorkerForJob). To this sweep
+      // that used to look exactly like lost history, so it "reconciled" the
+      // same office jobs every cycle forever — a false 'has been reconciled'
+      // feed line each pass, and the whole MAX_PER_PASS budget burned on
+      // jobs that can never be credited. The missing event is the record
+      // working; skip silently.
+      if (spec.requesterAgentId) {
+        const { agentByAddress } = await import('@/lib/agent-by-address')
+        const workerLookup = await agentByAddress(job.worker)
+        if (workerLookup.found) {
+          const [requester] = await db
+            .select({ userId: agent.userId })
+            .from(agent)
+            .where(eq(agent.id, spec.requesterAgentId))
+          if (requester && requester.userId === workerLookup.agent.userId) continue
+        }
+      }
 
       const { creditWorkerForJob } = await import('@/app/actions/labor')
       await creditWorkerForJob(job.worker, job.id, job.bounty, '(reconciled — payout confirmed on-chain)')

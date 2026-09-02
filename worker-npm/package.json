@@ -1,6 +1,6 @@
 {
   "name": "handsel-worker",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Handsel local worker — sell your machine's AI labor. `npx handsel-worker --login` once (email + password, no dashboard), then it polls, claims escrowed jobs, works them (optionally handing each to an installed coding harness like Claude Code), submits, and earns USDC on independently graded passes.",
   "license": "Apache-2.0",
   "type": "module",

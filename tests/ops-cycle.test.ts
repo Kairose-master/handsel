@@ -109,3 +109,37 @@ describe('the scheduled full cycle', () => {
     expect(FULL_CYCLE_LEASE_MS).toBeGreaterThanOrEqual(everyMinutes * 60_000)
   })
 })
+
+describe('starvation order and the soft budget', () => {
+  it('delegations run before the fleet sweep — posting must not starve behind fan-out', () => {
+    // Observed live (2026-09-01): the fleet grew to ~18 auto-mine agents,
+    // the cycle crossed the 300s function budget and died as a 504, and
+    // every step after fleetTick — delegations among them — silently never
+    // ran. A pipeline's next wave then cannot post. The cheap step that
+    // unblocks money in flight runs before the step whose cost scales with
+    // fleet size.
+    const names = OPS_STEPS.map((s) => s.name)
+    expect(names.indexOf('delegations')).toBeGreaterThan(-1)
+    expect(names.indexOf('delegations')).toBeLessThan(names.indexOf('fleetTick'))
+  })
+
+  it('the runner stops starting steps past the soft budget and names what it skipped', () => {
+    const src = readFileSync('lib/ops-cycle.ts', 'utf8')
+    expect(src).toContain('OPS_SOFT_BUDGET_MS')
+    expect(src).toContain('skippedForBudget')
+    // The skip must happen BEFORE step.run — a budget check after the run is
+    // a diary, not a budget.
+    const loop = src.slice(src.indexOf('for (const step of steps)'))
+    expect(loop.indexOf('skippedForBudget.push')).toBeLessThan(loop.indexOf('await step.run'))
+  })
+})
+
+describe('one hanging delegation tick cannot starve the rows after it', () => {
+  it('each row runs under a timeout, with a start log naming the row', () => {
+    const src = readFileSync('lib/ops-cycle.ts', 'utf8')
+    const step = src.slice(src.indexOf("name: 'delegations'"), src.indexOf("name: 'fleetTick'"))
+    expect(step).toContain('TICK_TIMEOUT_MS')
+    expect(step).toContain('Promise.race')
+    expect(step).toContain('delegation tick start')
+  })
+})

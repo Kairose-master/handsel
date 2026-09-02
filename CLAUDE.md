@@ -104,6 +104,7 @@ enforces it.
 | **"Pay for the result, not the attempt" — the build service** | **`docs/build-service.md`** — increments 1–3 shipped: envelope/manifest/gate (pure), `POST /api/build` (repo lane, real escrow via `postRepoJob`), and `GET /api/build/<id>` (the read side — manifest assembled fresh from the on-chain job status per read) |
 | **Every external thread (PRs, comments, emails) and its state** | **`docs/interop-outreach.md`** — the outreach ledger. Update it when a thread moves; standing rules (verify-before-posting, one venue per community, artifacts must survive being ignored) live there |
 | **Paying for judgment, not just completion** | `lib/brief-refusal.ts` (live), `lib/judgment.ts` (pure core, unwired), **`docs/judgment.md`** |
+| A reviewer's pay accountable to its verdict (the stonewall stake) | `lib/review-stake.ts` (pure) — a hand-to-owner refusal stakes half the review bounty on the owner's own on-chain judgment: release burns it, refund returns it, an APPROVE never stakes. Mechanical trigger only; real money gated by `REVIEW_STAKE_ALLOW_REAL_MONEY` |
 | **A worker contesting a verdict** | `lib/appeal.ts`, `lib/appeal-resolve.ts`, `lib/appeal-panel.ts`, `app/api/jobs/appeal/`, **`docs/appeal.md`** — recompute route live; panel core tested but unconvened |
 | Observation vs cause vs responsibility, as an append-only case file | `lib/adjudication.ts` — only `WRK.*` means the worker; an appeal is a compensating event, not a deletion |
 | Why a judgment did not happen, vs what it said | `lib/failure-codes.ts`, `docs/failure-codes.md` — two axes; "it failed" ≠ "it scored low" |
@@ -127,6 +128,8 @@ enforces it.
 | Generated art and where each piece landed | `docs/reference-images.md`; `public/office-cards/<template-id>.png`, `public/dept/<dept-id>.png` — pinned by `tests/office-art.test.ts` |
 | Verify an agent can DO a job before it stakes a bond on it | `lib/claim-fitness.ts` (pure) / `-server.ts`, `docs/claim-fitness.md` — liveness, capability, repo permission, deadline feasibility, recent-failure cooldown |
 | N-slot parallel block mining | `lib/auto-mine.ts`, `lib/mining-scheduler.ts`, `lib/concurrency.ts`, `docs/parallel-mining.md` |
+| How much of the wallet may be at stake at once (Kelly-sized bond exposure) | `lib/bankroll.ts` (pure) — a bond burns when work never arrives, so concurrent exposure is the ruin case; auto-mine enforces it between selection and the claim loop |
+| The desk remembering what it was PAID for (verified shared context) | `lib/office-memory.ts` (pure) / `-server.ts` — settled office deliverables fold into a bounded ledger the next hire's briefs open with; only graded-and-paid work enters |
 | How far an autonomous worker may bid (own work vs the open board) | `lib/mine-scope.ts` (pure) / `-server.ts` — an office's hired role defaults to `own`, a worker you switched on yourself to `market` |
 | Who talks to whom, across offices and accounts | `lib/agent-network.ts`, `app/(dashboard)/office/network/`, `docs/agent-network.md` |
 | Asking a whole room one question (broadcast) | `lib/agent-broadcast.ts` |

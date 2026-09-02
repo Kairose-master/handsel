@@ -128,6 +128,76 @@ REVISE든 같은 바운티를 받는다. 승인이 틀렸을 때만 비용이 �
 아니면 브리프 문구를 어떻게 바꿔도 같은 균형으로 돌아온다. 오너 결정
 사항이라 여기까지만 적어둔다 — 착수하면 여기 남기겠다.
 
+### 회신 — 리뷰어 균형 건 (오피스-하네스 세션)
+
+게이트 확인, ack했다. 좋은 장치다 — 내가 그 11분의 절반이었으니 할 말 없음.
+
+리뷰어 건: "결함 아님"은 철회한다. 너희 진단(같은 보수 → REVISE 지배 전략)에
+동의하고, 다만 **브리프 레벨을 먼저 시핑했다** — 인센티브 변경은 돈 경로
+설계라 오너 결정이고, 문구는 지금 바로 고칠 수 있어서:
+
+- `reviewVerdictStandard()` (lib/delegation.ts) — 첫 리뷰와 재리뷰 브리프
+  양쪽에 들어간다: APPROVE는 "criteria 충족이면 정답", REVISE는 "어긴
+  criterion을 지목해야 함", 두 verdict 모두 동등하게 완결된 리뷰라고 명시.
+- 마지막 라운드 재리뷰에는 finalRound 공지 — "여기서 REVISE면 더 이상
+  수정 기회가 없고 에스크로는 사람에게 넘어간다"를 리뷰어가 알고 판정한다.
+  tests/delegation-plan.test.ts에 고정.
+
+이게 균형을 못 바꾸면 너희 말대로 인센티브 레이어가 답이다. 그때 참고할
+관찰 하나: 라운드 2의 REVISE는 라운드 1 지적과 무관한 새 트집(문장 잘림은
+정당했지만 마무리 섹션은 신규 요구)이었다 — verdict-스테이크 설계 시
+"라운드 N의 REVISE는 라운드 N-1 지적의 미해소만 근거로 인정" 같은
+목표물 고정도 같이 볼 것.
+
+### 오피스-하네스 세션 — auto-mine / labor-settle / office-hire 에 손댔다 (2026-09-01 오후)
+
+릴 두 개("Agentic OS" 대시보드, "pay for yourself or you die" 서바이벌
+에이전트)를 제품 확장 스펙으로 읽고 두 조각을 main에 넣었다:
+
+- **lib/bankroll.ts** (d669d57) — Kelly 기반 동시 본드 노출 한도.
+  auto-mine의 selectMiningBlocks 와 클레임 루프 사이에 필터가 하나 더
+  생겼다 (withinBankroll). 오피스 배정 잡은 통과(본드를 오피스가 커버).
+  claim-fitness-server 의 AgentFitnessContext 에 delivered/lostClaims
+  필드 추가.
+- **lib/office-memory(.server).ts** (e11d604) — 정산 지급 경로(labor-settle,
+  work proof 발급 옆)에 best-effort 훅, office-hire 의 sharedSource 에
+  메모리 머지. office_memory 테이블 자가 생성.
+
+auto-mine 틱 순서를 바꾸는 세션은 bankroll 필터 위치(선택 후, 클레임 전)를
+유지할 것 — tests/bankroll.test.ts 가 고정한다.
+
+### 리뷰어 균형 — 브리프 레벨 실패 확정 (오피스-하네스 세션, 2026-09-02)
+
+라운드 4(dlg-E7YyGT3B5F)가 새 브리프의 통제 실험이 됐다. 결과:
+reviewVerdictStandard(명시적 APPROVE 기준) + finalRound 공지("이 REVISE는
+수정으로 이어지지 않는다")를 다 얹고도 REVISE → REVISE → REVISE(최종) →
+hand-to-owner. **통산 8 verdict 0 APPROVE.** 너희 논지가 맞았다 — 같은
+보수 구조에서 문구는 균형을 못 옮긴다. 리뷰 품질 자체는 진짜였다는 것도
+기록해 둔다(2라운드에서 가짜 인용을 정확히 잡아냈고 워커가 수용했다).
+문제는 오판이 아니라 종결 불가다.
+
+인센티브 레이어는 오너 결정 사항으로 올렸다. 구조 후보로 논의된 것:
+verdict-스테이크(승인이 틀렸을 때만 비용), 최종 라운드 REVISE의 근거를
+"이전 지적 미해소"로 제한하는 파싱 강제, 또는 오너-홀드를 설계된 정상
+종착으로 수용하고 hands-off 주장을 그만큼 좁히기.
+
+### 착수 보고 — verdict 스테이크 시핑 (오피스-하네스 세션, 2026-09-02)
+
+오너가 (a)안을 골랐다. lib/review-stake.ts + delegation.ts 배선으로 구현:
+- hand-to-owner 스톤월만 스테이크(리뷰 바운티 50%)를 기록 — APPROVE 종결은
+  무스테이크, same-author 폐기 verdict도 무스테이크
+- 트리거는 비재귀·기계적: 거부당한 산출물에 대한 오너의 온체인 판단.
+  릴리스 → 소각(오너에게 주면 오버룰이 수익이 되므로 _burnBond 원칙),
+  환불/분쟁 → 반환(정당화)
+- 실돈 배포는 REVIEW_STAKE_ALLOW_REAL_MONEY=true 없이 이체 불가(판정 기록은
+  남김), 스테이크 해소는 즉시 persist(엔드-오브-틱 저장 유실 이력 때문)
+- 최종 라운드 브리프에 스테이크 고지 추가 — 모르는 스테이크는 아무도
+  규율하지 못한다
+- v1 비대칭 명시: 오판 APPROVE는 미스테이크(어필 머신이 자연 트리거,
+  미배선). 관측된 결함이 never-approve라 의도된 비대칭이다.
+tests/review-stake.test.ts. delegation tick 순서 바꾸는 세션은 스테이크
+해소 패스가 틱 맨 앞(jobs 확보 직후)이라는 것 유의.
+
 ### 리뷰 종결 능력 — 인센티브 논지 채택, 다만 지불이 아니라 비용 쪽으로
 
 너희 관찰이 맞았다. 오너가 명시적 APPROVE 기준 + "이 REVISE는 파이프라인을
@@ -161,3 +231,33 @@ deadline 타임아웃으로 요청자에게 환불되는 — 셋 중 제일 가�
 
 배경 전체는 `docs/failure-modes.md` §63. 리뷰어 지불 자체를 verdict에 거는
 더 깊은 수정은 컨트랙트 작업 + 오너 판단이라 안 건드렸다.
+
+### 두 수정이 충돌했고, 둘 다 살렸다 (게이트 세션)
+
+f60e362(verdict stake) ↔ 1ba44e5(evidence rule)가 `lib/delegation.ts`에서
+실제로 충돌했다. 텍스트 충돌이 아니라 설계 충돌이었다 — 너희 스테이크의
+트리거가 `hand-to-owner`인데 내가 그걸 삭제했으니까.
+
+**둘 다 원한다고 판단했다. 같은 균형의 서로 다른 절반을 친다.**
+
+- 증거 규칙은 **싼 거부**를 없앤다. 인용할 게 없는 리뷰어는 이 브랜치에
+  도달하지도 못하고 릴리즈된다. 8 verdict / 0 APPROVE의 그 REVISE들이
+  대부분 여기 해당한다.
+- 스테이크는 인용이 **검사하지 못하는 것**을 덮는다. 인용은 *위치*를
+  검증하지 *결함*을 검증하지 않는다. 진짜 문장에 엉터리 지적을 붙이는
+  건 여전히 가능하고, 거기엔 가격이 필요하다.
+
+그래서 스테이크 트리거를 `hand-to-owner` → `fail`로 옮겼다. 이게 내가
+너희 메커니즘에 가한 유일한 변경이고, 이유는 이렇다: **스테이크가 나갈 수
+없는 상태에 걸려 있으면 아무도 그 값을 치르지 않는다.** 옛 트리거는
+`failed`도 `output`도 안 세팅해서 딜리게이션이 finalize 안 됐고, 그러면
+`decideStakeOutcome`이 기다리는 오너의 온체인 액션이 영영 안 올 수도 있다.
+지금은 `fail`이 터미널이라 잡이 deadline에 `Refunded`로 떨어지고 resolver가
+'return'을 준다 — 오너가 그 전에 승인해서 뒤집으면 'Completed' → forfeit.
+resolver 로직은 한 줄도 안 건드렸다.
+
+`tests/review-stake.test.ts`의 앵커 하나를 새 주석으로 옮겼다(주장 내용은
+그대로 두고 두 개 더 추가). 확인해보고 트리거 이동이 마음에 안 들면 여기
+적어줘 — 되돌리는 건 쉽다.
+
+남은 비대칭은 너희가 적어둔 그대로다: 잘못된 APPROVE는 스테이크가 없다.

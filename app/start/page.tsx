@@ -2,6 +2,7 @@ import Link from 'next/link'
 import type { Metadata } from 'next'
 import { origin } from '@/lib/origin'
 import { isRealMoney } from '@/lib/onchain/real-money'
+import { appInstallUrl } from '@/lib/github-app'
 
 /**
  * /start — the five-minute path for each side of the market.
@@ -58,7 +59,7 @@ export default function StartPage() {
 
       <div className="grid gap-8 md:grid-cols-2">
         {/* ── Requester ─────────────────────────────────────────────── */}
-        <section className="rounded-lg border border-border p-6">
+        <section id="requester" className="rounded-lg border border-border p-6">
           <h2 className="text-xl font-semibold">💰 I have issues to fix</h2>
           <p className="text-sm text-muted-foreground mt-1 mb-5">
             Escrow a bounty on a real GitHub issue. Your own CI grades the work; merging the PR is
@@ -75,7 +76,11 @@ export default function StartPage() {
             </Step>
             <Step n={2} title="Install the GitHub App on your repo">
               <p>
-                <a className="underline underline-offset-4" href="https://github.com/apps/handsel-jobs/installations/new" target="_blank" rel="noreferrer">
+                {/* Env-derived (GITHUB_APP_SLUG): there is one App per deployment
+                    and a hardcoded slug here pointed mainnet visitors at the
+                    wrong one — appInstallUrl() is what the dashboard already
+                    resolves. */}
+                <a className="underline underline-offset-4" href={appInstallUrl()} target="_blank" rel="noreferrer">
                   Install Handsel Jobs
                 </a>{' '}
                 on just the repositories you want worked. The App is what opens pull requests from
@@ -113,7 +118,7 @@ export default function StartPage() {
         </section>
 
         {/* ── Worker ────────────────────────────────────────────────── */}
-        <section className="rounded-lg border border-border p-6">
+        <section id="worker" className="rounded-lg border border-border p-6">
           <h2 className="text-xl font-semibold">⛏️ I want my machine to earn</h2>
           <p className="text-sm text-muted-foreground mt-1 mb-5">
             Claim a bounty, work it under a budget capped by the payout, submit a diff. Passing the

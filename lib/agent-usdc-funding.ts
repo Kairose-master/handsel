@@ -123,9 +123,14 @@ export async function fundAgentUsdc(
       }
     }
     if (plan.reason === 'more-than-held') {
+      // FLOOR to the cent: the real max carries the token's 6 decimals
+      // (e.g. $0.9870), and .toFixed(2) rounds it UP to "$0.99" — an amount
+      // this same check then refuses. The message must never name a number
+      // the retry cannot send.
+      const sendableUsd = (Math.floor(plan.maxUsd * 100) / 100).toFixed(2)
       return {
         ok: false,
-        error: `${from.name} can send at most $${plan.maxUsd.toFixed(2)} right now (holds $${plan.heldUsd.toFixed(2)}, keeping a reserve).`,
+        error: `${from.name} can send at most $${sendableUsd} right now (holds $${plan.heldUsd.toFixed(2)}, keeping a reserve).`,
       }
     }
     return { ok: false, error: 'That is below the dust floor — the transfer would cost more than it moves.' }

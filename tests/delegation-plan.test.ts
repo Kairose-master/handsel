@@ -9,8 +9,11 @@ import {
   parseReviewVerdict,
   reviewTierGate,
   finalReviewerFor,
+  reviewVerdictStandard,
+  reReviewBrief,
   MAX_SUBTASKS,
   MAX_REVIEW_TIERS,
+  MAX_REVISION_ROUNDS,
   type DelegationSubtask,
 } from '@/lib/delegation'
 
@@ -283,5 +286,151 @@ describe('finalReviewerFor — the reviewer whose verdict actually decides the t
 
   it('is undefined when the target has no reviewer at all', () => {
     expect(finalReviewerFor([st({ title: 'Unrelated', reviewOf: 'Something else' })], 'Draft')).toBeUndefined()
+  })
+})
+
+describe('reviewVerdictStandard — the brief states when APPROVE is the right answer', () => {
+  // The first two live review conversations produced five verdicts and zero
+  // APPROVEs — including a REVISE on a revision that had addressed every
+  // prior note. A paid fault-finder needs the brief to say that approving
+  // sound work is also doing the job, or every reviewed synthesis ends in
+  // an owner hold and the hands-off pipeline can never finish.
+  it('ties both verdicts to the acceptance criteria', () => {
+    const s = reviewVerdictStandard()
+    expect(s).toContain('APPROVE when the deliverable satisfies the acceptance criteria')
+    expect(s).toContain('name the criterion')
+    expect(s).toContain('equally complete reviews')
+    expect(s).not.toContain('FINAL round')
+  })
+
+  it('the final round discloses what a REVISE now does', () => {
+    const s = reviewVerdictStandard(true)
+    expect(s).toContain('FINAL round')
+    expect(s).toContain('held for a human owner')
+  })
+
+  it('reaches both reviewer briefs — first review and re-review', () => {
+    const brief = reReviewBrief({
+      title: 'T',
+      acceptanceCriteria: 'C',
+      revisedOutput: 'out',
+      priorNote: 'note',
+      round: MAX_REVISION_ROUNDS,
+      finalRound: true,
+      nonce: 'n',
+    })
+    expect(brief).toContain('APPROVE when the deliverable satisfies the acceptance criteria')
+    expect(brief).toContain('FINAL round')
+    // The first-review header is composed inline in the tick — pin the call.
+    const { readFileSync } = require('node:fs') as typeof import('node:fs')
+    const src = readFileSync('lib/delegation.ts', 'utf8')
+    const header = src.slice(src.indexOf('The work to review — judge it against the criteria'), src.indexOf('Inputs from upstream work'))
+    expect(header).toContain('reviewVerdictStandard()')
+  })
+
+  it('a non-final re-review does not claim finality', () => {
+    const brief = reReviewBrief({
+      title: 'T',
+      acceptanceCriteria: 'C',
+      revisedOutput: 'out',
+      priorNote: 'note',
+      round: 1,
+      nonce: 'n',
+    })
+    expect(brief).not.toContain('FINAL round')
+  })
+})
+
+describe('a wave posts only what its payer can afford — checked at posting time', () => {
+  // Balances move between waves: a second pipeline on the same payer spent
+  // the wallet a wave was counting on (observed live 2026-09-01), and the
+  // wave surfaced as an opaque on-chain revert retry loop that consumed the
+  // whole delegation tick. The pre-check turns that into the same
+  // actionable row error the confirm path already produces.
+  it('postOneSubtask reads the payer balance before the post — as ADVICE, never the gate', () => {
+    const { readFileSync } = require('node:fs') as typeof import('node:fs')
+    const src = readFileSync('lib/delegation.ts', 'utf8')
+    const body = src.slice(src.indexOf('async function postOneSubtask'), src.indexOf('export async function postDelegationJobs'))
+    const checkAt = body.indexOf('usdcBalanceOf')
+    expect(checkAt).toBeGreaterThan(-1)
+    expect(checkAt).toBeLessThan(body.indexOf('await postJob('))
+    // The gating version held a fully-funded wave hostage to a provider
+    // serving five-minute-old state. A short read logs and posts anyway.
+    expect(body).toContain('posting anyway; the chain decides')
+    expect(body).not.toContain('mint test USDC on that agent')
+    expect(body).toContain('posting balance pre-check failed (continuing)')
+  })
+})
+
+describe('the model lane survives a dead Anthropic key (platform OpenAI-compat fallback)', () => {
+  // Live outage: the platform Anthropic key ran out of credits — a 400 no
+  // retry fixes — and planning, verification and text grading died together
+  // for hours. The same three values a BYOK entry stores can now come from
+  // env (OPENAI_COMPAT_BASE_URL/_API_KEY/_MODEL, e.g. OpenRouter), used as
+  // the last resort AND as an automatic failover when the Anthropic call
+  // fails on billing/auth specifically.
+  it('resolveLlm reads the platform compat env and fails over on billing errors only', () => {
+    const { readFileSync } = require('node:fs') as typeof import('node:fs')
+    const src = readFileSync('lib/delegation.ts', 'utf8')
+    expect(src).toContain('OPENAI_COMPAT_BASE_URL')
+    expect(src).toContain('OPENAI_COMPAT_API_KEY')
+    expect(src).toContain('OPENAI_COMPAT_MODEL')
+    const failover = src.slice(src.indexOf('const platformCompat'))
+    expect(failover).toContain('credit balance|billing|invalid x-api-key|authentication_error')
+    // Non-billing errors surface — they must not be laundered through a
+    // different provider.
+    expect(failover).toContain('throw error')
+  })
+})
+
+describe('PREFER_OPENAI_COMPAT — the compat gateway carries the text lane, Anthropic is the net', () => {
+  it('the compat-first branch exists, gated on the env switch, with failover to the Anthropic key', () => {
+    const { readFileSync } = require('node:fs') as typeof import('node:fs')
+    const src = readFileSync('lib/delegation.ts', 'utf8')
+    const at = src.indexOf("process.env.PREFER_OPENAI_COMPAT === 'true'")
+    expect(at).toBeGreaterThan(-1)
+    const block = src.slice(at, at + 900)
+    // Gateway-first failover is deliberately wide (any throw): a self-hosted
+    // router's dominant failure is unreachability.
+    expect(block).toContain('falling back to the platform Anthropic key')
+    // …and it must come BEFORE the anthropic-first branch, or the switch is
+    // decoration.
+    expect(at).toBeLessThan(src.indexOf('Anthropic key unusable'))
+  })
+})
+
+describe('LLM usage hygiene — the bill-cutting invariants', () => {
+  const { readFileSync } = require('node:fs') as typeof import('node:fs')
+  const src = readFileSync('lib/delegation.ts', 'utf8')
+
+  it('the stable system text is cached; the per-call nonce rides after the breakpoint', () => {
+    // cache_control on the stable block only — a nonce inside the cached
+    // prefix would invalidate it on every call, which is how the cache hit
+    // rate was 0% for the life of the platform.
+    const at = src.indexOf("cache_control: { type: 'ephemeral' }")
+    expect(at).toBeGreaterThan(-1)
+    expect(src.slice(at - 200, at)).toContain('text: stable')
+    expect(src).toContain('volatile ? [{ type:')
+  })
+
+  it('verdict-shaped calls run at effort low; the planner does not', () => {
+    const verifier = src.slice(src.indexOf('async function verifySubmission'))
+    expect(verifier).toContain("{ effort: 'low' }")
+    const planner = src.slice(src.indexOf('const planOnce'), src.indexOf('parsePlannerOutput(text'))
+    expect(planner).not.toContain('effort')
+    const grader = readFileSync('lib/text-grading.ts', 'utf8')
+    expect(grader).toContain("{ effort: 'low' }")
+  })
+
+  it('the verifier and grader cap the description as context — criteria stay whole', () => {
+    const verifier = src.slice(src.indexOf('async function verifySubmission'))
+    expect(verifier).toContain('context cut for verification')
+    expect(verifier).toContain('${st.acceptanceCriteria}')
+    const grader = readFileSync('lib/text-grading.ts', 'utf8')
+    expect(grader).toContain('context cut for grading')
+  })
+
+  it('the text-lane model is env-overridable, defaulting to the owner-chosen tier', () => {
+    expect(src).toContain("process.env.PLATFORM_LLM_MODEL || 'claude-opus-4-8'")
   })
 })

@@ -132,7 +132,8 @@ async function ensureAgentGas(address: Address, agentId: string, lane: 'user' | 
   // agrees with itself rather than with the bank.
   await recordGasSpend(lane, agentId, 'eoa-topup', AGENT_TOPUP_COST_USD)
   const hash = await oracleWallet().sendTransaction({ to: address, value: AGENT_GAS_TOPUP })
-  await client.waitForTransactionReceipt({ hash })
+  // Same bound as sendEoaCall's wait, for the same reason.
+  await client.waitForTransactionReceipt({ hash, timeout: RECEIPT_TIMEOUT_MS })
 }
 
 async function sendEoaCall(
@@ -148,9 +149,21 @@ async function sendEoaCall(
     data: call.data,
     value: call.value ?? 0n,
   })
-  await publicClient().waitForTransactionReceipt({ hash })
+  // Bounded, because viem's default here is to poll FOREVER: a sick provider
+  // that accepts a transaction (returns a hash) and never propagates it left
+  // this wait spinning until the Vercel runtime killed the whole invocation
+  // at its hard limit — a 504 with no error, observed live across every
+  // write path at once. A timeout turns that into a thrown error naming the
+  // hash; every caller already retries on its next tick, and a transaction
+  // that does mine late is simply found settled by that retry.
+  await publicClient().waitForTransactionReceipt({ hash, timeout: RECEIPT_TIMEOUT_MS })
   return hash
 }
+
+/** How long a write waits for its receipt before failing loudly. Longer than
+ *  any healthy inclusion on this chain (~2s blocks); far shorter than the
+ *  route budgets it was silently exhausting. */
+const RECEIPT_TIMEOUT_MS = 60_000
 
 // ---------------------------------------------------------------------------
 // Kernel (ERC-4337) mode

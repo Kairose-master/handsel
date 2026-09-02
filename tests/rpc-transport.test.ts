@@ -128,3 +128,34 @@ describe('isMalformedRpcResult — a 200 with an impossible null is a transport 
     expect(isMalformedRpcResult('eth_getBlockByNumber', ['latest', false], { number: '0x1' })).toBe(false)
   })
 })
+
+describe('a swallowed transaction fails loudly instead of exhausting the route budget', () => {
+  // viem's waitForTransactionReceipt polls FOREVER by default. A provider
+  // that accepted a tx (returned a hash) and never propagated it left every
+  // write path spinning until the Vercel runtime killed the invocation at
+  // 120s — funding transfers, wave posts, gas top-ups, all at once, with no
+  // error logged. Every EOA write's receipt wait is bounded.
+  it('sendEoaCall and the gas top-up wait with a timeout', () => {
+    const src = readFileSync('lib/onchain/account.ts', 'utf8')
+    expect(src).toContain('RECEIPT_TIMEOUT_MS')
+    const waits = src.match(/waitForTransactionReceipt\(\{[^}]*\}\)/g) ?? []
+    expect(waits.length).toBeGreaterThanOrEqual(2)
+    for (const w of waits) expect(w).toContain('timeout: RECEIPT_TIMEOUT_MS')
+  })
+})
+
+describe('a signed transaction is broadcast to every node, not the first healthy-looking one', () => {
+  // fallback() rotates on errors — and the outage that took every write
+  // path down at once was a primary that ACCEPTED transactions (hash
+  // returned: success, no rotation) into a mempool it never propagated.
+  // A signed tx is idempotent, so eth_sendRawTransaction fans out to all
+  // configured nodes and the chain default; the first acceptance wins.
+  it('buildChainTransport special-cases eth_sendRawTransaction with a fan-out', () => {
+    const src = readFileSync('lib/onchain/transport.ts', 'utf8')
+    expect(src).toContain("args.method === 'eth_sendRawTransaction'")
+    expect(src).toContain('Promise.allSettled')
+    // Reads stay on the ranked fallback — the fan-out is writes only.
+    const block = src.slice(src.indexOf('export function buildChainTransport'))
+    expect(block).toContain('return t.request(args as never)')
+  })
+})

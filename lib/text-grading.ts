@@ -66,10 +66,21 @@ export async function gradeTextSubmission(
     // with a nonce minted now — after they wrote — and the system prompt is
     // told to treat any instruction inside as a failing offence.
     const nonce = untrustedNonce()
+    // Same token hygiene as verifySubmission (lib/delegation.ts): the
+    // description is capped as context (criteria stay whole — they are the
+    // contract), the stable system text is cached across a sweep's burst of
+    // gradings, and effort 'low' caps thinking on a one-JSON-object call.
+    const contextCap = 6_000
+    const fullDescription = spec.description ?? '(none)'
+    const description =
+      fullDescription.length > contextCap
+        ? `${fullDescription.slice(0, contextCap)}\n[context cut for grading — the full brief is on the job record; judge against the acceptance criteria]`
+        : fullDescription
     const raw = await complete(
-      `${GRADER_SYSTEM_BASE} ${graderInjectionClause(nonce)}`,
-      `Job: ${spec.title}\n\nDescription:\n${spec.description ?? '(none)'}\n\nAcceptance criteria:\n${spec.acceptanceCriteria}\n\nSubmitted output:\n${fenceUntrusted('submission', output.slice(0, 20_000), nonce)}`,
+      { stable: GRADER_SYSTEM_BASE, volatile: graderInjectionClause(nonce) },
+      `Job: ${spec.title}\n\nDescription:\n${description}\n\nAcceptance criteria:\n${spec.acceptanceCriteria}\n\nSubmitted output:\n${fenceUntrusted('submission', output.slice(0, 20_000), nonce)}`,
       2000,
+      { effort: 'low' },
     )
     const verdict = parseGraderVerdict(raw)
     if (!verdict) {

@@ -42,6 +42,11 @@ export type AgentFitnessContext = {
   medianTurnaroundSec: number | null
   /** jobClass → how that class has gone for this agent. */
   historyByClass: Map<string, ClassHistory>
+  /** Delivery record for bankroll sizing (lib/bankroll.ts): claims that
+   *  reached grading at all, vs claims old enough (STALE_CLAIM_MS) that the
+   *  bond is plainly lost. A live claim inside the window counts as neither. */
+  delivered: number
+  lostClaims: number
 }
 
 /**
@@ -95,6 +100,8 @@ export async function agentFitnessContext(row: AgentRow, now = new Date()): Prom
     capabilities: row.capabilities,
     medianTurnaroundSec: null,
     historyByClass: new Map(),
+    delivered: 0,
+    lostClaims: 0,
   }
 
   let specs: Array<typeof jobSpec.$inferSelect>
@@ -102,6 +109,20 @@ export async function agentFitnessContext(row: AgentRow, now = new Date()): Prom
     specs = await db.select().from(jobSpec).where(eq(jobSpec.workerAgentId, row.id))
   } catch {
     return base // unknown history — never a reason to refuse work
+  }
+
+  // Delivery record, from the same rows: a claim that reached grading was
+  // delivered (pass or fail — the bond returns either way); a claim with no
+  // grading after STALE_CLAIM_MS is a bond the chain will burn or has
+  // burned. Claims still inside the window are in flight and count as
+  // neither, so a busy worker is not punished for being busy.
+  {
+    const { BANKROLL } = await import('@/lib/bankroll')
+    for (const s of specs) {
+      if (!s.claimedAt) continue
+      if (s.testResult?.gradedAt) base.delivered += 1
+      else if (now.getTime() - s.claimedAt.getTime() > BANKROLL.STALE_CLAIM_MS) base.lostClaims += 1
+    }
   }
 
   const turnarounds: number[] = []

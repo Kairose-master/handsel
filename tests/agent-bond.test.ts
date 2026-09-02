@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { bondForBounty, bondFloatFor, bondReadiness } from '@/lib/agent-bond'
 import {
   planUsdcFunding,
@@ -118,5 +119,26 @@ describe('suggestedFloatFor', () => {
     const exact = bondFloatFor([1.71, 1.71], LIVE) // 0.231
     expect(suggestedFloatFor([1.71, 1.71], LIVE)).toBe(0.24)
     expect(suggestedFloatFor([1.71, 1.71], LIVE)).toBeGreaterThanOrEqual(exact)
+  })
+})
+
+describe('the "can send at most" message never names an unsendable amount', () => {
+  // Live, twice in one session (2026-09-01): held $1.4870 → real max $0.9870
+  // → the error said "at most $0.99" and then refused $0.99. The retry the
+  // message itself suggests must succeed, so the displayed max is FLOORED to
+  // the cent, not rounded.
+  it('the fund path floors the displayed max instead of rounding it up', () => {
+    const src = readFileSync('lib/agent-usdc-funding.ts', 'utf8')
+    const block = src.slice(src.indexOf("reason === 'more-than-held'"), src.indexOf('below the dust floor'))
+    expect(block).toContain('Math.floor(plan.maxUsd * 100) / 100')
+    expect(block).not.toContain('plan.maxUsd.toFixed(2)')
+  })
+
+  it('a cent amount at the floored max is accepted by the plan', () => {
+    const plan = planUsdcFunding({ heldUsd: 1.487, requestedUsd: 0.98 })
+    expect(plan.ok).toBe(true)
+    // …and the rounded-up cent the old message named is refused, which is
+    // exactly why the message must not name it.
+    expect(planUsdcFunding({ heldUsd: 1.487, requestedUsd: 0.99 }).ok).toBe(false)
   })
 })

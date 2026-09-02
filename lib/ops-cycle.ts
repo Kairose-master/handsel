@@ -223,6 +223,58 @@ export const OPS_STEPS: OpsStep[] = [
       return ensureFleetKeys()
     },
   },
+  // Delegations run BEFORE the fleet sweep, for two reasons that showed up
+  // as one live failure: the tick is what POSTS a pipeline's next wave, so
+  // posting first lets the same cycle's sweep claim it — and when the fleet
+  // grew to ~18 auto-mine agents the cycle started hitting the function
+  // budget (504s), which silently killed every step after the sweep. The
+  // step that unblocks money in flight must not sit behind the step whose
+  // cost scales with fleet size.
+  {
+    name: 'delegations',
+    run: async () => {
+      const { db } = await import('@/lib/db')
+      const { delegation } = await import('@/lib/db/schema')
+      const { eq } = await import('drizzle-orm')
+      const { tickDelegation } = await import('@/lib/delegation')
+      let active: (typeof delegation.$inferSelect)[] = []
+      try {
+        active = await db.select().from(delegation).where(eq(delegation.status, 'posted'))
+      } catch {
+        return 'table missing (migration pending)'
+      }
+      if (active.length === 0) return { active: 0 }
+      const { readJobs } = await import('@/lib/onchain/labor')
+      const jobs = await readJobs().catch(() => [])
+      let ticked = 0
+      let failed = 0
+      // Per-row timeout, because one hanging tick starves every row after
+      // it — observed live: an invocation died mid-step with exactly one
+      // tick logged, and a finished pipeline three rows later could not
+      // post its next wave for an hour. The start log is deliberate: when a
+      // row DOES hang, the last "tick start" line names it. The timed-out
+      // promise is abandoned, not cancelled — the cycle lease serialises
+      // cycles and the tick's writes are guarded against double-posting
+      // (docs/failure-modes.md §35), so an orphan finishing late is
+      // recorded work, not duplicated work.
+      const TICK_TIMEOUT_MS = 90_000
+      for (const row of active) {
+        console.info(`[ops-cycle] delegation tick start ${row.id}`)
+        await Promise.race([
+          tickDelegation(row, jobs),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error(`tick timed out after ${TICK_TIMEOUT_MS / 1000}s`)), TICK_TIMEOUT_MS),
+          ),
+        ])
+          .then(() => { ticked++ })
+          .catch((e) => {
+            failed++
+            console.error(`[ops-cycle] delegation tick failed for ${row.id}:`, e)
+          })
+      }
+      return { active: active.length, ticked, failed }
+    },
+  },
   {
     name: 'fleetTick',
     run: async ({ origin }) => {
@@ -301,35 +353,6 @@ export const OPS_STEPS: OpsStep[] = [
     run: async () => {
       const { sweepLoanReminders } = await import('@/lib/loan-sweep')
       return sweepLoanReminders()
-    },
-  },
-  {
-    name: 'delegations',
-    run: async () => {
-      const { db } = await import('@/lib/db')
-      const { delegation } = await import('@/lib/db/schema')
-      const { eq } = await import('drizzle-orm')
-      const { tickDelegation } = await import('@/lib/delegation')
-      let active: (typeof delegation.$inferSelect)[] = []
-      try {
-        active = await db.select().from(delegation).where(eq(delegation.status, 'posted'))
-      } catch {
-        return 'table missing (migration pending)'
-      }
-      if (active.length === 0) return { active: 0 }
-      const { readJobs } = await import('@/lib/onchain/labor')
-      const jobs = await readJobs().catch(() => [])
-      let ticked = 0
-      let failed = 0
-      for (const row of active) {
-        await tickDelegation(row, jobs)
-          .then(() => { ticked++ })
-          .catch((e) => {
-            failed++
-            console.error(`[ops-cycle] delegation tick failed for ${row.id}:`, e)
-          })
-      }
-      return { active: active.length, ticked, failed }
     },
   },
   {
@@ -412,12 +435,31 @@ export async function runOpsCycle(origin: string, opts?: { fastOnly?: boolean })
   const { ensureEventIndexes } = await import('@/lib/db/event-index')
   await ensureEventIndexes().catch(() => false)
 
+  // Soft budget: the route's hard budget is 300s, and a cycle that crosses
+  // it dies as a 504 — killing whichever steps happened to be last with no
+  // record of what never ran. Observed live: a grown fleet sweep pushed the
+  // cycle over, and the delegation tick behind it starved for half an hour
+  // while every log line looked normal. Past the soft line no NEW step
+  // starts; the ones skipped are named in the report and the log, and they
+  // run next cycle. A visible truncation is recoverable; a 504 is not even
+  // diagnosable.
+  const softBudgetMs = Number(process.env.OPS_SOFT_BUDGET_MS ?? 240_000)
+  const startedAt = Date.now()
+  const skippedForBudget: string[] = []
   for (const step of steps) {
+    if (Date.now() - startedAt > softBudgetMs) {
+      skippedForBudget.push(step.name)
+      continue
+    }
     try {
       report[step.name] = await step.run({ origin })
     } catch (e) {
       report[step.name] = String(e)
     }
+  }
+  if (skippedForBudget.length) {
+    report.skippedForBudget = skippedForBudget
+    console.warn(`[ops-cycle] soft budget (${Math.round(softBudgetMs / 1000)}s) spent — skipped: ${skippedForBudget.join(', ')} (they run next cycle)`)
   }
   return report
 }

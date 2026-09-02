@@ -137,3 +137,19 @@ describe('a proof id and a portfolio repo are not ways around the visibility spl
     expect(body.indexOf('catch')).toBeLessThan(body.indexOf('return false'))
   })
 })
+
+describe('auto-mine never attempts a claim the office gate will refuse', () => {
+  // Observed live the day the split shipped: a stranger's auto-miner burned
+  // one doomed claim per sweep on a scoped job — the dispatch gate refused
+  // it correctly, every time, after the full attempt. Deterministic refusals
+  // are filtered before selection, like the self-deal prefilter above it.
+  it('drops out-of-circle office-scoped jobs before block selection', () => {
+    const src = code('lib/auto-mine.ts')
+    const at = src.indexOf('canSeeOfficeOnlyJob')
+    expect(at).toBeGreaterThan(-1)
+    expect(at).toBeLessThan(src.indexOf('selectMiningBlocks({'))
+    // Unreadable visibility DROPS the job — a refusal costs the claim slot.
+    const block = src.slice(at, at + 600)
+    expect(block).toContain('.catch(() => false)')
+  })
+})
