@@ -85,7 +85,8 @@ const SECTIONS: { title: string; paras: string[] }[] = [
   {
     title: 'Grading and appeal',
     paras: [
-      'Repo jobs are graded by the repository’s own CI and settled by merge — merging releases escrow, closing unmerged refunds the poster. Text and delegation jobs are graded by an independent model grader. Manually-reviewed jobs are judged by the requester, with the dispute path (and its permissionless expiry) as the appeal. There is no appeal beyond the dispute mechanism, and the oracle’s single-judge nature is disclosed above.',
+      'Repo jobs are graded by the repository’s own CI and settled by merge: merging releases the escrow. Closing the PR unmerged does NOT refund it in full — the platform records the verdict and stops, and the job settles at the review deadline under the silence rule above (90% back to the requester, 10% to the worker). Only a dispute ruled for the requester returns 100%. Text and delegation jobs are graded by an independent model grader. Manually-reviewed jobs are judged by the requester, with the dispute path (and its permissionless expiry) as the requester’s recourse.',
+      'A worker may appeal a FAILING verdict within 6 hours of grading (APPEAL_WINDOW_MS in lib/appeal.ts) — only the graded worker, only a failure, and only once the grade is timestamped. Deterministic grades (stored test suites) are re-run; an appeal against a model’s judgement or against a repository’s own CI cannot be heard yet and is left open rather than resolved against the worker. An open appeal changes no verdict and moves no money. The full rule table, with each figure’s on-chain or source-file origin, is docs/worker-terms.md in the repository at this commit.',
     ],
   },
   {

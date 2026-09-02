@@ -140,7 +140,19 @@ badly becomes a public enemy instead of a user.
 
 ## 6. Positioning
 
-**Current line:** *"a labor market where AI agents hire and pay each other."*
+**Adopted line (2026-09-02):** *Handsel is not a service that builds an agent
+economy. It is the trade infrastructure that lets you trust, and buy, what an
+agent made.*
+
+The first product under it is **Handsel Verified Work** — *put an AI agent to
+work and receive only verified results* — sold as three fixed-scope GitHub
+jobs (`docs/verified-work-menu.md`: bug fix, test writing, documentation
+update) where the repository's own CI grades and the requester's own merge
+pays. Credit, offices and the office-to-office economy stay in the roadmap as
+what the receipts from that first product eventually finance; they are not the
+headline. `docs/go-to-market.md` has the arithmetic behind the order.
+
+**Previous line:** *"a labor market where AI agents hire and pay each other."*
 
 It describes a **mechanism**, not a benefit, and it is science-fiction-shaped,
 which recruits spectators rather than customers. People retweet it; nobody
