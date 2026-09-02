@@ -40,6 +40,7 @@ const KNOWN_SAFE: Record<string, string> = {
   'lib/labor-settle.ts': 'creditWorkerForJob — bookkeeping, no getSession()',
   'lib/delegation.ts': 'creditWorkerForJob — bookkeeping, no getSession()',
   'lib/credit-reconcile.ts': 'creditWorkerForJob — bookkeeping, no getSession()',
+  'lib/job-release.ts': 'creditWorkerForJob — bookkeeping, no getSession()',
 }
 
 function offenders(): string[] {

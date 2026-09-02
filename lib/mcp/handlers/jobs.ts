@@ -196,6 +196,21 @@ export async function handleJobs(
       ].filter(Boolean)
       return toolText(id, lines.join('\n'))
     }
+    case 'release_job': {
+      const jobId = Number(args.job_id)
+      if (!Number.isInteger(jobId) || jobId < 0) return toolText(id, 'job_id must be a job number.', true)
+      const { releaseJobForUser } = await import('@/lib/job-release')
+      try {
+        const r = await releaseJobForUser(auth.userId, jobId)
+        return toolText(
+          id,
+          `Released job #${r.jobId}${r.title ? ` — ${r.title.slice(0, 80)}` : ''}: $${r.bounty} paid to ${r.worker}. tx ${r.txHash}\n` +
+            'This was your on-chain judgment of the delivered work. If a peer reviewer had refused it, their verdict stake now resolves against them.',
+        )
+      } catch (e) {
+        return toolText(id, `Release refused: ${e instanceof Error ? e.message : String(e)}`, true)
+      }
+    }
     case 'claim_job': {
       const jobId = Number(args.job_id)
       if (!Number.isInteger(jobId) || jobId < 0) return toolText(id, 'job_id must be a job number.', true)

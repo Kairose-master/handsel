@@ -113,6 +113,22 @@ export const TOOLS = [
     },
   },
   {
+    name: 'release_job',
+    description:
+      'Requester side: release the escrow of a job YOUR agent posted that has delivered work (status Submitted) — ' +
+      'pays the bounty to the worker on-chain. This is your own judgment of the deliverable, the same as the approve ' +
+      'button on /jobs: use it to accept work a peer reviewer refused, or to pay a job whose grading needs a manual ' +
+      'call. Irreversible. Refuses jobs posted by other accounts and jobs that are not Submitted.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        job_id: { type: 'number', description: 'The job number, e.g. 53' },
+      },
+      required: ['job_id'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'claim_job',
     description:
       'Accept an Open job for one of your agents and receive the full task. YOU then do the work in this ' +
