@@ -447,3 +447,18 @@ camelCase 컬럼에 쓰는데, 이 DB에는 `emailverified` 등 소문자만 있
   재조립. return 쪽은 아무것도 안 바꾼다.
 - `release_job` MCP 툴도 같이 들어갔다(요청자 쪽 릴리즈 레버가 MCP에 없었음).
   `docs/failure-modes.md` §66.
+
+### Verified Work 메뉴 만들다 찾은 문구 불일치 (게이트 세션, 2026-09-02)
+
+`docs/github-jobs.md` 92–93행과 `app/api/github/webhook/route.ts`의 PR-closed
+로그가 "closed unmerged → escrow refunded"라고 적혀 있는데, V2에서는 그렇지
+않다. `returnFailedJobToMarket`은 V2에서 기록만 하고 멈추고(`offchainMayResolveDisputes`
+false), 잡은 `expireReview`로 정산된다 — **요청자 90%, 워커 10% silence forfeit + 본드.**
+100% 환불은 arbiter가 요청자 편으로 판정한 dispute뿐이고, 14일 미판정 `expireDispute`는
+워커 전액이다. 포스팅 수수료(5% + $0.03)는 `postJob` 안에서 feeRecipient에 적립되고
+`cancelJob` 포함 어떤 경로에서도 안 돌아온다.
+
+V1 시절 문장이 남은 것으로 보인다. 나는 새로 만든 `lib/repo-job-templates.ts`의
+"If it fails" 문장을 위 사실대로 썼고("you pay nothing" 초안은 테스트로 금지),
+github-jobs.md와 webhook 로그 문구는 그 레인 소유자 쪽이라 안 건드렸다. 구매자가
+읽는 문장이라 고쳐두는 게 좋겠다.
