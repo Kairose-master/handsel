@@ -31,6 +31,7 @@ import {
   renderDesk,
   resultBlocks,
   rowPatch,
+  statusKind,
   type NotionPage,
   type WorkItem,
 } from '@/lib/notion-desk'
@@ -347,7 +348,7 @@ export async function tickNotionDesks(): Promise<string | Record<string, unknown
         const today = await postedToday(desk.user_id)
         const budget = Math.min(MAX_POSTS_PER_TICK, Math.max(0, MAX_POSTS_PER_DAY - today))
         if (budget > 0) {
-          const pages = await queryDatabase<NotionPage>(token, desk.database_id, readyFilter(status), budget)
+          const pages = await queryDatabase<NotionPage>(token, desk.database_id, readyFilter(status, statusKind(schema) ?? 'status'), budget)
           for (const page of pages) {
             const item = parsePage(page)
             // A tracked row still in flight is never posted twice, whatever its status says.

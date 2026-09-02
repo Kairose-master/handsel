@@ -49,7 +49,7 @@ posts the next turn. `Session` is written back so the thread is one row.
 | column | type | required | who writes it |
 |---|---|---|---|
 | Name | title | yes | owner |
-| Status | status | yes | owner sets `Ready`; the desk sets `Posted` `Working` `Delivered` `Failed` |
+| Status | status **or select** | yes | owner sets `Ready`; the desk sets `Posted` `Working` `Delivered` `Failed`. (Notion's API cannot create status options, so a database built by a tool uses a select with those names.) |
 | Brief | rich text | yes | owner |
 | Criteria | rich text | yes | owner — 10+ chars; it is what the grader checks |
 | Bounty | number (USD) | yes | owner |
@@ -90,5 +90,7 @@ Notion desk puts the rail under the map they already have.
 - **Relation-typed `Agent`.** Text matched against the owner's agent names.
 - **Two-way status.** The owner's edits to a `Posted` row are not read; cancel
   the job on the platform.
-- **A template you can duplicate.** The schema above, as a Notion template
-  link, is the obvious next artifact.
+- **A public template link.** The schema above exists as a duplicable
+  "Handsel Desk" database in the operator's own Notion workspace (built with
+  Notion's API, so its Status is a select with the five names); publishing it
+  as a template anyone can duplicate is the obvious next artifact.

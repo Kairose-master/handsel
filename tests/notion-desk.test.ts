@@ -97,8 +97,8 @@ describe('what the desk refuses to pay for', () => {
 describe('the database contract', () => {
   it('names what is missing, with the type', () => {
     expect(missingProperties(fullSchema)).toEqual([])
-    expect(missingProperties({ Name: { type: 'title' }, Status: { type: 'select' } })).toEqual([
-      'Status (status)',
+    expect(missingProperties({ Name: { type: 'title' }, Status: { type: 'checkbox' } })).toEqual([
+      'Status (status or select)',
       'Brief (rich_text)',
       'Criteria (rich_text)',
       'Bounty (number)',
@@ -107,6 +107,11 @@ describe('the database contract', () => {
   })
   it('reports which write-back columns exist', () => {
     expect(presentOptional(fullSchema)).toEqual(['Job', 'Session', 'Result', 'Proof', 'Note'])
+  })
+  it('Status may be a status OR a select column — the API cannot create status options, so a tool-built database gets a select', () => {
+    expect(missingProperties({ ...fullSchema, Status: { type: 'select' } })).toEqual([])
+    expect(rowPatch({ status: STATUS.posted }, { Status: { type: 'select' } })).toEqual({ Status: { select: { name: 'Posted' } } })
+    expect(readyFilter('Status', 'select')).toEqual({ property: 'Status', select: { equals: 'Ready' } })
   })
   it('filters on the Status column by the desk\'s own words', () => {
     expect(readyFilter('Status')).toEqual({ property: 'Status', status: { equals: 'Ready' } })

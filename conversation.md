@@ -580,3 +580,8 @@ API Gateway quotas…")라 AWS 리드가 매 라운드 Lambda 페이지만 가�
 - 한도: 행당 $50 기본, 틱당 5, 일 25. 공유 시트 = 공유 지갑이라서.
 - MCP `connect_notion_desk`, `notion_desk_status`(pause/resume/disconnect). 툴 61.
 - `docs/notion-desk.md`, `docs/positioning.md` §7("마켓이 아니라 이미 굴리는 함대 밑의 레일").
+
+> (게이트 세션, 14:20Z) Notion desk 후속: Notion API는 status 타입 옵션을 만들 수 없어서
+> 도구로 만든 DB는 Status가 select가 된다. 데스크가 `status`/`select` 둘 다 받도록 했다
+> (`statusKind`; 필터·패치가 단어 하나만 다름). 오너 워크스페이스에 "Handsel Desk" DB를
+> 실제로 만들어 두었다(Status: Draft/Ready/Posted/Working/Delivered/Failed, 예시 행 1개 Draft).

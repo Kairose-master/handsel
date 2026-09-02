@@ -36,11 +36,21 @@ export const NOTION_VERSION = '2022-06-28'
  *  matched case-insensitively; the type must be exact. */
 export const REQUIRED_PROPERTIES = {
   Name: 'title',
+  /** `status` or `select` — see `statusKind`. Notion's API cannot create
+   *  status options, so a database built by a tool gets a select. */
   Status: 'status',
   Brief: 'rich_text',
   Criteria: 'rich_text',
   Bounty: 'number',
 } as const
+
+/** The two property types Status may be. Reads, filters and patches differ
+ *  by one word between them; everything else is the same column. */
+export type StatusKind = 'status' | 'select'
+export function statusKind(schema: Record<string, { type: string }>): StatusKind | null {
+  const e = Object.entries(schema).find(([k]) => k.toLowerCase() === 'status')
+  return e && (e[1].type === 'status' || e[1].type === 'select') ? (e[1].type as StatusKind) : null
+}
 
 /** Optional columns the desk uses when present. */
 export const OPTIONAL_PROPERTIES = {
@@ -174,8 +184,8 @@ export function checkItem(item: WorkItem, maxBountyUsd: number): { ok: true } | 
 export function missingProperties(schema: Record<string, { type: string }>): string[] {
   const have = new Map(Object.entries(schema).map(([k, v]) => [k.toLowerCase(), v.type]))
   return Object.entries(REQUIRED_PROPERTIES)
-    .filter(([name, type]) => have.get(name.toLowerCase()) !== type)
-    .map(([name, type]) => `${name} (${type})`)
+    .filter(([name, type]) => (name === 'Status' ? statusKind(schema) === null : have.get(name.toLowerCase()) !== type))
+    .map(([name, type]) => (name === 'Status' ? 'Status (status or select)' : `${name} (${type})`))
 }
 
 /** Which optional columns are present — so status can say what the desk
@@ -210,7 +220,8 @@ export function rowPatch(
   const has = (name: string, type: string) => Object.entries(schema).some(([k, v]) => k.toLowerCase() === name.toLowerCase() && v.type === type)
   const key = (name: string) => Object.keys(schema).find((k) => k.toLowerCase() === name.toLowerCase()) ?? name
   const patch: Record<string, unknown> = {}
-  if (input.status && has('Status', 'status')) patch[key('Status')] = { status: { name: input.status } }
+  const kind = statusKind(schema)
+  if (input.status && kind) patch[key('Status')] = { [kind]: { name: input.status } }
   if (input.jobNumber !== undefined && has('Job', 'number')) patch[key('Job')] = { number: input.jobNumber }
   if (input.sessionId !== undefined && has('Session', 'rich_text')) patch[key('Session')] = rich(input.sessionId ?? '')
   if (input.result !== undefined && has('Result', 'rich_text')) patch[key('Result')] = rich(input.result ?? '')
@@ -236,11 +247,11 @@ export function resultBlocks(result: string, heading = 'Delivered'): unknown[] {
 }
 
 /** The Notion filter for rows the desk acts on. */
-export const readyFilter = (statusProperty: string) => ({ property: statusProperty, status: { equals: STATUS.ready } })
-export const inFlightFilter = (statusProperty: string) => ({
+export const readyFilter = (statusProperty: string, kind: StatusKind = 'status') => ({ property: statusProperty, [kind]: { equals: STATUS.ready } })
+export const inFlightFilter = (statusProperty: string, kind: StatusKind = 'status') => ({
   or: [
-    { property: statusProperty, status: { equals: STATUS.posted } },
-    { property: statusProperty, status: { equals: STATUS.working } },
+    { property: statusProperty, [kind]: { equals: STATUS.posted } },
+    { property: statusProperty, [kind]: { equals: STATUS.working } },
   ],
 })
 

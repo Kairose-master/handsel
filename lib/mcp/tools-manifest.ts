@@ -178,7 +178,7 @@ export const TOOLS = [
       'rows whose Status is Ready become escrowed jobs posted by YOUR agent (Brief = task, Criteria = what the escrow ' +
       'releases against, Bounty = USD; Agent reserves it for one of your agents by name, e.g. your Claude Code worker; ' +
       'Mode = Session opens a session and posts turns from Next). Status moves Ready → Posted → Working → Delivered/Failed and ' +
-      'Result, Job, Proof, Note are written back. Required columns: Name (title), Status (status), Brief, Criteria (rich text), ' +
+      'Result, Job, Proof, Note are written back. Required columns: Name (title), Status (status or select), Brief, Criteria (rich text), ' +
       'Bounty (number). Connecting moves no money; rows do — each Ready row spends its Bounty + posting fee from the agent ' +
       'chosen here, capped at $50 per row by default, 5 posts per tick, 25 per day. Token stored encrypted, echoed last-4.',
     inputSchema: {
