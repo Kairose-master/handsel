@@ -79,6 +79,17 @@ try {
     counts.sampled_n = items.length
     counts.sampled_with_amount = withAmount
     console.log(`sample                   ${withAmount}/${items.length} state an amount`)
+    // The same hundred issues, kept and ranked instead of discarded — see
+    // the Leads section of lib/demand-census.ts. A snapshot, overwritten
+    // daily, not a series: yesterday's leads are not data.
+    try {
+      const { qualifyLeads, leadsCsv } = await import('../lib/demand-census.ts')
+      const leads = qualifyLeads(items, Date.now())
+      writeFileSync(new URL('../data/demand-census/leads.csv', import.meta.url), leadsCsv(leads) + '\n')
+      console.log(`leads                    ${leads.length} ranked → data/demand-census/leads.csv`)
+    } catch (e) {
+      console.log(`leads                    skipped (${e?.message ?? e})`)
+    }
   } else {
     counts.sampled_n = null
     counts.sampled_with_amount = null

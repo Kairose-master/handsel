@@ -13,7 +13,7 @@ import { and, eq } from 'drizzle-orm'
 import { getSession } from '@/lib/get-session'
 import { SAFE_USER_COLUMNS } from '@/lib/db/safe-select'
 
-export const PERMISSIONS = ['disputes', 'credit_rules', 'agent_messages'] as const
+export const PERMISSIONS = ['disputes', 'credit_rules', 'agent_messages', 'treasury'] as const
 export type Permission = (typeof PERMISSIONS)[number]
 
 export function isSuperAdminEmail(email: string | undefined | null): boolean {
