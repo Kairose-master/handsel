@@ -30,7 +30,7 @@
  * not the safe no-op it is for plain chain reads.
  */
 import { fallback, http, type Transport } from 'viem'
-import { onchainEnv } from './config'
+import { CHAIN, onchainEnv } from './config'
 
 /**
  * Methods whose result is NEVER legitimately null/undefined. A degraded
@@ -188,7 +188,32 @@ export function buildChainTransport(urls: string[]): Transport {
   }
 }
 
+/**
+ * Keyless public RPCs per chain, appended behind whatever the operator
+ * configured and ahead of the chain's own default. Measured need
+ * (2026-09-02, §67): the configured primary answered every write and every
+ * receipt read with null, and the one public endpoint behind it throttled
+ * the fleet's read volume from Vercel's egress — so the broadcast fan-out
+ * had one node that could not see and one that would not answer, and a
+ * transaction that mined in two seconds timed out at sixty. Three
+ * independent providers turn "any node" into a set with a majority.
+ *
+ * Read-and-broadcast only; none of these carries a key or a paymaster, and a
+ * signed transaction is the same transaction wherever it is submitted.
+ */
+export const PUBLIC_RPC_URLS: Readonly<Record<number, readonly string[]>> = {
+  84532: ['https://base-sepolia-rpc.publicnode.com', 'https://base-sepolia.drpc.org', 'https://base-sepolia.gateway.tenderly.co'],
+  8453: ['https://base-rpc.publicnode.com', 'https://base.drpc.org', 'https://base.gateway.tenderly.co'],
+  11155111: ['https://ethereum-sepolia-rpc.publicnode.com', 'https://sepolia.drpc.org'],
+}
+
+/** Configured URLs first (the operator's choice ranks highest), then the
+ *  chain's public set, de-duplicated. Pure, so the composition is testable. */
+export function withPublicFallbacks(urls: readonly string[], chainId: number): string[] {
+  return [...new Set([...urls, ...(PUBLIC_RPC_URLS[chainId] ?? [])])]
+}
+
 /** The transport every chain read/write client should use. */
 export function chainTransport(): Transport {
-  return buildChainTransport(rpcUrlList(onchainEnv.rpcUrl, onchainEnv.rpcFallbackUrls))
+  return buildChainTransport(withPublicFallbacks(rpcUrlList(onchainEnv.rpcUrl, onchainEnv.rpcFallbackUrls), CHAIN.id))
 }

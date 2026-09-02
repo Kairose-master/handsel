@@ -15,7 +15,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { base } from 'viem/chains'
 import { buildChainTransport, isMalformedRpcResult,
-  isTxHash, CHAIN_HTTP_OPTIONS, rpcUrlList } from '@/lib/onchain/transport'
+  isTxHash, CHAIN_HTTP_OPTIONS, rpcUrlList, withPublicFallbacks, PUBLIC_RPC_URLS } from '@/lib/onchain/transport'
 
 describe('rpcUrlList', () => {
   it('returns the primary alone when no fallbacks are configured', () => {
@@ -192,5 +192,32 @@ describe('a signed transaction is broadcast to every node, not the first healthy
     expect(block).toContain("if (results.some((r) => r.status === 'fulfilled')) return null")
     // Other reads stay on the ranked fallback.
     expect(block).toContain('return t.request(args as never)')
+  })
+})
+
+describe('withPublicFallbacks — the operator ranks first, then a set of independent public nodes', () => {
+  // §67: one sick primary plus one throttled public node is not a fan-out.
+  it('appends the chain\'s keyless public RPCs behind the configured ones, de-duplicated', () => {
+    const out = withPublicFallbacks(['https://a.example', 'https://base-sepolia.drpc.org'], 84532)
+    expect(out[0]).toBe('https://a.example')
+    expect(out).toHaveLength(1 + PUBLIC_RPC_URLS[84532].length)
+    expect(new Set(out).size).toBe(out.length)
+    for (const u of PUBLIC_RPC_URLS[84532]) expect(out).toContain(u)
+  })
+  it('leaves an unknown chain alone', () => {
+    expect(withPublicFallbacks(['https://a.example'], 424242)).toEqual(['https://a.example'])
+  })
+  it('every public URL is https and carries no key', () => {
+    for (const urls of Object.values(PUBLIC_RPC_URLS)) {
+      expect(urls.length).toBeGreaterThanOrEqual(2)
+      for (const u of urls) {
+        expect(u).toMatch(/^https:\/\//)
+        expect(u).not.toMatch(/key|token|api_key|\?/i)
+      }
+    }
+  })
+  it('chainTransport composes the public set in', () => {
+    const src = readFileSync('lib/onchain/transport.ts', 'utf8')
+    expect(src).toContain('buildChainTransport(withPublicFallbacks(rpcUrlList(onchainEnv.rpcUrl, onchainEnv.rpcFallbackUrls), CHAIN.id))')
   })
 })

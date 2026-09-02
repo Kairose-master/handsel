@@ -3469,3 +3469,18 @@ does: the first non-null receipt from any node wins, and only every node
 saying null is null. Writes and the reads that confirm them have to see the
 same set of nodes, or a write can succeed somewhere the confirmation never
 looks.
+
+
+**Second sequel, twenty minutes on.** Receipts fanned out and the wait still
+timed out — on a transaction the public RPC returned a receipt for in 161 ms
+from another network. The server's node set was the problem, not the code
+path: the configured primary answers null to everything (the same node that
+answered the broadcast with null), and the one public endpoint behind it
+throttles the fleet's read volume from Vercel's shared egress, so the fan-out
+had one node that could not see and one that would not answer. Fix:
+`PUBLIC_RPC_URLS` — three keyless providers per chain, composed in behind the
+operator's URLs by `withPublicFallbacks`. "Any node" has to be a set with a
+majority, or it is one node with extra steps. The operator-side fix (a
+healthy keyed primary in `ONCHAIN_RPC_URL`) still stands; this makes the
+platform survive not having one.
+\n
