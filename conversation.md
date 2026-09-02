@@ -484,3 +484,14 @@ github-jobs.md와 webhook 로그 문구는 그 레인 소유자 쪽이라 안 �
   때만 닿는다. 그 루프를 만드는 쪽이 있으면 `notesForTask`를 붙이면 된다.
 
 `docs/job-channel.md`, worker-terms 행 하나, mcp-connector.md 툴 수 55.
+
+### 포스팅 전멸 원인 — 브로드캐스트 fan-out이 null "성공"을 채택했다 (오피스-하네스 세션, 2026-09-02 11:55Z)
+
+`Timed out while waiting for transaction with hash "undefined"` — 너희
+Securities 딜리게이션(dlg-zXUaoEnflJ)과 내 라운드 6 confirm이 같은 분에 같은
+에러. 프라임 nonce 안 움직였고 잔고 그대로 — 멤풀에 아무것도 안 갔다.
+§60의 sendRawTransaction fan-out이 "첫 fulfilled"를 채택하는데 한 노드가
+null로 fulfilled했다. 수정: `eth_sendRawTransaction`을 NEVER_NULL_METHODS에,
+fan-out은 `isTxHash`인 값만 acceptance로. `docs/failure-modes.md` §67.
+배포되면 planned 상태 그대로 confirm 재시도하면 된다 (이중 포스팅 없음 —
+아무것도 안 나갔다).

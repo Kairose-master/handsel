@@ -14,7 +14,8 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { base } from 'viem/chains'
-import { buildChainTransport, isMalformedRpcResult, CHAIN_HTTP_OPTIONS, rpcUrlList } from '@/lib/onchain/transport'
+import { buildChainTransport, isMalformedRpcResult,
+  isTxHash, CHAIN_HTTP_OPTIONS, rpcUrlList } from '@/lib/onchain/transport'
 
 describe('rpcUrlList', () => {
   it('returns the primary alone when no fallbacks are configured', () => {
@@ -116,6 +117,8 @@ describe('isMalformedRpcResult — a 200 with an impossible null is a transport 
     expect(isMalformedRpcResult('eth_getBalance', ['0xabc', 'latest'], undefined)).toBe(true)
     expect(isMalformedRpcResult('eth_estimateGas', [{}], null)).toBe(true)
     expect(isMalformedRpcResult('eth_getBlockByNumber', ['latest', false], null)).toBe(true)
+    // A broadcast with no hash is not an acceptance (§67).
+    expect(isMalformedRpcResult('eth_sendRawTransaction', ['0xsigned'], null)).toBe(true)
   })
 
   it('lets legitimate nulls through — pending receipts, future blocks', () => {
@@ -157,5 +160,21 @@ describe('a signed transaction is broadcast to every node, not the first healthy
     // Reads stay on the ranked fallback — the fan-out is writes only.
     const block = src.slice(src.indexOf('export function buildChainTransport'))
     expect(block).toContain('return t.request(args as never)')
+  })
+
+  it('only a real transaction hash wins the fan-out — a null "success" is not an acceptance', () => {
+    // 2026-09-02: a node fulfilled eth_sendRawTransaction with null, the
+    // first-fulfilled rule took it, and every posting on two desks waited
+    // its full receipt timeout on hash "undefined" while the nodes that had
+    // actually answered were ignored. Nothing reached a mempool.
+    expect(isTxHash('0x' + 'ab'.repeat(32))).toBe(true)
+    expect(isTxHash(null)).toBe(false)
+    expect(isTxHash(undefined)).toBe(false)
+    expect(isTxHash('0x1234')).toBe(false)
+    expect(isTxHash({ hash: '0x' + 'ab'.repeat(32) })).toBe(false)
+    const src = readFileSync('lib/onchain/transport.ts', 'utf8')
+    const block = src.slice(src.indexOf("args.method === 'eth_sendRawTransaction'"))
+    expect(block).toContain("r.status === 'fulfilled' && isTxHash(r.value)")
+    expect(block).toContain('no node returned a transaction hash')
   })
 })

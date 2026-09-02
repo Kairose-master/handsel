@@ -47,6 +47,11 @@ import { onchainEnv } from './config'
  */
 const NEVER_NULL_METHODS = new Set([
   'eth_blockNumber',
+  // A broadcast that "succeeds" with no hash is the worst possible answer:
+  // nothing to wait on, nothing to look up, and the caller waits its whole
+  // receipt timeout on `undefined` (2026-09-02, every posting on both
+  // desks). Null here is a provider fault, not an acceptance.
+  'eth_sendRawTransaction',
   'eth_chainId',
   'eth_gasPrice',
   'eth_maxPriorityFeePerGas',
@@ -62,6 +67,13 @@ export function isMalformedRpcResult(method: string, params: unknown, result: un
   if (NEVER_NULL_METHODS.has(method)) return true
   if (method === 'eth_getBlockByNumber' && Array.isArray(params) && params[0] === 'latest') return true
   return false
+}
+
+/** What an accepted broadcast looks like — and the only thing the fan-out
+ *  below may treat as one. A node that fulfils with anything else has not
+ *  accepted the transaction, whatever its status code said. */
+export function isTxHash(value: unknown): value is `0x${string}` {
+  return typeof value === 'string' && /^0x[0-9a-fA-F]{64}$/.test(value)
 }
 
 /**
@@ -140,9 +152,20 @@ export function buildChainTransport(urls: string[]): Transport {
       async request(args: { method: string; params?: unknown }) {
         if (args.method === 'eth_sendRawTransaction') {
           const results = await Promise.allSettled(singles.map((s) => s.request(args as never)))
-          const ok = results.find((r): r is PromiseFulfilledResult<unknown> => r.status === 'fulfilled')
+          // Only a real hash is an acceptance. The first version took the
+          // first FULFILLED result, and a node that answered a broadcast with
+          // null won the race — `hash: undefined` then ate the receipt
+          // timeout on every write path while the other nodes' answers were
+          // thrown away unread.
+          const ok = results.find((r): r is PromiseFulfilledResult<unknown> => r.status === 'fulfilled' && isTxHash(r.value))
           if (ok) return ok.value
-          throw (results[0] as PromiseRejectedResult).reason
+          const rejected = results.find((r): r is PromiseRejectedResult => r.status === 'rejected')
+          if (rejected) throw rejected.reason
+          throw new Error(
+            `eth_sendRawTransaction: no node returned a transaction hash (${results
+              .map((r) => (r.status === 'fulfilled' ? JSON.stringify(r.value) : 'rejected'))
+              .join(', ')})`,
+          )
         }
         return t.request(args as never)
       },

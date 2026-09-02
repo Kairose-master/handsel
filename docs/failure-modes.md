@@ -3430,3 +3430,30 @@ refusal was vindicated and the record was already right.
 Where to look: the `[ops-cycle]` delegations step now reports
 `stakesResolved`; a burn failure logs `verdict-stake burn failed (will retry)`
 and the stake stays `held` for the next sweep.
+
+## 67. A broadcast that "succeeded" with no hash won the fan-out (2026-09-02)
+
+Every posting on two desks failed the same way inside a minute:
+`Timed out while waiting for transaction with hash "undefined"`. The prime's
+nonce had not moved — nothing reached a mempool — and the wallet's balance
+was untouched, so the money was safe; the round simply did not start.
+
+§60's fix fans `eth_sendRawTransaction` out to every configured node and
+takes the *first fulfilled* result, on the reasoning that a signed
+transaction is idempotent and any acceptance is as good as any other. One
+node fulfilled with `null`. That is not an acceptance, but it won the race,
+became the hash the caller waited on, and the nodes that had actually
+answered — with a rejection or, worse, with a real hash — were never read.
+The null guard (`isMalformedRpcResult`) did not cover this method, because a
+null hash had not been observed and the list is empirical.
+
+Fix, two layers: `eth_sendRawTransaction` joins `NEVER_NULL_METHODS`, so a
+null from one node is a rotation-worthy error at that node; and the fan-out
+only accepts a fulfilled value that `isTxHash` — anything else is treated as
+that node declining. With no real hash anywhere it throws the first
+rejection, or names every non-hash answer it got, so the log says what the
+nodes said rather than `undefined`.
+
+The general rule, the third time it has come up on this transport: **a 200
+is not an answer; the answer is the answer.** Validate the shape of what a
+provider returns wherever the caller will wait on it.
