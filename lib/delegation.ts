@@ -171,6 +171,16 @@ export interface DelegationSubtask {
    *  after a peer review asked for changes. Absent = none yet. Bounded by
    *  MAX_REVISION_ROUNDS. */
   revisionRound?: number
+  /**
+   * Whether the chain's `resultHash` is still the artifact that got paid.
+   *
+   * A revision cannot be re-submitted — the contract requires `Accepted` and
+   * the job is `Submitted` by then — so a reviewed-and-revised deliverable
+   * settles against a commitment to the FIRST submission. Recorded rather
+   * than left silent: an undisclosed hash mismatch is indistinguishable from
+   * a worker substituting the work. See lib/result-commitment.ts.
+   */
+  resultCommitment?: { status: 'match' | 'diverged' | 'unknown'; onchain: string | null; actual: string | null; note: string | null }
   /** Every reviewer note this deliverable has been sent back with, oldest
    *  first — the record of the conversation, kept so the owner can read what
    *  was actually asked for and the worker can see it isn't repeating itself. */
@@ -2062,6 +2072,21 @@ async function tickDelegationLocked(
       }
       target.reviewVerdict = 'approve'
       target.output = target.submittedOutput ?? '(delivered)'
+      // Does the chain still commit to what just got paid? On a revised job it
+      // does not, and saying so is the difference between a disclosed process
+      // fact and an unexplained mismatch that reads as substituted work.
+      {
+        const { commitmentFor } = await import('@/lib/result-commitment')
+        target.resultCommitment = commitmentFor({
+          onchainResultHash: targetJob?.resultHash ?? null,
+          acceptedOutput: target.output,
+        })
+        if (target.resultCommitment.status === 'diverged') {
+          console.warn(
+            `[delegation] job ${target.onchainJobId} settled on a revision — on-chain resultHash is the first submission`,
+          )
+        }
+      }
       await logPlatformEvent('JOB_AUTO_APPROVED', `"${target.title}" — peer review approved, escrow released`)
 
       // Was that approval a review, or a rubber stamp?

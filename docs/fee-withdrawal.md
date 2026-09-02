@@ -127,3 +127,26 @@ It does not collect **worker** earnings. Those are the same mechanism —
 population and `lib/withdraw-sweep.ts` already collects them on the ops cycle,
 sponsored, largest-balance-first, capped at `MAX_WITHDRAWALS_PER_PASS` per pass.
 If an agent's earnings are not arriving, that sweep is where to look, not here.
+
+## Seeing all three at once
+
+`/admin/treasury` reads the three places the platform's money sits — the
+uncollected fee credit, the house agent that fronts external escrow, and the
+x402 receiving address — plus the market contract's own solvency and the
+cumulative x402 charge. It exists because no surface read more than one of
+them, so "how much has Handsel made" and "is the house about to run dry" had
+no answer anywhere.
+
+**It reads and never signs.** Everything above this section still holds: the
+fee key stays cold, and the four commands are still the only way to move it.
+Merging the three into one hot wallet would make a single compromise's blast
+radius the whole platform's money, which is the same argument this document
+already makes about automating the sweep.
+
+Gated on the `treasury` permission (`lib/admin.ts`), not merely on being
+signed in — the page is an operational map of the float, and when it is
+thinnest is exactly when the market is cheapest to attack.
+
+A figure that could not be read shows as "not read", never as `$0.00`. On this
+page a zero is the alarm that external posting is about to fail, and a false
+one teaches the reader to ignore the real one.
