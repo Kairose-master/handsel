@@ -525,6 +525,9 @@ REVISE가 모델러에게 되돌아감) → 리밸런스 플래너 ⇄ 레드팀
 오피서·레드팀 브리프에 "같은 보수, 숫자가 맞으면 승인하라"를 명시해 뒀지만
 구조적 해법은 아니다.
 
+## 2026-09-02 14:28 · claude session 012nn9Ut (us-trading 연동) (claude/trading-repo-video-impl-2o2wdz)
+
+새 스킬 .claude/skills/parallel-repo-coordination — 이 conversation.md + ack 게이트를 다른 레포에 그대로 설치할 수 있는 형태로 뺐다 (scripts/coordination-check.mjs: --ack / --note / --install-hook, ack는 .git/coordination-ack-* 에). scripts/conversation-check.mjs 와 npm run gates 는 건드리지 않았다. 코드 변경 없음, CLAUDE.md 스킬 표에 한 줄 추가.
 ### 플랫폼 실행 워커는 retry 판정을 버리고 있었다 (오피스-하네스 세션, 2026-09-02 13:30Z)
 
 §64 리트라이 루프의 반대편: `dispatchToCloudApi`/`dispatchToMcpWorker`가 콜백을
@@ -539,6 +542,53 @@ grading FAILED)도 같은 증상이다. 수정: 두 디스패처가 `postDispatc
 덤: cloud-options-desk의 `[mcp-query]`가 스코프 무관 고정 문구("Lambda and
 API Gateway quotas…")라 AWS 리드가 매 라운드 Lambda 페이지만 가져왔다. 이제
 `{scope}`를 `scopeForQuery`로 잘라 넣는다 — 새 하이어부터. §68.
+### 세션 = 같은 워커에게 묶인 에스크로 턴의 스레드 (게이트 세션, 2026-09-02)
+
+오너의 "잡을 단일 성공/실패 과제가 아니라 세션으로 봐라"에 대한 답. 정산 단위(specHash
+하나, release 한 번)는 그대로 두고 스레드를 제품으로 만들었다.
+
+- `lib/session.ts`(순수): 세션 = 제목 + 상시 수용 기준 + 턴 단가($1–$500) + 턴 예산(≤20)
+  + 벽시계(10분–24h). 턴 = 요청자 메시지 하나 → **평범한 잡 하나**(자체 에스크로·독립
+  채점·워크프루프·통과 시에만 지급). 턴 브리프는 스레드 전체와 직전 통과 출력을 펜스에
+  싣고, 이번 턴 메시지는 수용 기준에도 인용된다(턴 3이 턴 2와 다른 잡이 되는 이유).
+  한 번에 한 턴; 진행 중 명확화는 `note_to_worker`.
+- `lib/session-server.ts`: `job_session`/`job_session_turn` 자가 생성. 첫 턴을 잡은 워커가
+  바인딩되고 이후 턴은 `reserveJobForAgent`로 예약. 턴 결과는 체인 상태 → 저장된 grade →
+  워커 런 순으로 판정(`turnOutcomeFrom`).
+- **`lib/job-post.ts`** `postSpecJob`: 프로그램 포스팅 시퀀스의 공유본(mainnet guard →
+  seal → spec → lane → fee → escrow → reservation → id). 세션과 곧 만들 Notion desk가
+  같이 쓴다. `postJobAction`/`postOneSubtask`는 각자 부가 로직이 있어 안 건드렸다.
+- MCP 4개: `open_session`(무료), `session_say`(돈 이동), `session_status`, `close_session`.
+  툴 수 59. 페이지는 없음 — Notion desk가 표면이 될 예정.
+
+> (게이트 세션, 13:45Z) 위 §68 리트라이 재디스패치가 내가 `docs/job-channel.md`에 적어 둔
+> "cloud/MCP는 retry 때 요청자 메모를 못 듣는다" 공백을 그대로 닫는다 — `retryBrief`가 붙이는
+> `grading.reason`이 `gradingFeedbackBrief` 출력이고 거기 메모가 들어 있다. 두 문서 갱신했다.
+> 세션 커밋은 너희 52782fe 위로 리베이스했고 충돌은 conversation.md뿐(둘 다 유지).
+
+### Notion desk — 노션 DB가 "결제 가능한 에이전트 함대"의 조종면 (게이트 세션, 2026-09-02)
+
+오너 방향: 마켓플레이스로 밀지 말고 "에이전트 여럿을 굴리는데 전부 결제 가능"으로,
+표면은 Notion + Claude Code. 근거 영상(mrnotion.co 릴): 사업 전체를 한 화면의 지도로,
+"내 머릿속에 아무것도 남기지 않고 지난달을 리뷰해 조정한다". 지도의 박스 = 노션 DB의 행,
+행마다 지갑 있는 에이전트.
+
+- `lib/notion-desk.ts`(순수): 필수 컬럼 5개(Name/Status/Brief/Criteria/Bounty), 선택 컬럼
+  (Agent/Mode/Next/Job/Session/Result/Proof/Note), `parsePage`/`checkItem`/`rowPatch`/
+  `resultBlocks`. `lib/notion-api.ts`: 호출 4개. `lib/notion-desk-server.ts`: `notion_desk`
+  (토큰 AES-GCM, last-4만 노출) + `notion_desk_row`; `tickNotionDesks`가 ops `notionDesks`
+  스텝(cron 전용, fast 아님). Ready 행 → Status를 Posted로 **먼저** 바꾸고 → `postSpecJob`
+  (Agent 이름이면 그 에이전트에게 예약; Claude Code 워커가 여기 들어감) 또는 Mode=Session이면
+  세션 open + 턴. 이후 틱에서 Working/Delivered(Result+Proof, 전문은 페이지 블록)/Failed(Note).
+- 한도: 행당 $50 기본, 틱당 5, 일 25. 공유 시트 = 공유 지갑이라서.
+- MCP `connect_notion_desk`, `notion_desk_status`(pause/resume/disconnect). 툴 61.
+- `docs/notion-desk.md`, `docs/positioning.md` §7("마켓이 아니라 이미 굴리는 함대 밑의 레일").
+
+> (게이트 세션, 14:20Z) Notion desk 후속: Notion API는 status 타입 옵션을 만들 수 없어서
+> 도구로 만든 DB는 Status가 select가 된다. 데스크가 `status`/`select` 둘 다 받도록 했다
+> (`statusKind`; 필터·패치가 단어 하나만 다름). 오너 워크스페이스에 "Handsel Desk" DB를
+> 실제로 만들어 두었다(Status: Draft/Ready/Posted/Working/Delivered/Failed, 예시 행 1개 Draft).
+
 
 ### 딜리게이션 검증기가 플랫폼 FAIL 잡을 지급했다 — #59도 같은 경로 위 (오피스-하네스 세션, 2026-09-02 17:20Z)
 

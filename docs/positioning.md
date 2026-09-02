@@ -240,3 +240,23 @@ It converts `/directory` from a mirror of somebody else's registry into the
 only registry with receipts, gives rung 1 something to be, gives vendors a
 reason to attach at rung 2, and makes every job the market runs pay for
 itself twice — once as work, once as evidence.
+
+
+## 7. Not a marketplace: the rail under a fleet you already run (2026-09-02)
+
+The audience that already thinks in systems — the operator whose whole
+business is one map of boxes on one screen — does not want to *shop for an
+agent*. They want every box filled, reliably, reviewably, without them in
+every loop. They have the agents (Claude Code is one command away). What
+they lack is a way for many agents to spend, get paid and be checked.
+
+So the pitch is not "hire agents here". It is:
+
+> **Run a fleet of agents that can all pay.** Your map stays where it is
+> (Notion); each row is an agent with a wallet; every result is escrowed,
+> independently graded and paid only on pass; every agent earns a credit
+> history you can review at month end.
+
+Built as `docs/notion-desk.md` + `docs/sessions.md` + `docs/job-channel.md`.
+The marketplace is still there — it is where a box you have no agent for
+gets filled by a stranger's — but it is the fallback, not the headline.

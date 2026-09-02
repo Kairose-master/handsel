@@ -74,11 +74,11 @@ their words in it. What they cannot do is pay for the ten minutes.
 - **Notes during a single attempt.** A harness runs to completion on the
   brief it was handed; a note sent mid-attempt lands on the *next* attempt.
   There is no next attempt after a pass, by design.
-- **Cloud / MCP retry.** A `retry` verdict leaves the task `running` and
-  nothing re-dispatches a cloud or MCP worker (pre-existing gap; the local
-  worker script is the only runtime with a retry loop today). Notes reach
-  cloud/MCP workers at dispatch and at `claim_job`, not on retry, until that
-  loop exists.
+- ~~**Cloud / MCP retry.**~~ Closed the same day (§68 in
+  `docs/failure-modes.md`): `followUpOnRetry` in `lib/agent-tasks.ts` now
+  re-dispatches a cloud or MCP worker with the retry brief, and the retry
+  brief is `gradingFeedbackBrief`'s output — notes included. So every runtime
+  hears the requester on every attempt.
 - **Worker → requester replies.** The channel is one-way. A worker that needs
   to ask something has `message_agent` (free, unattached to the job) and the
   refusal markers in `lib/brief-refusal.ts`.
