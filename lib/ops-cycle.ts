@@ -236,16 +236,35 @@ export const OPS_STEPS: OpsStep[] = [
       const { db } = await import('@/lib/db')
       const { delegation } = await import('@/lib/db/schema')
       const { eq } = await import('drizzle-orm')
-      const { tickDelegation } = await import('@/lib/delegation')
+      const { tickDelegation, resolveReviewStakes } = await import('@/lib/delegation')
+      const { hasHeldReviewStake } = await import('@/lib/review-stake')
       let active: (typeof delegation.$inferSelect)[] = []
+      // A finished delegation is never ticked, but a verdict stake recorded at
+      // its terminal is decided by an owner action that comes LATER — the
+      // first stake ever recorded sat 'held' on a completed row while the
+      // job it rode was released. The chain moved; nothing was listening.
+      let staked: (typeof delegation.$inferSelect)[] = []
       try {
         active = await db.select().from(delegation).where(eq(delegation.status, 'posted'))
+        const { sql } = await import('drizzle-orm')
+        staked = (
+          await db
+            .select()
+            .from(delegation)
+            .where(sql`${delegation.status} = 'completed' AND ${delegation.subtasks}::text LIKE '%"reviewStake"%'`)
+        ).filter((r) => hasHeldReviewStake(r.subtasks as { reviewStake?: import('@/lib/review-stake').ReviewStake }[]))
       } catch {
         return 'table missing (migration pending)'
       }
-      if (active.length === 0) return { active: 0 }
+      if (active.length === 0 && staked.length === 0) return { active: 0 }
       const { readJobs } = await import('@/lib/onchain/labor')
       const jobs = await readJobs().catch(() => [])
+      let stakesResolved = 0
+      for (const row of staked) {
+        await resolveReviewStakes(row, jobs)
+          .then(() => { stakesResolved++ })
+          .catch((e) => console.error(`[ops-cycle] verdict-stake sweep failed for ${row.id}:`, e))
+      }
       let ticked = 0
       let failed = 0
       // Per-row timeout, because one hanging tick starves every row after
@@ -272,7 +291,7 @@ export const OPS_STEPS: OpsStep[] = [
             console.error(`[ops-cycle] delegation tick failed for ${row.id}:`, e)
           })
       }
-      return { active: active.length, ticked, failed }
+      return { active: active.length, ticked, failed, stakesResolved }
     },
   },
   {

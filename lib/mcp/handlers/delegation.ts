@@ -79,7 +79,16 @@ export async function handleDelegation(
         .limit(10)
       if (rows.length === 0) return toolText(id, 'No delegations yet.')
 
-      const hasActive = rows.some((r) => r.status === 'posted')
+      // A finished delegation with an undecided verdict stake still has one
+      // thing left to read from the chain: the owner's judgment of the
+      // refused piece. It is never ticked, so it is swept here and in the
+      // ops cycle — see resolveReviewStakes. It counts as active for the
+      // chain read below for exactly that reason.
+      const { hasHeldReviewStake } = await import('@/lib/review-stake')
+      const staked = rows.filter(
+        (r) => r.status === 'completed' && hasHeldReviewStake(r.subtasks as { reviewStake?: import('@/lib/review-stake').ReviewStake }[]),
+      )
+      const hasActive = rows.some((r) => r.status === 'posted') || staked.length > 0
       const { readJobs } = await import('@/lib/onchain/labor')
       // `null` for a read that FAILED, `[]` for "no active delegation, so we
       // did not ask". Collapsing the two rendered every subtask of every
@@ -103,6 +112,8 @@ export async function handleDelegation(
         after(async () => {
           const { sweepStuckGradedJobs } = await import('@/lib/labor-settle')
           await sweepStuckGradedJobs().catch(() => {})
+          const { resolveReviewStakes } = await import('@/lib/delegation')
+          for (const row of staked) await resolveReviewStakes(row, jobs).catch(() => {})
           for (const row of active) await tickDelegation(row, jobs).catch(() => {})
         })
       }

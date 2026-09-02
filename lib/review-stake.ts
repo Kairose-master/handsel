@@ -76,6 +76,13 @@ export function decideStakeOutcome(targetJobStatus: string): 'forfeit' | 'return
   return 'hold'
 }
 
+/** Does this delegation still carry a stake the chain has not decided?
+ *  The sweep over FINISHED delegations keys on this — a finished row is
+ *  never ticked, and the first stake ever recorded sat 'held' on one. */
+export function hasHeldReviewStake(subtasks: readonly { reviewStake?: ReviewStake }[]): boolean {
+  return subtasks.some((s) => s.reviewStake?.status === 'held')
+}
+
 /** May the burn transfer actually move money on this deployment? */
 export function stakeMoveAllowed(isRealMoney: boolean, allowFlag: string | undefined): boolean {
   return !isRealMoney || allowFlag === 'true'

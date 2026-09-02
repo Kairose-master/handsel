@@ -1488,21 +1488,33 @@ export async function tickDelegation(
   }
 }
 
-async function tickDelegationLocked(
+/**
+ * Verdict-stake resolution (lib/review-stake.ts): a stake recorded when a
+ * reviewer drove a target to the terminal is decided by the owner's own
+ * on-chain judgment of the refused deliverable — release forfeits (burn),
+ * refund vindicates.
+ *
+ * Exported and called from two places besides the tick, because the first
+ * stake ever recorded (job #53, 2026-09-02) was never resolved by it: the
+ * terminal that records a stake also finalizes the delegation (every
+ * subtask failed or delivered → 'completed'), and the ops cycle ticks only
+ * 'posted' rows. The owner released the job an hour later and the resolver
+ * that would have burned the stake had no row left to run on — a price
+ * nobody pays, the exact failure §63 describes, one level up. So the ops
+ * cycle and delegation_status both sweep FINISHED delegations that still
+ * carry a held stake (hasHeldReviewStake) through this function.
+ *
+ * An owner release is also the owner's judgment of the WORK, not only of the
+ * stake: the piece the reviewer refused was paid for, so it stops being a
+ * failed subtask and re-enters the assembled output. A delegation that
+ * says "❌, 5/6 delivered" over a deliverable the owner paid $2.28 for is
+ * a record arguing with the chain.
+ */
+export async function resolveReviewStakes(
   row: typeof delegation.$inferSelect,
-  jobsShared?: Awaited<ReturnType<typeof import('@/lib/onchain/labor').readJobs>>,
+  jobs: Awaited<ReturnType<typeof import('@/lib/onchain/labor').readJobs>>,
 ): Promise<void> {
   const subtasks = row.subtasks as DelegationSubtask[]
-
-  const { readJobs, approveJob } = await import('@/lib/onchain/labor')
-  const jobs = jobsShared ?? (await readJobs().catch(() => []))
-  if (jobs.length === 0) return
-
-  // Verdict-stake resolution (lib/review-stake.ts): a stake recorded when a
-  // reviewer stonewalled to hand-to-owner is decided by the owner's own
-  // on-chain judgment of the refused deliverable — release forfeits (burn),
-  // refund vindicates. Runs before anything else in the tick because the
-  // conversation that created the stake is over; nothing downstream feeds it.
   for (const st of subtasks) {
     const stake = st.reviewStake
     if (!stake || stake.status !== 'held' || st.onchainJobId === undefined) continue
@@ -1531,22 +1543,54 @@ async function tickDelegationLocked(
           stake.status = 'forfeited'
           stake.reason = `owner released job #${st.onchainJobId} — stake burned (tx ${tx.slice(0, 12)}…)`
         } catch (error) {
-          // Wallet short or chain weather — stay held and retry next tick,
+          // Wallet short or chain weather — stay held and retry next sweep,
           // with the failure on record rather than a silent skip.
           console.error(`[delegation] ${row.id}: verdict-stake burn failed (will retry):`, error)
           continue
         }
+      }
+      // The owner paid for this piece. It is delivered, whatever the review said.
+      if (st.failed) {
+        st.failed = false
+        st.output = st.submittedOutput ?? st.output ?? '(delivered)'
+        st.reviewNote = `${st.reviewNote ?? 'peer review refused this work'} — released by the owner over the reviewer's refusal`
       }
       await logPlatformEvent(
         'JOB_DISPUTED',
         `"${st.title}" — the owner released the work the reviewer refused; the $${stake.amountUsd.toFixed(2)} verdict stake is forfeited`,
       )
     }
-    // Persist immediately: a stake resolution is a money fact, and the tick's
+    // Persist immediately: a stake resolution is a money fact, and a tick's
     // end-of-run save can be lost to a timeout (observed live for other
-    // fields). One row update, idempotent via the status guard above.
-    await db.update(delegation).set({ subtasks }).where(eq(delegation.id, row.id))
+    // fields). One row update, idempotent via the status guard above. A
+    // finished delegation also gets its output re-assembled, so the piece
+    // the owner just paid for is in the document the owner reads.
+    await db
+      .update(delegation)
+      .set(
+        row.status === 'completed'
+          ? { subtasks, finalOutput: assembleFinalOutput(row.task, subtasks), updatedAt: new Date() }
+          : { subtasks },
+      )
+      .where(eq(delegation.id, row.id))
   }
+}
+
+async function tickDelegationLocked(
+  row: typeof delegation.$inferSelect,
+  jobsShared?: Awaited<ReturnType<typeof import('@/lib/onchain/labor').readJobs>>,
+): Promise<void> {
+  const subtasks = row.subtasks as DelegationSubtask[]
+
+  const { readJobs, approveJob } = await import('@/lib/onchain/labor')
+  const jobs = jobsShared ?? (await readJobs().catch(() => []))
+  if (jobs.length === 0) return
+
+  // Verdict-stake resolution (lib/review-stake.ts) runs before anything else
+  // in the tick: the conversation that created a stake is over, nothing
+  // downstream feeds it. It is its own function because it must also run on
+  // delegations this tick never sees again — see resolveReviewStakes.
+  await resolveReviewStakes(row, jobs)
 
   // This delegation's own subtasks, PLUS their repost successors — the
   // Refunded branch below follows `parentSpecHash` lineage to a replacement

@@ -3392,3 +3392,41 @@ Two smaller things found while auditing the day's own work:
   invariant `lib/storefront-pricing.ts` already enforces. Unset stays closed:
   inferring a real price from the testnet one would be the platform deciding
   to spend its owner's money for them.
+
+## 66. The first stake ever recorded could not be paid: the resolver only ran on live rows (2026-09-02)
+
+The verdict stake (`lib/review-stake.ts`) fired for the first time at 04:31Z:
+job #53's peer review drove three revision rounds to the terminal, the
+delegation recorded a $0.57 stake against the Red Team, and the owner
+released the job two hours later — the exact overrule the stake was built to
+price. Nothing burned. The Red Team's balance did not move and no log line
+mentioned a stake at all.
+
+The resolver lived at the top of `tickDelegationLocked`, and the ops cycle
+ticks `status = 'posted'` rows only. But the terminal that records a stake
+(`fail`) is also the terminal that finalizes the delegation: every subtask
+failed or delivered, so the row went `completed` in the same tick that
+recorded the stake, and no tick ever saw it again. `delegation_status` ticked
+only posted rows too. The owner's judgment — the trigger — arrives by
+definition *after* the delegation is finished, so the stake's resolver was
+placed on the one code path that structurally cannot observe it. §63's
+lesson ("a price on a state nothing exits is a price nobody pays") applied
+one level up: the state was exited; the observer had left.
+
+Fix: `resolveReviewStakes` is its own exported function. The tick still calls
+it first, and both surfaces that read the chain — the ops `delegations` step
+and `delegation_status` — additionally sweep finished delegations that still
+carry a held stake (`hasHeldReviewStake`) through it. Cheap: a completed row
+with an undecided stake is rare and keyed by a text match on the JSON column.
+
+Second thing the same incident showed: after the release the delegation still
+read `❌ Platform recommendation` with the synthesis absent from the assembled
+output, over a piece the owner had just paid $2.28 for. A forfeit is the
+owner's judgment of the work, not only of the stake, so the resolver now
+un-fails the paid subtask, restores its submitted output, and re-assembles
+`finalOutput` on a finished row. A returned stake changes nothing — the
+refusal was vindicated and the record was already right.
+
+Where to look: the `[ops-cycle]` delegations step now reports
+`stakesResolved`; a burn failure logs `verdict-stake burn failed (will retry)`
+and the stake stays `held` for the next sweep.

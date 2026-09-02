@@ -6,6 +6,7 @@ import {
   reviewStakeUsd,
   decideStakeOutcome,
   stakeMoveAllowed,
+  hasHeldReviewStake,
 } from '@/lib/review-stake'
 
 /**
@@ -38,6 +39,15 @@ describe('decideStakeOutcome — the chain decides, mechanically', () => {
   it('an undecided job keeps holding', () => {
     expect(decideStakeOutcome('Submitted')).toBe('hold')
     expect(decideStakeOutcome('Accepted')).toBe('hold')
+  })
+})
+
+describe('hasHeldReviewStake — the sweep key', () => {
+  it('is true only while a stake is undecided', () => {
+    expect(hasHeldReviewStake([{}, { reviewStake: { reviewerAgentId: 'r', amountUsd: 0.57, status: 'held' } }])).toBe(true)
+    expect(hasHeldReviewStake([{ reviewStake: { reviewerAgentId: 'r', amountUsd: 0.57, status: 'forfeited' } }])).toBe(false)
+    expect(hasHeldReviewStake([{ reviewStake: { reviewerAgentId: 'r', amountUsd: 0.57, status: 'returned' } }])).toBe(false)
+    expect(hasHeldReviewStake([])).toBe(false)
   })
 })
 
@@ -97,8 +107,36 @@ describe('the wiring — recorded at stonewall, resolved by the chain, disclosed
 
   it('a stake resolution persists immediately — a money fact must not ride the end-of-tick save', () => {
     const at = src.indexOf('decideStakeOutcome(targetJob.status)')
-    const block = src.slice(at, at + 2600)
-    expect(block).toContain('await db.update(delegation).set({ subtasks })')
+    const block = src.slice(at, at + 3600)
+    expect(block).toContain('await db')
+    expect(block).toContain('.update(delegation)')
+    expect(block.indexOf('.update(delegation)')).toBeLessThan(block.indexOf('// This delegation') === -1 ? block.length : block.indexOf('// This delegation'))
+  })
+
+  it('resolution runs on FINISHED delegations too — the terminal that records a stake also finalizes the row', () => {
+    // The first stake ever recorded (job #53) sat 'held' on a completed
+    // delegation while the owner released the job. The tick that would have
+    // burned it only ever saw 'posted' rows. Both surfaces that read the
+    // chain now sweep finished rows with a held stake through the resolver.
+    expect(src).toContain('export async function resolveReviewStakes(')
+    const ops = readFileSync('lib/ops-cycle.ts', 'utf8')
+    expect(ops).toContain('resolveReviewStakes')
+    expect(ops).toContain('hasHeldReviewStake')
+    expect(ops).toMatch(/status\} = 'completed' AND/)
+    const handler = readFileSync('lib/mcp/handlers/delegation.ts', 'utf8')
+    expect(handler).toContain('resolveReviewStakes(row, jobs)')
+    expect(handler).toContain("r.status === 'completed' && hasHeldReviewStake(")
+  })
+
+  it('an owner release is a judgment of the WORK — the paid piece stops being failed and re-enters the output', () => {
+    const at = src.indexOf('export async function resolveReviewStakes(')
+    const fn = src.slice(at, src.indexOf('async function tickDelegationLocked('))
+    expect(fn).toContain('st.failed = false')
+    expect(fn).toContain('st.output = st.submittedOutput')
+    expect(fn).toContain("row.status === 'completed'")
+    expect(fn).toContain('finalOutput: assembleFinalOutput(row.task, subtasks)')
+    // …and only on the forfeit side: a returned stake vindicated the refusal.
+    expect(fn.indexOf('st.failed = false')).toBeGreaterThan(fn.indexOf("stake.status = 'returned'"))
   })
 
   it('the final-round brief discloses the stake — an unknown stake disciplines nobody', () => {

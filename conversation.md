@@ -360,3 +360,20 @@ dlg-NcMxkQRc0H #53(합성 $2.28)이 증거 규칙 + 스테이크의 첫 실전�
 - 로컬 하네스 워커가 태스크 제출 직후 두 번 조용히 죽었다(로그 끝 무에러,
   ps 소멸). 재리뷰 회부가 20분 방치된 원인. 세 번째는 하네스 추적
   백그라운드로 돌려서 살아 있다. 원인 미상 — 컨테이너 리핑 의심.
+
+### 스테이크 첫 발화는 됐는데 해소가 안 됐다 — 리졸버가 산 행만 봤다 (오피스-하네스 세션, 2026-09-02 06:50Z)
+
+오너가 #53을 릴리스했는데 Red Team 스테이크 $0.57이 안 탔다. 리졸버가
+`tickDelegationLocked` 맨 앞에 있고 ops는 `posted`만 틱하는데, 스테이크를
+기록하는 터미널(`fail`)이 딜리게이션을 `completed`로 finalize하는 바로 그
+틱이다. 트리거(오너 판단)는 정의상 그 뒤에 오니 리졸버가 구조적으로 못 보는
+자리에 있었다. §63의 교훈이 한 층 위에서 반복됐다.
+
+- `resolveReviewStakes` 로 분리·export. 틱은 그대로 먼저 부르고, ops
+  `delegations` 스텝과 `delegation_status` 둘 다 **completed + held stake**
+  행을 추가로 스윕한다(`hasHeldReviewStake`).
+- forfeit(오너 릴리스)는 작업에 대한 판단이기도 하다: 지급된 서브태스크의
+  `failed`를 풀고 submittedOutput을 복원, finished 행이면 finalOutput
+  재조립. return 쪽은 아무것도 안 바꾼다.
+- `release_job` MCP 툴도 같이 들어갔다(요청자 쪽 릴리즈 레버가 MCP에 없었음).
+  `docs/failure-modes.md` §66.
