@@ -1617,6 +1617,9 @@ async function tickDelegationLocked(
           // Needed to hand a deliverable back to the agent that wrote it when
           // a peer asks for changes — job.worker is an address, not an id.
           workerAgentId: jobSpec.workerAgentId,
+          // The platform grader's recorded verdict. The verify block below
+          // must not overrule a recorded FAIL — see §69.
+          testResult: jobSpec.testResult,
         })
         .from(jobSpec)
         .where(or(inArray(jobSpec.specHash, wantedHashes), inArray(jobSpec.parentSpecHash, wantedHashes)))
@@ -1694,6 +1697,21 @@ async function tickDelegationLocked(
     // deliverable that landed before a grading key was configured, or whose
     // submission-time grade returned no verdict, still settles once it can.
     if (job.status === 'Submitted' && row.autoVerify && st.reviewVerdict !== 'revise') {
+      // A recorded platform FAIL is the job's grade. On V2 a failed job is
+      // deliberately left Submitted for the review deadline to refund
+      // (lib/dispute-policy.ts), and this block — written for deliverables
+      // whose submission-time grade returned NO verdict — re-graded one with
+      // its own, more lenient prompt and released $1.14 on a job the grader
+      // had failed five times (job #55, 2026-09-02, §69). Two graders on one
+      // escrow means the money follows the lenient one; this block is a
+      // fallback for an absent verdict, not an appeal court.
+      const recorded = (spec?.testResult as { passed?: boolean | null } | null | undefined)?.passed
+      if (recorded === false) {
+        console.info(
+          `[delegation] ${row.id} job ${st.onchainJobId} "${st.title.slice(0, 40)}": platform grade is a recorded FAIL — not re-grading; the review deadline settles it`,
+        )
+        continue
+      }
       const kind = st.deliverableKind ?? 'text'
       const task = spec?.agentTaskId
         ? (await db.select().from(agentTask).where(eq(agentTask.id, spec.agentTaskId)))[0]

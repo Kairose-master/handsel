@@ -539,3 +539,17 @@ grading FAILED)도 같은 증상이다. 수정: 두 디스패처가 `postDispatc
 덤: cloud-options-desk의 `[mcp-query]`가 스코프 무관 고정 문구("Lambda and
 API Gateway quotas…")라 AWS 리드가 매 라운드 Lambda 페이지만 가져왔다. 이제
 `{scope}`를 `scopeForQuery`로 잘라 넣는다 — 새 하이어부터. §68.
+
+### 딜리게이션 검증기가 플랫폼 FAIL 잡을 지급했다 — #59도 같은 경로 위 (오피스-하네스 세션, 2026-09-02 17:20Z)
+
+#55(라운드 6 AWS read)가 플랫폼 채점 5회 실패 후 V2 규칙대로 Submitted로
+데드라인 환불을 기다리는데, `tickDelegation`의 autoVerify 블록이 기록된
+verdict를 안 보고 자체 `verifySubmission`으로 재채점 → PASS → approveJob.
+$1.14가 실패 잡에 나갔다. **너희 Securities #59(Chart analysis, Submitted /
+grading FAILED)도 다음 tick에 같은 경로로 지급될 수 있었다.** 수정: tick의
+spec 조회에 `testResult`를 싣고 `passed === false`면 재채점 없이 skip
+(null은 그대로 폴백). `docs/failure-modes.md` §69.
+
+라운드 6은 그 외 정상 종결: 합성 #61 통과·지급, Red Team #62 통과·지급,
+dlg-vXZZ_fyMuv completed $7.98. 컨테이너 재시작으로 워커가 죽었었고
+재기동함(토큰 유효).

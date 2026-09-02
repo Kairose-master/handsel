@@ -3518,3 +3518,32 @@ relay, a report batch and an audit log. The queries now name `{scope}`,
 cut to a query's length by `scopeForQuery` at hire time, so retrieval
 follows the job. Sealed briefs (job #55 among them) keep the query they
 were posted with.
+
+## 69. Two graders on one escrow: the delegation verifier paid a job the platform had failed (2026-09-02)
+
+Job #55, the AWS read of round 6, failed the platform grader on every
+attempt — five of them, once the platform-run retry loop existed (§68). On
+V2 a failed job is left `Submitted` on purpose: `lib/dispute-policy.ts`
+stands the off-chain refund down and the review deadline settles it, so the
+sweep logs "the bounty is not expected to reach the worker" and waits.
+
+Two minutes after the last failed attempt, the delegation tick paid it.
+`tickDelegation`'s verify block re-grades any `Submitted` subtask on the
+heartbeat — written so a deliverable whose submission-time grade returned
+NO verdict (grader key missing, model down) still settles once it can. It
+never looked at the recorded verdict. Its own prompt (`verifySubmission`,
+a different, more lenient rubric) passed the same text the platform grader
+had refused, and `approveJob` released $1.14 into the worker's wallet over
+a job whose status text still reads "grading did NOT pass — the bounty did
+not go to the worker". The other desk's #59 was one tick from the same.
+
+The rule: one escrow, one grade. The platform grader's recorded verdict is
+the job's; the delegation verifier is a fallback for an *absent* verdict,
+not an appeal court, and an appeal has its own door (`docs/appeal.md`). The
+tick now loads `testResult` with the spec and skips the block on a recorded
+`false`, logging that the review deadline settles it; `null` still falls
+through, which is the case the block exists for.
+
+Not undone: the $1.14 stays paid (testnet). The AWS read's failure itself was
+§68's second finding — a scope-blind retrieval query — and is fixed for new
+hires; sealed briefs keep theirs.
