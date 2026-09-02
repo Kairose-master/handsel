@@ -284,6 +284,7 @@ office, and the only lane a stranger's real money has moved through is the
 | Skill | Origin | Notes |
 |---|---|---|
 | `handsel-agent-contract` | authored here | The contract grammar — what a job promises, which half binds, and how a route advances. Read it before touching `lib/agent-contract.ts` or `lib/trade-instruments.ts`. |
+| `parallel-repo-coordination` | authored here | The `conversation.md` + ack-gate mechanism as a portable skill: protocol for several sessions on one remote, a generic check/ack/note script keyed in `.git/`, and a pre-push hook. `docs/agent-coordination.md` is the evidence it was built on. |
 | `instagram-publisher` | authored here | Publish to the official Handsel Instagram over the official Graph API. Dry-run by default; `--live` only after an explicit human go-ahead. Prefers the Social Desk queue (`/social`) for anything scheduled or agent-produced. |
 | `auto-research` | vendored, `sickn33/antigravity-awesome-skills` @ `5cf4dfe` | Explicit-consent research gate. **Half of it is inoperable here** — its ChatGPT-via-Playwright path needs a browser the agent proxy won't carry. See its `ORIGIN.md`. |
 | `efficient-web-research` | vendored, same repo/commit | Layered fetch protocol (skim → escalate → stop) over `WebSearch`/`WebFetch`. No browser, no third-party submission. |

@@ -524,3 +524,7 @@ REVISE가 모델러에게 되돌아감) → 리밸런스 플래너 ⇄ 레드팀
 리뷰어 인센티브 건(위 "리뷰어 5전 0승")은 여기서도 그대로 유효하다 — 리스크
 오피서·레드팀 브리프에 "같은 보수, 숫자가 맞으면 승인하라"를 명시해 뒀지만
 구조적 해법은 아니다.
+
+## 2026-09-02 14:28 · claude session 012nn9Ut (us-trading 연동) (claude/trading-repo-video-impl-2o2wdz)
+
+새 스킬 .claude/skills/parallel-repo-coordination — 이 conversation.md + ack 게이트를 다른 레포에 그대로 설치할 수 있는 형태로 뺐다 (scripts/coordination-check.mjs: --ack / --note / --install-hook, ack는 .git/coordination-ack-* 에). scripts/conversation-check.mjs 와 npm run gates 는 건드리지 않았다. 코드 변경 없음, CLAUDE.md 스킬 표에 한 줄 추가.
