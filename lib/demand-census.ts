@@ -224,3 +224,124 @@ export function report(rows: CensusRow[]): string[] {
     return `${q.key}: ${t.last} today, ${dir} over ${t.observations} readings`
   })
 }
+
+/* ── Leads: the same sample, kept instead of discarded ────────────────────
+ *
+ * The census opens a hundred real bounty issues every day to compute one
+ * rate, then throws them away. docs/go-to-market.md §5 argues that the
+ * first paying counterparty this market has ever had will come from exactly
+ * this list — a maintainer who already posted a bounty and already has a way
+ * to pay it — so from here the sample is also kept, qualified, and ranked.
+ *
+ * This is a sales tool, not a measurement, and the two rules that keep the
+ * census honest apply in reverse here: the RATE must never be extrapolated to
+ * a count, and the LIST must never be mistaken for demand. A ranked lead is
+ * a place to look, and the score is a reason to look there first — every
+ * reason is written out so a person can disagree with it.
+ */
+
+/** Just the fields of a GitHub search result item this reads. */
+export interface IssueItem {
+  html_url: string
+  title: string
+  body?: string | null
+  created_at: string
+  comments?: number
+  labels?: { name?: string }[]
+  repository_url?: string
+}
+
+export interface Lead {
+  url: string
+  repo: string
+  title: string
+  /** First stated figure, as written. Null when none — never "0". */
+  amount: string | null
+  ageDays: number
+  comments: number
+  /** Something in the text names a bounty rail — the difference between a
+   *  label and a way to get paid, which the census README learned the hard
+   *  way. */
+  paymentChannel: string | null
+  score: number
+  reasons: string[]
+}
+
+/** Rails that actually move money on merge. A body naming one of these is
+ *  the strongest single signal in the sample. */
+const CHANNEL_RE = /\b(algora|polar\.sh|gitcoin|opire|boss\.dev|bountysource|issuehunt|\/bounty\s+\$|onlydust|console\.dev|dework)\b/i
+
+/** Labels that mean "scoped for an outsider" vs "not a task". */
+const GOOD_LABELS = ['good first issue', 'help wanted', 'bounty', 'reward']
+const BAD_LABELS = ['epic', 'discussion', 'question', 'wontfix', 'duplicate', 'rfc', 'tracking']
+
+export function qualifyLead(item: IssueItem, nowMs: number): Lead {
+  const text = `${item.title}\n${item.body ?? ''}`
+  const amountMatch = AMOUNT_RE.exec(text)
+  const channelMatch = CHANNEL_RE.exec(text)
+  const labels = (item.labels ?? []).map((l) => (l.name ?? '').toLowerCase())
+  const ageDays = Math.max(0, Math.round((nowMs - Date.parse(item.created_at)) / 86_400_000))
+  const comments = item.comments ?? 0
+  const bodyLen = (item.body ?? '').trim().length
+  const repo = (item.repository_url ?? '').replace(/^.*\/repos\//, '') || item.html_url.replace(/^https:\/\/github\.com\//, '').split('/issues/')[0]
+
+  let score = 0
+  const reasons: string[] = []
+  const add = (pts: number, why: string) => {
+    score += pts
+    reasons.push(`${pts > 0 ? '+' : ''}${pts} ${why}`)
+  }
+
+  if (amountMatch) add(3, `states an amount (${amountMatch[0].trim()})`)
+  else add(-2, 'no amount stated — a label is not money')
+  if (channelMatch) add(3, `names a payment rail (${channelMatch[1].toLowerCase()})`)
+  if (ageDays <= 14) add(2, `fresh (${ageDays}d)`)
+  else if (ageDays > 90) add(-2, `stale (${ageDays}d) — nobody has taken it in three months`)
+  if (comments === 0) add(1, 'no comments — unclaimed')
+  else if (comments >= 8) add(-1, `${comments} comments — likely contested or already in progress`)
+  if (bodyLen < 120) add(-2, 'body under 120 chars — underspecified')
+  else if (bodyLen > 600) add(1, 'substantial brief')
+  if (labels.some((l) => BAD_LABELS.includes(l))) add(-3, `labelled ${labels.filter((l) => BAD_LABELS.includes(l)).join(', ')} — not a task`)
+  if (labels.some((l) => GOOD_LABELS.includes(l) && l !== 'bounty')) add(1, 'scoped for an outsider')
+
+  return {
+    url: item.html_url,
+    repo,
+    title: item.title.trim().slice(0, 140),
+    amount: amountMatch ? amountMatch[0].trim() : null,
+    ageDays,
+    comments,
+    paymentChannel: channelMatch ? channelMatch[1].toLowerCase() : null,
+    score,
+    reasons,
+  }
+}
+
+/** Ranked, one per repository — the first lead in a repo is a relationship,
+ *  the fifth is the same relationship listed five times. */
+export function qualifyLeads(items: IssueItem[], nowMs: number, limit = 25): Lead[] {
+  const seen = new Set<string>()
+  return items
+    .map((i) => qualifyLead(i, nowMs))
+    .sort((a, b) => b.score - a.score || a.ageDays - b.ageDays)
+    .filter((l) => (seen.has(l.repo) ? false : (seen.add(l.repo), true)))
+    .slice(0, limit)
+}
+
+const csvCell = (v: string | number | null) => {
+  const s = v === null ? '' : String(v)
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+}
+
+export const LEADS_HEADER = 'score,amount,channel,age_days,comments,repo,url,title,reasons'
+
+export function leadsCsv(leads: Lead[]): string {
+  return [
+    LEADS_HEADER,
+    ...leads.map((l) =>
+      [l.score, l.amount, l.paymentChannel, l.ageDays, l.comments, l.repo, l.url, l.title, l.reasons.join('; ')]
+        .map(csvCell)
+        .join(','),
+    ),
+  ].join('\n')
+}

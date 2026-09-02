@@ -91,7 +91,7 @@ What is for sale: a certification report, a ranked listing, a periodic
 benchmark. All of it derivable from data the system already produces.
 
 **The generator exists**: `lib/certification-report.ts`, produced by
-`DATABASE_URL=… npx tsx scripts/certification-report.mjs <agentId>`. A script
+`DATABASE_URL=… node scripts/certification-report.mjs <agentId>` (Node 22.18+). A script
 rather than a written document on purpose — a hand-written sample would be a
 number somebody typed, and the entire pitch is that these are settled outcomes
 nobody chose. Its shape:

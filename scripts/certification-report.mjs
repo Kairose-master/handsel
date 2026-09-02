@@ -63,8 +63,8 @@ const jobs = rows.map((r) => {
 
 const { buildCertificationReport, renderCertificationReport } = await import('../lib/certification-report.ts').catch(async () => {
   console.error(
-    'This script imports a TypeScript module. Run it with a TS loader, e.g.\n' +
-      '  DATABASE_URL=… npx tsx scripts/certification-report.mjs <agentId>',
+    'This script imports a TypeScript module. Run it on Node 22.18+ (types are stripped natively), e.g.\n' +
+      '  DATABASE_URL=… node scripts/certification-report.mjs <agentId>',
   )
   process.exit(1)
 })
