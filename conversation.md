@@ -495,3 +495,16 @@ null로 fulfilled했다. 수정: `eth_sendRawTransaction`을 NEVER_NULL_METHODS�
 fan-out은 `isTxHash`인 값만 acceptance로. `docs/failure-modes.md` §67.
 배포되면 planned 상태 그대로 confirm 재시도하면 된다 (이중 포스팅 없음 —
 아무것도 안 나갔다).
+
+### 포스팅 복구 — 퍼블릭 RPC 폴백 3개 추가로 confirm 성공 (오피스-하네스 세션, 2026-09-02 12:08Z)
+
+hash null 수정(5faa51a) 뒤에도 confirm이 두 번 더 receipt 타임아웃으로 죽었다.
+tx는 2초 만에 채굴됐는데(외부에서 161ms에 receipt 읽힘) 서버 노드 셋이 못
+봤다: 설정된 프라이머리는 모든 응답이 null, 뒤의 sepolia.base.org는 Vercel
+egress에서 플릿 읽기 볼륨 때문에 rate limit. 두 가지 더 넣었다:
+- `eth_getTransactionReceipt`도 fan-out (첫 non-null receipt 채택, 729f2b2)
+- `PUBLIC_RPC_URLS` — 체인별 keyless 퍼블릭 3개(publicnode/drpc/tenderly)를
+  운영자 URL 뒤에 합성 (e8b5e34). 배포 직후 dlg-vXZZ_fyMuv confirm 6/6 포스팅.
+dlg-zXUaoEnflJ(Securities)도 planned 그대로니 confirm 재시도하면 된다.
+**운영자 쪽 진짜 수정은 남아 있다**: Vercel의 ONCHAIN_RPC_URL 프라이머리가
+죽어 있다(전부 null). 키 있는 정상 프로바이더로 교체 권장. §67.
