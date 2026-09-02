@@ -1,50 +1,56 @@
 import { describe, it, expect } from 'vitest'
-import {
-  decideRevision,
-  revisionBrief,
-  reReviewBrief,
-  MAX_REVISION_ROUNDS,
-  parseReviewVerdict,
-} from '@/lib/delegation'
+import { revisionBrief, reReviewBrief, MAX_REVISION_ROUNDS, parseReviewVerdict } from '@/lib/delegation'
+import { decideReview } from '@/lib/review-findings'
 
-describe('decideRevision', () => {
-  it('releases on approval', () => {
-    expect(decideRevision({ approve: true, samePerson: false, round: 0 })).toBe('release')
+/**
+ * This block used to test `decideRevision`, whose terminal outcome was
+ * `hand-to-owner`, under the heading "terminates". It did not terminate. That
+ * branch set neither `output` nor `failed` on the subtask, so `workTerminal`
+ * stayed false and the whole delegation hung — the suite was certifying the
+ * defect, in a test named after the property the defect broke.
+ *
+ * `decideReview` replaces it. The verdict word is no longer an input: what
+ * decides is how many findings quoted text really present in the deliverable.
+ * See lib/review-findings.ts and tests/review-findings.test.ts.
+ */
+describe('decideReview', () => {
+  it('releases when nothing verifiable is blocking, whatever the reviewer wrote', () => {
+    expect(decideReview({ samePerson: false, blockingCount: 0, round: 0 })).toBe('release')
+    expect(decideReview({ samePerson: false, blockingCount: 0, round: MAX_REVISION_ROUNDS })).toBe('release')
   })
 
-  it('sends a first REVISE back to the worker instead of to a human', () => {
-    expect(decideRevision({ approve: false, samePerson: false, round: 0 })).toBe('revise')
+  it('sends a first blocking finding back to the worker instead of to a human', () => {
+    expect(decideReview({ samePerson: false, blockingCount: 1, round: 0 })).toBe('revise')
   })
 
   it('keeps looping while rounds remain', () => {
-    expect(decideRevision({ approve: false, samePerson: false, round: MAX_REVISION_ROUNDS - 1 })).toBe('revise')
+    expect(decideReview({ samePerson: false, blockingCount: 1, round: MAX_REVISION_ROUNDS - 1 })).toBe('revise')
   })
 
-  it('hands to the owner once the rounds are spent', () => {
-    expect(decideRevision({ approve: false, samePerson: false, round: MAX_REVISION_ROUNDS })).toBe('hand-to-owner')
-    expect(decideRevision({ approve: false, samePerson: false, round: MAX_REVISION_ROUNDS + 5 })).toBe('hand-to-owner')
+  it('fails the subtask once the rounds are spent — pay-only-on-pass, and the pipeline finalizes', () => {
+    expect(decideReview({ samePerson: false, blockingCount: 1, round: MAX_REVISION_ROUNDS })).toBe('fail')
+    expect(decideReview({ samePerson: false, blockingCount: 1, round: MAX_REVISION_ROUNDS + 5 })).toBe('fail')
   })
 
   it('discards a self-review rather than letting an agent send its own work back', () => {
-    expect(decideRevision({ approve: false, samePerson: true, round: 0 })).toBe('release')
-    expect(decideRevision({ approve: true, samePerson: true, round: 0 })).toBe('release')
+    expect(decideReview({ samePerson: true, blockingCount: 3, round: 0 })).toBe('release')
   })
 
-  it('terminates: repeated REVISEs reach a terminal decision within the bound', () => {
+  it('terminates, and this time the terminus is a state the pipeline can leave', () => {
     let round = 0
     const seen: string[] = []
     for (let i = 0; i < 20; i++) {
-      const d = decideRevision({ approve: false, samePerson: false, round })
+      const d = decideReview({ samePerson: false, blockingCount: 1, round })
       seen.push(d)
       if (d !== 'revise') break
       round++
     }
     expect(seen.filter((d) => d === 'revise')).toHaveLength(MAX_REVISION_ROUNDS)
-    expect(seen[seen.length - 1]).toBe('hand-to-owner')
+    expect(seen[seen.length - 1]).toBe('fail')
   })
 
   it('honours an explicit round cap', () => {
-    expect(decideRevision({ approve: false, samePerson: false, round: 0, maxRounds: 0 })).toBe('hand-to-owner')
+    expect(decideReview({ samePerson: false, blockingCount: 1, round: 0, maxRounds: 0 })).toBe('fail')
   })
 })
 

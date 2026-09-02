@@ -550,6 +550,20 @@ export const jobSpec = pgTable('job_specs', {
     refusedBrief?: boolean
     workerIncapable?: boolean
     /**
+     * Every grading attempt on this job, oldest first (lib/grading-retry.ts).
+     *
+     * A failed grade is answerable now: the same worker gets the grader's
+     * reasons and resubmits against the same escrow, and only a worker that
+     * spends every attempt hands the job on. That history lives HERE rather
+     * than in a new column, for the reason at the top of lib/db/ensure-columns.ts
+     * — drizzle names every declared column in a select, so a new one breaks
+     * every read of job_specs between deploy and a hand-run migration. Widening
+     * a jsonb's `$type` costs nothing at runtime.
+     */
+    attempts?: { at: string; passed: boolean | null; output: string }[]
+    /** Set while the worker is answering the grader; cleared when it settles. */
+    retrying?: boolean
+    /**
      * The worker's appeal against a failing verdict (`lib/appeal.ts`).
      *
      * Stored on the job rather than in `agent_events` for the same reason the

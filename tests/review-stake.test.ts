@@ -55,11 +55,35 @@ describe('the burn is real money-gated, and goes to nobody', () => {
 describe('the wiring — recorded at stonewall, resolved by the chain, disclosed to the reviewer', () => {
   const src = readFileSync('lib/delegation.ts', 'utf8')
 
-  it('hand-to-owner records the stake; a same-author discard never stakes', () => {
-    const branch = src.slice(src.indexOf('// Rounds spent.'))
+  it('the terminal branch records the stake; a same-author discard never stakes', () => {
+    // The trigger moved. This anchored on `hand-to-owner`, and that outcome
+    // no longer exists — the evidence rule in lib/review-findings.ts made the
+    // terminal a `fail`, so the stake rides that instead. The property is
+    // unchanged and so is everything this asserts: recorded once, at the
+    // terminal, and never against a verdict that was discarded for
+    // same-authorship, because a verdict nobody acted on cannot be
+    // accountable.
+    //
+    // Worth stating what the two mechanisms now split between them. The
+    // evidence rule removes the CHEAP refusal: a reviewer with nothing to
+    // quote releases rather than reaching this branch at all. The stake
+    // covers what a quote cannot check — a quote verifies the locator, not
+    // the defect, so a bogus complaint pinned to a real sentence still needs
+    // a price.
+    const branch = src.slice(src.indexOf('// Rounds spent with a verified blocking finding'))
+    expect(branch.length).toBeGreaterThan(100)
     expect(branch).toContain('reviewStakeUsd(reviewer.bountyUsd)')
     expect(branch.indexOf('!samePerson')).toBeGreaterThan(-1)
     expect(branch.indexOf('!samePerson')).toBeLessThan(branch.indexOf('reviewStakeUsd'))
+  })
+
+  it('the stake rides a terminal the pipeline can actually leave', () => {
+    // The old trigger set neither `failed` nor `output`, so the delegation
+    // never finalized and the stake's own resolver waited on an owner action
+    // that might never come. Staking on a state nothing exits is a price
+    // nobody ever pays.
+    const branch = src.slice(src.indexOf('// Rounds spent with a verified blocking finding'), src.indexOf('// Drain the parked backlog'))
+    expect(branch).toContain('target.failed = true')
   })
 
   it('resolution reads the on-chain status and burns via transferUsdc to the dead address', () => {

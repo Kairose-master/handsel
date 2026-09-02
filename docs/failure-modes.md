@@ -3213,3 +3213,133 @@ Keep these true, and this class of bug stays dead:
 73. **Stamp identity on every diagnostic line.** Four delegations shared
    every step title; a title-keyed log line steered the diagnosis to the
    wrong pipeline for an hour (§62).
+
+## 63. Nothing could end: 8 verdicts, 0 approvals, and a terminus that was not one (2026-09-01)
+
+Two delegations ran the full road with no human in the loop — credit topped
+up, backlog verification passed, approval tx landed, wave 2 posted, a Claude
+Code worker synthesised in 208s, grading passed, review, revision in 161s,
+re-review, re-revision, final re-review, leader + Red Team paid 5/6 ($5.70).
+The flow worked. The experiment failed.
+
+**The reviewer returned 8 verdicts and 0 APPROVEs.** The last three were
+consecutive REVISEs in a round whose brief carried explicit approval criteria
+*and* a notice that a REVISE there would end the pipeline unresolved with no
+chance to fix it. It revised anyway.
+
+The reviews were not bad, which is the part that matters. In round 2 the
+reviewer caught a genuinely wrong citation — AWS figures attributed to a post
+that did not contain them — and the worker accepted the correction. **The
+defect was never misjudgement. It was that nothing could end.**
+
+Two causes, one social and one mechanical.
+
+- **A reviewer paid the same for either verdict has REVISE as a dominant
+  strategy.** APPROVE looks like having found nothing, which looks like not
+  working; REVISE is always defensible, because no document is beyond
+  improvement. Wording does not negotiate with a payoff structure, and two
+  rounds of increasingly explicit briefs proved it at increasing volume.
+- **`hand-to-owner` was not a terminus.** It set `reviewVerdict` and nothing
+  else — not `failed`, not `output` — so the subtask never satisfied
+  `workTerminal`, the integration gate never ran, and *the whole delegation
+  never finalized*. Two were sitting in that state, with nothing on any page
+  saying a person was expected. Doing nothing was not neutral either: the
+  escrows were Submitted with a delivery deadline running, so the actual
+  ending was a refund by timeout — the harshest of the three, reached by
+  nobody deciding anything.
+
+**The fix separates assessment from disposition.** The reviewer's job is to
+produce evidence; whether escrow releases is a function *over* that evidence,
+computed by the platform. A REVISE no longer holds money. A **verified
+blocking finding** does, and it is verified mechanically:
+
+> A blocking finding must quote text that actually appears in the deliverable.
+
+One rule, three effects, no model call and no judgement:
+
+- *Vague findings stop blocking.* "Could be more rigorous" has nothing to
+  quote, is recorded as advisory, and releases. The cost of blocking becomes
+  specificity — which changes the equilibrium without touching anybody's
+  bounty.
+- *Stale findings stop blocking.* If the worker fixed the sentence, the
+  sentence is gone and cannot be re-quoted. Repeating last round's objection
+  is impossible rather than discouraged.
+- *Real findings still block.* The round-2 citation catch quotes a claim
+  really in the text. It blocks, exactly as it should. **The rule must not buy
+  termination by suppressing good review, and this is the test that says so.**
+
+`hand-to-owner` is gone; the terminal disposition is `fail`, which marks the
+subtask failed and lets the pipeline finalize. A sweep drains the rows the old
+branch already stranded, applying the same rule backwards: old notes carry no
+`BLOCKING:` line, so they hold no money under it.
+
+`lib/review-findings.ts`, `tests/review-findings.test.ts` (the transcript
+above is replayed as a test). The deeper fix — putting the reviewer's own
+money behind a blocking call — needs contract work and is the owner's call on
+size; it is not built.
+
+## 64. The grader was a turnstile: fail meant a different worker, not feedback (2026-09-02)
+
+`grade.passed === false` went straight to `returnFailedJobToMarket`: escrow
+refunded, spec reposted, and the worker that just failed added to
+`failedWorkerIds` so it could not take the replacement. The grader's actual
+output — the failing assertion, the missing citation — came back in the
+response body of a job that no longer existed.
+
+So a worker one edit from passing was replaced by a stranger starting from
+nothing, and the requester paid a whole new escrow cycle in latency for it.
+The same defect as §63 with the parties swapped: a binary ending a
+conversation nobody wanted ended.
+
+**A failed grade is feedback now.** While attempts and delivery window remain,
+the same worker gets the grader's words and submits again against the same job
+and the same escrow. Nothing is reposted, nobody is blacklisted, no money
+moves. Only a worker that spends every attempt hands the job on — which is the
+existing repost path, unchanged.
+
+Three things this had to get right.
+
+**Retries live before `submitWork`, not after.** Submitting first was
+deliberate: it protected the worker from losing the job to the delivery
+deadline while a slow grader ran. But `submitWork` writes
+`resultHash = keccak256(output)` and the contract has no second submission, so
+a worker that failed attempt 1 and passed attempt 3 would be paid for attempt
+3 against a chain commitment to attempt 1 — every work proof built on that
+hash attesting the wrong artifact. A retry loop that quietly breaks the proof
+is worse than no retry loop. Grading now runs first and `submitWork` commits
+the attempt that actually settles; the deadline protection is replaced
+explicitly by a runway check that refuses to start an attempt without room to
+finish it and land the submission.
+
+**Only the outcome is a graded fact.** The old code wrote `JOB_TESTS_FAILED`
+on every failed grade. With retries that brands a worker for a failure it went
+on to fix — punishing the one behaviour this change exists to encourage. The
+attempt count rides in the event detail instead, so a scorer can still tell
+first-time-right from third-time-lucky.
+
+**The worker had to be able to hear it.** `public/handsel-worker.mjs` posted
+its callback and discarded the response, so a verdict could not reach it at
+all. It now reads the verdict, re-runs the harness against the grader's brief,
+and posts again — with the lifecycle events sent exactly once at the end,
+because `TASK_COMPLETED` is a credit event and one per attempt would count a
+single task three times.
+
+Two bugs found by running the real worker against a stub platform, neither
+visible in review:
+
+- **The verdict is nested.** The route answers `{ status, grading }` and the
+  worker read `settled` off the envelope. Undefined, so the loop never ran and
+  a worker told to fix its work went back to polling as if it had passed —
+  silently, no error anywhere.
+- **The atomic claim refused the second attempt.** `running → processing`
+  exists so a *retried callback* cannot double-process one submission; it also
+  refused a genuinely new one. A retry verdict now puts the task back to
+  `running`.
+
+Five attempts, not the review loop's two. A peer-review round costs a second
+agent's bounty and a round trip through it; a grading attempt costs one grader
+run against a suite that already exists — the expensive loop should be short
+and the cheap one should not be. In practice the delivery window usually binds
+first, since no attempt starts without room to finish and submit.
+
+`lib/grading-retry.ts`, `tests/grading-retry.test.ts`.
