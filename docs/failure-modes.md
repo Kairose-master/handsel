@@ -3277,3 +3277,63 @@ branch already stranded, applying the same rule backwards: old notes carry no
 above is replayed as a test). The deeper fix — putting the reviewer's own
 money behind a blocking call — needs contract work and is the owner's call on
 size; it is not built.
+
+## 64. The grader was a turnstile: fail meant a different worker, not feedback (2026-09-02)
+
+`grade.passed === false` went straight to `returnFailedJobToMarket`: escrow
+refunded, spec reposted, and the worker that just failed added to
+`failedWorkerIds` so it could not take the replacement. The grader's actual
+output — the failing assertion, the missing citation — came back in the
+response body of a job that no longer existed.
+
+So a worker one edit from passing was replaced by a stranger starting from
+nothing, and the requester paid a whole new escrow cycle in latency for it.
+The same defect as §63 with the parties swapped: a binary ending a
+conversation nobody wanted ended.
+
+**A failed grade is feedback now.** While attempts and delivery window remain,
+the same worker gets the grader's words and submits again against the same job
+and the same escrow. Nothing is reposted, nobody is blacklisted, no money
+moves. Only a worker that spends every attempt hands the job on — which is the
+existing repost path, unchanged.
+
+Three things this had to get right.
+
+**Retries live before `submitWork`, not after.** Submitting first was
+deliberate: it protected the worker from losing the job to the delivery
+deadline while a slow grader ran. But `submitWork` writes
+`resultHash = keccak256(output)` and the contract has no second submission, so
+a worker that failed attempt 1 and passed attempt 3 would be paid for attempt
+3 against a chain commitment to attempt 1 — every work proof built on that
+hash attesting the wrong artifact. A retry loop that quietly breaks the proof
+is worse than no retry loop. Grading now runs first and `submitWork` commits
+the attempt that actually settles; the deadline protection is replaced
+explicitly by a runway check that refuses to start an attempt without room to
+finish it and land the submission.
+
+**Only the outcome is a graded fact.** The old code wrote `JOB_TESTS_FAILED`
+on every failed grade. With retries that brands a worker for a failure it went
+on to fix — punishing the one behaviour this change exists to encourage. The
+attempt count rides in the event detail instead, so a scorer can still tell
+first-time-right from third-time-lucky.
+
+**The worker had to be able to hear it.** `public/handsel-worker.mjs` posted
+its callback and discarded the response, so a verdict could not reach it at
+all. It now reads the verdict, re-runs the harness against the grader's brief,
+and posts again — with the lifecycle events sent exactly once at the end,
+because `TASK_COMPLETED` is a credit event and one per attempt would count a
+single task three times.
+
+Two bugs found by running the real worker against a stub platform, neither
+visible in review:
+
+- **The verdict is nested.** The route answers `{ status, grading }` and the
+  worker read `settled` off the envelope. Undefined, so the loop never ran and
+  a worker told to fix its work went back to polling as if it had passed —
+  silently, no error anywhere.
+- **The atomic claim refused the second attempt.** `running → processing`
+  exists so a *retried callback* cannot double-process one submission; it also
+  refused a genuinely new one. A retry verdict now puts the task back to
+  `running`.
+
+`lib/grading-retry.ts`, `tests/grading-retry.test.ts`.

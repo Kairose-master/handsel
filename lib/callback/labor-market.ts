@@ -13,6 +13,13 @@ import { and, eq, gte, sql } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { logPlatformEvent } from '@/lib/platform-feed'
 import { autoApprovePassedJob, returnFailedJobToMarket } from '@/lib/labor-settle'
+import {
+  MAX_GRADING_ATTEMPTS,
+  decideGradingRetry,
+  gradedFactFor,
+  gradingFeedbackBrief,
+  type GradingAttempt,
+} from '@/lib/grading-retry'
 /**
  * If this agent run was a Labor Market worker actually doing an accepted
  * job: submit the REAL output on-chain now, automatically. The requester
@@ -29,7 +36,37 @@ import { autoApprovePassedJob, returnFailedJobToMarket } from '@/lib/labor-settl
 /** What happened to the worker's submission — returned to the worker so its
  *  log can show the real outcome (paid / refunded / awaiting manual review)
  *  instead of stopping at "submitted". */
-export type GradeReport = { passed: boolean | null; settled: 'paid' | 'refunded' | 'manual'; reason: string }
+export type GradeReport = {
+  passed: boolean | null
+  /** 'retry' is not a settlement: the escrow has not moved and the job is
+   *  still this worker's. It is here because the caller's next action differs
+   *  — answer the grader rather than pick up new work. */
+  settled: 'paid' | 'refunded' | 'manual' | 'retry'
+  reason: string
+  /** Present only on 'retry'. */
+  attempt?: number
+  maxAttempts?: number
+}
+
+/**
+ * How much delivery window is left, in ms — or null if the chain could not say.
+ *
+ * `decideGradingRetry` treats null as no runway, deliberately: refusing to
+ * start another attempt costs the worker a retry, and guessing wrong costs it
+ * the whole job, because past the delivery deadline `submitWork` reverts
+ * TooLate and `reclaimJob` pays the requester 100% and burns the bond.
+ */
+async function deliveryRunwayMs(onchainJobId: number | null): Promise<number | null> {
+  if (onchainJobId === null) return null
+  try {
+    const { readCollateral } = await import('@/lib/onchain/advance-chain')
+    const job = await readCollateral(onchainJobId)
+    if (!job || job.status !== 'Accepted') return null
+    return job.deliveryDeadlineMs - Date.now()
+  } catch {
+    return null
+  }
+}
 
 /** The requester's credit score right now, stamped onto graded events so the
  *  scoring engine can weight reputation by counterparty credibility without
@@ -49,27 +86,45 @@ export async function settleLaborMarketJob(agentTaskId: string, output: string):
   const [spec] = await db.select().from(jobSpec).where(eq(jobSpec.agentTaskId, agentTaskId))
   if (!spec || !spec.workerAgentId || spec.onchainJobId === null) return null
 
-  let submitted = false
-  try {
-    const { keccak256, toHex } = await import('viem')
-    const { submitWork } = await import('@/lib/onchain/labor')
-    const resultHash = keccak256(toHex(output || '(empty output)'))
-    await submitWork(spec.workerAgentId, spec.onchainJobId, resultHash)
-    submitted = true
-    await logPlatformEvent('JOB_SUBMITTED', `"${spec.title}" — worker submitted real output for review`)
-  } catch (error) {
-    const { isUserOpPending } = await import('@/lib/onchain/account')
-    if (isUserOpPending(error)) {
-      // The bundler took it; it usually lands moments later. Treat the
-      // submission as done for grading purposes — the alternative is
-      // recording "submit failed" for work that IS on-chain, and every
-      // settlement path re-reads live status before it moves money anyway.
-      submitted = true
-      console.warn(`[runtime/callback] submitWork for job ${spec.onchainJobId} is pending confirmation — continuing to grade`)
-    } else {
+  /**
+   * Commit the artifact on chain.
+   *
+   * This used to run BEFORE grading, so that a slow grader could not cost the
+   * worker the job to the delivery deadline. It cannot stay there now that a
+   * failed grade is answerable (lib/grading-retry.ts): `submitWork` writes
+   * `resultHash = keccak256(output)` and the contract has no second
+   * submission, so a worker that failed attempt 1 and passed attempt 3 would
+   * be paid for attempt 3 against a chain commitment to attempt 1 — every
+   * work proof built on that hash attesting the wrong artifact.
+   *
+   * So it is called once, on the attempt that is actually going to settle.
+   * The deadline protection the old ordering gave is now explicit instead:
+   * `decideGradingRetry` refuses to start an attempt without enough delivery
+   * window left to run it and still land this call.
+   */
+  const submitOnChain = async (finalOutput: string): Promise<boolean> => {
+    try {
+      const { keccak256, toHex } = await import('viem')
+      const { submitWork } = await import('@/lib/onchain/labor')
+      const resultHash = keccak256(toHex(finalOutput || '(empty output)'))
+      await submitWork(spec.workerAgentId!, spec.onchainJobId!, resultHash)
+      await logPlatformEvent('JOB_SUBMITTED', `"${spec.title}" — worker submitted real output for review`)
+      return true
+    } catch (error) {
+      const { isUserOpPending } = await import('@/lib/onchain/account')
+      if (isUserOpPending(error)) {
+        // The bundler took it; it usually lands moments later. Treat the
+        // submission as done for grading purposes — the alternative is
+        // recording "submit failed" for work that IS on-chain, and every
+        // settlement path re-reads live status before it moves money anyway.
+        console.warn(`[runtime/callback] submitWork for job ${spec.onchainJobId} is pending confirmation — continuing`)
+        return true
+      }
       console.error('[runtime/callback] labor market auto-submit failed:', error)
+      return false
     }
   }
+  let submitted = false
 
   // Three independent grading paths produce the same verdict shape:
   // Python asserts for code jobs, a vision LLM for image deliverables,
@@ -243,7 +298,59 @@ export async function settleLaborMarketJob(agentTaskId: string, output: string):
           }
     }
 
-    await db.update(jobSpec).set({ testResult: grade }).where(eq(jobSpec.specHash, spec.specHash))
+    // Every attempt's verdict, oldest first. Stored inside `testResult`
+    // rather than as a new column, for the reason in lib/db/ensure-columns.ts:
+    // drizzle names every declared column in a select, so a new one breaks
+    // every read of job_specs between deploy and a hand-run migration.
+    const priorAttempts: GradingAttempt[] = spec.testResult?.attempts ?? []
+    const attempts: GradingAttempt[] = [
+      ...priorAttempts,
+      { at: new Date().toISOString(), passed: grade.passed, output: grade.output },
+    ]
+
+    // A failed grade is feedback, not a verdict on the worker. While attempts
+    // and delivery window remain, the same worker answers the grader on the
+    // same job and the same escrow — nothing is reposted and nobody is
+    // blacklisted. See lib/grading-retry.ts and docs/failure-modes.md §64.
+    const graded = attempts.filter((a) => a.passed !== null).length
+    const retry = decideGradingRetry({
+      passed: grade.passed,
+      attemptsSoFar: graded,
+      msUntilDeliveryDeadline: await deliveryRunwayMs(spec.onchainJobId),
+    })
+
+    if (retry.action === 'retry') {
+      // No submitWork, no credit event, no repost. The job is exactly where it
+      // was: Accepted, escrowed, owned by this worker. The only thing that
+      // changed is that it now knows what is wrong.
+      await db
+        .update(jobSpec)
+        .set({ testResult: { ...grade, attempts, retrying: true } })
+        .where(eq(jobSpec.specHash, spec.specHash))
+      await logPlatformEvent(
+        'JOB_TESTS_FAILED',
+        `"${spec.title}" — grading failed on attempt ${graded} of ${MAX_GRADING_ATTEMPTS}; the same worker was sent the grader's reasons`,
+      )
+      const { untrustedNonce } = await import('@/lib/untrusted-input')
+      return {
+        passed: false,
+        settled: 'retry',
+        attempt: retry.nextAttempt,
+        maxAttempts: MAX_GRADING_ATTEMPTS,
+        reason: gradingFeedbackBrief({
+          title: spec.title,
+          acceptanceCriteria: spec.acceptanceCriteria ?? '(none given)',
+          graderOutput: grade.output,
+          attempt: retry.nextAttempt,
+          nonce: untrustedNonce(),
+        }),
+      }
+    }
+
+    // This attempt settles, so it is the one the chain commits to.
+    submitted = await submitOnChain(output)
+
+    await db.update(jobSpec).set({ testResult: { ...grade, attempts } }).where(eq(jobSpec.specHash, spec.specHash))
 
     // passed:null means grading itself was unavailable — that's an infra
     // fact about us, not behavioral data about the worker; no credit event.
@@ -260,6 +367,12 @@ export async function settleLaborMarketJob(agentTaskId: string, output: string):
         detail: {
           jobId: spec.onchainJobId,
           testOutput: grade.output.slice(0, 500),
+          // How many graded attempts it took. Only the OUTCOME is a graded
+          // fact — branding a worker for a failure it went on to fix would
+          // punish the one behaviour the retry loop exists to encourage — but
+          // first-time-right and third-time-lucky are not the same evidence,
+          // so the count travels and a scorer can weight it if it wants to.
+          attempts: gradedFactFor(attempts).attempts,
           // Grader class + counterparty feed the collusion-resistant scoring
           // weights: an LLM review against requester-authored criteria is
           // cheaper for a colluding pair to manufacture than a mutation-

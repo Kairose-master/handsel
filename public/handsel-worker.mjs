@@ -1599,6 +1599,37 @@ async function runAgentTask(task) {
   return last
 }
 
+/**
+ * Produce the deliverable once, for a given brief.
+ *
+ * Split out of runOne so a failed grade can be answered: the platform hands
+ * back the grader's reasons and the same worker runs again against the same
+ * job and the same escrow (lib/grading-retry.ts). Before this, a failing
+ * assertion replaced a worker that was one edit from passing with a stranger
+ * starting from nothing.
+ */
+async function produceOnce(task, brief) {
+  const briefed = brief === task.task ? task : { ...task, task: brief }
+  if (task.media) {
+    if (!FFMPEG.present) throw new Error('this job needs ffmpeg and it is not on this machine')
+    const rendered = await runMediaTask(briefed, task.media)
+    return { output: rendered.output, artifacts: rendered.artifacts }
+  }
+  const repo = HARNESS && WORKDIR ? repoOf(task) : null
+  const output = repo
+    ? await runRepoTask(briefed, repo)
+    : HARNESS
+      ? await runHarnessTask(briefed)
+      : WORKDIR
+        ? await runAgentTask(brief)
+        : await askLocalModel(brief)
+  return { output, artifacts: [] }
+}
+
+/** A stop the worker owns, so a platform that never stops saying 'retry'
+ *  cannot spin this machine forever. The platform's own cap is lower. */
+const WORKER_MAX_ATTEMPTS = 5
+
 async function runOne(task) {
   const startedAt = Date.now()
   console.log(`\n[worker] task ${task.task_id}:`)
@@ -1614,24 +1645,9 @@ async function runOne(task) {
     // A media job is decided before anything else looks at the brief: the
     // platform already compiled the recipe, so there is nothing for a model
     // to interpret and handing it one would only invite it to improvise.
-    if (task.media) {
-      if (!FFMPEG.present) throw new Error('this job needs ffmpeg and it is not on this machine')
-      const rendered = await runMediaTask(task, task.media)
-      output = rendered.output
-      artifacts = rendered.artifacts
-    } else {
-    // A repo job's deliverable is a diff, not prose — and only a harness with
-    // a real checkout can produce one. The built-in loop keeps its own path:
-    // it has no git and its brief already tells the model to paste a diff.
-    const repo = HARNESS && WORKDIR ? repoOf(task) : null
-    output = repo
-      ? await runRepoTask(task, repo)
-      : HARNESS
-        ? await runHarnessTask(task)
-        : WORKDIR
-          ? await runAgentTask(task.task)
-          : await askLocalModel(task.task)
-    }
+    const produced = await produceOnce(task, task.task)
+    output = produced.output
+    artifacts = produced.artifacts
     if (!output.trim()) {
       success = false
       error = 'local model returned empty output'
@@ -1665,21 +1681,93 @@ async function runOne(task) {
     },
   ]
 
+  /**
+   * Post the result, and answer the grader if it asks.
+   *
+   * `settled: 'retry'` means the grade failed but the job is still ours —
+   * same escrow, same acceptance criteria, attempts remaining. The response
+   * carries the grader's own words as a brief, and running again is strictly
+   * better for everyone than the old behaviour, which reposted the job to a
+   * stranger and handed us the reasons for a job we no longer had.
+   *
+   * The lifecycle events go on the FINAL post only. TASK_COMPLETED is a credit
+   * event; emitting one per attempt would count a single task three times.
+   */
+  const post = (payload, withEvents) =>
+    platformPost('/api/runtime/callback', {
+      task_id: task.task_id,
+      agent_id: AGENT_ID,
+      plan: '',
+      quality_score: null, // self-scoring is worthless here; independent graders decide
+      execution_time: executionTime,
+      token_cost: 0,
+      events: withEvents ? events : [],
+      ...payload,
+    })
+
+  /** `/api/runtime/callback` answers `{ status, grading }` — the verdict is
+   *  the INNER object. Reading the envelope instead silently never retries:
+   *  `settled` is undefined there, so the loop below simply does not run, and
+   *  a worker that was told to fix its work goes back to polling for new jobs
+   *  as if it had passed. Found by running it against a stub platform. */
+  const verdictOf = (r) => r?.grading ?? null
+
+  let verdict = verdictOf(await post(
+    {
+      success,
+      output: success ? output : `Local worker error: ${error}`,
+      // The rendered file itself. Grading reads THESE BYTES (lib/mp4-probe.ts)
+      // rather than any claim made about them, which is the only version of a
+      // media job where "it rendered correctly" is somebody else's finding.
+      ...(artifacts.length > 0 ? { artifacts } : {}),
+    },
+    false,
+  ).catch((e) => {
+    console.error(`[worker] callback failed: ${e.message}`)
+    return null
+  }))
+
+  for (let attempt = 2; verdict?.settled === 'retry' && attempt <= WORKER_MAX_ATTEMPTS; attempt++) {
+    const cap = Number(verdict.maxAttempts) || WORKER_MAX_ATTEMPTS
+    console.log(`[worker] grading failed — answering the grader (attempt ${verdict.attempt ?? attempt} of ${cap})`)
+    note(task.task_id, `Grader rejected it; revising (attempt ${verdict.attempt ?? attempt}/${cap})`, {
+      phase: 'code',
+      level: 'warn',
+    })
+    // The platform's brief carries the criteria and the grader's words; the
+    // previous submission is appended here because this side already has it
+    // verbatim and shipping it back and forth would only risk a truncation.
+    const brief = `${verdict.reason}\n\n### Your previous submission\n\n${output}`
+    try {
+      const again = await produceOnce(task, brief)
+      output = again.output
+      artifacts = again.artifacts
+      success = Boolean(output.trim())
+      if (!success) error = 'local model returned empty output on the revision'
+    } catch (e) {
+      success = false
+      error = e instanceof Error ? e.message : String(e)
+    }
+    verdict = verdictOf(
+      await post(
+        { success, output: success ? output : `Local worker error: ${error}`, ...(artifacts.length > 0 ? { artifacts } : {}) },
+        false,
+      ).catch((e) => {
+        console.error(`[worker] callback failed: ${e.message}`)
+        return null
+      }),
+    )
+  }
+
+  // The lifecycle events, once, now that the attempt sequence is over. A
+  // dedicated events-only post: re-sending the output here would re-grade it
+  // and submit it on chain a second time.
   await platformPost('/api/runtime/callback', {
     task_id: task.task_id,
     agent_id: AGENT_ID,
-    success,
-    output: success ? output : `Local worker error: ${error}`,
-    plan: '',
-    quality_score: null, // self-scoring is worthless here; independent graders decide
-    // The rendered file itself. Grading reads THESE BYTES (lib/mp4-probe.ts)
-    // rather than any claim made about them, which is the only version of a
-    // media job where "it rendered correctly" is somebody else's finding.
-    ...(artifacts.length > 0 ? { artifacts } : {}),
-    execution_time: executionTime,
-    token_cost: 0,
+    events_only: true,
     events,
-  })
+  }).catch((e) => console.error(`[worker] event report failed: ${e.message}`))
   console.log(success ? `[worker] done in ${executionTime}s — result submitted` : `[worker] FAILED: ${error}`)
 }
 

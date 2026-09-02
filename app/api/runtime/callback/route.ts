@@ -73,6 +73,36 @@ export async function POST(request: Request) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  // A lifecycle-events-only post. The grading retry loop
+  // (lib/grading-retry.ts) sends several submissions for ONE task, and
+  // TASK_COMPLETED is a credit event — emitting one per attempt would count a
+  // single task three times. So the worker posts attempts with no events and
+  // sends them once, here, when the sequence is actually over. No output is
+  // read and nothing settles: this path exists so the events can arrive after
+  // the task has left `running` and can no longer be claimed below.
+  if (body?.events_only === true) {
+    const only = Array.isArray(body?.events) ? body.events : []
+    if (only.length > 0) {
+      await db.insert(agentEvent).values(
+        only.map((event: Record<string, unknown>) => ({
+          id: nanoid(),
+          agentId: taskRow.agentId,
+          taskId,
+          eventType: String(event.event_type),
+          success: Boolean(event.success),
+          executionTime: Number(event.execution_time) || 0,
+          tokenCost: Number(event.token_cost) || 0,
+          qualityScore:
+            event.quality_score === null || event.quality_score === undefined
+              ? null
+              : Number(event.quality_score).toFixed(3),
+          detail: (event.detail as Record<string, unknown>) ?? {},
+        })),
+      )
+    }
+    return Response.json({ status: 'ok', recorded: only.length })
+  }
+
   // Atomically claim the task so concurrent/retried callbacks process once.
   const claimed = await db
     .update(agentTask)
@@ -171,6 +201,17 @@ export async function POST(request: Request) {
   try {
     const { settleTask } = await import('@/lib/callback/settle')
     const { grading } = await settleTask(taskId, agentId, rawOutput)
+    if (grading?.settled === 'retry') {
+      // Not settled and not finished: the grade failed, the escrow has not
+      // moved, and the job is still this worker's while attempts remain
+      // (lib/grading-retry.ts). The task goes back to `running` so the next
+      // submission can claim it above — without this the atomic claim, which
+      // exists to stop a RETRIED CALLBACK double-processing one submission,
+      // would also refuse a genuinely new one and the retry loop would hang
+      // on its second attempt.
+      await db.update(agentTask).set({ status: 'running', updatedAt: new Date() }).where(eq(agentTask.id, taskId))
+      return Response.json({ status: 'ok', grading })
+    }
     await completeSettlement(taskId)
     return Response.json({ status: 'ok', grading })
   } catch (error) {
