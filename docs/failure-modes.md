@@ -3457,3 +3457,15 @@ nodes said rather than `undefined`.
 The general rule, the third time it has come up on this transport: **a 200
 is not an answer; the answer is the answer.** Validate the shape of what a
 provider returns wherever the caller will wait on it.
+
+
+**Sequel, an hour later.** With the hash fixed the same confirm failed
+again — now with a real hash whose receipt wait timed out, on a transaction
+the chain showed mined within seconds. The broadcast had landed through one
+node; the receipt polls went to the ranked primary, which had not seen it
+yet, and a null receipt is a legitimate answer for that method, so no guard
+could flag it. `eth_getTransactionReceipt` now fans out like the broadcast
+does: the first non-null receipt from any node wins, and only every node
+saying null is null. Writes and the reads that confirm them have to see the
+same set of nodes, or a write can succeed somewhere the confirmation never
+looks.

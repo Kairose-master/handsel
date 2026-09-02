@@ -177,4 +177,20 @@ describe('a signed transaction is broadcast to every node, not the first healthy
     expect(block).toContain("r.status === 'fulfilled' && isTxHash(r.value)")
     expect(block).toContain('no node returned a transaction hash')
   })
+
+  it('receipts fan out too — a mined receipt from any node beats a null from the ranked one', () => {
+    // Twice in one round the broadcast landed through one node and the
+    // receipt polls asked a lagging one, which answered null until the
+    // timeout. Null is legitimate for this method, so the guard cannot
+    // catch it; asking every node can.
+    const src = readFileSync('lib/onchain/transport.ts', 'utf8')
+    const block = src.slice(src.indexOf("args.method === 'eth_getTransactionReceipt'"))
+    expect(block.length).toBeGreaterThan(100)
+    expect(block).toContain('Promise.allSettled(singles.map')
+    expect(block).toContain("r.status === 'fulfilled' && r.value != null")
+    // All-null is still null — the transaction may simply not be mined yet.
+    expect(block).toContain("if (results.some((r) => r.status === 'fulfilled')) return null")
+    // Other reads stay on the ranked fallback.
+    expect(block).toContain('return t.request(args as never)')
+  })
 })

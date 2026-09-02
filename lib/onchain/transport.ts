@@ -167,6 +167,21 @@ export function buildChainTransport(urls: string[]): Transport {
               .join(', ')})`,
           )
         }
+        if (args.method === 'eth_getTransactionReceipt') {
+          // The read-side mirror of the broadcast fan-out. A transaction that
+          // reached the chain through node B is invisible to a lagging node A
+          // for a while, and the ranked reader asks A first, gets a
+          // legitimate-looking null, and polls it until the receipt timeout —
+          // observed twice in one round (2026-09-02) on a tx that had mined
+          // within seconds. A mined receipt is a fact wherever it comes from,
+          // so ask every node and take the first real one; only when every
+          // node says null is the answer null.
+          const results = await Promise.allSettled(singles.map((s) => s.request(args as never)))
+          const found = results.find((r): r is PromiseFulfilledResult<unknown> => r.status === 'fulfilled' && r.value != null)
+          if (found) return found.value
+          if (results.some((r) => r.status === 'fulfilled')) return null
+          throw (results[0] as PromiseRejectedResult).reason
+        }
         return t.request(args as never)
       },
     } as typeof t
