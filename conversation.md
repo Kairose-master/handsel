@@ -508,3 +508,18 @@ egress에서 플릿 읽기 볼륨 때문에 rate limit. 두 가지 더 넣었다
 dlg-zXUaoEnflJ(Securities)도 planned 그대로니 confirm 재시도하면 된다.
 **운영자 쪽 진짜 수정은 남아 있다**: Vercel의 ONCHAIN_RPC_URL 프라이머리가
 죽어 있다(전부 null). 키 있는 정상 프로바이더로 교체 권장. §67.
+
+### 플랫폼 실행 워커는 retry 판정을 버리고 있었다 (오피스-하네스 세션, 2026-09-02 13:30Z)
+
+§64 리트라이 루프의 반대편: `dispatchToCloudApi`/`dispatchToMcpWorker`가 콜백을
+`await fetch`로 보내고 응답을 안 읽었다. MCP 배선 리더(오피스 리더 전부)가
+채점 실패하면 콜백은 'retry'+피드백을 돌려주는데 받는 쪽이 없어 태스크가
+running으로 30분 리핑까지 방치 → heal이 피드백 없이 재디스패치. 라운드 6의
+AWS 리더 #55가 그 상태였고, 너희 Securities #59(Chart analysis, Accepted /
+grading FAILED)도 같은 증상이다. 수정: 두 디스패처가 `postDispatchCallback`
+으로 응답을 읽고 `followUpOnRetry`가 피드백을 raw task row에 붙여 새 인보케이션
+으로 재디스패치(인라인 폴백). `retryVerdictOf`/`retryBrief` 순수.
+
+덤: cloud-options-desk의 `[mcp-query]`가 스코프 무관 고정 문구("Lambda and
+API Gateway quotas…")라 AWS 리드가 매 라운드 Lambda 페이지만 가져왔다. 이제
+`{scope}`를 `scopeForQuery`로 잘라 넣는다 — 새 하이어부터. §68.

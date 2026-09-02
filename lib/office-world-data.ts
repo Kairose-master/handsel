@@ -1174,7 +1174,7 @@ export const OFFICE_TEMPLATES: OfficeTemplate[] = [
         // searches on, and the brief above would drown it. See
         // lib/mcp-client.ts's extractMcpQuery.
         mcpQuery:
-          'Lambda and API Gateway quotas: execution timeout, memory, concurrent executions, payload size, request rate, which are adjustable',
+          'AWS service quotas and limits for: {scope} — throughput, size, retention, concurrency, duration, pricing; which are adjustable',
         dependsOnRoleIds: [],
         bountyWeight: 1,
       },
@@ -1192,7 +1192,7 @@ export const OFFICE_TEMPLATES: OfficeTemplate[] = [
           'to, and anything Learn does not specify is marked unspecified rather than estimated. No comparison to ' +
           'another cloud.',
         mcpQuery:
-          'Azure Functions hosting plans: function timeout, memory, scale-out limits, request payload size, per-plan quotas',
+          'Azure service limits and quotas for: {scope} — throughput, size, retention, scale-out, timeout, per-tier quotas',
         dependsOnRoleIds: [],
         bountyWeight: 1,
       },
@@ -1210,7 +1210,7 @@ export const OFFICE_TEMPLATES: OfficeTemplate[] = [
           'measured on a different basis than the others is called out as such rather than converted, and ' +
           'anything undocumented is marked unspecified. No comparison to another cloud.',
         mcpQuery:
-          'Workers limits: CPU time, duration, memory, subrequests, request size, free vs paid plan',
+          'Cloudflare limits and pricing for: {scope} — CPU time, duration, memory, subrequests, size, free vs paid plan',
         dependsOnRoleIds: [],
         bountyWeight: 1,
       },
@@ -1228,7 +1228,7 @@ export const OFFICE_TEMPLATES: OfficeTemplate[] = [
           'checked; points with nothing independent behind them are written as "no independent source found" ' +
           'rather than filled in.',
         mcpQuery:
-          'independent benchmark cold start latency and real cost AWS Lambda vs Azure Functions vs Cloudflare Workers',
+          'independent benchmark, real cost and production limits, AWS vs Azure vs Cloudflare, for: {scope}',
         dependsOnRoleIds: [],
         bountyWeight: 1,
       },

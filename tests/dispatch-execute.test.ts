@@ -27,8 +27,11 @@ describe('runAgentTask hands cloud/mcp dispatch to its own invocation', () => {
   it('both branches try the handoff and keep the inline path as fallback', () => {
     // Two call sites (cloud, mcp) — each guarded so a refused handoff still
     // dispatches inline rather than dropping the task.
+    // Three: the cloud and mcp branches of runAgentTask, and the retry
+    // follow-up (§68), which hands the next attempt to its own invocation
+    // exactly like the first one.
     const handoffs = src.split('await handoffDispatchExecution(').length - 1
-    expect(handoffs).toBe(2)
+    expect(handoffs).toBe(3)
     expect(src).toContain('dispatchToCloudApi(agent, taskId, effectiveTask, callbackUrl)')
     expect(src).toContain('dispatchToMcpWorker(agent, taskId, effectiveTask, callbackUrl)')
   })
@@ -79,5 +82,32 @@ describe('the cron hands the ops cycle a PUBLIC origin', () => {
     const src = code('app/api/cron/settle/route.ts')
     expect(src).toContain('runOpsCycle(origin())')
     expect(src).not.toMatch(/runOpsCycle\(`\$\{proto\}/)
+  })
+})
+
+describe('a platform-run dispatch acts on a retry verdict — the local worker was not the only worker', () => {
+  // 2026-09-02, job #55: the AWS reader (mcp-wired) failed grading, the
+  // callback answered 'retry' with the grader's reasons, and the dispatcher
+  // had already thrown the reply away. The task sat 'running' until the
+  // 30-minute reap; every "attempt" cost a reap cycle. docs/failure-modes.md §68.
+  const src = code('lib/agent-tasks.ts')
+
+  it('both dispatchers post through one helper and read the reply', () => {
+    expect(src.split('await postDispatchCallback(').length - 1).toBe(2)
+    expect(src).toContain('return await res.json()')
+  })
+
+  it('both dispatchers follow up on the reply, with their own inline rerun as the fallback', () => {
+    expect(src).toContain('await followUpOnRetry(agentRow, taskId, task, callbackUrl, reply, (next) => dispatchToCloudApi(agentRow, taskId, next, callbackUrl))')
+    expect(src).toContain('await followUpOnRetry(agentRow, taskId, task, callbackUrl, reply, (next) => dispatchToMcpWorker(agentRow, taskId, next, callbackUrl))')
+  })
+
+  it('the feedback is persisted on the RAW task row before the handoff, so the fresh invocation carries it', () => {
+    const body = src.slice(src.indexOf('async function followUpOnRetry'))
+    expect(body).toContain('retryVerdictOf(reply)')
+    const persist = body.indexOf('.set({ task: retryBrief(row.task, verdict.reason)')
+    const handoff = body.indexOf('await handoffDispatchExecution(taskId, callbackUrl)')
+    expect(persist).toBeGreaterThan(-1)
+    expect(persist).toBeLessThan(handoff)
   })
 })

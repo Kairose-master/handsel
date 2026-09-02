@@ -3484,3 +3484,37 @@ majority, or it is one node with extra steps. The operator-side fix (a
 healthy keyed primary in `ONCHAIN_RPC_URL`) still stands; this makes the
 platform survive not having one.
 \n
+## 68. The retry loop had one worker in it: platform-run dispatch dropped the verdict (2026-09-02)
+
+§64 made a failed grade feedback: the callback answers `settled: 'retry'`
+with the grader's reasons, and the same worker tries again against the same
+escrow. The worker that was fixed to read that reply was the local one
+(`handsel-worker.mjs`). The other worker — the platform itself, running a
+cloud/mcp agent through `dispatchToCloudApi` / `dispatchToMcpWorker` — posted
+its callback with `await fetch(...)` and never looked at the body.
+
+So on round 6 the AWS reader (mcp-wired, like every office reader) failed
+its first grade, the callback set its task back to `running` and returned
+the feedback to nobody, and the task sat there until `reapStuckTasks` failed
+it thirty minutes later and auto-mine's heal re-dispatched a fresh attempt —
+without the reasons. Each "attempt" cost a reap cycle; five would have
+outlasted the delivery deadline. Symmetric with §64's own finding about the
+worker script: a loop with one side missing is not a loop.
+
+Fix: both dispatchers post through `postDispatchCallback` and hand the reply
+to `followUpOnRetry`, which persists the feedback onto the RAW task row
+(`executeDispatch` recomposes instructions and skills around it on every
+run) and hands the next attempt to its own invocation exactly like the
+first one, inline as the fallback. `retryVerdictOf` / `retryBrief` are the
+pure pieces. Bounded where the local loop is: the callback stops answering
+'retry' after `MAX_GRADING_ATTEMPTS` or when the delivery runway is gone.
+
+Second thing the same job showed: the desk's `[mcp-query]` lines were fixed
+phrases — "Lambda and API Gateway quotas…", "Azure Functions hosting
+plans…", "Workers limits…" — written for the polling-daemon scope the
+template was first built on. Every AWS read since has opened with "my query
+returned only Lambda and API Gateway pages", on a job queue, a webhook
+relay, a report batch and an audit log. The queries now name `{scope}`,
+cut to a query's length by `scopeForQuery` at hire time, so retrieval
+follows the job. Sealed briefs (job #55 among them) keep the query they
+were posted with.

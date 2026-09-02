@@ -8,6 +8,8 @@ import {
   decideGradingRetry,
   gradedFactFor,
   gradingFeedbackBrief,
+  retryBrief,
+  retryVerdictOf,
   recordAttempt,
   type GradingAttempt,
 } from '@/lib/grading-retry'
@@ -259,5 +261,28 @@ describe('what five attempts cost', () => {
   it('caps the grader text it hands back', () => {
     const b = gradingFeedbackBrief({ title: 't', acceptanceCriteria: 'c', graderOutput: 'g'.repeat(50_000), attempt: 1, nonce: 'n' })
     expect(b.length).toBeLessThan(12_000)
+  })
+})
+
+describe('retryVerdictOf / retryBrief — the platform-run half of the loop', () => {
+  it('reads a retry verdict out of the callback reply', () => {
+    const v = retryVerdictOf({ status: 'ok', grading: { settled: 'retry', reason: 'FEEDBACK', attempt: 2, maxAttempts: 5 } })
+    expect(v).toEqual({ reason: 'FEEDBACK', attempt: 2, maxAttempts: 5 })
+  })
+  it('is null for a settlement, a missing reason, an out-of-range attempt, or no reply', () => {
+    expect(retryVerdictOf({ status: 'ok', grading: { settled: 'paid' } })).toBeNull()
+    expect(retryVerdictOf({ status: 'ok', grading: { settled: 'retry', attempt: 2 } })).toBeNull()
+    expect(retryVerdictOf({ status: 'ok', grading: { settled: 'retry', reason: 'x', attempt: 1 } })).toBeNull()
+    expect(retryVerdictOf({ status: 'ok', grading: { settled: 'retry', reason: 'x', attempt: 9, maxAttempts: 5 } })).toBeNull()
+    expect(retryVerdictOf(null)).toBeNull()
+    expect(retryVerdictOf({ status: 'ok', grading: null })).toBeNull()
+  })
+  it('the next brief keeps the mcp-query line first and does not stack the same reason twice', () => {
+    const task = 'Do the thing\n\n[mcp-query] the query'
+    const once = retryBrief(task, 'REASON A')
+    expect(once.startsWith(task)).toBe(true)
+    expect(once).toContain('REASON A')
+    expect(retryBrief(once, 'REASON A')).toBe(once)
+    expect(retryBrief(once, 'REASON B')).toContain('REASON B')
   })
 })

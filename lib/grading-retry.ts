@@ -219,3 +219,33 @@ export function attemptLog(attempts: readonly GradingAttempt[], maxChars = 4000)
     .join('\n\n')
     .slice(0, maxChars)
 }
+
+/**
+ * What the callback said back, if it asked for another attempt. The callback
+ * answers `{ status, grading }` and a retry is `grading.settled === 'retry'`
+ * with the feedback brief in `grading.reason`. The local worker read this
+ * from day one; the platform-run dispatch (cloud/mcp) posted its callback
+ * and threw the reply away, so every office reader that failed a grade sat
+ * 'running' until the 30-minute reap and never saw the grader's reasons
+ * (2026-09-02, job #55 — docs/failure-modes.md §68). Pure.
+ */
+export function retryVerdictOf(reply: unknown): { reason: string; attempt: number; maxAttempts: number } | null {
+  const grading = (reply as { grading?: unknown } | null)?.grading as
+    | { settled?: unknown; reason?: unknown; attempt?: unknown; maxAttempts?: unknown }
+    | null
+    | undefined
+  if (!grading || grading.settled !== 'retry') return null
+  if (typeof grading.reason !== 'string' || !grading.reason.trim()) return null
+  const attempt = typeof grading.attempt === 'number' ? grading.attempt : NaN
+  const maxAttempts = typeof grading.maxAttempts === 'number' ? grading.maxAttempts : MAX_GRADING_ATTEMPTS
+  if (!Number.isFinite(attempt) || attempt < 2 || attempt > maxAttempts) return null
+  return { reason: grading.reason, attempt, maxAttempts }
+}
+
+/** The task for the next attempt: the original brief with the grader's
+ *  reasons after it. The `[mcp-query]` line, if any, stays where it was —
+ *  extractMcpQuery takes the first marker line, so retrieval is unchanged
+ *  and only the writing sees the feedback. Idempotent on the same reason. */
+export function retryBrief(task: string, reason: string): string {
+  return task.includes(reason) ? task : `${task}\n\n${reason}`
+}

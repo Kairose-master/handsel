@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { extractMcpQuery, pickToolArgumentKey } from '@/lib/mcp-client'
+import { extractMcpQuery, pickToolArgumentKey, scopeForQuery } from '@/lib/mcp-client'
 import { OFFICE_TEMPLATES, defaultWiringFor, resolveRoleConnector } from '@/lib/office-world-data'
 
 describe('extractMcpQuery', () => {
@@ -138,6 +138,26 @@ describe('the Cloud Options Desk', () => {
       expect(step.mcpQuery!.length, id).toBeGreaterThan(20)
       // And it survives the round trip into the brief.
       expect(extractMcpQuery(`${step.brief}\n\n[mcp-query] ${step.mcpQuery}`)).toBe(step.mcpQuery)
+      // And it follows the JOB: a fixed phrase sent every AWS reader to the
+      // Lambda quotas page whatever the desk was asked (rounds 3–6, 2026-09-02).
+      expect(step.mcpQuery, id).toContain('{scope}')
+    }
+  })
+
+  it('scopeForQuery cuts a paragraph-sized scope to a query, on a word, and leaves a short one alone', () => {
+    expect(scopeForQuery('short scope')).toBe('short scope')
+    const long = 'A tenant-scoped event audit log: ingest bursts up to 5,000 events/sec (each under 2KB) with exactly-once deduplication on a client-supplied event id, keep 30 days queryable by tenant and time range, export each day to object storage nightly, and guarantee that one tenant cannot slow another. Which of AWS, Azure and Cloudflare fits?'
+    const q = scopeForQuery(long)
+    expect(q.length).toBeLessThanOrEqual(220)
+    expect(q.length).toBeGreaterThan(110)
+    expect(q.endsWith(' ')).toBe(false)
+    expect(long.startsWith(q)).toBe(true)
+    // Substituted into every template query, the marker line stays a query.
+    for (const id of ['aws', 'azure', 'cloudflare', 'independent']) {
+      const step = t.pipeline.find((s) => s.roleId === id)!
+      const line = step.mcpQuery!.replaceAll('{scope}', q)
+      expect(line.length, id).toBeLessThanOrEqual(400)
+      expect(extractMcpQuery(`brief\n\n[mcp-query] ${line}`)).toBe(line)
     }
   })
 
