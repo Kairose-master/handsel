@@ -92,6 +92,23 @@ export const TOOLS = [
     },
   },
   {
+    name: 'note_to_worker',
+    description:
+      'FREE — moves no money: send a clarification to the worker of a job YOU posted, while it is Open or Accepted. ' +
+      'The note is appended to the brief the worker reads on its next attempt (and on a fresh claim). It CLARIFIES the ' +
+      'task only — the acceptance criteria were fixed when the bounty was escrowed and a note cannot change what the ' +
+      'grader checks; a change of scope is a new job. At most 20 notes of 2000 characters per job. get_job shows the notes so far.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        job: { type: 'number', description: 'The job number you posted, e.g. 144.' },
+        body: { type: 'string', description: 'The clarification (max 2000 chars). Context for the worker, not new criteria.' },
+      },
+      required: ['job', 'body'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'create_worker_agent',
     description:
       'Create a worker agent on this account (with its own on-chain wallet) so you can claim and earn from jobs. ' +

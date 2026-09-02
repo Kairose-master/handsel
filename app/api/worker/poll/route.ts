@@ -124,9 +124,20 @@ export async function POST(request: Request) {
   // the diff with git (lib/worker-deliverable.ts). Without it, harness mode
   // submits prose for the one job type it exists to do.
   let repo: { full_name: string; base_branch: string | null } | null = null
+  // The requester's notes so far (lib/job-channel.ts), appended to the brief
+  // HERE rather than stored in it: the stored prompt is what the spec hash
+  // binds, and a note is context on top of that, never part of it.
+  let taskText = candidate.task
   try {
     const { jobSpec } = await import('@/lib/db/schema')
     const [spec] = await db.select().from(jobSpec).where(eq(jobSpec.agentTaskId, candidate.id))
+    if (spec) {
+      const { notesFor } = await import('@/lib/job-channel-server')
+      const { withRequesterNotes } = await import('@/lib/job-channel')
+      const { untrustedNonce } = await import('@/lib/untrusted-input')
+      const notes = await notesFor(spec.specHash).catch(() => [])
+      taskText = withRequesterNotes(candidate.task, notes, untrustedNonce())
+    }
     if (spec?.deliverableKind) deliverableKind = spec.deliverableKind
     if (spec?.repoFullName) {
       const { validateRepoFullName } = await import('@/lib/repo-jobs')
@@ -176,7 +187,7 @@ export async function POST(request: Request) {
     task: {
       task_id: candidate.id,
       agent_id: agentId,
-      task: candidate.task,
+      task: taskText,
       deliverable_kind: deliverableKind,
       repo,
       media,

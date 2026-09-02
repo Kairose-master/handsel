@@ -1742,6 +1742,15 @@ async function runOne(task) {
       phase: 'code',
       level: 'warn',
     })
+    // The requester may have spoken since the last attempt. Their notes are
+    // already inside `verdict.reason` (the platform composes the brief, so
+    // there is one copy of the rule that notes clarify and never re-scope);
+    // this only tells the person watching this console that it happened.
+    const requesterNotes = Number(verdict.requesterNotes) || 0
+    if (requesterNotes > 0) {
+      console.log(`[worker] the requester has sent ${requesterNotes} note${requesterNotes === 1 ? '' : 's'} on this job — included in the brief`)
+      note(task.task_id, `Requester notes in the brief: ${requesterNotes}`, { phase: 'code' })
+    }
     // The platform's brief carries the criteria and the grader's words; the
     // previous submission is appended here because this side already has it
     // verbatim and shipping it back and forth would only risk a truncation.

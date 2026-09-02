@@ -194,7 +194,34 @@ export async function handleJobs(
             : '\n→ claim_job to take this for one of your agents.'
           : '',
       ].filter(Boolean)
+      // The requester's notes so far (lib/job-channel.ts). Visible to both
+      // sides: the worker reads them in its brief anyway, and a requester
+      // deciding whether to send another one needs to see what already went.
+      if (spec) {
+        const { notesFor } = await import('@/lib/job-channel-server')
+        const notes = await notesFor(spec.specHash).catch(() => [])
+        if (notes.length > 0) {
+          lines.push(
+            `\nnotes from the requester (${notes.length}, clarifications — the criteria above are what is graded):`,
+            ...notes.map((n) => `  [${n.seq}] ${n.at.slice(0, 16).replace('T', ' ')}  ${trunc(n.body, 240)}`),
+          )
+        }
+      }
       return toolText(id, lines.join('\n'))
+    }
+    case 'note_to_worker': {
+      const jobNo = Number(args.job)
+      if (!Number.isInteger(jobNo) || jobNo < 0) return toolText(id, 'job must be a job number, e.g. 144.', true)
+      const body = typeof args.body === 'string' ? args.body : ''
+      const { postJobNote } = await import('@/lib/job-channel-server')
+      const r = await postJobNote({ jobId: jobNo, userId: auth.userId, body })
+      if (!r.ok) return toolText(id, `Note refused (${r.reason}): ${r.message}`, true)
+      return toolText(
+        id,
+        `Note [${r.note.seq}] sent on job #${r.jobId}${r.title ? ` — ${r.title.slice(0, 80)}` : ''}.\n` +
+          'The worker reads it on its next attempt (or on claim, if the job is still open). It clarifies the brief; ' +
+          'the acceptance criteria and the bounty are unchanged, and only a passing deliverable releases the escrow.',
+      )
     }
     case 'release_job': {
       const jobId = Number(args.job_id)

@@ -47,6 +47,7 @@ import {
   acceptJobAction,
   approveJobAction,
   raiseDisputeAction,
+  postJobNoteAction,
 } from '@/app/actions/labor'
 import { getTemplates, publishTemplate, unpublishTemplate, purchaseTemplate } from '@/app/actions/marketplace'
 import { BpmnViewer } from '@/components/bpmn-viewer'
@@ -78,6 +79,8 @@ type Job = {
   agentTaskId: string | null
   output: string | null
   disputeNote: string | null
+  /** Requester → worker clarifications (lib/job-channel.ts), oldest first. */
+  notes: { seq: number; body: string; at: string }[]
   attachmentUrl: string | null
   attachmentName: string | null
   hasTests: boolean
@@ -313,6 +316,14 @@ export default function JobsPage() {
 
   const [disputing, setDisputing] = useState<number | null>(null)
   const [disputeNote, setDisputeNote] = useState('')
+
+  // A clarification to the worker of a job I posted. No money moves and the
+  // criteria do not change; the server decides whether I am the requester.
+  const [noteDraft, setNoteDraft] = useState<Record<number, string>>({})
+  const sendNote = (job: Job) =>
+    run(job.id, () =>
+      postJobNoteAction(job.id, noteDraft[job.id] ?? '').then(() => setNoteDraft((d) => ({ ...d, [job.id]: '' }))),
+    )
 
   const submitDispute = (job: Job) =>
     run(job.id, () =>
@@ -852,6 +863,47 @@ export default function JobsPage() {
                         <p className="text-xs text-muted-foreground">{t('jobs.refunded.autoNote')}</p>
                       )}
                       {job.lapsed && <p className="text-xs text-muted-foreground">{t('jobs.lapsed.note')}</p>}
+
+                      {/* Notes to the worker — while the job can still have another attempt */}
+                      {(job.notes.length > 0 || (job.mine && (job.status === 'Open' || job.status === 'Accepted'))) && (
+                        <section className="space-y-2 border-t border-border pt-3">
+                          <h4 className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                            <MessageSquare className="size-3.5" /> {t('jobs.notes.title')}
+                            {job.notes.length > 0 && <span>({job.notes.length})</span>}
+                          </h4>
+                          {job.notes.length > 0 && (
+                            <ol className="space-y-1 text-xs">
+                              {job.notes.map((n) => (
+                                <li key={n.seq} className="rounded bg-secondary/60 px-2 py-1">
+                                  <span className="mr-1.5 tabular-nums text-muted-foreground">[{n.seq}]</span>
+                                  <span className="whitespace-pre-wrap">{n.body}</span>
+                                </li>
+                              ))}
+                            </ol>
+                          )}
+                          {job.mine && (job.status === 'Open' || job.status === 'Accepted') && (
+                            <div className="space-y-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <input
+                                  value={noteDraft[job.id] ?? ''}
+                                  onChange={(e) => setNoteDraft((d) => ({ ...d, [job.id]: e.target.value }))}
+                                  maxLength={2000}
+                                  placeholder={t('jobs.notes.placeholder')}
+                                  className="h-9 min-w-[200px] flex-1 rounded-md border border-border bg-background px-3 text-sm"
+                                />
+                                <button
+                                  onClick={() => sendNote(job)}
+                                  disabled={busy === job.id || !(noteDraft[job.id] ?? '').trim()}
+                                  className="rounded bg-secondary px-3 py-1.5 text-xs font-medium hover:bg-secondary/80 disabled:opacity-50"
+                                >
+                                  {busy === job.id ? '…' : t('jobs.notes.send')}
+                                </button>
+                              </div>
+                              <p className="text-[11px] text-muted-foreground">{t('jobs.notes.frozen')}</p>
+                            </div>
+                          )}
+                        </section>
+                      )}
 
                       {/* Actions */}
                       {job.status === 'Submitted' && job.mine && (

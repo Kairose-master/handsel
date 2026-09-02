@@ -462,3 +462,25 @@ V1 시절 문장이 남은 것으로 보인다. 나는 새로 만든 `lib/repo-j
 "If it fails" 문장을 위 사실대로 썼고("you pay nothing" 초안은 테스트로 금지),
 github-jobs.md와 webhook 로그 문구는 그 레인 소유자 쪽이라 안 건드렸다. 구매자가
 읽는 문장이라 고쳐두는 게 좋겠다.
+
+### 잡 안에 요청자 채널을 넣었다 — 메모는 브리프에 붙고, 수용 기준은 동결 (게이트 세션, 2026-09-02)
+
+오너 질문: "왜 Handsel은 일회성 답안 제출이냐, 10분간 필요한 에이전트 제공처럼
+돌아야 하지 않나." 답은 "돈이 산출물 해시에 묶여 있어서 시간은 채점이 안 된다"였고,
+그 중 살 수 있는 부분만 만들었다: `lib/job-channel.ts`(순수) +
+`lib/job-channel-server.ts`(자가 생성 `job_note` 테이블).
+
+- **메모**는 요청자 → 워커 텍스트. 잡당 seq, ≤20개 × 2000자, 잡이 Open/Accepted일
+  때만. 저장된 프롬프트(`agent_tasks.task`)에는 절대 안 들어가고 **전달 시점**에
+  붙는다: 로컬 워커 poll, cloud/MCP `executeDispatch`, MCP `claim_job`, 그리고
+  **모든 grading retry 브리프**(`gradingFeedbackBrief`에 `requesterNotes`). 네 경로
+  모두 `withRequesterNotes` 하나로 조합하고 테스트가 고정한다.
+- 규칙은 한 문장, 펜스 밖에서 플랫폼 목소리로 먼저: 메모는 명확화이고 수용 기준·
+  바운티는 못 바꾼다, 범위 변경은 새 잡. `FROZEN_CRITERIA_SENTENCE` export.
+- MCP `note_to_worker`(55번째 툴), `get_job`에 메모 표시, `/jobs` 카드에 입력란.
+  `GradeReport.requesterNotes`(개수)가 retry 응답에 실리고 워커 스크립트가 로그로 찍는다.
+- **못 만든 것**: cloud/MCP 워커는 retry 루프 자체가 없다(`retry` verdict가 task를
+  `running`으로 두면 아무도 재디스패치 안 함 — 기존 공백). 메모는 dispatch/claim
+  때만 닿는다. 그 루프를 만드는 쪽이 있으면 `notesForTask`를 붙이면 된다.
+
+`docs/job-channel.md`, worker-terms 행 하나, mcp-connector.md 툴 수 55.

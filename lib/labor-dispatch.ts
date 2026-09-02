@@ -527,5 +527,10 @@ export async function acceptJobForExternalWorker(
     .set({ workerAgentId: worker.id, onchainJobId: jobId, agentTaskId: taskId })
     .where(eq(jobSpec.specHash, spec.specHash))
 
-  return { taskId, prompt, bounty: job.bounty }
+  // Stored without the requester's notes, handed over with them
+  // (lib/job-channel.ts): the prompt on record is what the spec hash binds.
+  const { notesFor } = await import('@/lib/job-channel-server')
+  const { withRequesterNotes } = await import('@/lib/job-channel')
+  const notes = await notesFor(spec.specHash).catch(() => [])
+  return { taskId, prompt: withRequesterNotes(prompt, notes, untrustedNonce()), bounty: job.bounty }
 }

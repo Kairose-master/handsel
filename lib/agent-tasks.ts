@@ -539,11 +539,23 @@ export async function executeDispatch(
     }
   }
   const { composeEffectiveTask } = await import('@/lib/agent-skills')
-  const effectiveTask = composeEffectiveTask({
+  const composed = composeEffectiveTask({
     customInstructions: agentRow.customInstructions ?? null,
     skillsBlock,
     task: taskRow.task,
   })
+  // Requester notes ride on delivery, not in the stored prompt
+  // (lib/job-channel.ts). A run that is not a labour-market job gets none.
+  const effectiveTask = await (async () => {
+    try {
+      const { notesForTask } = await import('@/lib/job-channel-server')
+      const { withRequesterNotes } = await import('@/lib/job-channel')
+      const { untrustedNonce } = await import('@/lib/untrusted-input')
+      return withRequesterNotes(composed, await notesForTask(taskId), untrustedNonce())
+    } catch {
+      return composed
+    }
+  })()
 
   if (agentRow.runtimeType === 'cloud' && agentRow.cloudBaseUrl && agentRow.cloudApiKeyEnc) {
     await dispatchToCloudApi(agentRow, taskId, effectiveTask, callbackUrl)

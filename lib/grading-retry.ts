@@ -37,6 +37,7 @@
  *
  * Pure. The callback supplies the clock and acts on the decision.
  */
+import { requesterNotesBrief, type JobNote } from '@/lib/job-channel'
 
 /**
  * One first try plus four answers to feedback.
@@ -148,9 +149,15 @@ export function gradingFeedbackBrief(input: {
   attempt: number
   maxAttempts?: number
   nonce: string
+  /** Everything the requester has said on this job so far (lib/job-channel.ts).
+   *  ALL of it, not only what arrived since the last attempt: the worker is
+   *  re-reading the task, and a clarification from before attempt 1 is as
+   *  binding on attempt 3 as it was then. */
+  requesterNotes?: readonly JobNote[]
 }): string {
   const max = input.maxAttempts ?? MAX_GRADING_ATTEMPTS
   const last = input.attempt >= max
+  const notes = requesterNotesBrief(input.requesterNotes ?? [], input.nonce)
   return [
     `## Attempt ${input.attempt} of ${max} — the independent grader rejected your submission`,
     '',
@@ -174,6 +181,7 @@ export function gradingFeedbackBrief(input: {
     `<untrusted-${input.nonce}>`,
     input.graderOutput.slice(0, 8000),
     `</untrusted-${input.nonce}>`,
+    ...(notes ? ['', notes] : []),
   ].join('\n')
 }
 

@@ -141,11 +141,18 @@ export async function getJobs() {
   )
   const visibleOnchainJobs = onchainJobs.filter((_, i) => visibility[i])
 
+  // Requester notes per job (lib/job-channel.ts) — shown on the card so the
+  // person about to send one can see what already went. A missing table or
+  // a failed read shows no notes, never a broken board.
+  const { notesForSpecs } = await import('@/lib/job-channel-server')
+  const notesByHash = await notesForSpecs(visibleOnchainJobs.map((j) => j.specHash)).catch(() => new Map())
+
   const jobs = visibleOnchainJobs.map((j) => {
     const spec = specByHash.get(j.specHash)
     const task = spec?.agentTaskId ? taskById.get(spec.agentTaskId) : undefined
     return {
       ...j,
+      notes: notesByHash.get(j.specHash) ?? [],
       title: spec?.title ?? 'Untitled job',
       description: spec?.description ?? null,
       acceptanceCriteria: spec?.acceptanceCriteria ?? null,
@@ -409,6 +416,25 @@ export async function raiseDisputeAction(requesterAgentId: string, jobId: number
     return { txHash }
   } catch (error) {
     throw asActionError(error, 'raiseDisputeAction')
+  }
+}
+
+/**
+ * A clarification from the requester to the worker of a job they posted
+ * (lib/job-channel.ts). Moves no money; the acceptance criteria are what the
+ * grader checks and a note cannot change them. The server decides who the
+ * requester is from the job itself, never from the caller's claim.
+ */
+export async function postJobNoteAction(jobId: number, body: string) {
+  const userId = await requireUser()
+  try {
+    const { postJobNote } = await import('@/lib/job-channel-server')
+    const r = await postJobNote({ jobId, userId, body })
+    if (!r.ok) throw new Error(r.message)
+    revalidatePath('/jobs')
+    return { seq: r.note.seq }
+  } catch (error) {
+    throw asActionError(error, 'postJobNoteAction')
   }
 }
 

@@ -47,6 +47,10 @@ export type GradeReport = {
   /** Present only on 'retry'. */
   attempt?: number
   maxAttempts?: number
+  /** How many requester notes ride in `reason` (lib/job-channel.ts) — so a
+   *  worker can say "the requester spoke" rather than only "the grader
+   *  refused". */
+  requesterNotes?: number
 }
 
 /**
@@ -333,17 +337,25 @@ export async function settleLaborMarketJob(agentTaskId: string, output: string):
         `"${spec.title}" — grading failed on attempt ${graded} of ${MAX_GRADING_ATTEMPTS}; the same worker was sent the grader's reasons`,
       )
       const { untrustedNonce } = await import('@/lib/untrusted-input')
+      // Whatever the requester has said on this job, appended to the retry
+      // brief: the one moment a worker re-reads the task is the one moment a
+      // clarification can still change the outcome. A read failure costs the
+      // notes, never the retry.
+      const { notesFor } = await import('@/lib/job-channel-server')
+      const requesterNotes = await notesFor(spec.specHash).catch(() => [])
       return {
         passed: false,
         settled: 'retry',
         attempt: retry.nextAttempt,
         maxAttempts: MAX_GRADING_ATTEMPTS,
+        requesterNotes: requesterNotes.length,
         reason: gradingFeedbackBrief({
           title: spec.title,
           acceptanceCriteria: spec.acceptanceCriteria ?? '(none given)',
           graderOutput: grade.output,
           attempt: retry.nextAttempt,
           nonce: untrustedNonce(),
+          requesterNotes,
         }),
       }
     }

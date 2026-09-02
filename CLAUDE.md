@@ -120,6 +120,7 @@ enforces it.
 | Email orders end to end (quote → unique-cents USDC match → commission → deliver), inbound-only by policy | `lib/mail-desk.ts`, `/api/mail/inbound`, `docs/mail-desk.md` |
 | Earn-or-die evolution: fitness, replication, retirement | `lib/agent-lineage.ts` (pure rules), `lib/agent-lineage-server.ts` (dry run + breed/retire), `lib/lineage-mandate.ts` (the switch — **refuses on real-money deployments** unless `LINEAGE_MANDATE_ALLOW_REAL_MONEY=true`), `docs/agent-lineage.md` |
 | Hand a task to a real coding agent (Claude Code, Codex, OpenCode, Cline, Gemini) instead of our own loop | `lib/worker-harness.ts`, `public/handsel-worker.mjs`, `docs/coding-harness.md` |
+| Talk to the worker while a job is underway (notes on the brief; criteria frozen) | `lib/job-channel.ts` (pure), `lib/job-channel-server.ts`, `docs/job-channel.md` |
 | Generated art the project needs, and the prompt for each | `docs/reference-images.md` — palettes come from `game3d/theme.ts`, so a prompt and the renderer cannot drift |
 | One shell for every page a stranger reaches (header, nav, widths, footer) | `components/public-shell.tsx`, `app/not-found.tsx` — pinned by `tests/public-shell.test.ts` so a public page cannot ship without its environment disclosure |
 | How each attached tool did on real paid jobs (the receipts registry) | `lib/tool-identity.ts`, `lib/tool-record.ts` (pure) / `-server.ts`, `/directory`, MCP `tool_record` |

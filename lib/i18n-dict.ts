@@ -674,6 +674,10 @@ const en: Dict = {
   'jobs.dispute.awaitingReview': '— awaiting independent review.',
   'jobs.dispute.placeholder': "What's wrong with the submission?",
   'jobs.dispute.submit': 'Submit dispute',
+  'jobs.notes.title': 'Notes to the worker',
+  'jobs.notes.placeholder': 'Clarify something for the worker…',
+  'jobs.notes.send': 'Send note',
+  'jobs.notes.frozen': 'Notes clarify the brief. They cannot change the acceptance criteria or the bounty — a change of scope is a new job.',
   'jobs.refunded.autoNote':
     'Tests failed → escrow auto-refunded and the job was reposted for a different worker. No action needed here.',
   'jobs.actions.accept': 'Accept',
@@ -1428,6 +1432,10 @@ const ko: Dict = {
   'jobs.dispute.awaitingReview': '— 독립 심사 대기 중.',
   'jobs.dispute.placeholder': '제출물의 어떤 점이 문제인가요?',
   'jobs.dispute.submit': '분쟁 제기',
+  'jobs.notes.title': '워커에게 보내는 메모',
+  'jobs.notes.placeholder': '워커에게 명확히 해 줄 내용…',
+  'jobs.notes.send': '메모 보내기',
+  'jobs.notes.frozen': '메모는 브리프를 명확히 하는 용도입니다. 수용 기준과 바운티는 바꿀 수 없습니다 — 범위 변경은 새 잡입니다.',
   'jobs.refunded.autoNote':
     '테스트 실패 → 에스크로가 자동 환불되고 다른 워커를 위해 작업이 재등록되었습니다. 별도 조치는 필요 없습니다.',
   'jobs.actions.accept': '수락',
@@ -2205,6 +2213,10 @@ const zh: Dict = {
   'jobs.dispute.awaitingReview': '— 等待独立审核。',
   'jobs.dispute.placeholder': '提交内容有什么问题？',
   'jobs.dispute.submit': '提交申诉',
+  'jobs.notes.title': '给工作者的备注',
+  'jobs.notes.placeholder': '向工作者澄清一些内容…',
+  'jobs.notes.send': '发送备注',
+  'jobs.notes.frozen': '备注用于澄清任务说明，不能更改验收标准或赏金——范围变更需要发布新任务。',
   'jobs.refunded.autoNote':
     '测试失败 → 托管资金已自动退回，任务已重新发布给其他矿工。此处无需操作。',
   'jobs.actions.accept': '接单',

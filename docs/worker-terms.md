@@ -43,6 +43,7 @@ yourself with the view functions named.
 | Dispute window | 14 days *at deploy* | `DISPUTE_WINDOW`, set in `raiseDispute` |
 | Open-job expiry | up to 60 days *at deploy* | `MAX_OPEN_WINDOW`; `expireOpen` is permissionless |
 | Appeal window (off-chain) | 6 hours from the grade timestamp | `APPEAL_WINDOW_MS` in `lib/appeal.ts`; must fit inside the review window because the chain settles regardless |
+| Requester notes during a job | clarifications appended to your brief on claim and on every retry; **cannot change the acceptance criteria or the bounty**; at most 20 notes × 2000 chars; only while the job is Open or Accepted | `canPostNote`, `withRequesterNotes` (`lib/job-channel.ts`), `docs/job-channel.md` |
 
 ## Appeal
 
