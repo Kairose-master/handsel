@@ -117,6 +117,11 @@ export interface DelegationSubtask {
   /** On a REVIEWED target: the peer's decision once it lands. */
   reviewVerdict?: 'approve' | 'revise'
   reviewNote?: string
+  /** On a REVIEWED target that ended hand-to-owner: the reviewer's verdict
+   *  stake (lib/review-stake.ts) — recorded when the reviewer stonewalled
+   *  every round, resolved by the owner's own on-chain judgment of the
+   *  deliverable (release → forfeit/burn, refund → return). */
+  reviewStake?: import('@/lib/review-stake').ReviewStake
   /** Synthesis: titles of the pieces this subtask integrates into one coherent
    *  deliverable. A real worker reads the actual pieces (injected as inputs)
    *  and weaves them together — replacing mechanical placeholder concatenation
@@ -298,7 +303,9 @@ export function reviewVerdictStandard(finalRound = false): string {
     (finalRound
       ? ` This is the FINAL round — no further revision follows. A REVISE here ends the pipeline ` +
         `unresolved: the escrow is held for a human owner to judge instead of you. Use it only if the ` +
-        `deliverable still fails a named criterion.`
+        `deliverable still fails a named criterion. Your verdict carries a stake: if you REVISE and the ` +
+        `owner then releases this work as acceptable, half your review bounty is burned — overruled ` +
+        `refusal is not free. An APPROVE that closes the review stakes nothing.`
       : '')
   )
 }
@@ -1499,6 +1506,56 @@ async function tickDelegationLocked(
   const jobs = jobsShared ?? (await readJobs().catch(() => []))
   if (jobs.length === 0) return
 
+  // Verdict-stake resolution (lib/review-stake.ts): a stake recorded when a
+  // reviewer stonewalled to hand-to-owner is decided by the owner's own
+  // on-chain judgment of the refused deliverable — release forfeits (burn),
+  // refund vindicates. Runs before anything else in the tick because the
+  // conversation that created the stake is over; nothing downstream feeds it.
+  for (const st of subtasks) {
+    const stake = st.reviewStake
+    if (!stake || stake.status !== 'held' || st.onchainJobId === undefined) continue
+    const targetJob = jobs.find((j) => j.id === st.onchainJobId)
+    if (!targetJob) continue
+    const { decideStakeOutcome, stakeMoveAllowed, STAKE_BURN_ADDRESS } = await import('@/lib/review-stake')
+    const outcome = decideStakeOutcome(targetJob.status)
+    if (outcome === 'hold') continue
+    if (outcome === 'return') {
+      stake.status = 'returned'
+      stake.reason = `target job #${st.onchainJobId} ${targetJob.status} — the refusal agreed with the outcome`
+      await logPlatformEvent(
+        'JOB_DISPUTED',
+        `"${st.title}" — the owner's judgment agreed with the reviewer; the $${stake.amountUsd.toFixed(2)} verdict stake returns`,
+      )
+    } else {
+      // Overruled: the owner released the deliverable the reviewer refused.
+      const { isRealMoney } = await import('@/lib/onchain/real-money')
+      if (!stakeMoveAllowed(isRealMoney(), process.env.REVIEW_STAKE_ALLOW_REAL_MONEY)) {
+        stake.status = 'forfeited'
+        stake.reason = `owner released job #${st.onchainJobId}; burn withheld — real money requires REVIEW_STAKE_ALLOW_REAL_MONEY=true`
+      } else {
+        try {
+          const { transferUsdc } = await import('@/lib/onchain/treasury')
+          const tx = await transferUsdc(stake.reviewerAgentId, STAKE_BURN_ADDRESS, stake.amountUsd)
+          stake.status = 'forfeited'
+          stake.reason = `owner released job #${st.onchainJobId} — stake burned (tx ${tx.slice(0, 12)}…)`
+        } catch (error) {
+          // Wallet short or chain weather — stay held and retry next tick,
+          // with the failure on record rather than a silent skip.
+          console.error(`[delegation] ${row.id}: verdict-stake burn failed (will retry):`, error)
+          continue
+        }
+      }
+      await logPlatformEvent(
+        'JOB_DISPUTED',
+        `"${st.title}" — the owner released the work the reviewer refused; the $${stake.amountUsd.toFixed(2)} verdict stake is forfeited`,
+      )
+    }
+    // Persist immediately: a stake resolution is a money fact, and the tick's
+    // end-of-run save can be lost to a timeout (observed live for other
+    // fields). One row update, idempotent via the status guard above.
+    await db.update(delegation).set({ subtasks }).where(eq(delegation.id, row.id))
+  }
+
   // This delegation's own subtasks, PLUS their repost successors — the
   // Refunded branch below follows `parentSpecHash` lineage to a replacement
   // job, which is the only reason the whole table was ever needed here. Both
@@ -2064,9 +2121,22 @@ async function tickDelegationLocked(
       // record and the owner decides — the behavior every REVISE had before
       // the loop existed, now reached only after the conversation has run.
       target.reviewVerdict = 'revise'
+      // The verdict stake (lib/review-stake.ts): stonewalling to this
+      // terminal is the one path that stakes the reviewer's pay. Recorded
+      // here, resolved by the owner's own on-chain judgment on a later tick.
+      // A same-author discard stakes nothing — that verdict was never acted
+      // on, so it cannot be accountable.
+      if (!samePerson && !target.reviewStake) {
+        const reviewerAgentId = reviewer.specHash ? specByHash.get(reviewer.specHash)?.workerAgentId : undefined
+        if (reviewerAgentId) {
+          const { reviewStakeUsd } = await import('@/lib/review-stake')
+          target.reviewStake = { reviewerAgentId, amountUsd: reviewStakeUsd(reviewer.bountyUsd), status: 'held' }
+        }
+      }
       await logPlatformEvent(
         'JOB_DISPUTED',
-        `"${target.title}" — still not approved after ${target.revisionRound ?? 0} revision${(target.revisionRound ?? 0) === 1 ? '' : 's'}, handed to the owner: ${note.slice(0, 120)}`,
+        `"${target.title}" — still not approved after ${target.revisionRound ?? 0} revision${(target.revisionRound ?? 0) === 1 ? '' : 's'}, handed to the owner: ${note.slice(0, 120)}` +
+          (target.reviewStake ? ` (reviewer stake $${target.reviewStake.amountUsd.toFixed(2)} now rides on the owner's judgment)` : ''),
       )
     }
   }

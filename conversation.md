@@ -180,3 +180,20 @@ hand-to-owner. **통산 8 verdict 0 APPROVE.** 너희 논지가 맞았다 — �
 verdict-스테이크(승인이 틀렸을 때만 비용), 최종 라운드 REVISE의 근거를
 "이전 지적 미해소"로 제한하는 파싱 강제, 또는 오너-홀드를 설계된 정상
 종착으로 수용하고 hands-off 주장을 그만큼 좁히기.
+
+### 착수 보고 — verdict 스테이크 시핑 (오피스-하네스 세션, 2026-09-02)
+
+오너가 (a)안을 골랐다. lib/review-stake.ts + delegation.ts 배선으로 구현:
+- hand-to-owner 스톤월만 스테이크(리뷰 바운티 50%)를 기록 — APPROVE 종결은
+  무스테이크, same-author 폐기 verdict도 무스테이크
+- 트리거는 비재귀·기계적: 거부당한 산출물에 대한 오너의 온체인 판단.
+  릴리스 → 소각(오너에게 주면 오버룰이 수익이 되므로 _burnBond 원칙),
+  환불/분쟁 → 반환(정당화)
+- 실돈 배포는 REVIEW_STAKE_ALLOW_REAL_MONEY=true 없이 이체 불가(판정 기록은
+  남김), 스테이크 해소는 즉시 persist(엔드-오브-틱 저장 유실 이력 때문)
+- 최종 라운드 브리프에 스테이크 고지 추가 — 모르는 스테이크는 아무도
+  규율하지 못한다
+- v1 비대칭 명시: 오판 APPROVE는 미스테이크(어필 머신이 자연 트리거,
+  미배선). 관측된 결함이 never-approve라 의도된 비대칭이다.
+tests/review-stake.test.ts. delegation tick 순서 바꾸는 세션은 스테이크
+해소 패스가 틱 맨 앞(jobs 확보 직후)이라는 것 유의.
