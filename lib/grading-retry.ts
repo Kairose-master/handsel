@@ -67,6 +67,23 @@ export const MAX_GRADING_ATTEMPTS = 5
  */
 export const MIN_SUBMIT_RUNWAY_MS = 10 * 60 * 1000
 
+/**
+ * How much of one grader verdict is kept.
+ *
+ * The attempt history lives in a jsonb column on `job_specs`, so five
+ * unbounded grader outputs per job — and a grader output can be a whole test
+ * log — is a row that grows with every retry and is read by every later
+ * reader of that table. Bounded here rather than at the display layer:
+ * `attemptLog` already truncates what is SHOWN, which would have hidden this
+ * while the database kept paying for it.
+ */
+export const MAX_ATTEMPT_OUTPUT = 2000
+
+/** One attempt's record, with the grader's words already bounded. */
+export function recordAttempt(passed: boolean | null, output: string, at = new Date()): GradingAttempt {
+  return { at: at.toISOString(), passed, output: (output ?? '').slice(0, MAX_ATTEMPT_OUTPUT) }
+}
+
 export type GradingAttempt = {
   /** ISO timestamp, for the record shown to the requester. */
   at: string

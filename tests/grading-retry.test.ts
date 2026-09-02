@@ -1,12 +1,14 @@
 import { readFileSync } from 'node:fs'
 import { describe, it, expect } from 'vitest'
 import {
+  MAX_ATTEMPT_OUTPUT,
   MAX_GRADING_ATTEMPTS,
   MIN_SUBMIT_RUNWAY_MS,
   attemptLog,
   decideGradingRetry,
   gradedFactFor,
   gradingFeedbackBrief,
+  recordAttempt,
   type GradingAttempt,
 } from '@/lib/grading-retry'
 
@@ -230,5 +232,32 @@ describe('the two caps are not the same cap', () => {
       attemptsSoFar++
     }
     expect(retries).toBe(MAX_GRADING_ATTEMPTS - 1)
+  })
+})
+
+describe('what five attempts cost', () => {
+  it('bounds what one attempt stores, not just what it shows', () => {
+    // The history lives in a jsonb column on job_specs, and a grader output
+    // can be a whole test log. attemptLog truncates the DISPLAY, which would
+    // have hidden this while the database kept paying for it — five unbounded
+    // outputs per job, read by every later reader of that table.
+    const r = recordAttempt(false, 'x'.repeat(50_000))
+    expect(r.output.length).toBe(MAX_ATTEMPT_OUTPUT)
+    expect(r.passed).toBe(false)
+    expect(Date.parse(r.at)).not.toBeNaN()
+  })
+
+  it('does not let the retry brief grow with each round', () => {
+    // The feedback brief is rebuilt from the LATEST grader output each time,
+    // never accumulated. A brief that carried every prior round would grow the
+    // worker's input linearly in attempts, and attempts just went from 3 to 5.
+    const one = gradingFeedbackBrief({ title: 't', acceptanceCriteria: 'c', graderOutput: 'g'.repeat(500), attempt: 1, nonce: 'n' })
+    const five = gradingFeedbackBrief({ title: 't', acceptanceCriteria: 'c', graderOutput: 'g'.repeat(500), attempt: 5, nonce: 'n' })
+    expect(Math.abs(five.length - one.length)).toBeLessThan(200)
+  })
+
+  it('caps the grader text it hands back', () => {
+    const b = gradingFeedbackBrief({ title: 't', acceptanceCriteria: 'c', graderOutput: 'g'.repeat(50_000), attempt: 1, nonce: 'n' })
+    expect(b.length).toBeLessThan(12_000)
   })
 })

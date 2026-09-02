@@ -3343,3 +3343,52 @@ and the cheap one should not be. In practice the delivery window usually binds
 first, since no attempt starts without room to finish and submit.
 
 `lib/grading-retry.ts`, `tests/grading-retry.test.ts`.
+
+## 65. Both fixes pushed one way: approving became free (2026-09-02)
+
+Two changes landed the same day, from two sessions, and both raised the price
+of objecting. The evidence rule (§63) made a REVISE without a verified quote
+release anyway; the verdict stake put half the review bounty on a REVISE
+driven to the terminal. Neither touched the other verdict, and
+`lib/review-stake.ts` says so in its own words: *a conversation the reviewer
+CLOSES (APPROVE) never stakes anything.*
+
+So the cheapest strategy available to a reviewer became **approve instantly
+without reading** — zero cost, zero risk, full bounty. Eight-verdicts-zero-
+approvals may have been converted into its mirror image, and the mirror is
+worse: a stonewalling reviewer delays a pipeline, a rubber stamp destroys the
+thing the review step is bought for.
+
+**An approval is terminal and unreviewable by construction**, which is why
+there was nothing to resolve it against after the fact:
+
+- the independent grader cannot contradict it — a job that fails grading never
+  reaches peer review, so every deliverable a reviewer sees has already passed;
+- the requester cannot object — an APPROVE calls `approveJob` immediately, so
+  the job is `Completed` and there is no window left to dispute in.
+
+So the approval is checked, not its consequences. It must point at the work:
+name the criteria checked and quote the deliverable where they are met, with
+the quotes verified exactly as a blocking finding's are.
+
+**An unsupported approval still releases the worker's escrow, and the check
+runs after the release for that reason.** Making a worker's money hostage to a
+third party's paperwork is the non-termination §63 removed, arriving through a
+new door — and the deliverable already passed an independent grader. What an
+unsupported approval costs is the REVIEWER's own fee: it was paid to read the
+work, and a verdict with nothing behind it is not a review.
+
+`lib/review-support.ts`, `tests/review-support.test.ts`.
+
+Two smaller things found while auditing the day's own work:
+
+- **§64's attempt history stored grader output unbounded.** It lives in a jsonb
+  column on `job_specs` and a grader output can be a whole test log; five per
+  job, read by every later reader of that table. `attemptLog` truncated the
+  DISPLAY, which is exactly what hid it. Bounded at the record now.
+- **F27's blanket real-money refusal on `/api/jobs/external` is now the
+  pass-through it promised.** `lib/external-job-pricing.ts` derives the bounty
+  from an operator-set price and asserts the price exceeds it — the same
+  invariant `lib/storefront-pricing.ts` already enforces. Unset stays closed:
+  inferring a real price from the testnet one would be the platform deciding
+  to spend its owner's money for them.

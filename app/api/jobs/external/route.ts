@@ -28,6 +28,8 @@ import { absoluteUrl } from '@/lib/origin'
  */
 export const maxDuration = 60 // on-chain escrow inside the request
 
+/** Testnet default. The live number comes from lib/external-job-pricing.ts,
+ *  which is also what refuses to run the testnet subsidy on a real chain. */
 const FIXED_BOUNTY_USD = 25
 // Re-exported from lib/market-reach.ts, where the reasoning lives: a minimum
 // score filters evidence, and until there is evidence to filter it excludes
@@ -74,20 +76,18 @@ export async function POST(request: Request) {
   // the deployment onto a chain where it drains real money, and the refusal
   // says what is missing rather than pretending the route is off.
   const { isRealMoney } = await import('@/lib/onchain/real-money')
-  if (isRealMoney()) {
-    return Response.json(
-      {
-        error:
-          'External job posting is testnet-only on this deployment. Its fixed $0.10 fee buys a $25 escrowed bounty, ' +
-          'which is a subsidy that cannot run on a real-money chain until bounty pass-through pricing exists.',
-        docs: DOCS_URL,
-      },
-      { status: 503 },
-    )
+  const { externalJobPricing, PRICE_ENV, BOUNTY_ENV } = await import('@/lib/external-job-pricing')
+  const pricing = externalJobPricing({
+    isRealMoney: isRealMoney(),
+    price: process.env[PRICE_ENV],
+    bounty: process.env[BOUNTY_ENV],
+  })
+  if (!pricing.open) {
+    return Response.json({ error: pricing.reason, docs: DOCS_URL }, { status: 503 })
   }
 
   const { recordX402Payment } = await import('@/lib/x402-ledger')
-  await recordX402Payment({ endpoint: '/api/jobs/external', request, amountUsd: 0.1 })
+  await recordX402Payment({ endpoint: '/api/jobs/external', request, amountUsd: pricing.priceUsd })
 
   const houseAgentId = process.env.X402_JOB_REQUESTER_AGENT_ID
   if (!houseAgentId) {
@@ -201,16 +201,16 @@ export async function POST(request: Request) {
     })
 
     const { postJob } = await import('@/lib/onchain/labor')
-    const txHash = await postJob(houseAgentId, FIXED_BOUNTY_USD, minScore, specHash)
+    const txHash = await postJob(houseAgentId, pricing.bountyUsd, minScore, specHash)
 
     await logPlatformEvent(
       'JOB_POSTED',
-      `External job "${title}" posted via x402${externalPoster ? ` by ${externalPoster.slice(0, 6)}…${externalPoster.slice(-4)}` : ''} — $${FIXED_BOUNTY_USD} bounty`,
+      `External job "${title}" posted via x402${externalPoster ? ` by ${externalPoster.slice(0, 6)}…${externalPoster.slice(-4)}` : ''} — $${pricing.bountyUsd} bounty`,
     )
 
     return Response.json({
       status: 'posted',
-      bounty_usd: FIXED_BOUNTY_USD,
+      bounty_usd: pricing.bountyUsd,
       min_score: minScore,
       escrow_tx: txHash,
       auto_graded: Boolean(testCode),

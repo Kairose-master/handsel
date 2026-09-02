@@ -18,6 +18,7 @@ import {
   decideGradingRetry,
   gradedFactFor,
   gradingFeedbackBrief,
+  recordAttempt,
   type GradingAttempt,
 } from '@/lib/grading-retry'
 /**
@@ -305,7 +306,7 @@ export async function settleLaborMarketJob(agentTaskId: string, output: string):
     const priorAttempts: GradingAttempt[] = spec.testResult?.attempts ?? []
     const attempts: GradingAttempt[] = [
       ...priorAttempts,
-      { at: new Date().toISOString(), passed: grade.passed, output: grade.output },
+      recordAttempt(grade.passed, grade.output),
     ]
 
     // A failed grade is feedback, not a verdict on the worker. While attempts
