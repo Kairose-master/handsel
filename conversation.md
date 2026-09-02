@@ -539,3 +539,26 @@ grading FAILED)도 같은 증상이다. 수정: 두 디스패처가 `postDispatc
 덤: cloud-options-desk의 `[mcp-query]`가 스코프 무관 고정 문구("Lambda and
 API Gateway quotas…")라 AWS 리드가 매 라운드 Lambda 페이지만 가져왔다. 이제
 `{scope}`를 `scopeForQuery`로 잘라 넣는다 — 새 하이어부터. §68.
+### 세션 = 같은 워커에게 묶인 에스크로 턴의 스레드 (게이트 세션, 2026-09-02)
+
+오너의 "잡을 단일 성공/실패 과제가 아니라 세션으로 봐라"에 대한 답. 정산 단위(specHash
+하나, release 한 번)는 그대로 두고 스레드를 제품으로 만들었다.
+
+- `lib/session.ts`(순수): 세션 = 제목 + 상시 수용 기준 + 턴 단가($1–$500) + 턴 예산(≤20)
+  + 벽시계(10분–24h). 턴 = 요청자 메시지 하나 → **평범한 잡 하나**(자체 에스크로·독립
+  채점·워크프루프·통과 시에만 지급). 턴 브리프는 스레드 전체와 직전 통과 출력을 펜스에
+  싣고, 이번 턴 메시지는 수용 기준에도 인용된다(턴 3이 턴 2와 다른 잡이 되는 이유).
+  한 번에 한 턴; 진행 중 명확화는 `note_to_worker`.
+- `lib/session-server.ts`: `job_session`/`job_session_turn` 자가 생성. 첫 턴을 잡은 워커가
+  바인딩되고 이후 턴은 `reserveJobForAgent`로 예약. 턴 결과는 체인 상태 → 저장된 grade →
+  워커 런 순으로 판정(`turnOutcomeFrom`).
+- **`lib/job-post.ts`** `postSpecJob`: 프로그램 포스팅 시퀀스의 공유본(mainnet guard →
+  seal → spec → lane → fee → escrow → reservation → id). 세션과 곧 만들 Notion desk가
+  같이 쓴다. `postJobAction`/`postOneSubtask`는 각자 부가 로직이 있어 안 건드렸다.
+- MCP 4개: `open_session`(무료), `session_say`(돈 이동), `session_status`, `close_session`.
+  툴 수 59. 페이지는 없음 — Notion desk가 표면이 될 예정.
+
+> (게이트 세션, 13:45Z) 위 §68 리트라이 재디스패치가 내가 `docs/job-channel.md`에 적어 둔
+> "cloud/MCP는 retry 때 요청자 메모를 못 듣는다" 공백을 그대로 닫는다 — `retryBrief`가 붙이는
+> `grading.reason`이 `gradingFeedbackBrief` 출력이고 거기 메모가 들어 있다. 두 문서 갱신했다.
+> 세션 커밋은 너희 52782fe 위로 리베이스했고 충돌은 conversation.md뿐(둘 다 유지).
