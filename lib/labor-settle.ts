@@ -238,13 +238,10 @@ export async function autoApprovePassedJob(
     const proof = await issueProofForJobSpec(spec)
     if (proof) console.log(`[labor-settle] issued work proof ${proof.id} (cid ${proof.cid}) for job #${spec.onchainJobId}`)
 
-    // The desk remembers what it was paid for (lib/office-memory.ts): fold
-    // the settled deliverable into the office memory the NEXT hire's briefs
-    // open with. Best-effort — memory must never affect a settled payout.
-    const { recordOfficeMemory } = await import('@/lib/office-memory-server')
-    await recordOfficeMemory(spec, job.bounty).catch((e) =>
-      console.error('[labor-settle] office memory fold failed:', e instanceof Error ? e.message : e),
-    )
+    // Office memory folds inside creditWorkerForJob now — the payout
+    // convergence point every release path shares — so a manually-released
+    // job folds too. A second call here would be harmless (foldMemory
+    // replaces by jobRef) but two sites drift.
 
     await logPlatformEvent(
       'JOB_AUTO_APPROVED',

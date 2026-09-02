@@ -50,6 +50,26 @@ export async function renderedOfficeMemory(userId: string, slot: number): Promis
  * the desk whose hired agent produced it, and the worker's office slot is
  * already recorded at hire (setAgentOfficeSlot).
  */
+/** Same fold, addressed by the on-chain job id — for the payout convergence
+ *  point (creditWorkerForJob), which has the id and the bounty but not the
+ *  spec row. Loads the four fields the fold needs and delegates. */
+export async function recordOfficeMemoryForJob(onchainJobId: number, paidUsd: number): Promise<void> {
+  const { db } = await import('@/lib/db')
+  const { jobSpec } = await import('@/lib/db/schema')
+  const { eq } = await import('drizzle-orm')
+  const [spec] = await db
+    .select({
+      officeOwnerId: jobSpec.officeOwnerId,
+      onchainJobId: jobSpec.onchainJobId,
+      workerAgentId: jobSpec.workerAgentId,
+      agentTaskId: jobSpec.agentTaskId,
+      title: jobSpec.title,
+    })
+    .from(jobSpec)
+    .where(eq(jobSpec.onchainJobId, onchainJobId))
+  if (spec) await recordOfficeMemory(spec, paidUsd)
+}
+
 export async function recordOfficeMemory(spec: {
   officeOwnerId?: string | null
   onchainJobId?: number | null
