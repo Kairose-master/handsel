@@ -58,15 +58,22 @@ describe('npx handsel-worker --help is help, not a login prompt', () => {
 })
 
 describe("a stranger's click on '/' lands on the public landing server-side", () => {
-  it('middleware redirects a session-less / to /guest', () => {
+  it('middleware redirects a session-less / to /guest — keyed on the cookie the app actually sets', () => {
     const src = raw('middleware.ts')
-    const at = src.indexOf('better-auth.session_token')
+    // 'auth_session' is what /api/signin sets and lib/get-session.ts reads.
+    // The first version checked better-auth's default name, which this app
+    // never sets — so every logged-in user bounced from '/' to /guest and
+    // sign-in appeared dead. Both names are accepted now, and this pin ties
+    // the middleware to the one the signin route writes.
+    const at = src.indexOf("c.name === 'auth_session'")
     expect(at).toBeGreaterThan(-1)
-    const block = src.slice(at, at + 400)
+    const block = src.slice(at, at + 500)
     expect(block).toContain("url.pathname = '/guest'")
     expect(block).toContain('NextResponse.redirect')
     // The matcher must actually run the middleware on '/'.
     expect(src).toContain("'/',")
+    // The name is not free-floating: it must match the signin route's.
+    expect(raw('app/api/signin/route.ts')).toContain("c.set('auth_session'")
   })
 
   it("the mobile m.<host> rewrite still wins over the guest redirect", () => {
