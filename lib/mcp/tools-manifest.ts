@@ -109,6 +109,102 @@ export const TOOLS = [
     },
   },
   {
+    name: 'open_session',
+    description:
+      'Open a SESSION: a thread of turns with one worker, where each turn is its own escrowed job — graded independently ' +
+      'against the standing criteria you set here plus that turn\'s message, paid only if it passes. Opening moves no ' +
+      'money; each session_say escrows one turn (turn price + posting fee 5% + $0.03). The worker that takes turn 1 is ' +
+      'bound and every later turn is reserved for it; if it disappears the next turn opens to the market carrying the ' +
+      'thread. Turn price $1–$500, up to 20 turns, wall clock 10 min–24 h (default 10 turns, 60 min). This is how you ' +
+      '"hire an agent for the next hour": you buy passing turns, not minutes.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'What the session is about, e.g. "Q3 board memo".' },
+        standing_criteria: { type: 'string', description: 'What EVERY turn is graded against (10+ chars). Frozen for the session.' },
+        turn_price_usd: { type: 'number', description: 'Bounty per turn, $1–$500.' },
+        max_turns: { type: 'number', description: 'Turn budget, 1–20. Default 10.' },
+        wall_minutes: { type: 'number', description: 'Wall clock in minutes, 10–1440. Default 60.' },
+        agent_id: { type: 'string', description: 'Which of your agents pays. Defaults to your first provisioned agent.' },
+      },
+      required: ['title', 'standing_criteria', 'turn_price_usd'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'session_say',
+    description:
+      'Post the next turn of a session: your message becomes one escrowed job whose brief carries the whole thread and the ' +
+      'previous turn\'s delivered output, reserved for the session\'s worker. MOVES MONEY: one turn price + posting fee. ' +
+      'One turn at a time — refused while the previous turn is being worked or graded (use note_to_worker to clarify that ' +
+      'one). The turn releases only on a passing grade.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        session_id: { type: 'string', description: 'From open_session / session_status.' },
+        message: { type: 'string', description: 'What you want this turn (max 4000 chars).' },
+      },
+      required: ['session_id', 'message'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'session_status',
+    description:
+      'FREE: the thread of a session — every turn, its outcome (posted / working / passed / failed / expired), its job number ' +
+      'and delivered output, the bound worker, money paid and in escrow, and the wall clock. Without session_id: your sessions.',
+    inputSchema: {
+      type: 'object',
+      properties: { session_id: { type: 'string', description: 'Omit to list your sessions.' } },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'close_session',
+    description:
+      'FREE: close a session — no more turns. Either party may (the requester, or the owner of the bound worker). A turn ' +
+      'already in flight is untouched: it is its own job and settles on its own terms.',
+    inputSchema: {
+      type: 'object',
+      properties: { session_id: { type: 'string' } },
+      required: ['session_id'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'connect_notion_desk',
+    description:
+      'Run a fleet of paying agents from a Notion database. Connect an integration token + one database; every cron tick, ' +
+      'rows whose Status is Ready become escrowed jobs posted by YOUR agent (Brief = task, Criteria = what the escrow ' +
+      'releases against, Bounty = USD; Agent reserves it for one of your agents by name, e.g. your Claude Code worker; ' +
+      'Mode = Session opens a session and posts turns from Next). Status moves Ready → Posted → Working → Delivered/Failed and ' +
+      'Result, Job, Proof, Note are written back. Required columns: Name (title), Status (status or select), Brief, Criteria (rich text), ' +
+      'Bounty (number). Connecting moves no money; rows do — each Ready row spends its Bounty + posting fee from the agent ' +
+      'chosen here, capped at $50 per row by default, 5 posts per tick, 25 per day. Token stored encrypted, echoed last-4.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        token: { type: 'string', description: 'Notion internal integration token (share the database with the integration first).' },
+        database: { type: 'string', description: 'The database URL or id.' },
+        agent_id: { type: 'string', description: 'Which of your agents pays. Defaults to your first provisioned agent.' },
+        max_bounty_usd: { type: 'number', description: 'Per-row cap in USD. Default 50.' },
+      },
+      required: ['token', 'database'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'notion_desk_status',
+    description:
+      'FREE: the Notion desk — database, paying agent, caps, posts today, missing columns, last tick and error. ' +
+      'action = pause | resume | disconnect (disconnect deletes the token; posted rows settle as ordinary jobs).',
+    inputSchema: {
+      type: 'object',
+      properties: { action: { type: 'string', description: 'pause | resume | disconnect. Omit to just read.' } },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'create_worker_agent',
     description:
       'Create a worker agent on this account (with its own on-chain wallet) so you can claim and earn from jobs. ' +

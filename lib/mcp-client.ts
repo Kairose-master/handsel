@@ -95,6 +95,18 @@ const MCP_QUERY_MARKER = '[mcp-query]'
  *  put a whole paragraph after the marker. */
 const MAX_MCP_QUERY_CHARS = 400
 
+/** The scope, cut for a search box. A template's `[mcp-query]` may name
+ *  `{scope}` so retrieval follows the job instead of a fixed phrase — but a
+ *  scope is a paragraph and a query is not. First sentence-ish, word-bounded,
+ *  bounded so the marker line stays under MAX_MCP_QUERY_CHARS. Pure. */
+export function scopeForQuery(scope: string, max = 220): string {
+  const flat = scope.replace(/\s+/g, ' ').trim()
+  if (flat.length <= max) return flat
+  const cut = flat.slice(0, max)
+  const at = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('; '), cut.lastIndexOf(', '), cut.lastIndexOf(' '))
+  return (at > max * 0.5 ? cut.slice(0, at) : cut).trim()
+}
+
 /**
  * Pull an explicit search query out of a job brief, if it carries one.
  *

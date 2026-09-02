@@ -329,29 +329,13 @@ async function dispatchToCloudApi(
     }),
   ]
 
-  try {
-    const auth = await resolveCallbackAuth(agentRow.id)
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-    if (auth.required) headers['X-Runtime-Secret'] = auth.secret
-
-    await fetch(callbackUrl, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        task_id: taskId,
-        agent_id: agentRow.id,
-        success,
-        output: success ? output : `Cloud worker error: ${error}`,
-        plan: '',
-        quality_score: null,
-        execution_time: executionTime,
-        token_cost: 0,
-        events,
-      }),
-    })
-  } catch (callbackError) {
-    console.error('[agent-tasks] cloud dispatch callback failed:', callbackError)
-  }
+  const reply = await postDispatchCallback(agentRow, taskId, callbackUrl, {
+    success,
+    output: success ? output : `Cloud worker error: ${error}`,
+    execution_time: executionTime,
+    events,
+  })
+  await followUpOnRetry(agentRow, taskId, task, callbackUrl, reply, (next) => dispatchToCloudApi(agentRow, taskId, next, callbackUrl))
 }
 
 /**
@@ -434,28 +418,87 @@ async function dispatchToMcpWorker(agentRow: AgentRow, taskId: string, task: str
     }),
   ]
 
+  const reply = await postDispatchCallback(agentRow, taskId, callbackUrl, {
+    success,
+    output: success ? output : `MCP worker error: ${error}`,
+    execution_time: executionTime,
+    events,
+  })
+  await followUpOnRetry(agentRow, taskId, task, callbackUrl, reply, (next) => dispatchToMcpWorker(agentRow, taskId, next, callbackUrl))
+}
+
+/** POST a platform-run dispatch's result to our own callback and return what
+ *  it said. The reply matters: a failed grade comes back as a retry verdict
+ *  with the grader's reasons, and a dispatcher that drops it strands the
+ *  task (§68). Null when the post failed or the body was not JSON. */
+async function postDispatchCallback(
+  agentRow: AgentRow,
+  taskId: string,
+  callbackUrl: string,
+  result: { success: boolean; output: string; execution_time: number; events: unknown[] },
+): Promise<unknown> {
   try {
     const auth = await resolveCallbackAuth(agentRow.id)
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
     if (auth.required) headers['X-Runtime-Secret'] = auth.secret
-
-    await fetch(callbackUrl, {
+    const res = await fetch(callbackUrl, {
       method: 'POST',
       headers,
       body: JSON.stringify({
         task_id: taskId,
         agent_id: agentRow.id,
-        success,
-        output: success ? output : `MCP worker error: ${error}`,
+        success: result.success,
+        output: result.output,
         plan: '',
         quality_score: null,
-        execution_time: executionTime,
+        execution_time: result.execution_time,
         token_cost: 0,
-        events,
+        events: result.events,
       }),
     })
+    return await res.json().catch(() => null)
   } catch (callbackError) {
-    console.error('[agent-tasks] mcp dispatch callback failed:', callbackError)
+    console.error('[agent-tasks] dispatch callback failed:', callbackError)
+    return null
+  }
+}
+
+/**
+ * The platform-run half of the grading retry loop (lib/grading-retry.ts).
+ * A local worker reads the callback's retry verdict and runs again with the
+ * grader's reasons; cloud/mcp dispatch is the platform running the worker,
+ * so the platform has to do the same. The feedback is persisted onto the
+ * task row — executeDispatch re-reads it — and the next attempt is handed
+ * to its own invocation like the first one was, inline only as the
+ * fallback. Bounded by the callback: after MAX_GRADING_ATTEMPTS, or with no
+ * delivery runway left, it settles instead of answering 'retry'.
+ */
+async function followUpOnRetry(
+  agentRow: AgentRow,
+  taskId: string,
+  task: string,
+  callbackUrl: string,
+  reply: unknown,
+  rerunInline: (nextTask: string) => Promise<void>,
+): Promise<void> {
+  const { retryVerdictOf, retryBrief } = await import('@/lib/grading-retry')
+  const verdict = retryVerdictOf(reply)
+  if (!verdict) return
+  console.info(
+    `[agent-tasks] ${taskId} (${agentRow.name}): grading asked for attempt ${verdict.attempt}/${verdict.maxAttempts} — re-dispatching with the grader's reasons`,
+  )
+  // The stored task is the RAW brief; executeDispatch composes instructions
+  // and skills around it on every run, so the feedback goes on the raw text
+  // and the effective task is rebuilt, never stored composed.
+  const [row] = await db.select({ task: agentTask.task }).from(agentTask).where(eq(agentTask.id, taskId))
+  if (row) {
+    await db
+      .update(agentTask)
+      .set({ task: retryBrief(row.task, verdict.reason), updatedAt: new Date() })
+      .where(eq(agentTask.id, taskId))
+  }
+  if (!(await handoffDispatchExecution(taskId, callbackUrl))) {
+    await rerunInline(retryBrief(task, verdict.reason))
   }
 }
 

@@ -13,6 +13,7 @@
  * runtime reference behind and every action in the file throws
  * (tests/server-action-type-reexport.test.ts).
  */
+import { scopeForQuery } from '@/lib/mcp-client'
 import { db } from '@/lib/db'
 import { agent, delegation } from '@/lib/db/schema'
 import { inArray, eq } from 'drizzle-orm'
@@ -355,7 +356,7 @@ export async function hireOfficeTemplateFor(
           // shared source being appended after it and the collaboration DSL
           // being prepended before it. An LLM worker just sees a line naming
           // what to look up.
-          (step.mcpQuery ? `\n\n[mcp-query] ${step.mcpQuery.replaceAll('{scope}', scope)}` : ''),
+          (step.mcpQuery ? `\n\n[mcp-query] ${step.mcpQuery.replaceAll('{scope}', scopeForQuery(scope))}` : ''),
         sharedSource,
       ),
       acceptanceCriteria: step.acceptanceCriteria.replaceAll('{scope}', scope),
