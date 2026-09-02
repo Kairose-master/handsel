@@ -509,6 +509,22 @@ dlg-zXUaoEnflJ(Securities)도 planned 그대로니 confirm 재시도하면 된�
 **운영자 쪽 진짜 수정은 남아 있다**: Vercel의 ONCHAIN_RPC_URL 프라이머리가
 죽어 있다(전부 null). 키 있는 정상 프로바이더로 교체 권장. §67.
 
+### securities-floor 템플릿 추가 — 9역할 협의 플로어 (us-trading 세션, 2026-09-02 12:25Z)
+
+`lib/office-world-data.ts`에 `securities-floor` 템플릿을 넣었다. securities-desk는
+그대로 두고 옆에 추가한 것이라 기존 오피스·테스트에 영향 없음(템플릿 8개 테스트
+전부 통과). 카드 이미지는 `public/office-cards/securities-floor.png` — 일단
+securities-desk 카드를 복사했다. `docs/reference-images.md`식 생성 아트는 나중에.
+
+구조: 차트·뉴스·수급·매크로 4분석가 → 퀀트(가중 2) ⇄ 리스크 오피서(**reviewOfRoleId**,
+REVISE가 모델러에게 되돌아감) → 리밸런스 플래너 ⇄ 레드팀(reviewOf) → 위원장(가중 2,
+결정 메모). 9스텝이라 최소 예산 $9. 소비자는 us-trading 백엔드 오피스 루프
+(`backend/src/office/roster.ts`가 role id를 1:1로 미러링).
+
+리뷰어 인센티브 건(위 "리뷰어 5전 0승")은 여기서도 그대로 유효하다 — 리스크
+오피서·레드팀 브리프에 "같은 보수, 숫자가 맞으면 승인하라"를 명시해 뒀지만
+구조적 해법은 아니다.
+
 ### 플랫폼 실행 워커는 retry 판정을 버리고 있었다 (오피스-하네스 세션, 2026-09-02 13:30Z)
 
 §64 리트라이 루프의 반대편: `dispatchToCloudApi`/`dispatchToMcpWorker`가 콜백을

@@ -610,6 +610,248 @@ export const OFFICE_TEMPLATES: OfficeTemplate[] = [
     ],
   },
   {
+    id: 'securities-floor',
+    name: 'Securities Floor',
+    blurb:
+      'Nine desks that argue before anyone allocates: four analysts feed a quant model, a risk officer peer-reviews it ' +
+      '(REVISE goes back to the modeler), a planner drafts the rebalance, a red team reviews that, and a committee chair ' +
+      'writes the one decision everyone signed off on — a draft memo, never an executed trade.',
+    flowSummary:
+      'Chart + News + Flow + Macro → Quant Modeler ⇄ Risk Officer (review) → Rebalance Planner ⇄ Red Team (review) → Committee Chair (decision memo, draft only).',
+    exampleScope: 'KRW-BTC, KRW-ETH, KRW-SOL',
+    scopeLabel: 'Markets in scope (e.g. KRW-BTC, KRW-ETH, KRW-SOL)',
+    usesMarketData: true,
+    roles: [
+      {
+        id: 'chart-analyst',
+        name: 'Chart Analyst',
+        blurb: 'Reads real candles for trend, support/resistance, momentum and regime.',
+        colorIndex: 4,
+        customInstructions:
+          'You are the chart/technical analyst on a securities floor. Use your connected market-data tool for every ' +
+          'number: trend direction, one support and one resistance level with the exact price and date they printed, a ' +
+          'momentum read, and the regime belief your tool reports. Cite the tool output verbatim. Never invent a price.',
+        mcpHint: 'A candle/price-report tool for the markets in scope.',
+      },
+      {
+        id: 'news-analyst',
+        name: 'News Analyst',
+        blurb: 'Reads headlines and filings, cites source and date, says "nothing material" when that is the truth.',
+        colorIndex: 1,
+        customInstructions:
+          'You are the news/filings analyst on a securities floor. Use your connected news tool and summarize only what ' +
+          'plausibly moves the markets in scope, citing headline, date and source for each item. If your tool returns ' +
+          'nothing for a market, say so plainly rather than paraphrasing from memory.',
+        mcpHint: 'A news/headline tool for the markets in scope.',
+      },
+      {
+        id: 'flow-analyst',
+        name: 'Flow Analyst',
+        blurb: 'Order book depth, taker buy/sell tape, volume trend — who is actually pressing.',
+        colorIndex: 2,
+        customInstructions:
+          'You are the order-flow / microstructure analyst. Use your connected flow tool and report, per market: spread, ' +
+          'depth imbalance, taker buy share on the recent tape, and the volume trend — then say whether flow confirms or ' +
+          'contradicts the chart picture. Numbers come only from the tool output; label anything it did not return as absent.',
+        mcpHint: 'An order-book / trade-tape tool for the markets in scope.',
+      },
+      {
+        id: 'macro-analyst',
+        name: 'Macro Analyst',
+        blurb: 'Dollar, equities, VIX, yields, gold, BTC correlation — the backdrop the basket trades in.',
+        colorIndex: 7,
+        customInstructions:
+          'You are the macro / cross-asset analyst. Use your connected macro tool and give the floor a risk-on/risk-off ' +
+          'read grounded only in the closes, changes and correlations the tool returned. State what would flip your read. ' +
+          'Do not invent a data point the tool did not provide.',
+        mcpHint: 'A cross-asset daily-close tool (dollar index, S&P 500, VIX, yields, gold, BTC).',
+      },
+      {
+        id: 'quant-modeler',
+        name: 'Quant Modeler',
+        blurb: 'Fits regime + volatility models and proposes a weight per market, reconciling the four analysts.',
+        colorIndex: 3,
+        customInstructions:
+          'You are the quant modeler. You receive the chart, news, flow and macro deliverables AND your own connected ' +
+          'quant tool (regime belief, volatility forecast, VaR/ES, Kelly cap). Propose a target weight per market with a ' +
+          'one-line reason each, say explicitly where the analysts agreed and where they conflicted and which side you ' +
+          'took, and keep every position at or under the Kelly cap the tool reports. A reviewer will challenge this: ' +
+          'if you receive a REVISE note, answer each point and resubmit the revised weights.',
+        mcpHint: 'A quant tool that fits regime/volatility models on real candles.',
+      },
+      {
+        id: 'risk-officer',
+        name: 'Risk Officer',
+        blurb: 'Peer-reviews the quant model with basket-level risk numbers; can send it back for revision.',
+        colorIndex: 0,
+        customInstructions:
+          "You are the risk officer and you are REVIEWING the quant modeler's deliverable. Run your connected basket-risk " +
+          'tool on the same markets and check the proposal against it: concentration, correlation (is the basket one ' +
+          'bet?), VaR/ES, drawdown. Verdict APPROVE only if every weight is defensible against those numbers; otherwise ' +
+          'REVISE with the specific weight and the specific number that contradicts it. You are paid the same either way — ' +
+          'approve when the numbers support it, revise when they do not.',
+        mcpHint: 'A basket-risk tool (correlation matrix, basket VaR/ES, drawdown).',
+      },
+      {
+        id: 'rebalance-planner',
+        name: 'Rebalance Planner',
+        blurb: 'Turns the reviewed weights into a concrete draft order list — proposal only, never auto-executed.',
+        colorIndex: 6,
+        customInstructions:
+          "You are the rebalance planner. Given the quant model's reviewed weights and the risk officer's verdict, produce " +
+          'a concrete proposed order list per market (buy/sell, target weight, notional to move) using your connected ' +
+          'rebalance tool for the arithmetic. This is a DRAFT for review — you have no authority to submit real orders, ' +
+          'and the deliverable must say plainly that it is a draft, not an executed trade.',
+        mcpHint: 'A rebalance-draft tool that turns weights into a proposed order list.',
+      },
+      {
+        id: 'red-team',
+        name: 'Red Team',
+        blurb: 'Adversarially reviews the rebalance draft: backtests the thesis, hunts for the unsourced number.',
+        colorIndex: 5,
+        customInstructions:
+          "You are the red team and you are REVIEWING the rebalance planner's draft. Use your connected backtest tool on " +
+          'the markets in the draft and attack the proposal: does the historical evidence support the tilt after costs? ' +
+          'Is any number in the draft unsourced or contradicted upstream? Verdict APPROVE if the draft survives; REVISE ' +
+          'with the exact line that fails and why. Do not rewrite the draft yourself.',
+        mcpHint: 'A backtest tool for the markets in scope.',
+      },
+      {
+        id: 'chair',
+        name: 'Investment Committee Chair',
+        blurb: 'Reads everything, records where the floor agreed and disagreed, and writes the single decision memo.',
+        colorIndex: 8,
+        customInstructions:
+          'You chair the investment committee. You receive the rebalance draft and the red-team review (and through them ' +
+          'the whole floor). Write the decision memo: what was proposed, what the reviewers objected to, what changed, and ' +
+          'the final target weight per market with the deciding argument for each. Where the floor disagreed, say who won ' +
+          'and why. This memo is a draft allocation for the trading desk to apply to its paper ledger; it is not an ' +
+          'executed trade and you place no orders. If the brief specifies a machine-readable closing block, end with it exactly.',
+        mcpHint: 'None needed — this role synthesizes the floor; it holds no data tool of its own.',
+      },
+    ],
+    pipeline: [
+      {
+        roleId: 'chart-analyst',
+        title: 'Chart analysis — {scope}',
+        brief:
+          'Pull recent candles for {scope} and summarize, per market: trend direction, one support and one resistance ' +
+          'level with the exact price and date, a momentum call, and the regime belief your tool reports. Every number ' +
+          'from the tool output, none from memory.',
+        acceptanceCriteria:
+          'Every market in {scope} gets a trend read, a support level, a resistance level (each with a price and a date) ' +
+          'and a momentum call, all traceable to the tool output.',
+        dependsOnRoleIds: [],
+        mcpQuery: '{scope}',
+      },
+      {
+        roleId: 'news-analyst',
+        title: 'News & filings analysis — {scope}',
+        brief:
+          'Review recent headlines for {scope} and summarize what is actually relevant to price, citing headline, date ' +
+          'and source for each item. A market with nothing material gets an explicit "nothing material found".',
+        acceptanceCriteria:
+          'Every market in {scope} gets at least one cited item (headline, date, source) or an explicit "nothing material ' +
+          'found" backed by a genuine tool call.',
+        dependsOnRoleIds: [],
+        mcpQuery: '{scope}',
+      },
+      {
+        roleId: 'flow-analyst',
+        title: 'Order-flow analysis — {scope}',
+        brief:
+          'Report the order book and trade tape for {scope}: spread, depth imbalance, taker buy share, volume trend — ' +
+          'and whether flow confirms or contradicts the price trend. Only numbers the tool returned.',
+        acceptanceCriteria:
+          'Every market in {scope} gets spread, depth imbalance, taker buy share and a volume-trend line, each a number ' +
+          'from the tool output, plus a one-line confirm/contradict call.',
+        dependsOnRoleIds: [],
+        mcpQuery: '{scope}',
+      },
+      {
+        roleId: 'macro-analyst',
+        title: 'Macro & cross-asset read — {scope}',
+        brief:
+          'Give the floor the macro backdrop for trading {scope}: dollar, equities, VIX, yields, gold and BTC ' +
+          'correlation from your tool, a risk-on/risk-off read, and what would flip it.',
+        acceptanceCriteria:
+          'Cites last close and 20-day change for at least five cross-asset series from the tool output, states a ' +
+          'risk-on/risk-off read, and names the condition that would flip it.',
+        dependsOnRoleIds: [],
+        mcpQuery: 'macro backdrop for {scope}',
+      },
+      {
+        roleId: 'quant-modeler',
+        title: 'Quant model — weights for {scope}',
+        brief:
+          'Read the chart, news, flow and macro deliverables for {scope} and, with your own quant tool, propose a target ' +
+          'weight per market under the Kelly cap. State per market which analyses agreed, which conflicted, and which ' +
+          'side you took. Expect a risk review; answer any REVISE point by point.',
+        acceptanceCriteria:
+          'Every market in {scope} gets an explicit target weight with a reason, each weight is at or under the Kelly ' +
+          'cap the tool reports, and at least one agreement and one conflict among the upstream analyses is named.',
+        dependsOnRoleIds: ['chart-analyst', 'news-analyst', 'flow-analyst', 'macro-analyst'],
+        bountyWeight: 2,
+        mcpQuery: '{scope}',
+      },
+      {
+        roleId: 'risk-officer',
+        title: 'Risk review of the quant model — {scope}',
+        brief:
+          "Review the quant model's weights for {scope} against your basket-risk tool: concentration, pairwise " +
+          'correlation, basket VaR/ES, drawdown. APPROVE only if every weight is defensible; otherwise REVISE naming the ' +
+          'weight and the number that contradicts it.',
+        acceptanceCriteria:
+          'Cites the basket correlation and VaR/ES numbers from the tool, checks every weight in the model against them, ' +
+          'and ends with an explicit APPROVE or REVISE verdict with reasons.',
+        dependsOnRoleIds: [],
+        reviewOfRoleId: 'quant-modeler',
+        mcpQuery: '{scope}',
+      },
+      {
+        roleId: 'rebalance-planner',
+        title: 'Rebalance proposal (draft — not executed) — {scope}',
+        brief:
+          "Turn the reviewed weights for {scope} into a concrete proposed order list (market, buy/sell, target weight, " +
+          'notional to move) using your rebalance tool. State explicitly that this is a draft for review, not an ' +
+          'executed trade.',
+        acceptanceCriteria:
+          'Every market with a nonzero weight change gets a concrete buy/sell line with a target weight, and the ' +
+          'deliverable states explicitly that it is a draft, not an executed order.',
+        dependsOnRoleIds: ['quant-modeler', 'risk-officer'],
+        mcpQuery: '{scope}',
+      },
+      {
+        roleId: 'red-team',
+        title: 'Red-team challenge of the rebalance draft — {scope}',
+        brief:
+          "Attack the rebalance draft for {scope}: backtest the tilt with your tool, check every number against the " +
+          'upstream deliverables, and find the unsourced claim. APPROVE if it survives; REVISE with the exact failing line.',
+        acceptanceCriteria:
+          'Cites backtest figures from the tool for the markets in the draft, checks the draft line by line against ' +
+          'upstream numbers, and ends with an explicit APPROVE or REVISE verdict with reasons.',
+        dependsOnRoleIds: [],
+        reviewOfRoleId: 'rebalance-planner',
+        mcpQuery: '{scope}',
+      },
+      {
+        roleId: 'chair',
+        title: 'Investment committee decision — {scope}',
+        brief:
+          'Read the rebalance draft and the red-team review for {scope} and write the decision memo: what was proposed, ' +
+          'what reviewers objected to, what changed, the final target weight per market with its deciding argument, and ' +
+          'who won each disagreement. It is a draft allocation for a paper ledger, not an executed trade. If the scope ' +
+          'text specifies a closing machine-readable block, end with it exactly as specified.',
+        acceptanceCriteria:
+          'Names at least one objection raised in review and how it was resolved, gives a final target weight per market ' +
+          'in {scope} with a reason, states the memo is a draft and not an executed trade, and ends with any closing ' +
+          'block the scope demanded.',
+        dependsOnRoleIds: ['rebalance-planner', 'red-team'],
+        bountyWeight: 2,
+      },
+    ],
+  },
+  {
     id: 'talent-agency',
     name: 'Talent Agency',
     blurb:
