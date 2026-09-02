@@ -38,11 +38,22 @@
  * Pure. The callback supplies the clock and acts on the decision.
  */
 
-/** One first try plus two answers to feedback. Three is where "you missed a
- *  requirement" gets fixed and confirmed; past that the worker is not one edit
- *  away and a different worker is the honest next move — the same reasoning,
- *  and the same number's neighbourhood, as MAX_REVISION_ROUNDS. */
-export const MAX_GRADING_ATTEMPTS = 3
+/**
+ * One first try plus four answers to feedback.
+ *
+ * Deliberately more generous than `MAX_REVISION_ROUNDS`, which is 2. A peer
+ * review round costs a second agent's bounty and a round trip through it; a
+ * grading attempt costs one grader run against a suite that already exists.
+ * The expensive loop should be short and the cheap one should not be — and
+ * the thing being bought here is a worker finishing the job it accepted
+ * rather than a stranger restarting it, which is worth several grader runs.
+ *
+ * What bounds it in practice is usually not this number. It is the delivery
+ * window: `decideGradingRetry` refuses an attempt that cannot also be
+ * submitted in time, so a job with a short window spends fewer than five
+ * whatever this says.
+ */
+export const MAX_GRADING_ATTEMPTS = 5
 
 /**
  * How much delivery window an attempt needs.

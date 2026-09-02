@@ -205,3 +205,30 @@ describe('the worker actually answers the grader', () => {
     expect(branch).not.toContain('completeSettlement')
   })
 })
+
+describe('the two caps are not the same cap', () => {
+  it('the worker backstop sits strictly above the platform limit', () => {
+    // Both were 5 while the platform allowed 3. Raising the platform to 5
+    // without moving the worker would have made them coincide, and a backstop
+    // that binds where the thing it backs binds is not a backstop — it would
+    // have cut off the last attempt the platform was willing to grade.
+    const worker = readFileSync('public/handsel-worker.mjs', 'utf8')
+    const cap = Number(/const WORKER_MAX_ATTEMPTS = (\d+)/.exec(worker)?.[1])
+    expect(cap).toBeGreaterThan(MAX_GRADING_ATTEMPTS)
+  })
+
+  it('the platform still reaches its own terminal before the worker stops it', () => {
+    // The platform must be the one that decides to hand the job on, so the
+    // repost carries a real "attempts spent" reason rather than the worker
+    // having quietly walked away.
+    let attemptsSoFar = 1
+    let retries = 0
+    for (let i = 0; i < 50; i++) {
+      const d = decideGradingRetry({ passed: false, attemptsSoFar, msUntilDeliveryDeadline: 10 * HOUR })
+      if (d.action !== 'retry') break
+      retries++
+      attemptsSoFar++
+    }
+    expect(retries).toBe(MAX_GRADING_ATTEMPTS - 1)
+  })
+})

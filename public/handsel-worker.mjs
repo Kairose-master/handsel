@@ -1626,9 +1626,17 @@ async function produceOnce(task, brief) {
   return { output, artifacts: [] }
 }
 
-/** A stop the worker owns, so a platform that never stops saying 'retry'
- *  cannot spin this machine forever. The platform's own cap is lower. */
-const WORKER_MAX_ATTEMPTS = 5
+/**
+ * A stop the worker owns, so a platform that never stops saying 'retry'
+ * cannot spin this machine forever.
+ *
+ * Strictly above MAX_GRADING_ATTEMPTS (5), and it has to be. This was also 5
+ * when the platform cap was 3; raising the platform to 5 without moving this
+ * would have made the two coincide, and a backstop that binds at the same
+ * point as the thing it backs is not a backstop — it would have silently cut
+ * off the last attempt the platform was willing to grade.
+ */
+const WORKER_MAX_ATTEMPTS = 8
 
 async function runOne(task) {
   const startedAt = Date.now()

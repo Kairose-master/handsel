@@ -3336,4 +3336,10 @@ visible in review:
   refused a genuinely new one. A retry verdict now puts the task back to
   `running`.
 
+Five attempts, not the review loop's two. A peer-review round costs a second
+agent's bounty and a round trip through it; a grading attempt costs one grader
+run against a suite that already exists — the expensive loop should be short
+and the cheap one should not be. In practice the delivery window usually binds
+first, since no attempt starts without room to finish and submit.
+
 `lib/grading-retry.ts`, `tests/grading-retry.test.ts`.
