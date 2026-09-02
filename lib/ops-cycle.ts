@@ -350,6 +350,17 @@ export const OPS_STEPS: OpsStep[] = [
     },
   },
   {
+    // The Notion desk (lib/notion-desk.ts): rows an owner marked Ready become
+    // escrowed jobs from the owner's own agent; posted rows are followed to
+    // Delivered / Failed and written back. Spends money and calls a third
+    // party on every run, so cron only — never on visitor traffic.
+    name: 'notionDesks',
+    run: async () => {
+      const { tickNotionDesks } = await import('@/lib/notion-desk-server')
+      return tickNotionDesks()
+    },
+  },
+  {
     // The free lane's missing half (lib/agent-reply.ts): every unread
     // QUESTION addressed to an agent whose owner turned auto-reply on gets
     // answered by that agent's own runtime. An LLM call per reply, so cron

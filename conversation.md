@@ -562,3 +562,21 @@ API Gateway quotas…")라 AWS 리드가 매 라운드 Lambda 페이지만 가�
 > "cloud/MCP는 retry 때 요청자 메모를 못 듣는다" 공백을 그대로 닫는다 — `retryBrief`가 붙이는
 > `grading.reason`이 `gradingFeedbackBrief` 출력이고 거기 메모가 들어 있다. 두 문서 갱신했다.
 > 세션 커밋은 너희 52782fe 위로 리베이스했고 충돌은 conversation.md뿐(둘 다 유지).
+
+### Notion desk — 노션 DB가 "결제 가능한 에이전트 함대"의 조종면 (게이트 세션, 2026-09-02)
+
+오너 방향: 마켓플레이스로 밀지 말고 "에이전트 여럿을 굴리는데 전부 결제 가능"으로,
+표면은 Notion + Claude Code. 근거 영상(mrnotion.co 릴): 사업 전체를 한 화면의 지도로,
+"내 머릿속에 아무것도 남기지 않고 지난달을 리뷰해 조정한다". 지도의 박스 = 노션 DB의 행,
+행마다 지갑 있는 에이전트.
+
+- `lib/notion-desk.ts`(순수): 필수 컬럼 5개(Name/Status/Brief/Criteria/Bounty), 선택 컬럼
+  (Agent/Mode/Next/Job/Session/Result/Proof/Note), `parsePage`/`checkItem`/`rowPatch`/
+  `resultBlocks`. `lib/notion-api.ts`: 호출 4개. `lib/notion-desk-server.ts`: `notion_desk`
+  (토큰 AES-GCM, last-4만 노출) + `notion_desk_row`; `tickNotionDesks`가 ops `notionDesks`
+  스텝(cron 전용, fast 아님). Ready 행 → Status를 Posted로 **먼저** 바꾸고 → `postSpecJob`
+  (Agent 이름이면 그 에이전트에게 예약; Claude Code 워커가 여기 들어감) 또는 Mode=Session이면
+  세션 open + 턴. 이후 틱에서 Working/Delivered(Result+Proof, 전문은 페이지 블록)/Failed(Note).
+- 한도: 행당 $50 기본, 틱당 5, 일 25. 공유 시트 = 공유 지갑이라서.
+- MCP `connect_notion_desk`, `notion_desk_status`(pause/resume/disconnect). 툴 61.
+- `docs/notion-desk.md`, `docs/positioning.md` §7("마켓이 아니라 이미 굴리는 함대 밑의 레일").

@@ -93,6 +93,7 @@ import { handleGuide } from '@/lib/mcp/handlers/guide'
 import { handleOffice } from '@/lib/mcp/handlers/office'
 import { handleMessages } from '@/lib/mcp/handlers/messages'
 import { handleSessions } from '@/lib/mcp/handlers/sessions'
+import { handleNotion } from '@/lib/mcp/handlers/notion'
 
 /**
  * Route a tool call to the group that owns it.
@@ -101,7 +102,7 @@ import { handleSessions } from '@/lib/mcp/handlers/sessions'
  * answered for a tool it does not own would shadow another's. The final
  * rpcError is the same "unknown tool" answer the old switch's default gave.
  */
-const HANDLERS = [handleDelegation, handleJobs, handleWorker, handleOffice, handleRepo, handleCredit, handleGovernance, handleGuide, handleMessages, handleSessions]
+const HANDLERS = [handleDelegation, handleJobs, handleWorker, handleOffice, handleRepo, handleCredit, handleGovernance, handleGuide, handleMessages, handleSessions, handleNotion]
 
 async function callTool(id: unknown, auth: McpAuth, name: string, args: Record<string, unknown>, origin: string) {
   const ctx: McpToolContext = { id, auth, origin }

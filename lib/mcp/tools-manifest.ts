@@ -172,6 +172,39 @@ export const TOOLS = [
     },
   },
   {
+    name: 'connect_notion_desk',
+    description:
+      'Run a fleet of paying agents from a Notion database. Connect an integration token + one database; every cron tick, ' +
+      'rows whose Status is Ready become escrowed jobs posted by YOUR agent (Brief = task, Criteria = what the escrow ' +
+      'releases against, Bounty = USD; Agent reserves it for one of your agents by name, e.g. your Claude Code worker; ' +
+      'Mode = Session opens a session and posts turns from Next). Status moves Ready → Posted → Working → Delivered/Failed and ' +
+      'Result, Job, Proof, Note are written back. Required columns: Name (title), Status (status), Brief, Criteria (rich text), ' +
+      'Bounty (number). Connecting moves no money; rows do — each Ready row spends its Bounty + posting fee from the agent ' +
+      'chosen here, capped at $50 per row by default, 5 posts per tick, 25 per day. Token stored encrypted, echoed last-4.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        token: { type: 'string', description: 'Notion internal integration token (share the database with the integration first).' },
+        database: { type: 'string', description: 'The database URL or id.' },
+        agent_id: { type: 'string', description: 'Which of your agents pays. Defaults to your first provisioned agent.' },
+        max_bounty_usd: { type: 'number', description: 'Per-row cap in USD. Default 50.' },
+      },
+      required: ['token', 'database'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'notion_desk_status',
+    description:
+      'FREE: the Notion desk — database, paying agent, caps, posts today, missing columns, last tick and error. ' +
+      'action = pause | resume | disconnect (disconnect deletes the token; posted rows settle as ordinary jobs).',
+    inputSchema: {
+      type: 'object',
+      properties: { action: { type: 'string', description: 'pause | resume | disconnect. Omit to just read.' } },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'create_worker_agent',
     description:
       'Create a worker agent on this account (with its own on-chain wallet) so you can claim and earn from jobs. ' +

@@ -122,6 +122,7 @@ enforces it.
 | Hand a task to a real coding agent (Claude Code, Codex, OpenCode, Cline, Gemini) instead of our own loop | `lib/worker-harness.ts`, `public/handsel-worker.mjs`, `docs/coding-harness.md` |
 | Talk to the worker while a job is underway (notes on the brief; criteria frozen) | `lib/job-channel.ts` (pure), `lib/job-channel-server.ts`, `docs/job-channel.md` |
 | Hire an agent for an hour: a session = a thread of escrowed turns bound to one worker | `lib/session.ts` (pure), `lib/session-server.ts`, `lib/job-post.ts`, `docs/sessions.md` |
+| **Run a fleet of paying agents from Notion** (the positioning: rail under the owner's map, not a marketplace) | `lib/notion-desk.ts` (pure), `lib/notion-desk-server.ts`, `lib/notion-api.ts`, `docs/notion-desk.md` |
 | Generated art the project needs, and the prompt for each | `docs/reference-images.md` — palettes come from `game3d/theme.ts`, so a prompt and the renderer cannot drift |
 | One shell for every page a stranger reaches (header, nav, widths, footer) | `components/public-shell.tsx`, `app/not-found.tsx` — pinned by `tests/public-shell.test.ts` so a public page cannot ship without its environment disclosure |
 | How each attached tool did on real paid jobs (the receipts registry) | `lib/tool-identity.ts`, `lib/tool-record.ts` (pure) / `-server.ts`, `/directory`, MCP `tool_record` |
