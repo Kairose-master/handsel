@@ -65,11 +65,20 @@ describe('renderOfficeMemory — a citable ledger, or nothing', () => {
 })
 
 describe('the wiring — settle folds, hire injects', () => {
-  it('the payout path folds memory next to the work proof, best-effort', () => {
-    const src = readFileSync('lib/labor-settle.ts', 'utf8')
-    const at = src.indexOf('recordOfficeMemory')
-    expect(at).toBeGreaterThan(src.indexOf('issueProofForJobSpec'))
+  it('memory folds at the payout convergence point, before the same-owner guard', () => {
+    // The first version hooked only labor-settle's auto-release, and the
+    // first manually-released office job sailed past it unfolded. The fold
+    // now lives in creditWorkerForJob — every release path's shared step —
+    // and BEFORE the self-deal guard, for the same reason the portfolio
+    // mirror is: office pipeline jobs earn no credit event, but the paid
+    // deliverable is exactly what the memory carries.
+    const src = readFileSync('app/actions/labor.ts', 'utf8')
+    const at = src.indexOf('recordOfficeMemoryForJob')
+    expect(at).toBeGreaterThan(-1)
+    expect(at).toBeLessThan(src.indexOf('requester and worker share an owner'))
     expect(src.slice(at, at + 300)).toContain('.catch')
+    // …and the settle path no longer has its own drifting copy.
+    expect(readFileSync('lib/labor-settle.ts', 'utf8')).not.toContain('await recordOfficeMemory(')
   })
   it('hire merges memory into the shared source every role reads', () => {
     const src = readFileSync('lib/office-hire.ts', 'utf8')

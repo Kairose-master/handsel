@@ -521,6 +521,19 @@ export async function creditWorkerForJob(workerAddress: string, jobId: number, b
   const { mirrorSettledJobToAgentRepo } = await import('@/lib/agent-repo')
   await mirrorSettledJobToAgentRepo({ agentId: workerAgent.id, jobId, bounty, txHash })
 
+  // Office memory (lib/office-memory.ts), for the same reason as the mirror
+  // above and in the same place — BEFORE the same-owner guard: an office's
+  // own pipeline jobs earn no credit event, but the paid deliverable is
+  // exactly what the desk's memory exists to carry forward. Sited at this
+  // convergence point rather than in one settle path, because the first
+  // version hooked only auto-release and the first manually-released office
+  // job sailed past it unfolded. Best-effort; idempotent per job (foldMemory
+  // replaces by jobRef).
+  const { recordOfficeMemoryForJob } = await import('@/lib/office-memory-server')
+  await recordOfficeMemoryForJob(jobId, bounty).catch((e) =>
+    console.error('[labor] office memory fold failed (non-fatal):', e instanceof Error ? e.message : e),
+  )
+
   // Idempotent on the job. Five call sites can observe the same completed
   // job — the settlement sweep, a delegation tick, the two approve paths —
   // and one of them is wrapped in retry(), so a partial failure (event
