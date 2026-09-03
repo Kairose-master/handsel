@@ -3547,3 +3547,18 @@ through, which is the case the block exists for.
 Not undone: the $1.14 stays paid (testnet). The AWS read's failure itself was
 §68's second finding — a scope-blind retrieval query — and is fixed for new
 hires; sealed briefs keep theirs.
+
+
+**Second sequel (2026-09-03, round 7).** The platform-run loop chained:
+attempts 2, 3 and 4 re-dispatched within ninety seconds of each other. Then
+the callback's retry branch returned without `completeSettlement`, so the
+queue row it had enqueued stayed pending; seven minutes later the settlement
+drain re-graded the same output (a second grader run for one attempt) and
+got a retry verdict with no dispatcher waiting on it — its caller had been
+answered `settlement: queued` at the time. The task sat `running` until the
+reap. Fixes: the callback settles the queue row on a retry too, and the drain
+re-dispatches on a retry verdict through the same `redispatchAfterRetry` the
+inline path uses; a local agent's task goes back to `queued` so its poll
+re-hands it out with the reasons. Every path a verdict can take now ends in
+the next attempt or a settlement, never in a worker that was told 'queued'.
+\n

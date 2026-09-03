@@ -103,11 +103,27 @@ describe('a platform-run dispatch acts on a retry verdict — the local worker w
   })
 
   it('the feedback is persisted on the RAW task row before the handoff, so the fresh invocation carries it', () => {
-    const body = src.slice(src.indexOf('async function followUpOnRetry'))
-    expect(body).toContain('retryVerdictOf(reply)')
-    const persist = body.indexOf('.set({ task: retryBrief(row.task, verdict.reason)')
+    const body = src.slice(src.indexOf('export async function redispatchAfterRetry'), src.indexOf('async function followUpOnRetry'))
+    const persist = body.indexOf('.set({ task: retryBrief(row.task, reason)')
     const handoff = body.indexOf('await handoffDispatchExecution(taskId, callbackUrl)')
     expect(persist).toBeGreaterThan(-1)
     expect(persist).toBeLessThan(handoff)
+    // A local worker is re-fed through its poll: the task goes back to queued.
+    expect(body).toContain("status: local ? 'queued' : 'running'")
+    // The inline half delegates to the same helper.
+    const inline = src.slice(src.indexOf('async function followUpOnRetry'))
+    expect(inline).toContain('retryVerdictOf(reply)')
+    expect(inline).toContain('await redispatchAfterRetry(taskId, verdict.reason,')
+  })
+
+  it('a verdict that comes out of the settlement QUEUE is re-dispatched too, and the callback settles the queue row on a retry', () => {
+    // Round 7: attempts 2–4 chained inline; attempt 5's grade finished in the
+    // drain, whose caller had already been told 'queued'. Nobody re-dispatched.
+    const drain = code('lib/callback/settlement-drain.ts')
+    expect(drain).toContain("outcome.grading?.settled === 'retry'")
+    expect(drain).toContain('redispatchAfterRetry(row.taskId, outcome.grading.reason)')
+    const route = code('app/api/runtime/callback/route.ts')
+    const retryBranch = route.slice(route.indexOf("grading?.settled === 'retry'"), route.indexOf("return Response.json({ status: 'ok', grading })"))
+    expect(retryBranch).toContain('await completeSettlement(taskId)')
   })
 })

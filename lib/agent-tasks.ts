@@ -464,15 +464,48 @@ async function postDispatchCallback(
 }
 
 /**
- * The platform-run half of the grading retry loop (lib/grading-retry.ts).
- * A local worker reads the callback's retry verdict and runs again with the
- * grader's reasons; cloud/mcp dispatch is the platform running the worker,
- * so the platform has to do the same. The feedback is persisted onto the
- * task row — executeDispatch re-reads it — and the next attempt is handed
- * to its own invocation like the first one was, inline only as the
- * fallback. Bounded by the callback: after MAX_GRADING_ATTEMPTS, or with no
- * delivery runway left, it settles instead of answering 'retry'.
+ * Re-dispatch a task after a retry verdict — the platform-run half of the
+ * grading retry loop (lib/grading-retry.ts), shared by BOTH paths a verdict
+ * can arrive on. Inline: the dispatcher reads the callback's reply
+ * (followUpOnRetry). Queued: grading did not finish inside the callback
+ * request, the settlement drain graded it on the cron, and the verdict was
+ * handed to nobody — measured on round 7 (2026-09-03): attempts 2–4 chained
+ * inline in ninety seconds, attempt 5's verdict came out of the drain and
+ * the task sat 'running' for half an hour (§68, second sequel).
+ *
+ * The feedback is persisted onto the RAW task row — executeDispatch
+ * recomposes instructions and skills around it on every run. Cloud/mcp
+ * agents are handed to their own invocation like the first attempt; a local
+ * agent's task goes back to 'queued' so its worker's next poll hands it out
+ * again with the reasons on it. Bounded by the callback: after
+ * MAX_GRADING_ATTEMPTS, or with no delivery runway, it settles instead of
+ * answering 'retry'.
  */
+export async function redispatchAfterRetry(
+  taskId: string,
+  reason: string,
+  opts?: { rerunInline?: () => Promise<void> },
+): Promise<void> {
+  const { retryBrief } = await import('@/lib/grading-retry')
+  const [row] = await db.select({ task: agentTask.task, agentId: agentTask.agentId }).from(agentTask).where(eq(agentTask.id, taskId))
+  if (!row) return
+  const [agentRow] = await db.select().from(agent).where(eq(agent.id, row.agentId))
+  if (!agentRow) return
+  const local = agentRow.runtimeType === 'local'
+  await db
+    .update(agentTask)
+    .set({ task: retryBrief(row.task, reason), status: local ? 'queued' : 'running', updatedAt: new Date() })
+    .where(eq(agentTask.id, taskId))
+  if (local) return
+  const { absoluteUrl } = await import('@/lib/origin')
+  const callbackUrl = absoluteUrl('/api/runtime/callback')
+  if (await handoffDispatchExecution(taskId, callbackUrl)) return
+  if (opts?.rerunInline) await opts.rerunInline()
+  else await executeDispatch(taskId, callbackUrl)
+}
+
+/** The inline half: the dispatcher that posted the callback reads the reply
+ *  and, on a retry verdict, re-dispatches through the shared helper. */
 async function followUpOnRetry(
   agentRow: AgentRow,
   taskId: string,
@@ -487,19 +520,8 @@ async function followUpOnRetry(
   console.info(
     `[agent-tasks] ${taskId} (${agentRow.name}): grading asked for attempt ${verdict.attempt}/${verdict.maxAttempts} — re-dispatching with the grader's reasons`,
   )
-  // The stored task is the RAW brief; executeDispatch composes instructions
-  // and skills around it on every run, so the feedback goes on the raw text
-  // and the effective task is rebuilt, never stored composed.
-  const [row] = await db.select({ task: agentTask.task }).from(agentTask).where(eq(agentTask.id, taskId))
-  if (row) {
-    await db
-      .update(agentTask)
-      .set({ task: retryBrief(row.task, verdict.reason), updatedAt: new Date() })
-      .where(eq(agentTask.id, taskId))
-  }
-  if (!(await handoffDispatchExecution(taskId, callbackUrl))) {
-    await rerunInline(retryBrief(task, verdict.reason))
-  }
+  void callbackUrl
+  await redispatchAfterRetry(taskId, verdict.reason, { rerunInline: () => rerunInline(retryBrief(task, verdict.reason)) })
 }
 
 /**

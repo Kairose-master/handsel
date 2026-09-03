@@ -210,6 +210,10 @@ export async function POST(request: Request) {
       // would also refuse a genuinely new one and the retry loop would hang
       // on its second attempt.
       await db.update(agentTask).set({ status: 'running', updatedAt: new Date() }).where(eq(agentTask.id, taskId))
+      // This attempt IS settled — as a retry. Leaving the queue row pending
+      // had the drain re-grade the same output minutes later, a second
+      // grader run per attempt and a verdict nobody was waiting on (§68).
+      await completeSettlement(taskId)
       return Response.json({ status: 'ok', grading })
     }
     await completeSettlement(taskId)

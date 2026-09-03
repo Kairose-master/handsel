@@ -49,8 +49,18 @@ export async function drainSettlementQueue(): Promise<DrainReport | string> {
   // the same daily gas allowance (lib/onchain/gas-policy.ts).
   for (const row of batch) {
     try {
-      await settleQueuedTask(row.taskId, row.agentId)
+      const outcome = await settleQueuedTask(row.taskId, row.agentId)
       await completeSettlement(row.taskId)
+      // A verdict that came out of the QUEUE has no dispatcher waiting on it
+      // — the callback already answered 'settlement: queued'. Re-dispatch
+      // here or the task sits 'running' until the reap (§68, second sequel).
+      if (outcome.grading?.settled === 'retry' && typeof outcome.grading.reason === 'string' && outcome.grading.reason.trim()) {
+        console.info(`[settlement-drain] ${row.taskId}: grading asked for another attempt — re-dispatching with the grader's reasons`)
+        const { redispatchAfterRetry } = await import('@/lib/agent-tasks')
+        await redispatchAfterRetry(row.taskId, outcome.grading.reason).catch((e) =>
+          console.error(`[settlement-drain] ${row.taskId}: re-dispatch after retry failed:`, e),
+        )
+      }
       settled++
       console.log(`[settlement-drain] settled ${row.taskId} on attempt ${row.attempts + 1}`)
     } catch (error) {
