@@ -32,6 +32,12 @@ import {
 } from '@/lib/fleet-map'
 import { REQUIRED_PROPERTIES, OPTIONAL_PROPERTIES, STATUS, MAX_ROW_BOUNTY_USD_DEFAULT } from '@/lib/notion-desk'
 
+/** The public "duplicate this template" link, once the operator has published
+ *  the desk table from Notion (Share → Publish → allow duplicating). Notion
+ *  has no API for publishing, so this is set by hand; until it is, step one
+ *  offers the create path instead of a link that does not exist. */
+const TEMPLATE_URL = process.env.NEXT_PUBLIC_NOTION_DESK_TEMPLATE_URL?.trim() || null
+
 /* The map is deliberately one-theme: a dark canvas like the reel's monitor,
    whatever the page theme. Its colours live here, not in tokens. */
 const MAP = {
@@ -350,8 +356,13 @@ export default function FleetPage() {
             {(['one', 'two', 'three'] as const).map((k, i) => (
               <li key={k} className="rounded-xl border border-border bg-card p-5">
                 <span className="font-mono text-xs text-muted-foreground">{String(i + 1).padStart(2, '0')}</span>
-                <h3 className="mt-2 font-semibold">{t(`fleet.start.${k}`)}</h3>
-                <p className="mt-1 text-sm text-muted-foreground">{t(`fleet.start.${k}Body`)}</p>
+                <h3 className="mt-2 font-semibold">{t(k === 'one' && !TEMPLATE_URL ? 'fleet.start.oneCreate' : `fleet.start.${k}`)}</h3>
+                <p className="mt-1 text-sm text-muted-foreground">{t(k === 'one' && !TEMPLATE_URL ? 'fleet.start.oneCreateBody' : `fleet.start.${k}Body`)}</p>
+                {k === 'one' && TEMPLATE_URL && (
+                  <a href={TEMPLATE_URL} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
+                    {t('fleet.start.oneLink')} <ArrowRight className="size-3.5" />
+                  </a>
+                )}
               </li>
             ))}
           </ol>

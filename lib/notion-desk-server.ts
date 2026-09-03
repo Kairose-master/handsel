@@ -28,6 +28,9 @@ import {
   parsePage,
   presentOptional,
   readyFilter,
+  deskDatabaseProperties,
+  deskExampleRow,
+  DESK_DATABASE_TITLE,
   renderDesk,
   resultBlocks,
   rowPatch,
@@ -35,7 +38,7 @@ import {
   type NotionPage,
   type WorkItem,
 } from '@/lib/notion-desk'
-import { NotionError, appendBlocks, databaseTitle, getDatabase, queryDatabase, updatePage, type NotionDatabase } from '@/lib/notion-api'
+import { NotionError, appendBlocks, createDatabase, createPage, databaseTitle, getDatabase, queryDatabase, updatePage, type NotionDatabase } from '@/lib/notion-api'
 
 let tableReady: Promise<void> | null = null
 function ensureTables(): Promise<void> {
@@ -92,26 +95,57 @@ const errText = (e: unknown) => (e instanceof NotionError ? `${e.code}: ${e.mess
 /* ── Connect / status ─────────────────────────────────────────────────── */
 
 export type ConnectResult =
-  | { ok: true; databaseTitle: string | null; missing: string[]; optional: string[]; requesterAgentName: string }
+  | { ok: true; databaseTitle: string | null; databaseUrl: string | null; created: boolean; missing: string[]; optional: string[]; requesterAgentName: string }
   | { ok: false; reason: 'bad-id' | 'no-agent' | 'notion'; message: string }
 
 /**
  * Store the token (encrypted) and the database, after proving both with one
  * read. A database missing required columns still connects — status names
  * what to add and the tick posts nothing until it exists.
+ *
+ * Two ways in: `database` names a table the owner already has;
+ * `createUnderPage` names one of their pages and Handsel creates the desk
+ * table there — every column in the right type, one example row parked in
+ * Draft. Notion has no API for "publish as template", so this is how a
+ * stranger gets the table without a public link.
  */
 export async function connectNotionDesk(input: {
   userId: string
   token: string
-  database: string
+  database?: string | null
+  createUnderPage?: string | null
   requesterAgentId?: string | null
   maxBountyUsd?: number
 }): Promise<ConnectResult> {
   await ensureTables()
-  const databaseId = parseDatabaseId(input.database)
-  if (!databaseId) return { ok: false, reason: 'bad-id', message: 'That is not a Notion database id or URL.' }
   const token = input.token.trim()
   if (token.length < 20) return { ok: false, reason: 'notion', message: 'That does not look like a Notion integration token.' }
+
+  let databaseId: string | null = null
+  let created = false
+  let createdUrl: string | null = null
+  if (input.createUnderPage) {
+    const parent = parseDatabaseId(input.createUnderPage) // same 32-hex shape as a page id
+    if (!parent) return { ok: false, reason: 'bad-id', message: 'create_under_page must be a Notion page URL or id (share that page with the integration first).' }
+    try {
+      const made = await createDatabase(
+        token,
+        parent,
+        DESK_DATABASE_TITLE,
+        deskDatabaseProperties(),
+        'Each row is one box of your business map, worked by an agent that has a wallet. Set Status to Ready and the Handsel desk escrows Bounty from your agent. Only a passing deliverable releases it.',
+      )
+      databaseId = made.id
+      createdUrl = made.url ?? null
+      created = true
+      await createPage(token, made.id, deskExampleRow()).catch(() => {})
+    } catch (e) {
+      return { ok: false, reason: 'notion', message: `Notion refused to create the table (${errText(e)}). Share the parent page with the integration and check the token.` }
+    }
+  } else {
+    databaseId = parseDatabaseId(input.database ?? '')
+    if (!databaseId) return { ok: false, reason: 'bad-id', message: 'Give either database (a Notion database URL or id) or create_under_page (a page to create the table under).' }
+  }
 
   const mine = await db.select({ id: agent.id, name: agent.name, address: agent.smartAccountAddress }).from(agent).where(eq(agent.userId, input.userId))
   const payer = input.requesterAgentId ? mine.find((a) => a.id === input.requesterAgentId) : mine.find((a) => a.address)
@@ -132,7 +166,15 @@ export async function connectNotionDesk(input: {
        enabled = true, last_error = NULL, updated_at = now()`,
     [input.userId, encryptSecret(token), token.slice(-4), databaseId, databaseTitle(dbMeta), payer.id, cap],
   )
-  return { ok: true, databaseTitle: databaseTitle(dbMeta), missing: missingProperties(dbMeta.properties), optional: presentOptional(dbMeta.properties), requesterAgentName: payer.name }
+  return {
+    ok: true,
+    databaseTitle: databaseTitle(dbMeta),
+    databaseUrl: createdUrl ?? (dbMeta as { url?: string }).url ?? null,
+    created,
+    missing: missingProperties(dbMeta.properties),
+    optional: presentOptional(dbMeta.properties),
+    requesterAgentName: payer.name,
+  }
 }
 
 export async function setNotionDeskEnabled(userId: string, enabled: boolean): Promise<boolean> {

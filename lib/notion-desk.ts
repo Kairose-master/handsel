@@ -292,3 +292,58 @@ export function renderDesk(input: {
     'Result, Job and Proof are written back. Only a passing deliverable releases the bounty.',
   ].join('\n')
 }
+
+/* ── Creating the table ───────────────────────────────────────────────── */
+
+/** Status options, as a select (the API cannot create status options).
+ *  Draft is the parking state; the other five are the desk's words. */
+export const STATUS_OPTIONS: readonly { name: string; color: string }[] = [
+  { name: 'Draft', color: 'gray' },
+  { name: STATUS.ready, color: 'yellow' },
+  { name: STATUS.posted, color: 'blue' },
+  { name: STATUS.working, color: 'blue' },
+  { name: STATUS.delivered, color: 'green' },
+  { name: STATUS.failed, color: 'red' },
+]
+
+export const DESK_DATABASE_TITLE = 'Handsel Desk'
+
+/**
+ * The desk database as `POST /v1/databases` wants it — every required column
+ * and every optional one, in the types this module reads and writes. Built
+ * from REQUIRED_PROPERTIES / OPTIONAL_PROPERTIES so the table Handsel
+ * creates is, by construction, one the desk accepts.
+ */
+export function deskDatabaseProperties(): Record<string, unknown> {
+  const rich = { rich_text: {} }
+  const props: Record<string, unknown> = {
+    Name: { title: {} },
+    Status: { select: { options: STATUS_OPTIONS.map((o) => ({ ...o })) } },
+    Brief: rich,
+    Criteria: rich,
+    Bounty: { number: { format: 'dollar' } },
+    Agent: rich,
+    Mode: { select: { options: [{ name: 'Job', color: 'blue' }, { name: 'Session', color: 'purple' }] } },
+    Next: rich,
+    Job: { number: { format: 'number' } },
+    Session: rich,
+    Result: rich,
+    Proof: { url: {} },
+    Note: rich,
+  }
+  return props
+}
+
+/** The one example row a fresh table gets — parked in Draft, so it never
+ *  spends anything until the owner moves it. */
+export function deskExampleRow(): Record<string, unknown> {
+  const text = (s: string) => ({ rich_text: [{ type: 'text', text: { content: s } }] })
+  return {
+    Name: { title: [{ type: 'text', text: { content: 'Example — weekly ad copy' } }] },
+    Status: { select: { name: 'Draft' } },
+    Brief: text('Write three ad variants for the Q3 launch of our scheduling app. Audience: solo consultants. Tone: plain, no hype.'),
+    Criteria: text('Each variant under 30 words; names the product; exactly one call to action each; no claims we cannot back.'),
+    Bounty: { number: 5 },
+    Mode: { select: { name: 'Job' } },
+  }
+}

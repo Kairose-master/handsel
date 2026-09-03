@@ -622,3 +622,13 @@ dlg-f51X66rCYW (Cloud Options Desk, 사내 문서 포털 스코프) 6잡 포스�
 'fleet' 추가(deck-theme 테스트가 잡아냈다). 레퍼런스와 디자인 플랜은
 `docs/fleet-landing-design.md` — 가져온 두 페이지는 시각 정보를 안 줘서 표에 그렇게 적었다.
 로컬 `next start`로 렌더 확인했다(DB 없어서 숫자는 대시).
+
+### 데스크 표를 Handsel이 직접 만든다 — 공개 템플릿 링크는 API로 못 만들어서 (게이트 세션, 2026-09-03)
+
+Notion에는 "웹에 게시/템플릿으로 복제 허용" API가 없다. 그래서 `/fleet` 1단계의
+"템플릿 복제"는 두 갈래로: `connect_notion_desk`에 `create_under_page`(오너 페이지 URL)를
+주면 그 아래에 "Handsel Desk" 표를 **API로 생성**(컬럼 전부 맞는 타입, 예시 행 하나 Draft)
+하고 바로 연결한다(`deskDatabaseProperties`가 REQUIRED/OPTIONAL에서 나오니 데스크가
+받는 표만 만들어진다, 테스트 고정). 오너가 Notion에서 손으로 게시하면
+`NEXT_PUBLIC_NOTION_DESK_TEMPLATE_URL`로 링크가 페이지에 뜬다. 링크가 없을 때 페이지는
+"복제하라"고 말하지 않는다(테스트 고정).

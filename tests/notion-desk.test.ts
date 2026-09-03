@@ -199,3 +199,31 @@ describe('the connector and the code agree', () => {
     expect(server).toMatch(/slice\(-4\)/)
   })
 })
+
+describe('Handsel can create the table itself — there is no API for a public template', () => {
+  it('creates every column the desk reads and writes, in the types it expects', async () => {
+    const { deskDatabaseProperties, deskExampleRow, STATUS_OPTIONS, OPTIONAL_PROPERTIES } = await import('@/lib/notion-desk')
+    const props = deskDatabaseProperties() as Record<string, Record<string, unknown>>
+    // Notion's create payload names the type as the property's single key.
+    const typeOf = (p: Record<string, unknown>) => Object.keys(p)[0]
+    const schema = Object.fromEntries(Object.entries(props).map(([k, v]) => [k, { type: typeOf(v) }]))
+    expect(missingProperties(schema)).toEqual([])
+    expect(presentOptional(schema)).toEqual(Object.keys(OPTIONAL_PROPERTIES))
+    expect(STATUS_OPTIONS.map((o) => o.name)).toEqual(['Draft', ...Object.values(STATUS)])
+    const row = deskExampleRow() as { Status: { select: { name: string } }; Bounty: { number: number } }
+    expect(row.Status.select.name).toBe('Draft') // parked: never spends until moved
+    expect(row.Bounty.number).toBeGreaterThan(0)
+  })
+  it('the tool offers both doors and requires only the token', () => {
+    const tool = (TOOLS as { name: string; description: string; inputSchema: { required: string[]; properties: Record<string, unknown> } }[]).find((t) => t.name === 'connect_notion_desk')!
+    expect(tool.inputSchema.required).toEqual(['token'])
+    expect(Object.keys(tool.inputSchema.properties)).toContain('create_under_page')
+    expect(tool.description).toContain('CREATES')
+  })
+  it('/fleet never tells a reader to duplicate a template it cannot link', () => {
+    const page = readFileSync('app/fleet/page.tsx', 'utf8')
+    expect(page).toContain('NEXT_PUBLIC_NOTION_DESK_TEMPLATE_URL')
+    expect(page).toMatch(/TEMPLATE_URL \? 'fleet\.start\.oneCreate'|!TEMPLATE_URL \? 'fleet\.start\.oneCreate'/)
+    expect(readFileSync('.env.example', 'utf8')).toContain('NEXT_PUBLIC_NOTION_DESK_TEMPLATE_URL=')
+  })
+})

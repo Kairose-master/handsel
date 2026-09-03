@@ -20,14 +20,16 @@ export async function handleNotion(
       const r = await connectNotionDesk({
         userId: auth.userId,
         token: String(args.token ?? ''),
-        database: String(args.database ?? ''),
+        database: typeof args.database === 'string' ? args.database : null,
+        createUnderPage: typeof args.create_under_page === 'string' ? args.create_under_page : null,
         requesterAgentId: typeof args.agent_id === 'string' ? args.agent_id : null,
         maxBountyUsd: args.max_bounty_usd === undefined ? undefined : Number(args.max_bounty_usd),
       })
       if (!r.ok) return toolText(id, `Connect refused (${r.reason}): ${r.message}`, true)
       return toolText(
         id,
-        `🗂 Notion desk connected — ${r.databaseTitle ?? 'database'} · pays from ${r.requesterAgentName}.\n` +
+        `🗂 Notion desk ${r.created ? 'created and connected' : 'connected'} — ${r.databaseTitle ?? 'database'}${r.databaseUrl ? ` · ${r.databaseUrl}` : ''} · pays from ${r.requesterAgentName}.\n` +
+          (r.created ? 'The table has every column in the right type and one example row parked in Draft.\n' : '') +
           (r.missing.length
             ? `⚠ Add these columns before the desk will post: ${r.missing.join(', ')}.\n`
             : 'All five required columns present.\n') +

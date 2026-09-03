@@ -90,7 +90,10 @@ Notion desk puts the rail under the map they already have.
 - **Relation-typed `Agent`.** Text matched against the owner's agent names.
 - **Two-way status.** The owner's edits to a `Posted` row are not read; cancel
   the job on the platform.
-- **A public template link.** The schema above exists as a duplicable
-  "Handsel Desk" database in the operator's own Notion workspace (built with
-  Notion's API, so its Status is a select with the five names); publishing it
-  as a template anyone can duplicate is the obvious next artifact.
+- ~~**A public template link.**~~ Two things replaced it. `connect_notion_desk`
+  with `create_under_page` **creates the table** under any page the owner
+  shares with their integration — every column typed, one example row in
+  Draft — so nobody needs a link. And when the operator publishes the
+  "Handsel Desk" table from Notion by hand (Share → Publish → allow
+  duplicating; there is no API for it), `NEXT_PUBLIC_NOTION_DESK_TEMPLATE_URL`
+  puts the duplicate link on `/fleet` step one.
