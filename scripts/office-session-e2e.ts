@@ -98,6 +98,24 @@ async function main(): Promise<void> {
     console.log(`SECRET=${secret}`)
     return
   }
+  if (phase === 'tool-attach') {
+    const [purpose, label, serverUrl, toolName, eventsArg] = args
+    await ensureUserAndAgent()
+    const r = await os.attachSessionTool(USER_ID, { officeSlot: 1, purpose, label, serverUrl, toolName, events: (eventsArg ?? '').split(',').filter(Boolean) })
+    if (!r.ok) throw new Error(r.error)
+    const { describeBinding } = await import('@/lib/session-tools')
+    console.log(`TOOL=${r.binding.id} ${describeBinding(r.binding)}`)
+    return
+  }
+  if (phase === 'tool-list') {
+    const { describeBinding } = await import('@/lib/session-tools')
+    for (const b of await os.sessionToolBindings(USER_ID, 1)) console.log(`${b.id} ${describeBinding(b)}`)
+    return
+  }
+  if (phase === 'tool-detach') {
+    console.log(await os.detachSessionTool(USER_ID, args[0]) ? 'detached' : 'not found')
+    return
+  }
   if (phase === 'mcp-setup') {
     // A real external MCP server as the worker, in proxy mode (its output is
     // the deliverable; assisted mode would need a model key this run lacks).

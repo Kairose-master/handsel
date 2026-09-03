@@ -202,3 +202,59 @@ describe('the control room speaks the owner\'s language', () => {
     expect(detail).toContain("tr('sess.timeline')")
   })
 })
+
+describe('an office session talking outside itself', () => {
+  it('consult and notify are commands the server performs, and the notify pass covers every early return', () => {
+    const loop = read('lib/office-session-loop.ts')
+    // the wrapper, not the body: a tick that completes a session returns
+    // before the dispatch stage's tail ever runs
+    expect(loop).toContain('return { ...result, commands: [...result.commands, ...notifyCommands(result, obs)] }')
+    expect(loop).toContain('function runTick(')
+    expect(loop).toContain("bindingsFor(obs.tools, s(), 'consult')")
+    const server = read('lib/office-session-server.ts')
+    expect(server).toContain("case 'consult_tool':")
+    expect(server).toContain("case 'notify_tool':")
+    expect(server).toContain('CREATE TABLE IF NOT EXISTS office_session_tool')
+  })
+
+  it('the outbound call carries only what notifyText builds, and the answer is discarded', () => {
+    const server = read('lib/office-session-server.ts')
+    const start = server.indexOf('async function notifyTool(')
+    expect(start).toBeGreaterThan(0)
+    const body = server.slice(start, server.indexOf('\n}\n', start))
+    expect(body).toContain('notifyText({')
+    // nothing from the work itself reaches the wire
+    for (const leak of ['deliverable', 'diff', 'outcome', 'brief']) expect(body, leak).not.toContain(leak)
+    // and the tool's reply only becomes a TOOL_NOTIFIED ok/error, never state
+    expect(body).toContain("'TOOL_NOTIFIED'")
+    expect(body).not.toContain('result.output')
+  })
+
+  it('the consulted answer reaches the worker fenced, through the brief\'s memory slot', () => {
+    const server = read('lib/office-session-server.ts')
+    expect(server).toContain('consultedContext(state, task.id, nonce)')
+    expect(server).toContain('renderConsult({ label: consult.label, host: consult.host }')
+    // one consult per task, recorded even when it failed
+    expect(server).toMatch(/officeEvent\(s\.id, 'TOOL_CONSULTED'/)
+    expect(server).toContain('ok: false')
+  })
+
+  it('the auth header is encrypted at rest and decrypted only for the call', () => {
+    const server = read('lib/office-session-server.ts')
+    expect(server).toContain('encryptSecret(input.authHeader)')
+    expect(server).toContain('decryptSecret(enc)')
+    expect(server).toContain('auth_header_enc text')
+    // never selected into the binding list the page and MCP read
+    const listStart = server.indexOf('export async function sessionToolBindings(')
+    const listBody = server.slice(listStart, server.indexOf('\n}\n', listStart))
+    expect(listBody).not.toContain('auth_header_enc')
+  })
+
+  it('is reachable from MCP and from the page', () => {
+    expect(read('lib/mcp/handlers/office-sessions.ts')).toContain("case 'session_tools':")
+    const page = read('app/(dashboard)/office/sessions/page.tsx')
+    expect(page).toContain('attachOfficeTool(')
+    expect(page).toContain('detachOfficeTool(')
+    expect(page).toContain("t('sess.toolNever')")
+  })
+})

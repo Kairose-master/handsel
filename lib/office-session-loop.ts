@@ -48,9 +48,11 @@ import {
   type SessionRun,
   type SessionState,
   type SessionTask,
+  type SessionEventType,
   type TaskKind,
 } from '@/lib/office-session'
 import { evaluateApproval, fileFlags, moneyGate, type ApprovalContext, type ApprovalDecision, type ApprovalPolicy } from '@/lib/approval-policy'
+import { bindingsFor, notifyTargets, type SessionToolBinding } from '@/lib/session-tools'
 
 /* ── Timing ───────────────────────────────────────────────────────────── */
 
@@ -111,6 +113,8 @@ export type Observation = {
   allowRealMoneyFlag: string | undefined
   /** External events this tick was woken by (event-driven sessions). */
   triggersFired: string[]
+  /** External MCP servers this office talks to (lib/session-tools.ts). */
+  tools: SessionToolBinding[]
 }
 
 export type LoopPolicy = {
@@ -137,6 +141,10 @@ export type Command =
   | { kind: 'notify_owner'; reason: string; taskId: string | null }
   /** Sign a work proof over a settled internal task's artifact (escrow tasks get theirs from the market's own release path). */
   | { kind: 'issue_proof'; taskId: string }
+  /** Ask an external MCP server for context before this task is worked. */
+  | { kind: 'consult_tool'; taskId: string; bindingId: string }
+  /** Tell an external MCP server that something happened. Never changes the session. */
+  | { kind: 'notify_tool'; bindingId: string; eventType: SessionEventType; discriminator: string; taskId: string | null; amountUsd: number | null; reason: string | null }
 
 export type TickResult = {
   events: SessionEvent[]
@@ -199,6 +207,40 @@ export function selectWorker(task: SessionTask, state: SessionState, candidates:
 /* ── The tick ─────────────────────────────────────────────────────────── */
 
 export function tickSession(input: SessionState, obs: Observation, policy: LoopPolicy): TickResult {
+  const result = runTick(input, obs, policy)
+  return { ...result, commands: [...result.commands, ...notifyCommands(result, obs)] }
+}
+
+/**
+ * The notifications this tick earned — appended by the wrapper rather than
+ * inside the body, because the body returns early on a dozen paths and the
+ * most important one is the last: a tick that completes a session returns
+ * before anything after the dispatch stage runs. Written inline once, it
+ * silently never fired for SESSION_COMPLETED, which is exactly the event an
+ * owner binds a pager to.
+ */
+function notifyCommands(result: TickResult, obs: Observation): Command[] {
+  if (obs.tools.length === 0 || result.events.length === 0) return []
+  const out: Command[] = []
+  for (const e of result.events) {
+    for (const b of notifyTargets(obs.tools, result.state.session, e.type)) {
+      const p = e.payload
+      out.push({
+        kind: 'notify_tool',
+        bindingId: b.id,
+        eventType: e.type,
+        discriminator: e.idempotencyKey,
+        taskId: typeof p.taskId === 'string' ? p.taskId : null,
+        amountUsd: typeof p.amountUsd === 'number' ? p.amountUsd : null,
+        reason: typeof p.reason === 'string' ? p.reason : null,
+      })
+    }
+  }
+  if (out.length > 0) result.notes.push(`telling ${out.length} external tool call(s) what happened`)
+  return out
+}
+
+function runTick(input: SessionState, obs: Observation, policy: LoopPolicy): TickResult {
   const heartbeatTimeoutMs = policy.heartbeatTimeoutMs ?? HEARTBEAT_TIMEOUT_MS
   const pickupTimeoutMs = policy.pickupTimeoutMs ?? PICKUP_TIMEOUT_MS
   const runTimeoutMs = policy.runTimeoutMs ?? RUN_TIMEOUT_MS
@@ -452,6 +494,16 @@ export function tickSession(input: SessionState, obs: Observation, policy: LoopP
       }
       continue
     }
+    // Context first: an office that has bound an external server asks it
+    // once per task, before the task is worked. Once, not per attempt —
+    // the record in `toolConsults` is what makes that true even when the
+    // call failed.
+    const consult = bindingsFor(obs.tools, s(), 'consult')[0]
+    if (consult && !(state.toolConsults ?? {})[t.id]) {
+      commands.push({ kind: 'consult_tool', taskId: t.id, bindingId: consult.id })
+      notes.push(`task ${t.id}: consulting ${consult.label} before dispatch`)
+      continue
+    }
     const worker = selectWorker(t, state, obs.candidates, maxLive)
     if (!worker) {
       if (s().status !== 'waiting_on_worker') {
@@ -538,6 +590,7 @@ export function tickSession(input: SessionState, obs: Observation, policy: LoopP
   const current = s().nextWakeAt
   if (current === null || current <= now || wakeAt < current) emit('WAKE_SCHEDULED', { at: wakeAt }, `${Math.floor(wakeAt / 1000)}`)
   notes.push(`next wake ${new Date(wakeAt).toISOString()}`)
+
   return { events, commands, notes, state }
 
   /* ── stage helpers (closures over emit/state) ─────────────────────── */

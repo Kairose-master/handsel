@@ -727,4 +727,14 @@ GitHub Discussions new URL 생성, 금지 문장·증거 없는 주장·잘못�
   **상태/종류 어휘도 키다** — `sess.status.<status>`, `sess.kindOf.<kind>`. 상태를 새로 추가하는 세션은
   두 딕셔너리에 라벨을 넣어야 한다(`tests/office-session-wiring.test.ts`가 막는다; 없으면 화면에 키가 그대로 뜬다).
   `statusReason`은 루프가 만드는 문장이라 번역하지 않는다.
+- **(7차) 오피스 세션이 바깥과 MCP로 대화한다** — `lib/session-tools.ts`(순수) + `office_session_tool` 테이블
+  + `session_tools` MCP 툴 + `/office/sessions`의 카드. 두 방향:
+  `consult`(태스크 전 1회 질의 → `TOOL_CONSULTED` + `report` 아티팩트 → 다음 디스패치 브리프에 **펜스 씌워** 들어감,
+  증거가 아니고 돈을 못 움직인다)와 `notify`(루프 이벤트 발생 시 **`notifyText`가 만든 한 줄만** 전송,
+  산출물·diff·자격증명 금지, 응답은 버린다). 새 이벤트 타입 2개(`TOOL_CONSULTED`, `TOOL_NOTIFIED`)와
+  `SessionState.toolConsults`가 늘었다.
+  **주의**: notify는 `tickSession` **래퍼**(`notifyCommands`)에서 붙인다 — 틱 본문은 12곳에서 early return하고
+  세션을 완료시키는 경로가 그중 마지막이라, 본문 안에 쓰면 `SESSION_COMPLETED`에 절대 안 울린다(테스트가 잡았다).
+  루프에 early return을 추가하는 세션은 이 구조를 유지할 것.  라이브 확인: consult로 learn.microsoft.com에서 25,695B 받아 브리프에 펜스째로 들어갔고(8,801자),
+  notify는 `APPROVAL_REQUESTED`와 `SESSION_COMPLETED` 두 번 다 `ok`로 나갔다.
 

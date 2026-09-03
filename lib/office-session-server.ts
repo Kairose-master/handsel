@@ -64,6 +64,17 @@ import {
 } from '@/lib/office-session-loop'
 import { DEFAULT_APPROVAL_POLICY, parsePolicy, type ApprovalPolicy } from '@/lib/approval-policy'
 import { triggerMatches } from '@/lib/session-triggers'
+import {
+  MAX_BINDINGS_PER_OFFICE,
+  MAX_CONSULT_BYTES,
+  TOOL_CALL_TIMEOUT_MS,
+  consultQuery,
+  notifyText,
+  parseBinding,
+  renderConsult,
+  type BindingInput,
+  type SessionToolBinding,
+} from '@/lib/session-tools'
 import { defaultPlan, planFromSubtasks } from '@/lib/office-session-plan'
 import { SESSION_DELIVERABLE_PATH, redactSecrets, remoteRunBrief, sessionRunBrief, type HarnessEvent } from '@/lib/coding-harness'
 import type { CompleteFn } from '@/lib/delegation'
@@ -137,6 +148,25 @@ async function ensureTables(): Promise<void> {
       // platform dispatched itself (status 'remote'); the poll never hands it
       // out, and its result arrives on /api/runtime/callback.
       await pool.query(`ALTER TABLE office_session_dispatch ADD COLUMN IF NOT EXISTS agent_task_id text`)
+      // What this office talks to outside itself (lib/session-tools.ts). The
+      // auth header, when there is one, is encrypted like every other
+      // outbound credential and never leaves this module in the clear.
+      await pool.query(
+        `CREATE TABLE IF NOT EXISTS office_session_tool (
+           id text PRIMARY KEY,
+           user_id text NOT NULL,
+           slot integer NOT NULL,
+           session_id text,
+           label text NOT NULL,
+           server_url text NOT NULL,
+           tool_name text NOT NULL,
+           purpose text NOT NULL,
+           events jsonb NOT NULL DEFAULT '[]'::jsonb,
+           auth_header_enc text,
+           created_at timestamptz NOT NULL DEFAULT now()
+         )`,
+      )
+      await pool.query(`CREATE INDEX IF NOT EXISTS office_session_tool_owner ON office_session_tool (user_id, slot)`)
       await pool.query(
         `CREATE TABLE IF NOT EXISTS office_session_run_log (
            id bigserial PRIMARY KEY,
@@ -801,6 +831,69 @@ async function escrowObservation(state: SessionState): Promise<Observation['escr
   return out
 }
 
+/** Every binding this account has for the session's office. */
+export async function sessionToolBindings(userId: string, slot: number): Promise<SessionToolBinding[]> {
+  await ensureTables()
+  const { rows } = await pool.query<{
+    id: string
+    slot: number
+    session_id: string | null
+    label: string
+    server_url: string
+    tool_name: string
+    purpose: string
+    events: string[]
+    created_at: Date
+  }>(`SELECT id, slot, session_id, label, server_url, tool_name, purpose, events, created_at FROM office_session_tool WHERE user_id = $1 AND slot = $2 ORDER BY created_at ASC`, [userId, slot])
+  return rows.map((r) => ({
+    id: r.id,
+    officeSlot: r.slot,
+    sessionId: r.session_id,
+    label: r.label,
+    serverUrl: r.server_url,
+    toolName: r.tool_name,
+    purpose: r.purpose === 'notify' ? 'notify' : 'consult',
+    events: Array.isArray(r.events) ? (r.events as SessionEventType[]) : [],
+    createdAt: r.created_at.getTime(),
+  }))
+}
+
+export async function attachSessionTool(userId: string, input: BindingInput & { authHeader?: string | null }): Promise<{ ok: true; binding: SessionToolBinding } | { ok: false; error: string }> {
+  await ensureTables()
+  const parsed = parseBinding(input, Date.now(), newId('tool'))
+  if (!parsed.ok) return parsed
+  const b = parsed.binding
+  const { rows } = await pool.query<{ n: string }>(`SELECT COUNT(*)::text AS n FROM office_session_tool WHERE user_id = $1 AND slot = $2`, [userId, b.officeSlot])
+  if (Number(rows[0]?.n ?? 0) >= MAX_BINDINGS_PER_OFFICE) return { ok: false, error: `an office may talk to at most ${MAX_BINDINGS_PER_OFFICE} external tools` }
+  const authEnc = input.authHeader ? (await import('@/lib/crypto')).encryptSecret(input.authHeader) : null
+  await pool.query(
+    `INSERT INTO office_session_tool (id, user_id, slot, session_id, label, server_url, tool_name, purpose, events, auth_header_enc)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10)`,
+    [b.id, userId, b.officeSlot, b.sessionId, b.label, b.serverUrl, b.toolName, b.purpose, JSON.stringify(b.events), authEnc],
+  )
+  return { ok: true, binding: b }
+}
+
+export async function detachSessionTool(userId: string, id: string): Promise<boolean> {
+  await ensureTables()
+  const r = await pool.query(`DELETE FROM office_session_tool WHERE id = $1 AND user_id = $2`, [id, userId])
+  return (r.rowCount ?? 0) > 0
+}
+
+/** The call itself. Never throws: a server that is down is a note, not a failed session. */
+async function callBoundTool(binding: SessionToolBinding, text: string): Promise<{ ok: true; output: string } | { ok: false; error: string }> {
+  try {
+    const { rows } = await pool.query<{ auth_header_enc: string | null }>(`SELECT auth_header_enc FROM office_session_tool WHERE id = $1`, [binding.id])
+    const enc = rows[0]?.auth_header_enc ?? null
+    const authHeader = enc ? (await import('@/lib/crypto')).decryptSecret(enc) : null
+    const { callMcpTool } = await import('@/lib/mcp-client')
+    const output = await callMcpTool({ serverUrl: binding.serverUrl, toolName: binding.toolName, task: text, authHeader, timeoutMs: TOOL_CALL_TIMEOUT_MS })
+    return output.trim() ? { ok: true, output } : { ok: false, error: 'the tool answered with nothing' }
+  } catch (e) {
+    return { ok: false, error: redactSecrets(e instanceof Error ? e.message : String(e)).slice(0, 300) }
+  }
+}
+
 async function observe(state: SessionState, triggers: string[]): Promise<Observation> {
   const { isRealMoney } = await import('@/lib/onchain/real-money')
   return {
@@ -811,6 +904,10 @@ async function observe(state: SessionState, triggers: string[]): Promise<Observa
     realMoney: isRealMoney(),
     allowRealMoneyFlag: process.env.OFFICE_SESSION_ALLOW_REAL_MONEY,
     triggersFired: triggers,
+    tools: await sessionToolBindings(state.session.userId, state.session.officeSlot).catch((e) => {
+      console.error('[office-session] reading tool bindings failed:', e)
+      return []
+    }),
   }
 }
 
@@ -973,7 +1070,91 @@ async function performCommand(state: SessionState, command: Command): Promise<Se
       ])
     case 'issue_proof':
       return issueTaskProof(state, command.taskId)
+    case 'consult_tool':
+      return consultTool(state, command.taskId, command.bindingId)
+    case 'notify_tool':
+      return notifyTool(state, command)
   }
+}
+
+/**
+ * Ask an external MCP server for context before a task is worked, and
+ * record what came back — as an artifact (hashed, like every other) and as
+ * a `TOOL_CONSULTED` event. `dispatchRun` folds the artifact into the
+ * brief, fenced, on the next tick.
+ *
+ * A failure is recorded too, with `ok: false`, because the record is what
+ * stops the office asking the same dead server once per tick forever.
+ */
+async function consultTool(state: SessionState, taskId: string, bindingId: string): Promise<SessionState> {
+  const s = state.session
+  const task = state.tasks[taskId]
+  if (!task) return state
+  const binding = (await sessionToolBindings(s.userId, s.officeSlot)).find((b) => b.id === bindingId)
+  if (!binding) return state
+  const query = consultQuery(s.goal, task)
+  const result = await callBoundTool(binding, query)
+  const events: NewEvent[] = []
+  if (result.ok) {
+    const { createHash } = await import('node:crypto')
+    const text = result.output.slice(0, MAX_CONSULT_BYTES)
+    const sha = createHash('sha256').update(text).digest('hex')
+    events.push(
+      officeEvent(
+        s.id,
+        'ARTIFACT_CREATED',
+        {
+          artifactId: `art-consult-${taskId}`,
+          taskId,
+          runId: null,
+          kind: 'report',
+          name: `consult-${binding.label.replace(/[^A-Za-z0-9._-]+/g, '-').slice(0, 40)}.txt`,
+          sha256: sha,
+          bytes: Buffer.byteLength(text, 'utf8'),
+          inline: text,
+          ref: null,
+        },
+        `${taskId}:consult`,
+      ),
+    )
+    events.push(
+      officeEvent(s.id, 'TOOL_CONSULTED', { taskId, bindingId, label: binding.label, host: hostOf(binding.serverUrl), ok: true, sha256: sha, bytes: Buffer.byteLength(text, 'utf8'), query }, `${taskId}:consult`),
+    )
+  } else {
+    events.push(
+      officeEvent(s.id, 'TOOL_CONSULTED', { taskId, bindingId, label: binding.label, host: hostOf(binding.serverUrl), ok: false, sha256: null, bytes: 0, error: result.error, query }, `${taskId}:consult`),
+    )
+  }
+  return appendEvents(s.id, events)
+}
+
+/**
+ * Tell an external MCP server that something happened. One line of text,
+ * built by `notifyText` and nothing else, and the answer is discarded: an
+ * outbound notification is not a channel back into the session.
+ */
+async function notifyTool(state: SessionState, c: Extract<Command, { kind: 'notify_tool' }>): Promise<SessionState> {
+  const s = state.session
+  const binding = (await sessionToolBindings(s.userId, s.officeSlot)).find((b) => b.id === c.bindingId)
+  if (!binding) return state
+  const { absoluteUrl } = await import('@/lib/origin')
+  const text = notifyText({
+    session: s,
+    eventType: c.eventType,
+    task: c.taskId ? (state.tasks[c.taskId] ?? null) : null,
+    amountUsd: c.amountUsd,
+    reason: c.reason,
+    origin: absoluteUrl(''),
+  })
+  const result = await callBoundTool(binding, text)
+  return appendEvents(s.id, [
+    officeEvent(
+      s.id,
+      'TOOL_NOTIFIED',
+      { bindingId: binding.id, label: binding.label, eventType: c.eventType, ok: result.ok, ...(result.ok ? {} : { error: result.error }) },
+      `${c.bindingId}:${c.discriminator}`,
+    ),
+  ])
 }
 
 /**
@@ -1068,7 +1249,8 @@ async function dispatchRun(state: SessionState, c: Extract<Command, { kind: 'dis
   }
   const verifyCommand = task.verify.command ?? grantRow?.verifyCommand ?? s.verifyCommand
   const { untrustedNonce } = await import('@/lib/untrusted-input')
-  const memoryText = await sessionMemoryBrief(s.userId, s.officeSlot)
+  const nonce = untrustedNonce()
+  const memoryText = [await sessionMemoryBrief(s.userId, s.officeSlot), consultedContext(state, task.id, nonce)].filter(Boolean).join('\n\n')
   const checkpoint: Checkpoint | null = c.resumeFrom ?? latestCheckpoint(state, task.id)
   const feedback = retryFeedback(state, task)
   const brief = sessionRunBrief({
@@ -1080,7 +1262,7 @@ async function dispatchRun(state: SessionState, c: Extract<Command, { kind: 'dis
     checkpoint,
     memory: memoryText,
     verifyCommand: grant.shell ? verifyCommand : null,
-    nonce: untrustedNonce(),
+    nonce,
   })
   await pool.query(
     `INSERT INTO office_session_dispatch (run_id, session_id, task_id, agent_id, status, brief, workspace_grant, verify_command, resume, timeout_ms, harness_id)
@@ -1116,6 +1298,7 @@ async function dispatchRemoteRun(state: SessionState, c: Extract<Command, { kind
   const task = state.tasks[c.taskId]
   if (!task) return state
   const { untrustedNonce } = await import('@/lib/untrusted-input')
+  const nonce = untrustedNonce()
   const feedback = retryFeedback(state, task)
   // A tool-backed worker gets one query line: its tool is a search box, and
   // the market's own briefs hand it a phrase the same way (lib/mcp-client.ts).
@@ -1126,8 +1309,11 @@ async function dispatchRemoteRun(state: SessionState, c: Extract<Command, { kind
     taskTitle: task.title,
     taskBrief: feedback ? `${task.brief}\n\n${feedback}` : task.brief,
     acceptanceCriteria: task.acceptanceCriteria,
-    memory: await sessionMemoryBrief(s.userId, s.officeSlot),
-    nonce: untrustedNonce(),
+    // Whatever this office knows, plus whatever it consulted for this task:
+    // a remote worker is as entitled to the context as a local one, and the
+    // fence travels with the text either way.
+    memory: [await sessionMemoryBrief(s.userId, s.officeSlot), consultedContext(state, task.id, nonce)].filter(Boolean).join('\n\n'),
+    nonce,
     previousAttempt: task.attempts > 1 ? (task.outcome?.deliverable?.slice(0, 4000) ?? null) : null,
     mcpQuery,
   })
@@ -1220,6 +1406,27 @@ export async function tickSessionForAgentTask(agentTaskId: string): Promise<bool
 function taskGrantLayer(task: SessionTask): Partial<WorkspaceGrant> | null {
   if (task.kind === 'review' || task.kind === 'verify') return { write: false, gitPush: false, install: false }
   return null
+}
+
+/**
+ * The external context this task was given, ready for the brief: fenced,
+ * attributed, and carrying the sentence that says a stranger's server does
+ * not get to instruct the worker (lib/session-tools.ts `renderConsult`).
+ */
+function consultedContext(state: SessionState, taskId: string, nonce: string): string {
+  const consult = (state.toolConsults ?? {})[taskId]
+  if (!consult || !consult.ok) return ''
+  const artifact = Object.values(state.artifacts ?? {}).find((a) => a.taskId === taskId && a.kind === 'report' && a.name.startsWith('consult-'))
+  if (!artifact?.inline) return ''
+  return renderConsult({ label: consult.label, host: consult.host }, artifact.inline, nonce)
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host
+  } catch {
+    return 'an external server'
+  }
 }
 
 /** The grader's or reviewer's words for a retried attempt, fenced for the brief. */

@@ -15,6 +15,7 @@ import type { ApprovalPolicy } from '@/lib/approval-policy'
 import type { OfficeSession, SessionEvent, SessionKind, SessionSchedule, SessionState, WorkspaceGrant } from '@/lib/office-session'
 import type { RunLogLine, SessionListRow, WorkerGrantRow } from '@/lib/office-session-server'
 import type { SessionLesson } from '@/lib/office-session-loop'
+import type { BindingInput, SessionToolBinding } from '@/lib/session-tools'
 
 async function requireUser() {
   const session = await getSession()
@@ -29,6 +30,7 @@ export type SessionOverview = {
   policy: ApprovalPolicy
   policyText: string
   memory: SessionLesson[]
+  tools: SessionToolBinding[]
   spentTodayUsd: number
   autoApprovedTodayUsd: number
   realMoney: boolean
@@ -48,12 +50,13 @@ export async function officeSessionOverview(slot = 1): Promise<SessionOverview> 
   const { isRealMoney } = await import('@/lib/onchain/real-money')
   const { CHAIN } = await import('@/lib/onchain/config')
 
-  const [sessions, inboxRaw, grants, policy, memory] = await Promise.all([
+  const [sessions, inboxRaw, grants, policy, memory, tools] = await Promise.all([
     os.listOfficeSessions(user.id, slot),
     os.approvalInbox(user.id),
     os.workerGrantsFor(user.id, slot),
     os.getOfficePolicy(user.id, slot),
     os.getSessionMemory(user.id, slot),
+    os.sessionToolBindings(user.id, slot).catch(() => [] as SessionToolBinding[]),
   ])
   const agents = await db
     .select({ id: agent.id, name: agent.name, runtimeType: agent.runtimeType, lastPollAt: agent.lastPollAt, webhookSecretEnc: agent.webhookSecretEnc, autoMine: agent.autoMine })
@@ -82,6 +85,7 @@ export async function officeSessionOverview(slot = 1): Promise<SessionOverview> 
     .then((r) => ({ total: Number(r.rows[0]?.total ?? 0) || 0, auto: Number(r.rows[0]?.auto ?? 0) || 0 }))
     .catch(() => ({ total: 0, auto: 0 }))
   return {
+    tools,
     sessions,
     inbox: inboxRaw
       .filter((i) => i.session.officeSlot === slot)
@@ -175,6 +179,23 @@ export async function startOfficeSession(input: StartSessionInput): Promise<{ ok
   await os.tickOfficeSession(session.id).catch((e) => console.error('[office-session] first tick failed:', e))
   await os.tickOfficeSession(session.id).catch((e) => console.error('[office-session] second tick failed:', e))
   return { ok: true, session }
+}
+
+/**
+ * Bind an external MCP server to this office — a `consult` tool asked before
+ * each task, or a `notify` tool told when a chosen event happens. The
+ * validation lives in `lib/session-tools.ts`; this is the owner check.
+ */
+export async function attachOfficeTool(input: BindingInput & { authHeader?: string | null }): Promise<{ ok: true; binding: SessionToolBinding } | { ok: false; error: string }> {
+  const user = await requireUser()
+  const os = await import('@/lib/office-session-server')
+  return os.attachSessionTool(user.id, input)
+}
+
+export async function detachOfficeTool(id: string): Promise<{ ok: boolean }> {
+  const user = await requireUser()
+  const os = await import('@/lib/office-session-server')
+  return { ok: await os.detachSessionTool(user.id, id) }
 }
 
 export async function decideSessionApproval(sessionId: string, approvalId: string, granted: boolean, reason?: string): Promise<{ ok: true } | { ok: false; error: string }> {

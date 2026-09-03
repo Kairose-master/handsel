@@ -66,6 +66,7 @@ const obs = (now: number, over: Partial<Observation> = {}): Observation => ({
   realMoney: false,
   allowRealMoneyFlag: undefined,
   triggersFired: [],
+  tools: [],
   ...over,
 })
 
@@ -742,5 +743,71 @@ describe('workerHistoryFrom — real numbers for selectWorker', () => {
     const s = planned(create({ workerAgentId: null }))
     const picked = selectWorker(Object.values(s.tasks)[0], s, cands, 1)
     expect(picked?.agentId).toBe('good')
+  })
+})
+
+describe('talking to servers outside the session', () => {
+  const consultTool = {
+    id: 'tool-c',
+    officeSlot: 1,
+    sessionId: null,
+    label: 'Docs',
+    serverUrl: 'https://docs.example/mcp',
+    toolName: 'search',
+    purpose: 'consult' as const,
+    events: [],
+    createdAt: T0,
+  }
+  const notifyTool = { ...consultTool, id: 'tool-n', label: 'Pager', purpose: 'notify' as const, events: ['APPROVAL_REQUESTED' as const, 'SESSION_COMPLETED' as const] }
+
+  it('consults once before the first dispatch, then dispatches with it — and never asks twice', () => {
+    const s0 = planned(create())
+    // tick 1: the consult comes first; nothing is dispatched yet
+    let r = tick(s0, obs(T0, { tools: [consultTool] }))
+    expect(kinds(r.commands)).toEqual(['consult_tool'])
+    expect(r.commands[0]).toMatchObject({ taskId: 't1', bindingId: 'tool-c' })
+    expect(r.events.map((e) => e.type)).not.toContain('TASK_DISPATCHED')
+
+    // the server records what came back, and now the task dispatches
+    const consulted = ev(r.state, 'TOOL_CONSULTED', { taskId: 't1', bindingId: 'tool-c', label: 'Docs', host: 'docs.example', ok: true, sha256: 'abc', bytes: 120 }, T0 + 500, 'system')
+    expect(consulted.toolConsults.t1).toMatchObject({ ok: true, host: 'docs.example' })
+    r = tick(consulted, obs(T0 + 1000, { tools: [consultTool] }))
+    expect(kinds(r.commands)).toContain('dispatch_run')
+    expect(kinds(r.commands)).not.toContain('consult_tool')
+
+    // a consult that FAILED is still a consult: the office does not ask a dead server every tick
+    const failed = ev(planned(create()), 'TOOL_CONSULTED', { taskId: 't1', bindingId: 'tool-c', label: 'Docs', host: 'docs.example', ok: false, error: 'timeout', bytes: 0 }, T0, 'system')
+    expect(kinds(tick(failed, obs(T0 + 1000, { tools: [consultTool] })).commands)).toEqual(['dispatch_run'])
+  })
+
+  it('with no binding nothing changes', () => {
+    expect(kinds(tick(planned(create()), obs(T0)).commands)).toEqual(['dispatch_run'])
+  })
+
+  it('notifies only on the events it subscribed to, once per event, and never on its own notification', () => {
+    let s = planned(create())
+    let r = tick(s, obs(T0, { tools: [notifyTool] }))
+    // TASK_READY / TASK_DISPATCHED / WAKE_SCHEDULED are not subscribed
+    expect(kinds(r.commands)).not.toContain('notify_tool')
+    s = r.state
+    const runId = (r.commands.find((c) => c.kind === 'dispatch_run') as { runId: string }).runId
+    s = ev(s, 'RUN_STARTED', { runId }, T0 + 1000)
+    s = ev(s, 'RUN_FINISHED', { runId, exitCode: 0, changedFiles: ['a.ts'] }, T0 + 2000)
+    s = ev(s, 'TASK_SUBMITTED', { taskId: 't1', diff: 'd', changedFiles: ['a.ts'], contentHash: 'h' }, T0 + 2000)
+    s = ev(s, 'TEST_REPORTED', { taskId: 't1', report: { command: 'npm test', exitCode: 0, passed: true, tail: '', durationMs: 10 } }, T0 + 2000)
+    r = tick(s, obs(T0 + 3000, { tools: [notifyTool] }))
+    s = ev(r.state, 'REVIEW_RECEIVED', { taskId: 't1', verdict: { reviewer: 'model', reviewerId: 'g', approve: true, note: 'ok', at: T0 + 4000 } }, T0 + 4000, 'reviewer')
+    r = tick(s, obs(T0 + 5000, { tools: [notifyTool] }))
+
+    const notifies = r.commands.filter((c) => c.kind === 'notify_tool') as Array<{ eventType: string; discriminator: string; amountUsd: number | null }>
+    const types = r.events.map((e) => e.type)
+    expect(types).toEqual(expect.arrayContaining(['APPROVAL_REQUESTED', 'SESSION_COMPLETED']))
+    expect(notifies.map((n) => n.eventType).sort()).toEqual(['APPROVAL_REQUESTED', 'SESSION_COMPLETED'])
+    // the discriminator is the event's own key, so re-running the command cannot double-notify
+    for (const n of notifies) expect(n.discriminator.length).toBeGreaterThan(0)
+    expect(new Set(notifies.map((n) => n.discriminator)).size).toBe(notifies.length)
+    // TASK_SETTLED was emitted but not subscribed to
+    expect(types).toContain('TASK_SETTLED')
+    expect(notifies.map((n) => n.eventType)).not.toContain('TASK_SETTLED')
   })
 })

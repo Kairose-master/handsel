@@ -16,8 +16,10 @@ import { Loader2, RefreshCw, Play, Pause, XCircle, Check, X, Plug, ShieldCheck, 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
+  attachOfficeTool,
   cancelSession,
   connectWorkspaceWorker,
+  detachOfficeTool,
   decideSessionApproval,
   myLocalAgents,
   officeSessionOverview,
@@ -28,6 +30,7 @@ import {
   type SessionOverview,
 } from '@/app/actions/office-session'
 import { useI18n } from '@/lib/i18n'
+import { NOTIFIABLE_EVENTS, describeBinding } from '@/lib/session-tools'
 import { STATUS_META, type SessionKind, type SessionStatus } from '@/lib/office-session'
 
 const TONE: Record<SessionStatus, string> = {
@@ -103,7 +106,8 @@ export default function OfficeSessionsPage() {
           <Sessions view={view} reload={load} />
           <div className="grid gap-4 md:grid-cols-2">
             <Workers view={view} reload={load} />
-            <Budget view={view} />
+            <Tools view={view} reload={load} />
+          <Budget view={view} />
           </div>
           <NewSession view={view} reload={load} />
           <div className="grid gap-4 md:grid-cols-2">
@@ -550,6 +554,114 @@ function Memory({ view }: { view: SessionOverview }) {
               </li>
             ))}
         </ul>
+      </CardContent>
+    </Card>
+  )
+}
+
+function Tools({ view, reload }: { view: SessionOverview; reload: () => Promise<void> }) {
+  const { t } = useI18n()
+  const [label, setLabel] = useState('')
+  const [serverUrl, setServerUrl] = useState('')
+  const [toolName, setToolName] = useState('')
+  const [purpose, setPurpose] = useState<'consult' | 'notify'>('notify')
+  const [authHeader, setAuthHeader] = useState('')
+  const [events, setEvents] = useState<string[]>(['APPROVAL_REQUESTED', 'SESSION_COMPLETED'])
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+  const attach = async () => {
+    setBusy(true)
+    setMsg(null)
+    try {
+      const r = await attachOfficeTool({ officeSlot: view.slot, label, serverUrl, toolName, purpose, events, authHeader: authHeader || null })
+      setMsg(r.ok ? null : r.error)
+      if (r.ok) {
+        setLabel('')
+        setServerUrl('')
+        setToolName('')
+        setAuthHeader('')
+      }
+      await reload()
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Plug className="h-4 w-4" /> {t('sess.tools')}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2 text-sm">
+        {view.tools.length === 0 && <p className="text-muted-foreground">{t('sess.toolsEmpty')}</p>}
+        {view.tools.map((b) => (
+          <div key={b.id} className="flex flex-wrap items-center justify-between gap-2 rounded border border-border p-2 text-xs">
+            <span className="min-w-0">{describeBinding(b)}</span>
+            <Button
+              size="sm"
+              type="button"
+              variant="outline"
+              onClick={async () => {
+                await detachOfficeTool(b.id)
+                await reload()
+              }}
+            >
+              {t('sess.toolDetach')}
+            </Button>
+          </div>
+        ))}
+        <details className="rounded border border-dashed border-border p-2">
+          <summary className="cursor-pointer text-xs">{t('sess.toolsAttach')}</summary>
+          <div className="mt-2 space-y-2 text-xs">
+            <label className="block">
+              {t('sess.toolPurpose')}
+              <select className="mt-1 w-full rounded border border-border bg-background p-1" value={purpose} onChange={(e) => setPurpose(e.target.value as 'consult' | 'notify')}>
+                <option value="notify">{t('sess.toolNotify')}</option>
+                <option value="consult">{t('sess.toolConsult')}</option>
+              </select>
+            </label>
+            <label className="block">
+              {t('sess.toolLabel')}
+              <input className="mt-1 w-full rounded border border-border bg-background p-1" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Pager" />
+            </label>
+            <label className="block">
+              {t('sess.toolServer')}
+              <input className="mt-1 w-full rounded border border-border bg-background p-1 font-mono" value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} placeholder="https://mcp.example.com/mcp" />
+            </label>
+            <label className="block">
+              {t('sess.toolName')}
+              <input className="mt-1 w-full rounded border border-border bg-background p-1 font-mono" value={toolName} onChange={(e) => setToolName(e.target.value)} placeholder="send_message" />
+            </label>
+            <label className="block">
+              {t('sess.toolAuth')}
+              <input className="mt-1 w-full rounded border border-border bg-background p-1 font-mono" type="password" value={authHeader} onChange={(e) => setAuthHeader(e.target.value)} placeholder="Bearer …" />
+            </label>
+            {purpose === 'notify' && (
+              <div>
+                {t('sess.toolEvents')}
+                <div className="mt-1 grid grid-cols-2 gap-1">
+                  {NOTIFIABLE_EVENTS.map((e) => (
+                    <label key={e}>
+                      <input
+                        type="checkbox"
+                        checked={events.includes(e)}
+                        onChange={(ev) => setEvents((prev) => (ev.target.checked ? [...prev, e] : prev.filter((x) => x !== e)))}
+                      />{' '}
+                      {t(`sess.status.${e === 'APPROVAL_REQUESTED' ? 'waiting_on_approval' : e === 'SESSION_COMPLETED' ? 'completed' : e === 'SESSION_FAILED' ? 'failed' : e === 'SESSION_EXPIRED' ? 'expired' : 'running'}`)}{' '}
+                      <code className="text-[10px] text-muted-foreground">{e}</code>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+            <p className="text-muted-foreground">{t('sess.toolNever')}</p>
+            <Button size="sm" type="button" disabled={busy || !label || !serverUrl || !toolName} onClick={attach}>
+              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plug className="h-3.5 w-3.5" />} {t('sess.toolAttach')}
+            </Button>
+            {msg && <p className="text-destructive">{msg}</p>}
+          </div>
+        </details>
       </CardContent>
     </Card>
   )

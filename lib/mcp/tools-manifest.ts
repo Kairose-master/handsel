@@ -1136,4 +1136,29 @@ export const TOOLS = [
       additionalProperties: false,
     },
   },
+  {
+    name: 'session_tools',
+    description:
+      'Let an office session talk to servers outside itself over MCP, in either direction. A `consult` tool is called ' +
+      'once before each task and its answer joins the worker\'s brief as FENCED reference material — never as evidence ' +
+      'that anything passed, and it can never move money. A `notify` tool is called with one line of text when a chosen ' +
+      'event happens (an approval is waiting, the session finished, it escalated); the office never sends a deliverable, ' +
+      'a diff or a credential. list shows what an office already talks to; detach removes one.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['list', 'attach', 'detach'], description: 'Default list' },
+        office: { type: 'number', description: 'Office slot (1-3, default 1)' },
+        purpose: { type: 'string', enum: ['consult', 'notify'], description: 'attach: which direction' },
+        label: { type: 'string', description: 'attach: a name you will recognise later' },
+        server_url: { type: 'string', description: 'attach: the MCP server (https, Streamable HTTP)' },
+        tool_name: { type: 'string', description: 'attach: the tool id on that server' },
+        auth_header: { type: 'string', description: 'attach: optional Authorization header value, stored encrypted' },
+        events: { type: 'array', items: { type: 'string' }, description: 'attach + notify: which session events to tell it about' },
+        session_id: { type: 'string', description: 'attach: bind to one session instead of the whole office' },
+        tool_id: { type: 'string', description: 'detach: the binding id from list' },
+      },
+      additionalProperties: false,
+    },
+  },
 ]

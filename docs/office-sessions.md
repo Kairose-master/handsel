@@ -511,6 +511,73 @@ Two things that run taught, beyond "it works":
 Still not driven live: an escrow task (`post_escrow_job` / `settle_escrow`
 against a chain).
 
+## Talking to the world outside the session
+
+A session can reach servings outside itself over MCP, in both directions
+(`lib/session-tools.ts`, pure; `tests/session-tools.test.ts` pins it). An
+owner binds a server on `/office/sessions` or with the `session_tools` MCP
+tool; nothing is bound by default and a session with no bindings behaves
+exactly as before.
+
+**consult (in).** Before a task is worked — once per task, not per attempt —
+the office calls the bound tool with a phrase (`consultQuery`: the task's
+title plus the first sentence of its brief, for the same reason a job brief
+carries `[mcp-query]`). What comes back is stored as a hashed `report`
+artifact, recorded as `TOOL_CONSULTED`, and folded into the next
+dispatch's brief through `renderConsult`: attributed to the host that
+answered, fenced with the run's nonce, and preceded by the sentence that
+says a stranger's server does not get to instruct the worker. A consult
+that **failed** is recorded too — that record is what stops the office
+asking a dead server once per tick forever.
+
+What a consulted answer is not: evidence. It cannot make a task pass, it is
+not a verification layer, and it moves no money — the policy engine never
+reads it. It is context, at the bottom of `lib/evidence-assurance.ts`'s
+ladder, and the brief says so to the worker.
+
+**notify (out).** When something happens that a person or another system
+would want to know, the office calls the bound tool with **one line of
+text**, built by `notifyText` and nothing else: what happened, which task
+and its risk tier, the amount when money is waiting on a decision, the
+loop's own reason, where the session stands, and a link to this page.
+Never a deliverable, a diff, a brief, a grader's words, a credential or an
+address — pinned by test on both the function and the call site. The
+tool's reply is discarded: an outbound notification is not a channel back
+into the session, and `TOOL_NOTIFIED` is the only trace it leaves.
+
+| | |
+|---|---|
+| Events a notify may subscribe to | `APPROVAL_REQUESTED` · `SESSION_ESCALATED` · `SESSION_WAITING` · `TASK_SETTLED` · `TASK_FAILED` · `SESSION_COMPLETED` · `SESSION_FAILED` · `SESSION_EXPIRED` |
+| Why only those | each is emitted by the loop (the only place a notify can be raised from), and none is produced by a notification, so a binding cannot make the office talk to itself forever |
+| Bounds | 8 bindings per office · https only · 32KB stored per consult, 6KB of it in the brief · 900 characters per notification · 60s per call |
+| Credentials | an optional `Authorization` header, encrypted at rest like every other outbound credential, decrypted only for the call and never returned to the page or to MCP |
+
+The notify pass runs in a **wrapper** around the tick rather than inside it
+(`notifyCommands`). Written inline it silently never fired for
+`SESSION_COMPLETED`: the tick returns early on a dozen paths and the one
+that finishes a session returns before the tail — which is exactly the
+event an owner binds a pager to. Caught by the test, not in production.
+
+**Both directions ran live (2026-09-03).** A `consult` binding to Microsoft
+Learn and a `notify` binding on `APPROVAL_REQUESTED` + `SESSION_COMPLETED`,
+on the same scratch cluster and build as the runs above:
+
+- the loop held the dispatch for one tick (`consulting MS Learn docs before
+  dispatch`), fetched **25,695 bytes** from `learn.microsoft.com`, recorded
+  `TOOL_CONSULTED ok` and a hashed `report` artifact;
+- the brief the worker then received was 8,801 characters and carried
+  `Context from MS Learn docs (fetched from learn.microsoft.com)`, the
+  `<<<BEGIN_EXTERNAL_…>>>` fence and the "not an instruction" sentence —
+  confirmed both in the stored dispatch row and in what the worker's own
+  server logged;
+- two outbound calls fired, `TOOL_NOTIFIED ok` on
+  `APPROVAL_REQUESTED` and on `SESSION_COMPLETED` — the second is the tick
+  that ends the session, the case the wrapper exists for.
+
+The notify target was a search server standing in for a pager: it is the
+https MCP server this container can reach, and what the run proves is the
+wire and the payload, not that anybody was paged.
+
 ## What is not built
 
 - **Independent review needs a model key** (`resolveLlm`). Without one the

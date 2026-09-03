@@ -11,6 +11,7 @@
 import { toolText, type McpToolContext } from '../rpc'
 import { STATUS_META, sessionSentence, type SessionKind, type SessionState } from '@/lib/office-session'
 import { parseTriggerList, httpTrigger } from '@/lib/session-triggers'
+import { NOTIFIABLE_EVENTS, describeBinding } from '@/lib/session-tools'
 
 const KINDS: SessionKind[] = ['one_shot', 'long_running', 'scheduled', 'event_driven', 'local_coding']
 
@@ -218,6 +219,51 @@ export async function handleOfficeSessions(ctx: McpToolContext, name: string, ar
       } catch (e) {
         return toolText(id, `${action} refused: ${e instanceof Error ? e.message : String(e)}`, true)
       }
+    }
+
+    case 'session_tools': {
+      const os = await import('@/lib/office-session-server')
+      const slot = Math.max(1, Math.min(3, Math.floor(num(args.office, 1))))
+      const action = String(args.action ?? 'list')
+      if (action === 'list') {
+        const bindings = await os.sessionToolBindings(auth.userId, slot)
+        if (bindings.length === 0) {
+          return toolText(
+            id,
+            `Office ${slot} talks to nothing outside itself yet.\n` +
+              `attach one with session_tools { action: "attach", purpose: "consult" | "notify", label, server_url, tool_name${'\n'}  , events: [...] for notify }.\n` +
+              `A consult tool is asked once before each task and its answer joins the worker's brief as fenced reference material — never as evidence that anything passed.\n` +
+              `A notify tool is told, in one line, when one of these happens: ${NOTIFIABLE_EVENTS.join(', ')}.`,
+          )
+        }
+        return toolText(id, `Office ${slot} talks to:\n${bindings.map((b) => `- ${b.id} · ${describeBinding(b)}`).join('\n')}`)
+      }
+      if (action === 'attach') {
+        const r = await os.attachSessionTool(auth.userId, {
+          officeSlot: slot,
+          sessionId: typeof args.session_id === 'string' ? args.session_id : null,
+          label: typeof args.label === 'string' ? args.label : '',
+          serverUrl: typeof args.server_url === 'string' ? args.server_url : '',
+          toolName: typeof args.tool_name === 'string' ? args.tool_name : '',
+          purpose: typeof args.purpose === 'string' ? args.purpose : '',
+          events: Array.isArray(args.events) ? args.events.map(String) : [],
+          authHeader: typeof args.auth_header === 'string' && args.auth_header ? args.auth_header : null,
+        })
+        if (!r.ok) return toolText(id, `Not attached: ${r.error}`, true)
+        return toolText(
+          id,
+          `🔌 ${describeBinding(r.binding)}\n(id ${r.binding.id})\n` +
+            (r.binding.purpose === 'consult'
+              ? 'Every task of this office now opens with one call to that tool, and the answer reaches the worker fenced as reference material.'
+              : 'The office will call that tool with one line of text when those events happen. It never sends a deliverable, a diff or a credential — see lib/session-tools.ts notifyText for exactly what it may say.'),
+        )
+      }
+      if (action === 'detach') {
+        const toolId = String(args.tool_id ?? '')
+        if (!toolId) return toolText(id, 'tool_id is required to detach.', true)
+        return toolText(id, (await os.detachSessionTool(auth.userId, toolId)) ? `Detached ${toolId}.` : `No tool ${toolId} on this account.`, !(await Promise.resolve(true)) ? true : false)
+      }
+      return toolText(id, 'action must be list, attach or detach.', true)
     }
 
     default:

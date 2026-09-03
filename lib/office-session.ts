@@ -666,6 +666,26 @@ export type ApprovalRecord = {
   moved: { txHash: string | null; amountUsd: number; at: number } | null
 }
 
+/**
+ * One consult of an external MCP server, recorded whether it answered or
+ * not: a task must not ask the same server twice because the first call
+ * timed out, and "we asked and got nothing" is part of why a run went the
+ * way it did.
+ */
+export type ToolConsult = {
+  taskId: string
+  bindingId: string
+  label: string
+  /** The host that answered — the brief names it, so the worker knows whose words these are. */
+  host: string
+  ok: boolean
+  /** sha256 of what came back; null when nothing did. */
+  sha256: string | null
+  bytes: number
+  error: string | null
+  at: number
+}
+
 export const ARTIFACT_KINDS = ['diff', 'file', 'report', 'log', 'proof', 'test_report', 'deliverable'] as const
 export type ArtifactKind = (typeof ARTIFACT_KINDS)[number]
 
@@ -734,6 +754,8 @@ export const SESSION_EVENT_TYPES = [
   'SESSION_CANCELLED',
   'SESSION_EXPIRED',
   'MEMORY_RECORDED',
+  'TOOL_CONSULTED',
+  'TOOL_NOTIFIED',
 ] as const
 export type SessionEventType = (typeof SESSION_EVENT_TYPES)[number]
 
@@ -768,6 +790,8 @@ export type SessionState = {
   checkpoints: Record<string, Checkpoint>
   approvals: Record<string, ApprovalRecord>
   artifacts: Record<string, SessionArtifact>
+  /** What an external MCP tool was asked before a task ran, by task id (lib/session-tools.ts). */
+  toolConsults: Record<string, ToolConsult>
   /** Idempotency keys already applied — replay drops duplicates. */
   applied: string[]
   /** Count of events folded in, so a stale materialized row is detectable. */
@@ -1388,6 +1412,30 @@ export function applyEvent(prev: SessionState, event: SessionEvent): SessionStat
       break
     }
 
+    case 'TOOL_CONSULTED': {
+      const taskId = str(p.taskId)
+      if (!taskId) throw new InvalidEvent('TOOL_CONSULTED needs a taskId')
+      if (!state.toolConsults) state.toolConsults = {}
+      state.toolConsults[taskId] = {
+        taskId,
+        bindingId: str(p.bindingId) ?? 'unknown',
+        label: str(p.label) ?? '',
+        host: str(p.host) ?? 'an external server',
+        ok: p.ok === true,
+        sha256: str(p.sha256),
+        bytes: num(p.bytes, 0),
+        error: str(p.error),
+        at,
+      }
+      break
+    }
+
+    case 'TOOL_NOTIFIED':
+      // Outbound only: the record that we told someone. It changes nothing
+      // about the session, which is the point — a notification that could
+      // move the state would be an instruction from outside.
+      break
+
     case 'WAKE_SCHEDULED': {
       s.nextWakeAt = typeof p.at === 'number' ? p.at : null
       break
@@ -1477,6 +1525,7 @@ export function initialState(event: SessionEvent): SessionState {
     checkpoints: {},
     approvals: {},
     artifacts: {},
+    toolConsults: {},
     applied: [event.idempotencyKey],
     version: 1,
   }
