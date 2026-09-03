@@ -1,5 +1,5 @@
 /**
- * The four Notion calls the desk makes, and nothing else.
+ * The six Notion calls the desk makes, and nothing else.
  *
  * A thin fetch wrapper rather than the SDK: four endpoints, one header set,
  * a timeout, and errors that carry Notion's own message (its 400s say
@@ -69,6 +69,18 @@ export const updatePage = (token: string, pageId: string, properties: Record<str
 
 export const appendBlocks = (token: string, pageId: string, children: unknown[]) =>
   call<unknown>(token, 'PATCH', `/blocks/${pageId}/children`, { children })
+
+/** Create the desk database under one of the owner's pages. */
+export const createDatabase = (token: string, parentPageId: string, title: string, properties: Record<string, unknown>, description?: string) =>
+  call<NotionDatabase & { url?: string }>(token, 'POST', '/databases', {
+    parent: { type: 'page_id', page_id: parentPageId },
+    title: [{ type: 'text', text: { content: title } }],
+    ...(description ? { description: [{ type: 'text', text: { content: description } }] } : {}),
+    properties,
+  })
+
+export const createPage = (token: string, databaseId: string, properties: Record<string, unknown>) =>
+  call<{ id: string }>(token, 'POST', '/pages', { parent: { database_id: databaseId }, properties })
 
 export const databaseTitle = (db: NotionDatabase): string | null => {
   const t = (db.title ?? []).map((x) => x.plain_text ?? '').join('').trim()

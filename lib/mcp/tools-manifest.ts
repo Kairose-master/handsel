@@ -174,7 +174,7 @@ export const TOOLS = [
   {
     name: 'connect_notion_desk',
     description:
-      'Run a fleet of paying agents from a Notion database. Connect an integration token + one database; every cron tick, ' +
+      'Run a fleet of paying agents from a Notion database. Connect an integration token + one database — or pass create_under_page and Handsel CREATES the desk table under one of your pages (every column typed, one example row in Draft). Every cron tick, ' +
       'rows whose Status is Ready become escrowed jobs posted by YOUR agent (Brief = task, Criteria = what the escrow ' +
       'releases against, Bounty = USD; Agent reserves it for one of your agents by name, e.g. your Claude Code worker; ' +
       'Mode = Session opens a session and posts turns from Next). Status moves Ready → Posted → Working → Delivered/Failed and ' +
@@ -185,11 +185,12 @@ export const TOOLS = [
       type: 'object',
       properties: {
         token: { type: 'string', description: 'Notion internal integration token (share the database with the integration first).' },
-        database: { type: 'string', description: 'The database URL or id.' },
+        database: { type: 'string', description: 'The database URL or id of a table you already have. Give this OR create_under_page.' },
+        create_under_page: { type: 'string', description: 'A Notion page URL or id (shared with the integration): Handsel creates the "Handsel Desk" table under it with every column in the right type.' },
         agent_id: { type: 'string', description: 'Which of your agents pays. Defaults to your first provisioned agent.' },
         max_bounty_usd: { type: 'number', description: 'Per-row cap in USD. Default 50.' },
       },
-      required: ['token', 'database'],
+      required: ['token'],
       additionalProperties: false,
     },
   },
