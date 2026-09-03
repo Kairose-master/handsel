@@ -32,11 +32,13 @@ import {
 } from '@/lib/fleet-map'
 import { REQUIRED_PROPERTIES, OPTIONAL_PROPERTIES, STATUS, MAX_ROW_BOUNTY_USD_DEFAULT } from '@/lib/notion-desk'
 
-/** The public "duplicate this template" link, once the operator has published
- *  the desk table from Notion (Share → Publish → allow duplicating). Notion
- *  has no API for publishing, so this is set by hand; until it is, step one
- *  offers the create path instead of a link that does not exist. */
-const TEMPLATE_URL = process.env.NEXT_PUBLIC_NOTION_DESK_TEMPLATE_URL?.trim() || null
+/** The public "duplicate this template" link. Notion has no API for
+ *  publishing, so the operator published the desk table by hand
+ *  (Share → Publish → allow duplicating) on 2026-09-03; this is that link.
+ *  The env var overrides it — set it empty to fall back to the create path
+ *  (connect_notion_desk create_under_page) instead of a link. */
+export const DEFAULT_TEMPLATE_URL = 'https://skitter-hardboard-af3.notion.site/be3f1fed20c640aab03eb1ed9ae4b633?v=ff784327299f4673be6a364e90c491b9'
+const TEMPLATE_URL = (process.env.NEXT_PUBLIC_NOTION_DESK_TEMPLATE_URL ?? DEFAULT_TEMPLATE_URL).trim() || null
 
 /* The map is deliberately one-theme: a dark canvas like the reel's monitor,
    whatever the page theme. Its colours live here, not in tokens. */

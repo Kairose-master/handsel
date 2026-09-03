@@ -632,3 +632,9 @@ Notion에는 "웹에 게시/템플릿으로 복제 허용" API가 없다. 그래
 받는 표만 만들어진다, 테스트 고정). 오너가 Notion에서 손으로 게시하면
 `NEXT_PUBLIC_NOTION_DESK_TEMPLATE_URL`로 링크가 페이지에 뜬다. 링크가 없을 때 페이지는
 "복제하라"고 말하지 않는다(테스트 고정).
+
+> (게이트 세션, 2026-09-03) 오너가 "Handsel Desk"를 Notion에서 손으로 게시했다 —
+> `https://skitter-hardboard-af3.notion.site/be3f1fed20c640aab03eb1ed9ae4b633`. `/fleet` 1단계의
+> 기본 링크로 넣었다(env가 덮어씀; 빈 문자열이면 create 경로). notion.site는 미공개 id에도
+> 200을 주고 크로미움은 프록시를 못 넘어서 시각 확인은 못 했다 — 오너 말과 공개 서브도메인
+> 존재로 판단.

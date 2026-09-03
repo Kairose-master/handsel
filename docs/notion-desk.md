@@ -93,7 +93,8 @@ Notion desk puts the rail under the map they already have.
 - ~~**A public template link.**~~ Two things replaced it. `connect_notion_desk`
   with `create_under_page` **creates the table** under any page the owner
   shares with their integration — every column typed, one example row in
-  Draft — so nobody needs a link. And when the operator publishes the
-  "Handsel Desk" table from Notion by hand (Share → Publish → allow
-  duplicating; there is no API for it), `NEXT_PUBLIC_NOTION_DESK_TEMPLATE_URL`
-  puts the duplicate link on `/fleet` step one.
+  Draft — so nobody needs a link. And the operator published the "Handsel
+  Desk" table from Notion by hand on 2026-09-03 (Share → Publish → allow
+  duplicating; there is no API for it): `https://skitter-hardboard-af3.notion.site/be3f1fed20c640aab03eb1ed9ae4b633?v=ff784327299f4673be6a364e90c491b9`
+  is the default link on `/fleet` step one; `NEXT_PUBLIC_NOTION_DESK_TEMPLATE_URL`
+  overrides it (empty string → the create path instead).

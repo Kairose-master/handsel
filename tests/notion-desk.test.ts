@@ -224,6 +224,10 @@ describe('Handsel can create the table itself — there is no API for a public t
     const page = readFileSync('app/fleet/page.tsx', 'utf8')
     expect(page).toContain('NEXT_PUBLIC_NOTION_DESK_TEMPLATE_URL')
     expect(page).toMatch(/TEMPLATE_URL \? 'fleet\.start\.oneCreate'|!TEMPLATE_URL \? 'fleet\.start\.oneCreate'/)
+    // The published template is a notion.site link — a public page, never the
+    // owner's app.notion.com URL, which needs a login.
+    expect(page).toMatch(/DEFAULT_TEMPLATE_URL = 'https:\/\/[a-z0-9-]+\.notion\.site\/[0-9a-f]{32}/)
+    expect(page).not.toMatch(/DEFAULT_TEMPLATE_URL = 'https:\/\/app\.notion\.com/)
     expect(readFileSync('.env.example', 'utf8')).toContain('NEXT_PUBLIC_NOTION_DESK_TEMPLATE_URL=')
   })
 })
