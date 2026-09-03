@@ -1161,4 +1161,29 @@ export const TOOLS = [
       additionalProperties: false,
     },
   },
+  {
+    name: 'start_repo_care',
+    description:
+      'Have an office look after a GitHub repository on a schedule: it reads the open backlog, works the tests, docs ' +
+      'and low-risk bugs in a checkout on YOUR machine (a connected local worker with a working directory), verifies ' +
+      'each change with the repo\'s own command, and opens a pull request through the GitHub App. Issues that look ' +
+      'production-, secret-, dependency- or money-shaped are left for a person with the reason recorded. This is an ' +
+      'ordinary office session underneath — same approval policy, same budget, same audit log.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        repo: { type: 'string', description: 'owner/name — the GitHub App must be installed on it' },
+        worker_agent_id: { type: 'string', description: 'A connected local worker with a workspace grant' },
+        office: { type: 'number', description: 'Office slot (1-3, default 1)' },
+        labels: { type: 'array', items: { type: 'string' }, description: 'Only issues carrying one of these (default: any that survives triage)' },
+        per_run: { type: 'number', description: 'Issues per run (default 3, max 10)' },
+        every_minutes: { type: 'number', description: 'How often to run (default 720 — twice a day)' },
+        verify_command: { type: 'string', description: 'What decides a change is done (defaults to the worker\'s own)' },
+        open_prs: { type: 'boolean', description: 'Open a pull request per change (default true)' },
+        budget_usd: { type: 'number', description: 'Cap for the whole session (default 5)' },
+      },
+      required: ['repo', 'worker_agent_id'],
+      additionalProperties: false,
+    },
+  },
 ]

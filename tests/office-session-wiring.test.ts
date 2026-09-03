@@ -297,3 +297,59 @@ describe('the operator surfaces', () => {
     }
   })
 })
+
+describe('Repo Care, the first vertical', () => {
+  it('is a configuration of the runtime, not a second runtime', () => {
+    const server = read('lib/office-session-server.ts')
+    const start = server.indexOf('export async function startRepoCareSession(')
+    expect(start).toBeGreaterThan(0)
+    const body = server.slice(start, server.indexOf('\n}\n', start))
+    // an ordinary scheduled session, with the settings on the side
+    expect(body).toContain("kind: 'scheduled'")
+    expect(body).toContain('createOfficeSession({')
+    expect(body).toContain('setRepoCare(session.id, input.userId, care)')
+    // it refuses without a workspace: Repo Care works in the owner's checkout
+    expect(body).toContain('no workspace grant on this account')
+    // and the plan comes from the backlog, not the goal
+    expect(server).toContain('const care = await getRepoCare(s.id)')
+    expect(server).toContain('triageRepoCare(care, s.wave)')
+  })
+
+  it('a PR is opened only after the task settled, through the App\'s validating helper', () => {
+    const loop = read('lib/office-session-loop.ts')
+    // emitted next to the settle, never on submit
+    const settleBlock = loop.slice(loop.indexOf("emit('TASK_SETTLED'"), loop.indexOf("emit('TASK_SETTLED'") + 600)
+    expect(settleBlock).toContain("commands.push({ kind: 'open_pr', taskId: t.id })")
+    const server = read('lib/office-session-server.ts')
+    expect(server).toContain("case 'open_pr':")
+    const start = server.indexOf('async function openTaskPr(')
+    const body = server.slice(start, server.indexOf('\n}\n', start))
+    expect(body).toContain('openPrFromDiff({')
+    // idempotent: a PR artifact already there means no second PR
+    expect(body).toContain("a.name.startsWith('pr-')")
+    // a failure to land is as visible as a landing
+    expect(body).toContain("'SESSION_ESCALATED'")
+  })
+
+  it('the skip list is recorded, not swallowed', () => {
+    const server = read('lib/office-session-server.ts')
+    expect(server).toContain('async function recordTriage(')
+    expect(server).toContain('left-for-a-person-w')
+    // the morning report is assembled per read, so it cannot go stale
+    expect(server).toContain('export async function repoCareReport(')
+    expect(server).toContain('morningReport({')
+    expect(read('app/(dashboard)/office/sessions/[id]/page.tsx')).toContain('officeSessionReport(id)')
+  })
+
+  it('is reachable from MCP with the same guard rails', () => {
+    const handler = read('lib/mcp/handlers/office-sessions.ts')
+    expect(handler).toContain("case 'start_repo_care':")
+    expect(handler).toContain('worker_agent_id is required')
+    expect(handler).toContain('startRepoCareSession({')
+    // the tool never takes a policy or a grant: those stay where they are governed
+    const start = handler.indexOf("case 'start_repo_care':")
+    const body = handler.slice(start, handler.indexOf('case \'session_tools\':', start))
+    expect(body).not.toContain('policy')
+    expect(body).not.toContain('grant')
+  })
+})

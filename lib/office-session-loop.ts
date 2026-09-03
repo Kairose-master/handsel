@@ -141,6 +141,8 @@ export type Command =
   | { kind: 'notify_owner'; reason: string; taskId: string | null }
   /** Sign a work proof over a settled internal task's artifact (escrow tasks get theirs from the market's own release path). */
   | { kind: 'issue_proof'; taskId: string }
+  /** Land a settled task's diff as a pull request (the task's `deliverPr`). */
+  | { kind: 'open_pr'; taskId: string }
   /** Ask an external MCP server for context before this task is worked. */
   | { kind: 'consult_tool'; taskId: string; bindingId: string }
   /** Tell an external MCP server that something happened. Never changes the session. */
@@ -432,6 +434,10 @@ function runTick(input: SessionState, obs: Observation, policy: LoopPolicy): Tic
     if (t.settlement === 'internal') {
       emit('TASK_SETTLED', { taskId: t.id, reason: 'internal task — nothing to pay; the artifact hash and the decision are the receipt', costUsd: t.outcome?.costUsd ?? null }, t.id)
       if (t.outcome?.contentHash) commands.push({ kind: 'issue_proof', taskId: t.id })
+      // A task that asked to land as a PR does so only once it has settled:
+      // verified, and past the approval policy. Nothing reaches a repository
+      // that the office would not have paid for.
+      if (t.deliverPr && t.outcome?.diff) commands.push({ kind: 'open_pr', taskId: t.id })
       notes.push(`task ${t.id}: settled (internal)`)
       continue
     }

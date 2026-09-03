@@ -743,4 +743,11 @@ GitHub Discussions new URL 생성, 금지 문장·증거 없는 주장·잘못�
   **지표는 "절약한 시간"을 주장하지 않는다** — 필드는 `ownerWaitMs`(세션이 멈춰 있던 시간)이고 라벨도 그렇게 쓴다.
   프리셋은 모드가 아니라 정책이다: `setOfficePolicyPreset`이 JSON 편집기와 같은 write를 한다.
   하드 룰은 프리셋이 못 뚫는다(테스트가 세 프리셋 전부를 workspace escape/실패한 테스트/E4/시크릿/프로덕션에 돌린다).
+- **(9차) 포지셔닝 결정에 따른 첫 vertical** — `docs/positioning.md` §8이 기준 문서다(오피스가 제품,
+  세션이 사용 단위, 월 과금, 첫 고객은 1~10인 에이전시). 새로 들어온 것:
+  `lib/repo-care.ts`(순수 triage — 스킵 목록은 모델 판단이 아니라 고정 테이블, 잘못된 pick-up이
+  잘못된 skip보다 비싸다는 비대칭이 모든 규칙의 근거), `office_session_repo_care` 테이블,
+  `SessionTask.deliverPr` + 루프의 `open_pr` 커맨드(정산 후에만 PR), `start_repo_care` MCP 툴.
+  **`SessionArtifact.taskId`가 `string | null`이 됐다** — triage 목록처럼 태스크가 없는 세션 레벨
+  아티팩트를 위해서다. 리듀서는 taskId가 null이 아닐 때만 태스크 존재를 요구한다.
 

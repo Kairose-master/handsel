@@ -221,6 +221,38 @@ export async function handleOfficeSessions(ctx: McpToolContext, name: string, ar
       }
     }
 
+    case 'start_repo_care': {
+      const os = await import('@/lib/office-session-server')
+      const { DEFAULT_REPO_CARE } = await import('@/lib/repo-care')
+      const repo = String(args.repo ?? '').trim()
+      const workerAgentId = String(args.worker_agent_id ?? '').trim()
+      if (!repo.includes('/')) return toolText(id, 'repo must be owner/name.', true)
+      if (!workerAgentId) return toolText(id, 'worker_agent_id is required — Repo Care works in a checkout on your machine, so it needs a connected local worker.', true)
+      const r = await os.startRepoCareSession({
+        userId: auth.userId,
+        slot: Math.max(1, Math.min(3, Math.floor(num(args.office, 1)))),
+        workerAgentId,
+        budgetLimitUsd: num(args.budget_usd, 5),
+        everyMinutes: num(args.every_minutes, 720),
+        care: {
+          ...DEFAULT_REPO_CARE,
+          repoFullName: repo,
+          labels: Array.isArray(args.labels) ? args.labels.map(String).slice(0, 10) : [],
+          maxPerWave: num(args.per_run, 3),
+          verifyCommand: typeof args.verify_command === 'string' && args.verify_command ? args.verify_command.slice(0, 300) : null,
+          openPrs: args.open_prs !== false,
+        },
+      })
+      if (!r.ok) return toolText(id, `Repo Care not started: ${r.error}`, true)
+      const state = await os.loadSessionState(r.session.id)
+      return toolText(
+        id,
+        `🌙 Repo Care on ${repo} — session ${r.session.id}\n${sessionSentence(state.session)}\n\n` +
+          `Tonight's plan:\n${taskLines(state)}\n\n` +
+          `Read it back with office_session_status { session_id: "${r.session.id}" }. Issues that look production-, secret- or dependency-shaped are left for you with the reason, on the timeline as "left for a person".`,
+      )
+    }
+
     case 'session_tools': {
       const os = await import('@/lib/office-session-server')
       const slot = Math.max(1, Math.min(3, Math.floor(num(args.office, 1))))

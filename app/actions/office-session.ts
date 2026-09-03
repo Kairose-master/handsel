@@ -208,6 +208,47 @@ export async function detachOfficeTool(id: string): Promise<{ ok: boolean }> {
   return { ok: await os.detachSessionTool(user.id, id) }
 }
 
+/**
+ * Repo Care from the page: pick a repository and a worker, and the office
+ * looks after the backlog on a schedule.
+ */
+export async function startRepoCare(input: {
+  slot: number
+  repoFullName: string
+  workerAgentId: string
+  labels: string[]
+  maxPerWave: number
+  verifyCommand: string | null
+  openPrs: boolean
+  budgetLimitUsd: number
+  everyMinutes: number
+}): Promise<{ ok: true; session: OfficeSession } | { ok: false; error: string }> {
+  const user = await requireUser()
+  const os = await import('@/lib/office-session-server')
+  const { DEFAULT_REPO_CARE } = await import('@/lib/repo-care')
+  return os.startRepoCareSession({
+    userId: user.id,
+    slot: input.slot,
+    workerAgentId: input.workerAgentId,
+    budgetLimitUsd: Number.isFinite(input.budgetLimitUsd) ? input.budgetLimitUsd : 5,
+    everyMinutes: Number.isFinite(input.everyMinutes) ? input.everyMinutes : 720,
+    care: {
+      ...DEFAULT_REPO_CARE,
+      repoFullName: input.repoFullName.trim(),
+      labels: input.labels.map((l) => l.trim()).filter(Boolean).slice(0, 10),
+      maxPerWave: input.maxPerWave,
+      verifyCommand: input.verifyCommand,
+      openPrs: input.openPrs,
+    },
+  })
+}
+
+export async function officeSessionReport(sessionId: string): Promise<string | null> {
+  const user = await requireUser()
+  const os = await import('@/lib/office-session-server')
+  return os.repoCareReport(user.id, sessionId).catch(() => null)
+}
+
 export async function decideSessionApproval(sessionId: string, approvalId: string, granted: boolean, reason?: string): Promise<{ ok: true } | { ok: false; error: string }> {
   const user = await requireUser()
   const os = await import('@/lib/office-session-server')

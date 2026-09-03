@@ -559,6 +559,8 @@ export type SessionTask = {
   assignedWorkerId: string | null
   currentRunId: string | null
   verify: VerificationPlan
+  /** When set, a settled task's diff is landed as a pull request on this repo. */
+  deliverPr: { repoFullName: string; baseBranch: string | null } | null
   outcome: TaskOutcome | null
   nextRetryAt: number | null
   createdAt: number
@@ -692,7 +694,8 @@ export type ArtifactKind = (typeof ARTIFACT_KINDS)[number]
 export type SessionArtifact = {
   id: string
   sessionId: string
-  taskId: string
+  /** Null for an artifact about the session rather than one task — a triage list, a report. */
+  taskId: string | null
   runId: string | null
   kind: ArtifactKind
   name: string
@@ -836,7 +839,7 @@ export type SessionCreatedPayload = {
 }
 
 export type PlannedTask = Pick<SessionTask, 'id' | 'title' | 'brief' | 'acceptanceCriteria' | 'kind'> &
-  Partial<Pick<SessionTask, 'dependsOn' | 'maxAttempts' | 'bountyUsd' | 'riskTier' | 'settlement' | 'verify' | 'assignedWorkerId'>>
+  Partial<Pick<SessionTask, 'dependsOn' | 'maxAttempts' | 'bountyUsd' | 'riskTier' | 'settlement' | 'verify' | 'assignedWorkerId' | 'deliverPr'>>
 
 export type PlanCreatedPayload = { tasks: PlannedTask[]; wave?: number; source: 'default' | 'llm' | 'owner' }
 
@@ -949,6 +952,7 @@ export function applyEvent(prev: SessionState, event: SessionEvent): SessionStat
           assignedWorkerId: t.assignedWorkerId ?? s.workerAgentId,
           currentRunId: null,
           verify,
+          deliverPr: t.deliverPr ?? null,
           outcome: null,
           nextRetryAt: null,
           createdAt: at,
@@ -1122,8 +1126,11 @@ export function applyEvent(prev: SessionState, event: SessionEvent): SessionStat
     case 'ARTIFACT_CREATED': {
       const id = str(p.artifactId)
       const taskId = str(p.taskId)
-      if (!id || !taskId) throw new InvalidEvent('ARTIFACT_CREATED needs artifactId and taskId')
-      requireTask(state, taskId, event.type)
+      if (!id) throw new InvalidEvent('ARTIFACT_CREATED needs an artifactId')
+      // A task's artifact must name a task that exists; a session-level one
+      // (a triage list, a morning report) names none, and saying so with
+      // null is better than inventing a task to hang it on.
+      if (taskId !== null) requireTask(state, taskId, event.type)
       const kind = ARTIFACT_KINDS.includes(p.kind as ArtifactKind) ? (p.kind as ArtifactKind) : 'file'
       state.artifacts[id] = {
         id,

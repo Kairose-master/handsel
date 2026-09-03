@@ -76,6 +76,7 @@ import {
   type SessionToolBinding,
 } from '@/lib/session-tools'
 import { defaultPlan, planFromSubtasks } from '@/lib/office-session-plan'
+import { MAX_PER_WAVE, morningReport, triageIssues, type RepoCareSettings, type Triage } from '@/lib/repo-care'
 import { SESSION_DELIVERABLE_PATH, redactSecrets, remoteRunBrief, sessionRunBrief, type HarnessEvent } from '@/lib/coding-harness'
 import type { CompleteFn } from '@/lib/delegation'
 
@@ -167,6 +168,20 @@ async function ensureTables(): Promise<void> {
          )`,
       )
       await pool.query(`CREATE INDEX IF NOT EXISTS office_session_tool_owner ON office_session_tool (user_id, slot)`)
+      // Repo Care (lib/repo-care.ts): the backlog one session looks after.
+      await pool.query(
+        `CREATE TABLE IF NOT EXISTS office_session_repo_care (
+           session_id text PRIMARY KEY,
+           user_id text NOT NULL,
+           repo_full_name text NOT NULL,
+           labels jsonb NOT NULL DEFAULT '[]'::jsonb,
+           max_per_wave integer NOT NULL DEFAULT 3,
+           verify_command text,
+           open_prs boolean NOT NULL DEFAULT true,
+           base_branch text,
+           created_at timestamptz NOT NULL DEFAULT now()
+         )`,
+      )
       await pool.query(
         `CREATE TABLE IF NOT EXISTS office_session_run_log (
            id bigserial PRIMARY KEY,
@@ -443,6 +458,77 @@ export async function createOfficeSession(input: CreateSessionInput): Promise<Of
     client.release()
   }
   return state.session
+}
+
+/**
+ * Repo Care in one call: a scheduled session whose plan comes from the
+ * repository's backlog instead of its goal (lib/repo-care.ts). Everything
+ * else is an ordinary session — same policy, same grants, same approvals —
+ * which is the point: the vertical is a configuration of the runtime, not a
+ * second runtime.
+ */
+export async function startRepoCareSession(input: {
+  userId: string
+  slot: number
+  workerAgentId: string
+  care: RepoCareSettings
+  budgetLimitUsd: number
+  everyMinutes: number
+}): Promise<{ ok: true; session: OfficeSession } | { ok: false; error: string }> {
+  const grant = await getWorkerGrant(input.workerAgentId)
+  if (!grant || grant.userId !== input.userId) return { ok: false, error: 'that worker has no workspace grant on this account — connect it with a working directory first' }
+  if (!/^[\w.-]+\/[\w.-]+$/.test(input.care.repoFullName)) return { ok: false, error: 'repo must be owner/name' }
+  const { repoCareGoal } = await import('@/lib/repo-care')
+  const care: RepoCareSettings = { ...input.care, verifyCommand: input.care.verifyCommand ?? grant.verifyCommand }
+  const session = await createOfficeSession({
+    userId: input.userId,
+    slot: input.slot,
+    kind: 'scheduled',
+    goal: repoCareGoal(care),
+    budgetLimitUsd: input.budgetLimitUsd,
+    schedule: { kind: 'interval', everyMs: Math.max(15, input.everyMinutes) * 60_000 },
+    workerAgentId: input.workerAgentId,
+    workspace: grant.grant,
+    verifyCommand: care.verifyCommand,
+  })
+  await setRepoCare(session.id, input.userId, care)
+  await tickOfficeSession(session.id).catch((e) => console.error('[office-session] repo-care first tick failed:', e))
+  await tickOfficeSession(session.id).catch((e) => console.error('[office-session] repo-care second tick failed:', e))
+  return { ok: true, session }
+}
+
+/**
+ * The morning report for a Repo Care session: what landed, what needs a
+ * decision, what failed, what was left for a person. Assembled per read
+ * from the session state, so it cannot go stale.
+ */
+export async function repoCareReport(userId: string, sessionId: string): Promise<string | null> {
+  const state = await ownedSession(userId, sessionId)
+  const care = await getRepoCare(sessionId)
+  if (!care) return null
+  const wave = state.session.wave
+  const lines = Object.values(state.tasks)
+    .filter((t) => t.wave === wave)
+    .map((t) => {
+      const pr = Object.values(state.artifacts).find((a) => a.taskId === t.id && a.name.startsWith('pr-'))
+      const open = Object.values(state.approvals).some((a) => a.taskId === t.id && a.decidedAt === null)
+      return {
+        taskId: t.id,
+        title: t.title,
+        status: t.status,
+        statusReason: t.statusReason,
+        testsPassed: t.outcome?.tests ? t.outcome.tests.passed : null,
+        changedFiles: t.outcome?.changedFiles.length ?? 0,
+        prUrl: pr?.ref ?? null,
+        needsYou: open,
+      }
+    })
+  const triage = Object.values(state.artifacts).find((a) => a.taskId === null && a.name.startsWith('left-for-a-person'))
+  const cost = Object.values(state.runs).reduce((n, r) => n + (r.costUsd ?? 0), 0)
+  return [
+    morningReport({ repoFullName: care.repoFullName, lines, skipped: [], costUsd: cost || null }),
+    ...(triage?.inline ? ['', '## Left for a person', '', triage.inline] : []),
+  ].join('\n')
 }
 
 export type SessionListRow = Pick<OfficeSession, 'id' | 'kind' | 'goal' | 'status' | 'statusReason' | 'nextWakeAt' | 'budgetLimitUsd' | 'spentUsd' | 'createdAt' | 'wave' | 'officeSlot' | 'lastHeartbeatAt'> & {
@@ -831,6 +917,38 @@ async function escrowObservation(state: SessionState): Promise<Observation['escr
   return out
 }
 
+export async function setRepoCare(sessionId: string, userId: string, s: RepoCareSettings): Promise<void> {
+  await ensureTables()
+  await pool.query(
+    `INSERT INTO office_session_repo_care (session_id, user_id, repo_full_name, labels, max_per_wave, verify_command, open_prs, base_branch)
+     VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8)
+     ON CONFLICT (session_id) DO UPDATE SET repo_full_name = $3, labels = $4::jsonb, max_per_wave = $5, verify_command = $6, open_prs = $7, base_branch = $8`,
+    [sessionId, userId, s.repoFullName, JSON.stringify(s.labels), Math.max(1, Math.min(MAX_PER_WAVE, s.maxPerWave)), s.verifyCommand, s.openPrs, s.baseBranch],
+  )
+}
+
+export async function getRepoCare(sessionId: string): Promise<RepoCareSettings | null> {
+  await ensureTables()
+  const { rows } = await pool.query<{
+    repo_full_name: string
+    labels: string[]
+    max_per_wave: number
+    verify_command: string | null
+    open_prs: boolean
+    base_branch: string | null
+  }>(`SELECT repo_full_name, labels, max_per_wave, verify_command, open_prs, base_branch FROM office_session_repo_care WHERE session_id = $1`, [sessionId])
+  const r = rows[0]
+  if (!r) return null
+  return {
+    repoFullName: r.repo_full_name,
+    labels: Array.isArray(r.labels) ? r.labels : [],
+    maxPerWave: r.max_per_wave,
+    verifyCommand: r.verify_command,
+    openPrs: r.open_prs,
+    baseBranch: r.base_branch,
+  }
+}
+
 /** Every binding this account has for the session's office. */
 export async function sessionToolBindings(userId: string, slot: number): Promise<SessionToolBinding[]> {
   await ensureTables()
@@ -1070,6 +1188,8 @@ async function performCommand(state: SessionState, command: Command): Promise<Se
       ])
     case 'issue_proof':
       return issueTaskProof(state, command.taskId)
+    case 'open_pr':
+      return openTaskPr(state, command.taskId)
     case 'consult_tool':
       return consultTool(state, command.taskId, command.bindingId)
     case 'notify_tool':
@@ -1213,6 +1333,17 @@ async function issueTaskProof(state: SessionState, taskId: string): Promise<Sess
 
 async function planSession(state: SessionState): Promise<{ tasks: ReturnType<typeof defaultPlan>; source: 'default' | 'llm' }> {
   const s = state.session
+  // Repo Care plans from a real backlog, not from the goal: the goal line
+  // only says which repository and how much of it (lib/repo-care.ts). A
+  // wave that finds nothing takeable plans nothing, and the loop then
+  // completes the wave — an empty night is a correct night.
+  const care = await getRepoCare(s.id)
+  if (care) {
+    const triage = await triageRepoCare(care, s.wave)
+    await recordTriage(state, care, triage)
+    if (triage.taken.length > 0) return { tasks: triage.taken.map((t) => t.task), source: 'default' }
+    console.info(`[office-session] ${s.id}: nothing takeable in ${care.repoFullName} (${triage.skipped.length} left for a person)`)
+  }
   // A coding session on a workspace plans deterministically: one task, the
   // goal, verified by the command and a review. A goal for the market is
   // decomposed by the delegation planner when a model key is configured.
@@ -1426,6 +1557,98 @@ function hostOf(url: string): string {
     return new URL(url).host
   } catch {
     return 'an external server'
+  }
+}
+
+/**
+ * Tonight's triage of a Repo Care repository. A backlog that cannot be read
+ * (the App is not installed on that repo, the token is refused) is an empty
+ * triage with the reason on the timeline — never a thrown tick.
+ */
+async function triageRepoCare(care: RepoCareSettings, wave: number): Promise<Triage> {
+  try {
+    const { listOpenIssues } = await import('@/lib/github-app')
+    const issues = await listOpenIssues(care.repoFullName, 50)
+    return triageIssues(issues, care, wave)
+  } catch (e) {
+    console.error(`[office-session] reading the backlog of ${care.repoFullName} failed:`, e)
+    return { taken: [], skipped: [] }
+  }
+}
+
+/**
+ * The skip list, on the record. It is the product's honesty — an office
+ * that quietly ignored half the backlog would look better than it is — so
+ * it becomes an artifact the owner can read next to the work.
+ */
+async function recordTriage(state: SessionState, care: RepoCareSettings, triage: Triage): Promise<void> {
+  if (triage.skipped.length === 0) return
+  const text = triage.skipped.map((s) => `- #${s.issue.number} ${s.issue.title} — ${s.detail}`).join('\n')
+  const { createHash } = await import('node:crypto')
+  await appendEvents(state.session.id, [
+    officeEvent(
+      state.session.id,
+      'ARTIFACT_CREATED',
+      {
+        artifactId: `art-triage-w${state.session.wave}`,
+        taskId: null,
+        runId: null,
+        kind: 'report',
+        name: `left-for-a-person-w${state.session.wave}.md`,
+        sha256: createHash('sha256').update(text).digest('hex'),
+        bytes: Buffer.byteLength(text, 'utf8'),
+        inline: text.slice(0, 32_000),
+        ref: null,
+      },
+      `w${state.session.wave}:triage`,
+    ),
+  ]).catch((e) => console.error('[office-session] recording the triage failed:', e))
+  void care
+}
+
+/**
+ * Land a settled task's diff as a pull request through the GitHub App —
+ * the same `openPrFromDiff` the market's repo lane uses, which validates
+ * every hunk against the CURRENT base before it opens anything. The PR URL
+ * becomes an artifact, so a failure to land is as visible as a landing.
+ */
+async function openTaskPr(state: SessionState, taskId: string): Promise<SessionState> {
+  const s = state.session
+  const task = state.tasks[taskId]
+  const target = task?.deliverPr
+  const diff = task?.outcome?.diff
+  if (!task || !target || !diff) return state
+  if (Object.values(state.artifacts ?? {}).some((a) => a.taskId === taskId && a.name.startsWith('pr-'))) return state
+  const { createHash } = await import('node:crypto')
+  const sha = (t: string) => createHash('sha256').update(t).digest('hex')
+  try {
+    const { openPrFromDiff } = await import('@/lib/github-app')
+    const pr = await openPrFromDiff({
+      repoFullName: target.repoFullName,
+      baseBranch: target.baseBranch ?? '',
+      diff,
+      title: task.title.slice(0, 120),
+      body:
+        `${task.outcome?.deliverable?.slice(0, 4000) ?? 'Opened by a Handsel office session.'}\n\n---\n` +
+        `Session \`${s.id}\`, task \`${task.id}\`, attempt ${task.attempts}. ` +
+        `Verification: ${task.outcome?.tests ? `\`${task.outcome.tests.command}\` exit ${task.outcome.tests.exitCode}` : 'none recorded'}. ` +
+        `Approved under policy \`${s.approvalPolicyId}\`.`,
+      branchHint: `${s.id}-${task.id}`,
+    })
+    const text = `${pr.prUrl}\n\nbranch ${pr.branch}`
+    return appendEvents(s.id, [
+      officeEvent(
+        s.id,
+        'ARTIFACT_CREATED',
+        { artifactId: `art-pr-${taskId}`, taskId, runId: task.currentRunId, kind: 'report', name: `pr-${pr.prNumber}.md`, sha256: sha(text), bytes: text.length, inline: text, ref: pr.prUrl },
+        `${taskId}:pr`,
+      ),
+    ])
+  } catch (e) {
+    const reason = redactSecrets(e instanceof Error ? e.message : String(e)).slice(0, 400)
+    return appendEvents(s.id, [
+      officeEvent(s.id, 'SESSION_ESCALATED', { reason: `could not open a pull request on ${target.repoFullName}: ${reason}`, taskId }, `${taskId}:prfail`),
+    ])
   }
 }
 

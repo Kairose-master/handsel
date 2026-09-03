@@ -216,6 +216,29 @@ export async function openPrFromDiff(input: {
   return { prNumber: pr.number, prUrl: pr.html_url, branch }
 }
 
+export type RepoIssueRow = { number: number; title: string; body: string; labels: string[]; isPullRequest: boolean; updatedAt: string }
+
+/**
+ * The repository's open backlog, oldest-touched first — the order Repo Care
+ * works in, so "what does it do tonight" is answerable before it runs
+ * rather than after. The App's installation is the access boundary; there
+ * is no user token in this path.
+ */
+export async function listOpenIssues(repoFullName: string, limit = 50): Promise<RepoIssueRow[]> {
+  const token = await installationTokenForRepo(repoFullName)
+  const rows = await ghJson<
+    Array<{ number: number; title: string; body: string | null; labels: Array<{ name?: string } | string>; pull_request?: unknown; updated_at: string }>
+  >(`/repos/${repoFullName}/issues?state=open&sort=updated&direction=asc&per_page=${Math.max(1, Math.min(100, limit))}`, token)
+  return rows.map((r) => ({
+    number: r.number,
+    title: String(r.title ?? ''),
+    body: String(r.body ?? ''),
+    labels: (r.labels ?? []).map((l) => (typeof l === 'string' ? l : String(l?.name ?? ''))).filter(Boolean),
+    isPullRequest: Boolean(r.pull_request),
+    updatedAt: r.updated_at,
+  }))
+}
+
 /** Best-effort PR comment (settlement outcomes; failures never propagate). */
 export async function commentOnPr(repoFullName: string, prNumber: number, body: string): Promise<void> {
   try {

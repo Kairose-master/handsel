@@ -12,11 +12,12 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Loader2, RefreshCw, Play, Pause, XCircle, Check, X, Plug, ShieldCheck, Brain, Wallet, Gauge } from 'lucide-react'
+import { Loader2, RefreshCw, Play, Pause, XCircle, Check, X, Plug, ShieldCheck, Brain, Wallet, Gauge, GitPullRequest } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   attachOfficeTool,
+  startRepoCare,
   setOfficePolicyPreset,
   cancelSession,
   connectWorkspaceWorker,
@@ -113,6 +114,7 @@ export default function OfficeSessionsPage() {
             <Tools view={view} reload={load} />
           <Budget view={view} />
           </div>
+          <RepoCare view={view} reload={load} />
           <NewSession view={view} reload={load} />
           <div className="grid gap-4 md:grid-cols-2">
             <Policy view={view} reload={load} />
@@ -752,5 +754,93 @@ function PolicyList({ title, items, tone }: { title: string; items: string[]; to
         ))}
       </ul>
     </div>
+  )
+}
+
+function RepoCare({ view, reload }: { view: SessionOverview; reload: () => Promise<void> }) {
+  const { t } = useI18n()
+  const [repo, setRepo] = useState('')
+  const [labels, setLabels] = useState('')
+  const [perWave, setPerWave] = useState('3')
+  const [every, setEvery] = useState('720')
+  const [openPrs, setOpenPrs] = useState(true)
+  const [worker, setWorker] = useState(view.workers[0]?.agentId ?? '')
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+  const start = async () => {
+    setBusy(true)
+    setMsg(null)
+    try {
+      const r = await startRepoCare({
+        slot: view.slot,
+        repoFullName: repo,
+        workerAgentId: worker,
+        labels: labels.split(',').map((l) => l.trim()).filter(Boolean),
+        maxPerWave: Number(perWave),
+        verifyCommand: view.workers.find((w) => w.agentId === worker)?.verifyCommand ?? null,
+        openPrs,
+        budgetLimitUsd: 5,
+        everyMinutes: Number(every),
+      })
+      setMsg(r.ok ? t('sess.started', { id: r.session.id }) : r.error)
+      if (r.ok) setRepo('')
+      await reload()
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <GitPullRequest className="h-4 w-4" /> {t('sess.repoCare')}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2 text-sm">
+        <p className="text-muted-foreground">{t('sess.repoCareBlurb')}</p>
+        {view.workers.length === 0 ? (
+          <p className="text-warning">{t('sess.repoNeedsWorker')}</p>
+        ) : (
+          <>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className="block text-xs">
+                {t('sess.repo')}
+                <input className="mt-1 w-full rounded border border-border bg-background p-1 font-mono" value={repo} onChange={(e) => setRepo(e.target.value)} placeholder="acme/api" />
+              </label>
+              <label className="block text-xs">
+                {t('sess.worker')}
+                <select className="mt-1 w-full rounded border border-border bg-background p-1" value={worker} onChange={(e) => setWorker(e.target.value)}>
+                  {view.workers.map((w) => (
+                    <option key={w.agentId} value={w.agentId}>
+                      {w.name} {w.alive ? t('sess.workerOnline') : t('sess.workerOffline')}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-xs">
+                {t('sess.repoLabels')}
+                <input className="mt-1 w-full rounded border border-border bg-background p-1" value={labels} onChange={(e) => setLabels(e.target.value)} placeholder="good first issue, docs" />
+              </label>
+              <div className="flex gap-2 text-xs">
+                <label>
+                  {t('sess.repoPerWave')} <input className="mt-1 w-14 rounded border border-border bg-background p-1" value={perWave} onChange={(e) => setPerWave(e.target.value)} />
+                </label>
+                <label>
+                  {t('sess.repoEvery')} <input className="mt-1 w-20 rounded border border-border bg-background p-1" value={every} onChange={(e) => setEvery(e.target.value)} />
+                </label>
+              </div>
+            </div>
+            <label className="block text-xs">
+              <input type="checkbox" checked={openPrs} onChange={(e) => setOpenPrs(e.target.checked)} /> {t('sess.repoPrs')}
+            </label>
+            <p className="text-xs text-muted-foreground">{t('sess.repoNeedsApp')}</p>
+            <Button size="sm" type="button" disabled={busy || !repo.includes('/') || !worker} onClick={start}>
+              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitPullRequest className="h-3.5 w-3.5" />} {t('sess.repoStart')}
+            </Button>
+            {msg && <p className="text-xs">{msg}</p>}
+          </>
+        )}
+      </CardContent>
+    </Card>
   )
 }

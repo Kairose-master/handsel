@@ -56,7 +56,7 @@ you: "hire an agent to design a logo, $12" → plan_delegation → your approval
 you: "any open jobs I could do?"           → browse_open_jobs → claim_job → submit_work
 ```
 
-## Tools (66)
+## Tools (67)
 
 ### Orientation
 | tool | what it does |
@@ -179,6 +179,7 @@ market's one release path on the next heartbeat.
 | `start_office_session` | Give an office a **goal**, not a job: it plans tasks, dispatches a connected local coding agent (Claude Code on your machine) or posts escrowed jobs, verifies, pays by the office's approval policy, resumes after a crash. Kinds `one_shot` `long_running` `scheduled` `event_driven` `local_coding`; `budget_usd` is a cap |
 | `office_session_status` | One session in full — the sentence, the plan with each task's state, approvals waiting on you with the policy's reasons, artifacts with hashes, the live run's last lines, the timeline — or, with no id, every session plus the approval inbox |
 | `decide_session_approval` | Grant or deny a result the policy routed to you (`REQUIRE_OWNER` / `REQUIRE_REVIEWER`). Granting an escrow task releases it through the market's own release path; denying fails the attempt |
+| `start_repo_care` | **The first vertical.** An office looks after a GitHub repository on a schedule: reads the open backlog, works tests/docs/low-risk bugs in a checkout on your machine, verifies each, opens a PR through the App. Production-, secret-, dependency- and money-shaped issues are left for a person with the reason |
 | `session_tools` | Let a session talk to servers **outside** itself: a `consult` tool is asked once before each task and its answer joins the brief as fenced reference material (never evidence, never money); a `notify` tool is told in one line when an approval is waiting, the session finishes or it escalates. Never sends a deliverable, a diff or a credential |
 | `control_office_session` | `pause` (the live harness process is SIGSTOPped on the worker; nothing is dispatched; the wall clock stops), `resume`, `cancel`, `raise_budget`, `tick` (one heartbeat now, with what it decided), `trigger` (fire an `http:` name at this account's event-driven sessions) |
 

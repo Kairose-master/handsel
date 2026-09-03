@@ -13,7 +13,7 @@ import Link from 'next/link'
 import { Loader2, RefreshCw, Check, X, Pause, Play, XCircle, Zap } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { cancelSession, decideSessionApproval, officeSessionDetail, pauseSession, resumeSession, tickSessionNow, type SessionDetail } from '@/app/actions/office-session'
+import { cancelSession, decideSessionApproval, officeSessionDetail, officeSessionReport, pauseSession, resumeSession, tickSessionNow, type SessionDetail } from '@/app/actions/office-session'
 import { STATUS_META, sessionSentence } from '@/lib/office-session'
 import { useI18n } from '@/lib/i18n'
 
@@ -27,12 +27,15 @@ export default function OfficeSessionDetailPage() {
   const [d, setD] = useState<SessionDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [report, setReport] = useState<string | null>(null)
   const load = useCallback(async () => {
     setBusy(true)
     try {
       const r = await officeSessionDetail(id)
       if (!r) setError('No such session on this account.')
       else setD(r)
+      // Only a Repo Care session has one; every other session gets null.
+      setReport(await officeSessionReport(id).catch(() => null))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not read the session.')
     } finally {
@@ -105,6 +108,17 @@ export default function OfficeSessionDetailPage() {
           )}
         </div>
       </div>
+
+      {report && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">{tr('sess.report')}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded bg-secondary p-2 text-[11px]">{report}</pre>
+          </CardContent>
+        </Card>
+      )}
 
       {approvals.some((a) => a.decidedAt === null && (a.policyOutcome === 'REQUIRE_OWNER' || a.policyOutcome === 'REQUIRE_REVIEWER')) && (
         <Card>

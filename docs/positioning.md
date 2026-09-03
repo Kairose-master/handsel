@@ -268,3 +268,77 @@ grant, checkpoints, a written approval policy, resume after a crash. It is
 the part of "already-running fleet, all payable" that runs when nobody is
 looking; it has been proven with the owner's own worker and, like everything
 else on this page, has no outside customer yet.
+
+---
+
+## 8. The decision: an operations room, priced monthly (2026-09-03)
+
+The owner's call, recorded here because it changes what "done" means for
+everything below it:
+
+> **Handsel is the room where several AI agents carry Notion and GitHub work
+> to the end, and a person controls only permission, budget, verification
+> and approval.** The wallet is a feature, the office is the product, the
+> session is the unit of use, and the verifiable record of graded work is
+> the long-term defence.
+
+What that settles, after months of the opposite instinct:
+
+| | sold as a market | sold as an operations room |
+|---|---|---|
+| what the customer buys | access to workers | their own attention back |
+| the unit they think in | a job | a session, and the office that runs them |
+| what they pay for | 5% of each transaction | the room, monthly |
+| ceiling | ~$2,000/month if every lane worked (§ the go-to-market pass) | a per-seat subscription with no ceiling in the mechanics |
+| chain's role | the headline | the settlement layer under the fallback |
+
+The arithmetic is the whole argument: fees and the storefront cap out
+around $2k/month *with everything working*, and no outside customer has
+commissioned an office at any price. A room that removes a founder's
+review time is not priced per job.
+
+**The first customer is not a consumer.** A one-to-ten person AI
+development or automation agency that already bills clients, already uses
+GitHub and Notion, already runs Claude Code, and whose principal currently
+reads every result themselves. Their motive is not curiosity; it is a
+salary line and their own hours.
+
+**The first vertical is Repo Care** (`docs/repo-care.md`): overnight, the
+office reads a repository's backlog, works the tests, docs and low-risk
+bugs in the owner's checkout, verifies each one, and opens pull requests.
+Production changes, dependency changes and secret access are left for a
+person with the reason recorded.
+
+### What this makes urgent, and what it makes noise
+
+Built for this decision on the day it was taken: the operator's numbers
+(`lib/office-metrics.ts` — how often the office needed a person, not how
+many jobs ran), three approval postures instead of a JSON editor
+(`PRESET_POLICIES`), and Repo Care itself.
+
+Still owed, and honestly outside what code alone can close:
+
+- **Onboarding to a first session in five minutes**, with no wallet
+  involved. Internal tasks already need no escrow — nothing on the office
+  session path touches a chain unless a task settles as `escrow` — but the
+  *path* through the product still reads as a market's.
+- **Card payment and a pilot flow.** This needs a Stripe account and a
+  decision about who is billed, neither of which is a code question. The
+  repo takes USDC because that is what the market needs; a customer-facing
+  subscription should not.
+- **A case study.** It needs a real customer and a real result. Writing one
+  before there is one would break the rule this repo is otherwise strict
+  about, so the place for it stays empty until a pilot fills it.
+
+Paused deliberately: further governance, the vault/lending sandbox, any
+token, the Solana port, more marketplace surface, and the 3D office —
+which is an advertisement, not a product, and §1 of this page said so
+before this decision did.
+
+### The two-week test
+
+Not "does it build". Ten pilot offers, three real workflow interviews, one
+$500 pilot sold, three real pieces of work finished, the customer spending
+under ten minutes per task, and a stated intention to keep paying monthly.
+Failing that is a signal to change the customer and the offer — not to
+write more code.
