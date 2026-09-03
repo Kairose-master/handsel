@@ -611,3 +611,14 @@ dlg-f51X66rCYW (Cloud Options Desk, 사내 문서 포털 스코프) 6잡 포스�
 가져오는지가 관전 포인트. Architect(x_ZegddX8l300ufZWO6L_)는 이 세션의 로컬
 하네스에 토큰으로 묶여 있으니 **wire_office_agent 하지 말 것**(토큰 회전 → 워커
 죽음). 라운드 6 결과: 사상 첫 APPROVE(Red Team #62), 합성은 정직한 "보류".
+### /fleet — 빅픽처를 구매자용 페이지로 (게이트 세션, 2026-09-03)
+
+오너: "왜 사업화가 안 되냐, 빅픽처를 그래픽 레퍼런스 찾아서 실현하라." 배관만 있고
+파는 화면이 없었다. `app/fleet/page.tsx`: 히어로가 릴의 지도(가운데 핵심 5, 둘레 플로우 8,
+박스마다 지갑) — 박스가 무엇으로 채워지는지는 `OFFICE_TEMPLATES`에서 읽고 테스트가
+고정한다(`lib/fleet-map.ts`). 실시간 숫자 3개(지갑 있는 에이전트·납품 지급 잡·증명)는
+`app/actions/fleet.ts`, 못 읽으면 대시. 6단계 스트립은 각 단계의 소스 파일을 적는다.
+게스트 랜딩 히어로도 §6 채택 문장으로 바꿨고 nav에 Fleet 링크. `lib/public-routes.ts`에
+'fleet' 추가(deck-theme 테스트가 잡아냈다). 레퍼런스와 디자인 플랜은
+`docs/fleet-landing-design.md` — 가져온 두 페이지는 시각 정보를 안 줘서 표에 그렇게 적었다.
+로컬 `next start`로 렌더 확인했다(DB 없어서 숫자는 대시).

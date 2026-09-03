@@ -79,6 +79,16 @@ export default function GuestPage() {
         </div>
         <nav className="ml-auto flex items-center gap-1">
           <Link
+            href="/fleet"
+            className="hidden items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-secondary hover:text-foreground sm:inline-flex"
+          >
+            <span className="relative flex size-1.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-70" />
+              <span className="relative inline-flex size-1.5 rounded-full bg-red-500" />
+            </span>
+            {t('guest.nav.fleet')}
+          </Link>
+          <Link
             href="/live"
             className="hidden items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-secondary hover:text-foreground sm:inline-flex"
           >
