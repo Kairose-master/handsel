@@ -83,8 +83,31 @@ try {
     // the Leads section of lib/demand-census.ts. A snapshot, overwritten
     // daily, not a series: yesterday's leads are not data.
     try {
-      const { qualifyLeads, leadsCsv } = await import('../lib/demand-census.ts')
-      const leads = qualifyLeads(items, Date.now())
+      const { qualifyLeads, leadsCsv, repoOf } = await import('../lib/demand-census.ts')
+      // The repository behind each candidate: fork? stars? age? One read per
+      // distinct repo, a few at a time, and a failed read is recorded as
+      // unreadable rather than scored as a fresh, un-forked, starless repo.
+      const repos = [...new Set(items.map((i) => repoOf(i)).filter(Boolean))]
+      const metaByRepo = new Map()
+      let cursor = 0
+      await Promise.all(
+        Array.from({ length: 4 }, async () => {
+          while (cursor < repos.length) {
+            const full = repos[cursor++]
+            try {
+              const rr = await fetch(`https://api.github.com/repos/${full}`, {
+                headers: { authorization: `Bearer ${TOKEN}`, accept: 'application/vnd.github+json' },
+              })
+              if (!rr.ok) { metaByRepo.set(full, { unreadable: true }); continue }
+              const j = await rr.json()
+              metaByRepo.set(full, { fork: Boolean(j.fork), stars: Number(j.stargazers_count ?? 0), createdAt: j.created_at })
+            } catch {
+              metaByRepo.set(full, { unreadable: true })
+            }
+          }
+        }),
+      )
+      const leads = qualifyLeads(items, Date.now(), 25, metaByRepo)
       writeFileSync(new URL('../data/demand-census/leads.csv', import.meta.url), leadsCsv(leads) + '\n')
       console.log(`leads                    ${leads.length} ranked → data/demand-census/leads.csv`)
     } catch (e) {

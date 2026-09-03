@@ -363,3 +363,22 @@ review of a sample plus their bounty spec. Don't bump.
 4. **Never request forwarder/whitelist powers** on a relay-gated market — a
    trusted forwarder can impersonate any actor (`docs/taskmarket-evaluator.md`).
    A permission they should refuse is not one we ask for.
+
+
+## 2026-09-03 — the pilot list, read honestly
+
+The owner asked for the three paid pilots (`docs/verified-work-pilot-offer.md`
+A) to be sent. The census workflow now commits its ranked leads
+(`data/demand-census/leads.csv`). The first list, read line by line: a
+"$1,200" audit on a repo named bounty-plaza with 13 comments, a $50 fibonacci
+coding test, a $1 bounty, a "GMV prize" game, and opire-labelled issues on
+forks of kafka-go, go-github, cli and argo under week-old accounts. Not one
+open-source maintainer with a backlog. Standing rule 2 applies: that graph is
+small, and a pitch into an agent-bounty farm is spam by definition.
+
+So nothing was sent, and the ranking learned what it could not see: the
+repository behind the issue (fork, stars, age — `RepoMeta` in
+`lib/demand-census.ts`) and bot-feed titles. Message B (issue #8, priced at
+$25) waits for AIPOU's move, as the thread's own rule says. Real pilot targets
+for A remain the owner's network — an AI startup's dev team, an indie hacker
+— which no instrument here can list.

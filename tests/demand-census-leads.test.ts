@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { LEADS_HEADER, leadsCsv, qualifyLead, qualifyLeads, type IssueItem } from '@/lib/demand-census'
+import { ESTABLISHED_STARS, LEADS_HEADER, YOUNG_REPO_DAYS, leadsCsv, qualifyLead, qualifyLeads, repoOf, type IssueItem } from '@/lib/demand-census'
 
 const NOW = Date.parse('2026-09-02T00:00:00Z')
 const item = (over: Partial<IssueItem> = {}): IssueItem => ({
@@ -98,5 +98,36 @@ describe('the ranked list', () => {
     const csv = leadsCsv(qualifyLeads([item({ title: 'Fix "quoted", comma title' })], NOW))
     expect(csv.split('\n')[0]).toBe(LEADS_HEADER)
     expect(csv).toContain('"Fix ""quoted"", comma title"')
+  })
+})
+
+describe('the repository behind the lead — what the first list could not see', () => {
+  // 2026-09-03: the top of the first ranked list was a "bounty-plaza" repo,
+  // a fibonacci coding test, and forks of kafka-go / go-github / cli under
+  // week-old accounts. Every one scored well on the issue alone.
+  it('a fork is somebody else\'s backlog', () => {
+    const fork = qualifyLead(item(), NOW, { fork: true, stars: 0, createdAt: '2026-08-25T00:00:00Z' })
+    const own = qualifyLead(item(), NOW, { fork: false, stars: 400, createdAt: '2021-01-01T00:00:00Z' })
+    expect(fork.score).toBeLessThan(own.score)
+    expect(fork.reasons.join(' ')).toMatch(/a fork/)
+    expect(fork.reasons.join(' ')).toMatch(new RegExp(`repository is \\d+d old`))
+    expect(own.reasons.join(' ')).toMatch(/400 stars/)
+  })
+  it('a lookup that failed is reported, never scored as a fresh starless repo', () => {
+    const unread = qualifyLead(item(), NOW, { unreadable: true })
+    expect(unread.score).toBe(qualifyLead(item(), NOW).score)
+    expect(unread.reasons.join(' ')).toMatch(/unreadable/)
+  })
+  it('bot feeds are not maintainers', () => {
+    for (const title of ['[radar] SN open bounty 2026-09-02T14:22', 'Generate qualifying GMV for 6 USDC prize — week 20260831']) {
+      expect(qualifyLead(item({ title }), NOW).reasons.join(' '), title).toMatch(/bot feed/)
+    }
+    expect(qualifyLead(item({ title: 'Fix flaky retry in the uploader' }), NOW).reasons.join(' ')).not.toMatch(/bot feed/)
+  })
+  it('qualifyLeads keys the metadata by owner/name', () => {
+    const meta = new Map([[repoOf(item()), { fork: true }]])
+    expect(qualifyLeads([item()], NOW, 25, meta)[0].reasons.join(' ')).toMatch(/a fork/)
+    expect(YOUNG_REPO_DAYS).toBe(30)
+    expect(ESTABLISHED_STARS).toBe(100)
   })
 })

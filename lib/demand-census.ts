@@ -251,6 +251,23 @@ export interface IssueItem {
   repository_url?: string
 }
 
+/**
+ * What `GET /repos/{owner}/{repo}` says about the repository behind a lead.
+ * The first ranked list (2026-09-03) was mostly forks of well-known projects
+ * under week-old accounts and repositories named "bounty-plaza" — agent
+ * bounty farms, not maintainers with a backlog. None of that is visible in
+ * the issue; all of it is visible in the repository. Every field is optional
+ * so a lookup that fails costs the lead nothing but the signal.
+ */
+export interface RepoMeta {
+  fork?: boolean
+  stars?: number
+  /** ISO. */
+  createdAt?: string
+  /** True when the metadata read itself failed — reported, never scored. */
+  unreadable?: boolean
+}
+
 export interface Lead {
   url: string
   repo: string
@@ -275,7 +292,21 @@ const CHANNEL_RE = /\b(algora|polar\.sh|gitcoin|opire|boss\.dev|bountysource|iss
 const GOOD_LABELS = ['good first issue', 'help wanted', 'bounty', 'reward']
 const BAD_LABELS = ['epic', 'discussion', 'question', 'wontfix', 'duplicate', 'rfc', 'tracking']
 
-export function qualifyLead(item: IssueItem, nowMs: number): Lead {
+/** Titles a bot writes: a radar prefix, a week stamp, a "prize" for GMV. A
+ *  human maintainer's issue does not announce itself as a feed. */
+const BOT_TITLE_RE = /^\s*\[(radar|feed|digest|auto)\]|\bweek\s*\d{6,8}\b|\bGMV\b/i
+
+/** A repository younger than this is a throwaway, not a project with a backlog. */
+export const YOUNG_REPO_DAYS = 30
+/** Stars at which a repository has users someone else might be, too. */
+export const ESTABLISHED_STARS = 100
+
+/** "owner/name" for an item — the key the metadata map uses. */
+export function repoOf(item: IssueItem): string {
+  return (item.repository_url ?? '').replace(/^.*\/repos\//, '') || item.html_url.replace(/^https:\/\/github\.com\//, '').split('/issues/')[0]
+}
+
+export function qualifyLead(item: IssueItem, nowMs: number, meta?: RepoMeta): Lead {
   const text = `${item.title}\n${item.body ?? ''}`
   const amountMatch = AMOUNT_RE.exec(text)
   const channelMatch = CHANNEL_RE.exec(text)
@@ -283,7 +314,7 @@ export function qualifyLead(item: IssueItem, nowMs: number): Lead {
   const ageDays = Math.max(0, Math.round((nowMs - Date.parse(item.created_at)) / 86_400_000))
   const comments = item.comments ?? 0
   const bodyLen = (item.body ?? '').trim().length
-  const repo = (item.repository_url ?? '').replace(/^.*\/repos\//, '') || item.html_url.replace(/^https:\/\/github\.com\//, '').split('/issues/')[0]
+  const repo = repoOf(item)
 
   let score = 0
   const reasons: string[] = []
@@ -303,6 +334,24 @@ export function qualifyLead(item: IssueItem, nowMs: number): Lead {
   else if (bodyLen > 600) add(1, 'substantial brief')
   if (labels.some((l) => BAD_LABELS.includes(l))) add(-3, `labelled ${labels.filter((l) => BAD_LABELS.includes(l)).join(', ')} — not a task`)
   if (labels.some((l) => GOOD_LABELS.includes(l) && l !== 'bounty')) add(1, 'scoped for an outsider')
+  if (BOT_TITLE_RE.test(item.title)) add(-3, 'title reads as a bot feed, not a maintainer')
+
+  // The repository, when the caller looked it up. A fork is somebody else's
+  // backlog; a repo younger than a month has no backlog; stars say whether
+  // a merged PR would be seen by anyone but its author.
+  if (meta && !meta.unreadable) {
+    if (meta.fork) add(-4, 'a fork — the backlog belongs to the upstream project')
+    if (meta.createdAt) {
+      const repoAgeDays = Math.round((nowMs - Date.parse(meta.createdAt)) / 86_400_000)
+      if (repoAgeDays >= 0 && repoAgeDays < YOUNG_REPO_DAYS) add(-3, `repository is ${repoAgeDays}d old — no backlog to speak of`)
+    }
+    if (typeof meta.stars === 'number') {
+      if (meta.stars >= ESTABLISHED_STARS) add(2, `${meta.stars} stars — a merge would be seen`)
+      else if (meta.stars === 0) add(-1, 'no stars')
+    }
+  } else if (meta?.unreadable) {
+    reasons.push('repository metadata unreadable — not scored')
+  }
 
   return {
     url: item.html_url,
@@ -319,10 +368,10 @@ export function qualifyLead(item: IssueItem, nowMs: number): Lead {
 
 /** Ranked, one per repository — the first lead in a repo is a relationship,
  *  the fifth is the same relationship listed five times. */
-export function qualifyLeads(items: IssueItem[], nowMs: number, limit = 25): Lead[] {
+export function qualifyLeads(items: IssueItem[], nowMs: number, limit = 25, metaByRepo?: ReadonlyMap<string, RepoMeta>): Lead[] {
   const seen = new Set<string>()
   return items
-    .map((i) => qualifyLead(i, nowMs))
+    .map((i) => qualifyLead(i, nowMs, metaByRepo?.get(repoOf(i))))
     .sort((a, b) => b.score - a.score || a.ageDays - b.ageDays)
     .filter((l) => (seen.has(l.repo) ? false : (seen.add(l.repo), true)))
     .slice(0, limit)

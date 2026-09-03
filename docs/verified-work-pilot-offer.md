@@ -59,7 +59,7 @@ unpaid sample bounty, grading ours, settlement theirs, next move AIPOU's
 >
 > Proposal for a second one, this time priced: same lane (image generation
 > + independent vision grade + signed proof), one deliverable against
-> criteria you publish, $<X> escrowed on Base mainnet through Handsel, paid
+> criteria you publish, $25 escrowed on Base mainnet through Handsel, paid
 > to the provider only on a passing grade under Handsel's rules AND your
 > visual acceptance; returned to you otherwise under the contract's
 > published terms (`docs/worker-terms.md`). That would make AIPOU the first
@@ -70,11 +70,25 @@ unpaid sample bounty, grading ours, settlement theirs, next move AIPOU's
 > If a paid second bounty is not something AIPOU would do, that is a useful
 > answer too, and I'd rather have it plainly than assume.
 
-*Internal:* price the second bounty above the image lane's real cost per
-success (`lib/external-revenue.ts` leaves that field null until the ledger
-records production cost — measure the first sample and write it down). The
+*Internal:* priced at **$25** on 2026-09-03 — the menu's lowest fixed-scope
+price (`docs/verified-work-menu.md`), and above any plausible cost of one
+image generation plus one vision grade; `lib/external-revenue.ts` still
+leaves `costPerSuccessUsd` null until the ledger records production cost, so
+this is a floor chosen by hand, not a measured margin. **Not yet posted:**
+the thread's last move (2026-08-31) is ours, the sample bounty has not
+settled on AIPOU's side, and `docs/interop-outreach.md` says don't bump. Post
+the moment their spec or visual review lands, whatever the outcome. The
 answer, including "no", goes in `docs/interop-outreach.md` as the outcome of
 the pilot, not buried in the thread.
+
+## What can and cannot be sent from a Handsel session (2026-09-03)
+
+A session bound to this repository cannot send message A: the GitHub search
+API and every third-party repository are outside its scope, and the platform's
+own mailer needs the deployment's secrets. What a session *can* do is build
+the list: the census workflow now commits `data/demand-census/leads.csv` and
+attaches it to each run, so the owner opens the top three and pastes A. The
+owner sends; nothing here is sent by code — unchanged.
 
 ## What both messages must never say
 
