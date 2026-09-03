@@ -258,3 +258,42 @@ describe('an office session talking outside itself', () => {
     expect(page).toContain("t('sess.toolNever')")
   })
 })
+
+describe('the operator surfaces', () => {
+  it('the metrics are computed from the log and shown above everything but the inbox', () => {
+    const page = read('app/(dashboard)/office/sessions/page.tsx')
+    // needs-you first, then what it saved you — in that order
+    expect(page.indexOf('<Inbox view={view}')).toBeLessThan(page.indexOf('<Metrics view={view}'))
+    expect(page.indexOf('<Metrics view={view}')).toBeLessThan(page.indexOf('<Sessions view={view}'))
+    expect(page).toContain('metricLines(view.metrics)')
+    expect(page).toContain("t('sess.metricsNote')")
+    const action = read('app/actions/office-session.ts')
+    expect(action).toContain('officeMetrics(await os.sessionStatesFor(user.id, slot)')
+  })
+
+  it('a posture is a policy write, so the engine never learns presets exist', () => {
+    const action = read('app/actions/office-session.ts')
+    const start = action.indexOf('export async function setOfficePolicyPreset(')
+    expect(start).toBeGreaterThan(0)
+    const body = action.slice(start, action.indexOf('\n}\n', start))
+    expect(body).toContain('os.setOfficePolicy(user.id, slot, { ...PRESET_POLICIES[preset], id: \'office\' })')
+    expect(read('lib/approval-policy.ts')).not.toContain('preset ===')
+    // and the JSON editor is still there, behind the postures
+    const page = read('app/(dashboard)/office/sessions/page.tsx')
+    expect(page).toContain('<Posture view={view}')
+    expect(page).toContain("t('sess.editJson')")
+  })
+
+  it('every posture and metric label exists in en and ko', async () => {
+    const { DICTIONARIES } = await import('@/lib/i18n-dict')
+    const { POLICY_PRESETS } = await import('@/lib/approval-policy')
+    const { metricLines, EMPTY_METRICS } = await import('@/lib/office-metrics')
+    for (const loc of ['en', 'ko'] as const) {
+      for (const p of POLICY_PRESETS) {
+        const key = `sess.posture${p.charAt(0).toUpperCase()}${p.slice(1)}`
+        expect(DICTIONARIES[loc][key], `${loc}/${key}`).toBeTruthy()
+      }
+      for (const l of metricLines(EMPTY_METRICS)) expect(DICTIONARIES[loc][`sess.m.${l.key}`], `${loc}/${l.key}`).toBeTruthy()
+    }
+  })
+})

@@ -12,11 +12,12 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Loader2, RefreshCw, Play, Pause, XCircle, Check, X, Plug, ShieldCheck, Brain, Wallet } from 'lucide-react'
+import { Loader2, RefreshCw, Play, Pause, XCircle, Check, X, Plug, ShieldCheck, Brain, Wallet, Gauge } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   attachOfficeTool,
+  setOfficePolicyPreset,
   cancelSession,
   connectWorkspaceWorker,
   detachOfficeTool,
@@ -31,6 +32,8 @@ import {
 } from '@/app/actions/office-session'
 import { useI18n } from '@/lib/i18n'
 import { NOTIFIABLE_EVENTS, describeBinding } from '@/lib/session-tools'
+import { POLICY_PRESETS, PRESET_BLURBS, type PolicyPreset } from '@/lib/approval-policy'
+import { metricLines, metricsSentence } from '@/lib/office-metrics'
 import { STATUS_META, type SessionKind, type SessionStatus } from '@/lib/office-session'
 
 const TONE: Record<SessionStatus, string> = {
@@ -103,6 +106,7 @@ export default function OfficeSessionsPage() {
       {view && (
         <>
           <Inbox view={view} reload={load} />
+          <Metrics view={view} />
           <Sessions view={view} reload={load} />
           <div className="grid gap-4 md:grid-cols-2">
             <Workers view={view} reload={load} />
@@ -508,8 +512,8 @@ function Policy({ view, reload }: { view: SessionOverview; reload: () => Promise
           <ShieldCheck className="h-4 w-4" /> {t('sess.policy')}
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-2 text-sm">
-        {!editing && <pre className="overflow-auto rounded bg-secondary p-2 text-[11px] whitespace-pre-wrap">{view.policyText}</pre>}
+      <CardContent className="space-y-3 text-sm">
+        {!editing && <Posture view={view} reload={reload} />}
         {editing && <textarea className="w-full rounded border border-border bg-background p-2 font-mono text-[11px]" rows={18} value={raw} onChange={(e) => setRaw(e.target.value)} />}
         <div className="flex gap-2">
           {!editing ? (
@@ -664,5 +668,89 @@ function Tools({ view, reload }: { view: SessionOverview; reload: () => Promise<
         </details>
       </CardContent>
     </Card>
+  )
+}
+
+function Metrics({ view }: { view: SessionOverview }) {
+  const { t } = useI18n()
+  const lines = metricLines(view.metrics)
+  const tone = (x: string) => (x === 'good' ? 'text-success' : x === 'warn' ? 'text-warning' : x === 'bad' ? 'text-destructive' : '')
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Gauge className="h-4 w-4" /> {t('sess.metrics')}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        <div className="grid grid-cols-2 gap-px bg-border sm:grid-cols-3 lg:grid-cols-5">
+          {lines.map((l) => (
+            <div key={l.key} className="bg-card px-3 py-2">
+              <div className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">{t(`sess.m.${l.key}`)}</div>
+              <div className={`text-lg font-semibold ${tone(l.tone)}`}>{l.value}</div>
+              <div className="text-[10px] text-muted-foreground">{l.sub}</div>
+            </div>
+          ))}
+        </div>
+        <p className="text-sm">{metricsSentence(view.metrics)}</p>
+        <p className="text-xs text-muted-foreground">{t('sess.metricsNote')}</p>
+      </CardContent>
+    </Card>
+  )
+}
+
+function Posture({ view, reload }: { view: SessionOverview; reload: () => Promise<void> }) {
+  const { t } = useI18n()
+  const [busy, setBusy] = useState<string | null>(null)
+  const current = view.policyWords.preset
+  const pick = async (p: PolicyPreset) => {
+    setBusy(p)
+    try {
+      await setOfficePolicyPreset(view.slot, p)
+      await reload()
+    } finally {
+      setBusy(null)
+    }
+  }
+  return (
+    <div className="space-y-2">
+      <div className="text-xs font-medium">
+        {t('sess.posture')}: {current ? t(`sess.posture${current.charAt(0).toUpperCase()}${current.slice(1)}`) : t('sess.postureEdited')}
+      </div>
+      <div className="grid gap-2 sm:grid-cols-3">
+        {POLICY_PRESETS.map((p) => (
+          <div key={p} className={`rounded border p-2 text-xs ${current === p ? 'border-primary' : 'border-border'}`}>
+            <div className="font-medium">{t(`sess.posture${p.charAt(0).toUpperCase()}${p.slice(1)}`)}</div>
+            <p className="mt-1 text-muted-foreground">{PRESET_BLURBS[p]}</p>
+            {current !== p && (
+              <Button className="mt-2" size="sm" type="button" variant="outline" disabled={busy !== null} onClick={() => pick(p)}>
+                {busy === p ? <Loader2 className="h-3 w-3 animate-spin" /> : null} {t('sess.useThis')}
+              </Button>
+            )}
+          </div>
+        ))}
+      </div>
+      <div className="grid gap-2 text-xs sm:grid-cols-3">
+        <PolicyList title={t('sess.settlesItself')} items={view.policyWords.allowed} tone="text-success" />
+        <PolicyList title={t('sess.comesToYou')} items={view.policyWords.asks} tone="text-warning" />
+        <PolicyList title={t('sess.neverAllowed')} items={view.policyWords.never} tone="text-destructive" />
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {t('sess.policyBudget')}: {view.policyWords.budget}
+      </p>
+    </div>
+  )
+}
+
+function PolicyList({ title, items, tone }: { title: string; items: string[]; tone: string }) {
+  return (
+    <div>
+      <div className={`font-medium ${tone}`}>{title}</div>
+      <ul className="mt-1 list-disc space-y-0.5 pl-4 text-muted-foreground">
+        {items.map((i, k) => (
+          <li key={k}>{i}</li>
+        ))}
+      </ul>
+    </div>
   )
 }

@@ -6,13 +6,19 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
+  CONDITION_FIELDS,
   DEFAULT_APPROVAL_POLICY,
+  POLICY_PRESETS,
+  PRESET_BLURBS,
+  PRESET_POLICIES,
   conditionHolds,
   evaluateApproval,
   fileFlags,
   grantCeiling,
   moneyGate,
   parsePolicy,
+  policyInWords,
+  presetOf,
   receiptText,
   renderPolicy,
   riskTierFor,
@@ -228,5 +234,77 @@ describe('serialisation', () => {
     expect(text).toContain('single_task_limit_usd: 3')
     expect(text).toContain('amountUsd <= 2')
     expect(text).toContain('hard rules the policy cannot relax')
+  })
+})
+
+describe('the three postures an operator can actually choose', () => {
+  it('each preset is a real policy the engine evaluates, and presetOf names it back', () => {
+    for (const name of POLICY_PRESETS) {
+      const p = PRESET_POLICIES[name]
+      expect(presetOf(p), name).toBe(name)
+      expect(PRESET_BLURBS[name].length, name).toBeGreaterThan(60)
+      // a preset is not allowed to invent a field the engine cannot read
+      for (const c of [...p.autoApprove, ...p.requireOwner, ...p.requireReviewer, ...p.deny]) expect(CONDITION_FIELDS, `${name}/${c.field}`).toContain(c.field)
+    }
+    expect(presetOf({ ...PRESET_POLICIES.standard, singleTaskLimitUsd: 99 })).toBeNull()
+  })
+
+  it('they differ in exactly the two things an operator is choosing between', () => {
+    const [careful, standard, handsOff] = [PRESET_POLICIES.careful, PRESET_POLICIES.standard, PRESET_POLICIES.hands_off]
+    // how much may settle without a person…
+    expect(careful.singleTaskLimitUsd).toBeLessThan(standard.singleTaskLimitUsd)
+    expect(standard.singleTaskLimitUsd).toBeLessThan(handsOff.singleTaskLimitUsd)
+    expect(careful.dailyBudgetUsd).toBeLessThan(handsOff.dailyBudgetUsd)
+    // …and whether an unreviewed result may settle at all
+    expect(careful.requireReviewer.length).toBeGreaterThan(0)
+    expect(standard.requireReviewer.length).toBeGreaterThan(0)
+    expect(handsOff.requireReviewer).toEqual([])
+  })
+
+  it('no preset can buy its way past a hard rule', () => {
+    for (const name of POLICY_PRESETS) {
+      const p = PRESET_POLICIES[name]
+      expect(evaluateApproval(p, ctx({ workspaceEscape: true })).outcome, name).toBe('DENY')
+      expect(evaluateApproval(p, ctx({ testsPassed: false })).outcome, name).toBe('DENY')
+      expect(evaluateApproval(p, ctx({ riskTier: 'E4' })).outcome, name).toBe('REQUIRE_OWNER')
+      expect(evaluateApproval(p, ctx({ secretModified: true })).outcome, name).toBe('REQUIRE_OWNER')
+      expect(evaluateApproval(p, ctx({ productionImpact: true })).outcome, name).toBe('REQUIRE_OWNER')
+    }
+  })
+
+  it('careful sends a paid task to the owner that hands_off settles', () => {
+    const paid: ApprovalContext = ctx({ amountUsd: 3, testsPassed: true, reviewerVerdict: 'APPROVE' })
+    expect(evaluateApproval(PRESET_POLICIES.careful, paid).outcome).toBe('REQUIRE_OWNER')
+    // ALLOW_WITH_LOG, not ALLOW: money moving without a person is allowed
+    // here but never silent (the engine's own distinction, not the preset's)
+    expect(evaluateApproval(PRESET_POLICIES.hands_off, paid).outcome).toBe('ALLOW_WITH_LOG')
+  })
+
+  it('reads back as three lists of sentences, not fields', () => {
+    const words = policyInWords(PRESET_POLICIES.standard)
+    expect(words.preset).toBe('standard')
+    expect(words.allowed).toContain('its tests did not fail')
+    expect(words.allowed).toContain('an independent reviewer approved it')
+    expect(words.allowed).toContain('it changed at most 10 file(s)')
+    expect(words.allowed).toContain('it costs at most $2')
+    expect(words.asks).toContain('it touched a production path')
+    expect(words.asks).toContain('no reviewer has looked at it yet (a reviewer is asked first)')
+    expect(words.budget).toBe('$20.00 a day, at most $3.00 on one task')
+    // no sentence leaks the field syntax
+    for (const line of [...words.allowed, ...words.asks, ...words.never]) expect(line, line).not.toMatch(/==|!=|<=|>=|Usd\b/)
+  })
+
+  it('the "never" list is the part the policy cannot switch off', () => {
+    const words = policyInWords({ ...PRESET_POLICIES.hands_off, autoApprove: [], requireOwner: [], requireReviewer: [] })
+    expect(words.never).toEqual(
+      expect.arrayContaining([
+        'a run wrote outside the working directory you granted',
+        'its tests or CI failed',
+        'it moves money, deploys, or changes production (risk E4)',
+        'it modified a secret or an environment file',
+      ]),
+    )
+    // and an owner's own deny rules join it
+    expect(policyInWords({ ...PRESET_POLICIES.careful, deny: [{ field: 'newDependency', op: '==', value: true }] }).never).toContain('it added a dependency')
   })
 })

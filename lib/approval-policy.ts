@@ -170,6 +170,202 @@ export const DEFAULT_APPROVAL_POLICY: ApprovalPolicy = {
   deny: [],
 }
 
+/* ── Presets, and the policy in words ─────────────────────────────────── */
+
+export const POLICY_PRESETS = ['careful', 'standard', 'hands_off'] as const
+export type PolicyPreset = (typeof POLICY_PRESETS)[number]
+
+/**
+ * Three postures, because a JSON editor is not a decision an operator can
+ * make on day one. Each is a real `ApprovalPolicy` — the engine has no idea
+ * a preset was involved — and the differences between them are exactly two
+ * things: how much money may settle without a person, and whether an
+ * unreviewed result may settle at all.
+ *
+ * What no preset can change: writing outside the workspace, failed tests,
+ * over budget, E4, a touched secret and a production path are hard rules in
+ * `evaluateApproval` above. A "hands off" office is not an unsupervised one.
+ */
+export const PRESET_POLICIES: Record<PolicyPreset, ApprovalPolicy> = {
+  careful: {
+    id: 'careful',
+    version: 1,
+    dailyBudgetUsd: 10,
+    singleTaskLimitUsd: 1,
+    // Nothing that costs money settles by itself; small verified edits do.
+    autoApprove: [
+      { field: 'amountUsd', op: '<=', value: 0 },
+      { field: 'testsPassed', op: '==', value: true },
+      { field: 'changedFileCount', op: '<=', value: 5 },
+      { field: 'secretModified', op: '==', value: false },
+      { field: 'productionImpact', op: '==', value: false },
+      { field: 'newDependency', op: '==', value: false },
+      { field: 'reviewerVerdict', op: '==', value: 'APPROVE' },
+    ],
+    requireOwner: [
+      { field: 'amountUsd', op: '>', value: 0 },
+      { field: 'riskTier', op: 'in', value: ['E3', 'E4'] },
+      { field: 'productionImpact', op: '==', value: true },
+      { field: 'newDependency', op: '==', value: true },
+      { field: 'reviewerDisagreement', op: '==', value: true },
+    ],
+    requireReviewer: [{ field: 'reviewerVerdict', op: '==', value: null }],
+    deny: [],
+  },
+  standard: DEFAULT_APPROVAL_POLICY,
+  hands_off: {
+    id: 'hands_off',
+    version: 1,
+    dailyBudgetUsd: 50,
+    singleTaskLimitUsd: 5,
+    autoApprove: [
+      { field: 'testsPassed', op: '!=', value: false },
+      { field: 'changedFileCount', op: '<=', value: 30 },
+      { field: 'secretModified', op: '==', value: false },
+      { field: 'productionImpact', op: '==', value: false },
+      { field: 'amountUsd', op: '<=', value: 5 },
+    ],
+    requireOwner: [
+      { field: 'amountUsd', op: '>', value: 5 },
+      { field: 'productionImpact', op: '==', value: true },
+      { field: 'reviewerDisagreement', op: '==', value: true },
+    ],
+    // An unreviewed result may settle here — this is the posture's whole point.
+    requireReviewer: [],
+    deny: [],
+  },
+}
+
+export const PRESET_BLURBS: Record<PolicyPreset, string> = {
+  careful: 'Nothing that costs money settles without you. Verified, reviewed, small edits go through; anything reaching the network, adding a dependency or touching production waits.',
+  standard: 'Verified and reviewed work up to $2 a task settles by itself. Money over that, production paths, new dependencies and reviewer disagreements come to you.',
+  hands_off: 'Verified work up to $5 a task settles by itself, review optional. Production paths, bigger amounts and reviewer disagreements still come to you — and the hard rules never bend.',
+}
+
+/** Which preset a policy IS, so the page can show the posture rather than the JSON. Null when it has been edited. */
+export function presetOf(p: ApprovalPolicy): PolicyPreset | null {
+  for (const name of POLICY_PRESETS) {
+    const preset = PRESET_POLICIES[name]
+    if (
+      p.dailyBudgetUsd === preset.dailyBudgetUsd &&
+      p.singleTaskLimitUsd === preset.singleTaskLimitUsd &&
+      sameConditions(p.autoApprove, preset.autoApprove) &&
+      sameConditions(p.requireOwner, preset.requireOwner) &&
+      sameConditions(p.requireReviewer, preset.requireReviewer) &&
+      sameConditions(p.deny, preset.deny)
+    ) {
+      return name
+    }
+  }
+  return null
+}
+
+function sameConditions(a: readonly Condition[], b: readonly Condition[]): boolean {
+  if (a.length !== b.length) return false
+  const key = (c: Condition) => `${c.field}${c.op}${JSON.stringify(c.value)}`
+  const bs = new Set(b.map(key))
+  return a.every((c) => bs.has(key(c)))
+}
+
+/**
+ * One condition as a sentence about the work, not about a field. `testsPassed
+ * != false` is not something an operator should have to parse; "its tests did
+ * not fail" is.
+ */
+export function conditionSentence(c: Condition): string {
+  const v = c.value
+  const list = Array.isArray(v) ? v.join(' or ') : String(v)
+  // Never let an operator through: a sentence carrying `<=` is a field
+  // expression wearing a sentence's clothes.
+  const cmp = (unit: string): string => {
+    const n = `${unit}${list}`
+    switch (c.op) {
+      case '<=':
+        return `at most ${n}`
+      case '<':
+        return `under ${n}`
+      case '>=':
+        return `at least ${n}`
+      case '>':
+        return `over ${n}`
+      case '!=':
+        return `anything but ${n}`
+      case 'in':
+        return `one of ${n}`
+      default:
+        return n
+    }
+  }
+  switch (c.field) {
+    case 'amountUsd':
+      return c.op === '<=' && v === 0 ? 'it costs nothing' : `it costs ${cmp('$')}`
+    case 'testsPassed':
+      return v === true ? 'its tests passed' : v === false && c.op === '!=' ? 'its tests did not fail' : `its tests are ${cmp('')}`
+    case 'ciPassed':
+      return v === true ? 'CI passed' : `CI is ${cmp('')}`
+    case 'changedFileCount':
+      return `it changed ${cmp('')} file(s)`
+    case 'secretModified':
+      return v === false ? 'it touched no secret' : 'it touched a secret'
+    case 'productionImpact':
+      return v === false ? 'it touched nothing production-shaped' : 'it touched a production path'
+    case 'newDependency':
+      return v === false ? 'it added no dependency' : 'it added a dependency'
+    case 'reviewerVerdict':
+      return v === 'APPROVE' ? 'an independent reviewer approved it' : v === null ? 'no reviewer has looked at it yet' : `the reviewer said ${cmp('')}`
+    case 'reviewerDisagreement':
+      return v === true ? 'the reviewer and the tests disagree' : 'the reviewer and the tests agree'
+    case 'riskTier':
+      return `its risk is ${cmp('')}`
+    case 'workerCredit':
+      return `the worker's credit is ${cmp('')}`
+    case 'budgetRemainingUsd':
+      return `the remaining budget is ${cmp('$')}`
+    case 'dailySpentUsd':
+      return `today's spend is ${cmp('$')}`
+    case 'settlement':
+      return `it settles ${c.op === '==' ? `as ${list}` : cmp('')}`
+    default:
+      return describeCondition(c)
+  }
+}
+
+export type PolicyInWords = {
+  preset: PolicyPreset | null
+  /** Settles by itself when ALL of these hold. */
+  allowed: string[]
+  /** Comes to you when ANY of these holds. */
+  asks: string[]
+  /** Refused outright, whatever the policy says. */
+  never: string[]
+  budget: string
+}
+
+/**
+ * The policy as three lists a person can act on: what settles by itself,
+ * what comes to them, and what is refused no matter what. The third list is
+ * not read from the policy — it is the hard rules in `evaluateApproval`,
+ * which is exactly why it belongs on the page: the reassurance an operator
+ * needs is the part they cannot switch off.
+ */
+export function policyInWords(p: ApprovalPolicy): PolicyInWords {
+  return {
+    preset: presetOf(p),
+    allowed: p.autoApprove.map(conditionSentence),
+    asks: [...p.requireOwner.map(conditionSentence), ...p.requireReviewer.map((c) => `${conditionSentence(c)} (a reviewer is asked first)`)],
+    never: [
+      'a run wrote outside the working directory you granted',
+      'its tests or CI failed',
+      'it would go over the session budget or the daily cap',
+      'it moves money, deploys, or changes production (risk E4)',
+      'it modified a secret or an environment file',
+      `it costs more than the single-task limit of $${p.singleTaskLimitUsd.toFixed(2)}`,
+      ...p.deny.map(conditionSentence),
+    ],
+    budget: `$${p.dailyBudgetUsd.toFixed(2)} a day, at most $${p.singleTaskLimitUsd.toFixed(2)} on one task`,
+  }
+}
+
 /* ── Evaluation ───────────────────────────────────────────────────────── */
 
 export type MatchedRule = { rule: 'hard' | 'deny' | 'requireOwner' | 'requireReviewer' | 'autoApprove'; condition: Condition | string }

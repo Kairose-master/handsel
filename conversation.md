@@ -737,4 +737,10 @@ GitHub Discussions new URL 생성, 금지 문장·증거 없는 주장·잘못�
   세션을 완료시키는 경로가 그중 마지막이라, 본문 안에 쓰면 `SESSION_COMPLETED`에 절대 안 울린다(테스트가 잡았다).
   루프에 early return을 추가하는 세션은 이 구조를 유지할 것.  라이브 확인: consult로 learn.microsoft.com에서 25,695B 받아 브리프에 펜스째로 들어갔고(8,801자),
   notify는 `APPROVAL_REQUESTED`와 `SESSION_COMPLETED` 두 번 다 `ok`로 나갔다.
+- **(8차) 운영자 지표 + 정책 태세** — `lib/office-metrics.ts`(순수, 세션 로그에서 계산: 무인 완료율,
+  오너 결정 횟수/대기 시간, 통과율, 재시도, 모델 비용과 실제 지급을 분리)와
+  `lib/approval-policy.ts`의 `PRESET_POLICIES`(careful/standard/hands_off) + `policyInWords`(세 개의 문장 목록).
+  **지표는 "절약한 시간"을 주장하지 않는다** — 필드는 `ownerWaitMs`(세션이 멈춰 있던 시간)이고 라벨도 그렇게 쓴다.
+  프리셋은 모드가 아니라 정책이다: `setOfficePolicyPreset`이 JSON 편집기와 같은 write를 한다.
+  하드 룰은 프리셋이 못 뚫는다(테스트가 세 프리셋 전부를 workspace escape/실패한 테스트/E4/시크릿/프로덕션에 돌린다).
 

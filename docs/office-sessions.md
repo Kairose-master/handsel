@@ -578,6 +578,49 @@ The notify target was a search server standing in for a pager: it is the
 https MCP server this container can reach, and what the run proves is the
 wire and the payload, not that anybody was paged.
 
+## The two numbers an operator is buying
+
+`/office/sessions` opens with the inbox and then with
+`lib/office-metrics.ts` — five figures computed from the session log, not
+estimated:
+
+| | what it is |
+|---|---|
+| **finished without you** | share of finished sessions that needed **no** owner decision. This is the product working |
+| **decisions you were asked for** | how many times a person had to decide, and how many the policy settled instead |
+| **blocked waiting on a person** | wall-clock the sessions spent stopped, plus the median time an ask was answered in |
+| **tasks that held up** | settled / decided, with retries per settled task beside it |
+| **what it cost** | the model bill and the money that actually left, kept apart |
+
+What these deliberately do **not** claim: hours saved. Nobody here watches
+the owner's clock — a decision made in ten seconds after a night's sleep is
+eight hours of *waiting* and ten seconds of *work*, so the field is
+`ownerWaitMs` and the label says "blocked waiting", never "saved".
+`metricsSentence` says what was done and how often a person was needed and
+leaves the arithmetic on an hourly rate to the reader. A metric with no
+data renders `—` and says why; an office with no finished session has not
+achieved a 0% pass rate.
+
+## Three postures instead of a JSON editor
+
+The policy card now opens with `careful` / `standard` / `hands_off`
+(`PRESET_POLICIES` in `lib/approval-policy.ts`) and the current policy read
+back as three lists of sentences (`policyInWords`): what settles by itself,
+what comes to you, and what is refused whatever the policy says. The JSON
+editor is still there, one click behind, and an edited policy shows as
+"edited by hand" rather than pretending to be a posture.
+
+The postures differ in exactly two things — how much may settle without a
+person, and whether an unreviewed result may settle at all. Everything in
+the third list is a hard rule in `evaluateApproval`, which is why it is on
+the page: the reassurance an operator needs is the part they cannot switch
+off, and `tests/approval-policy.test.ts` runs all three presets against a
+workspace escape, a failed test, E4, a touched secret and a production path
+to prove none of them can buy its way past.
+
+A preset is a policy, not a mode: `setOfficePolicyPreset` performs the same
+write the JSON editor does, and the engine has no idea presets exist.
+
 ## What is not built
 
 - **Independent review needs a model key** (`resolveLlm`). Without one the

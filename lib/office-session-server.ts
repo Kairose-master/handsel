@@ -1900,6 +1900,17 @@ export async function fireSessionTriggers(fired: string[], userId?: string | nul
   return ticked
 }
 
+/**
+ * Every session state of one office, for a read-only pass over the log
+ * (`lib/office-metrics.ts`). Bounded: the operator's numbers come from
+ * recent history, not from every session an account ever ran.
+ */
+export async function sessionStatesFor(userId: string, slot: number, limit = 200): Promise<SessionState[]> {
+  await ensureTables()
+  const { rows } = await pool.query<{ state: SessionState }>(`SELECT state FROM office_session WHERE user_id = $1 AND slot = $2 ORDER BY created_at DESC LIMIT $3`, [userId, slot, limit])
+  return rows.map((r) => r.state)
+}
+
 /** Undecided approvals across an account — the inbox. */
 export async function approvalInbox(userId: string): Promise<Array<{ session: OfficeSession; task: SessionTask; approval: ApprovalRecord }>> {
   await ensureTables()

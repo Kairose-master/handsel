@@ -16,6 +16,8 @@ import type { OfficeSession, SessionEvent, SessionKind, SessionSchedule, Session
 import type { RunLogLine, SessionListRow, WorkerGrantRow } from '@/lib/office-session-server'
 import type { SessionLesson } from '@/lib/office-session-loop'
 import type { BindingInput, SessionToolBinding } from '@/lib/session-tools'
+import type { OfficeMetrics } from '@/lib/office-metrics'
+import type { PolicyInWords, PolicyPreset } from '@/lib/approval-policy'
 
 async function requireUser() {
   const session = await getSession()
@@ -31,6 +33,10 @@ export type SessionOverview = {
   policyText: string
   memory: SessionLesson[]
   tools: SessionToolBinding[]
+  /** What this office saved its owner — lib/office-metrics.ts. */
+  metrics: OfficeMetrics
+  /** The policy as three lists of sentences, plus which posture it is. */
+  policyWords: PolicyInWords
   spentTodayUsd: number
   autoApprovedTodayUsd: number
   realMoney: boolean
@@ -84,8 +90,12 @@ export async function officeSessionOverview(slot = 1): Promise<SessionOverview> 
     )
     .then((r) => ({ total: Number(r.rows[0]?.total ?? 0) || 0, auto: Number(r.rows[0]?.auto ?? 0) || 0 }))
     .catch(() => ({ total: 0, auto: 0 }))
+  const { officeMetrics } = await import('@/lib/office-metrics')
+  const { policyInWords } = await import('@/lib/approval-policy')
   return {
     tools,
+    metrics: officeMetrics(await os.sessionStatesFor(user.id, slot).catch(() => [])),
+    policyWords: policyInWords(policy),
     sessions,
     inbox: inboxRaw
       .filter((i) => i.session.officeSlot === slot)
@@ -232,6 +242,20 @@ export async function tickSessionNow(sessionId: string): Promise<{ status: strin
   if (state.session.userId !== user.id) throw new Error('Unauthorized')
   const r = await os.tickOfficeSession(sessionId)
   return { status: r.status, notes: r.notes }
+}
+
+/**
+ * Switch the office to one of the three postures. The same write
+ * `saveOfficePolicy` does — a preset is a policy, not a mode — so the
+ * engine stays unaware that presets exist.
+ */
+export async function setOfficePolicyPreset(slot: number, preset: PolicyPreset): Promise<{ ok: true } | { ok: false; error: string }> {
+  const user = await requireUser()
+  const { PRESET_POLICIES, POLICY_PRESETS } = await import('@/lib/approval-policy')
+  if (!POLICY_PRESETS.includes(preset)) return { ok: false, error: 'unknown posture' }
+  const os = await import('@/lib/office-session-server')
+  const r = await os.setOfficePolicy(user.id, slot, { ...PRESET_POLICIES[preset], id: 'office' })
+  return r.ok ? { ok: true } : { ok: false, error: r.error }
 }
 
 export async function saveOfficePolicy(slot: number, raw: string): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
