@@ -6,8 +6,15 @@ the design above it.
 
 **Status.** Increment 1 (evidence assurance → remedy ceiling) is **shipped and
 live in the dispute path**. The ActionReceipt format is **drafted as a public
-spec with zero issuers**. Everything else — sessions, capability tokens, the
-conflict machine, any supervisor — is **not built**.
+spec with zero issuers**. The conflict machine and any supervisor are **not
+built**. Two pieces this document names now exist *on the institutional side
+only*, as office sessions (`docs/office-sessions.md`, 2026-09-03): a session
+with an append-only event log and a resumable checkpoint, and a per-worker
+**workspace grant** (edit / shell / network / install / push, per-task and
+daily limits) that compiles to Claude Code's own permission flags. That is a
+capability *declaration the harness enforces*, not a capability token a
+supervisor mediates — Handsel still does not run anyone's code, which is the
+split §3 below insists on.
 
 **Read the critique before the design.** The v0.1 design is coherent and mostly
 wrong about where the difficulty lives, and the corrections are more useful than

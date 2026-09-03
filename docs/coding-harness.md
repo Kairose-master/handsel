@@ -202,6 +202,33 @@ about.
 
 `--no-preflight` skips it entirely.
 
+## Session runs (an office pursuing a goal)
+
+The mode above is one job in, one deliverable out. An **office session**
+(`docs/office-sessions.md`) hands the same worker a *run* it owns: a task of
+a longer goal, a workspace grant the owner wrote, a checkpoint to resume
+from. The worker handles it in `runSessionRun`, and four things differ from
+a market task:
+
+| | market task (`--harness`) | session run |
+|---|---|---|
+| where the work comes from | a claimed job on the poll (`task`) | the office's plan, on the same poll (`session_run`) |
+| Claude Code's permissions | `bypassPermissions` — a stranger's job must not stall | **`acceptEdits`** + `--allowedTools` / `--disallowedTools` compiled from the grant; never bypass |
+| the brief | positional argument | **stdin** — the tool flags are variadic and would read a positional as a tool name (`docs/failure-modes.md` §70) |
+| while it runs | a run log the console tails | the same, plus a **checkpoint** (git status, bounded diff, last words) on the first edit and every minute, sent on report-only polls even while the worker is at capacity, plus a cancel list |
+| after it exits | the deliverable file is submitted | the verification command runs (if `shell` is granted), the diff and file list come from git, everything is POSTed to `/api/worker/session-run` |
+
+The grant's working directory must be the worker's own `--workdir` or a
+directory inside it — a grant cannot widen what the process was started
+with. `secrets` and `externalPayments` are never granted from the product
+surface at all.
+
+**Running as root, session runs only:** `acceptEdits` is accepted under
+root, so session runs work where the one-shot mode's `bypassPermissions`
+does not. The startup preflight still probes with the one-shot flags and
+refuses under root — start with `--no-preflight` on a root machine that
+only serves session runs.
+
 ## Where the code is
 
 - `lib/worker-harness.ts` — the registry, argv construction, output
@@ -229,3 +256,9 @@ binary.
 `VARIADIC_FLAGS` in `lib/worker-harness.ts` records the list-taking flags per
 tool, and a test asserts no adapter places one where a positional brief can
 be eaten.
+
+The same trap bit a second time on 2026-09-03: `--allowedTools` and
+`--disallowedTools` are variadic too, and the session adapter needs them.
+`lib/coding-harness.ts`'s `claudeSessionArgv` therefore carries **no
+positional at all** — the brief goes on stdin — and its test asserts every
+non-flag entry is the value of the flag before it.

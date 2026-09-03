@@ -35,7 +35,7 @@ Office (user_id, slot)
 | `lib/office-session-plan.ts` | the default plan (no model needed) and the mapping from the delegation planner's JSON |
 | `lib/office-session-server.ts` | tables, `appendEvents` (the one write path), observation, commands, the worker protocol, owner actions |
 | `app/api/worker/poll/route.ts`, `app/api/worker/session-run/route.ts` | the run hand-out, progress reports and cancel list ride the existing poll; the finish report has its own route |
-| `public/handsel-worker.mjs` | `runSessionRun`: spawn under the grant, stream, checkpoint every minute, verify, collect the diff, report |
+| `public/handsel-worker.mjs` | `runSessionRun`: spawn under the grant (brief on stdin), stream, checkpoint on the first edit and every minute, report-only polls while busy, verify, collect the diff, report |
 | `app/(dashboard)/office/sessions/` | the control room and the per-session timeline |
 | `app/actions/office-session.ts` | the owner's levers, including the one-click connect |
 | `scripts/office-session-e2e.ts` | the end-to-end scenario driver |

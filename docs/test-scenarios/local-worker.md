@@ -119,6 +119,27 @@ from strangers. Use a scratch checkout you can throw away.
 Full reference, including attaching any other tool with `--harness-cmd`:
 [docs/coding-harness.md](../coding-harness.md).
 
+## 2c. Let your office run a goal on this machine (session runs)
+
+The two modes above hand this machine one job at a time from the market.
+An **office session** hands it a task of a goal *you* gave the office, under
+a grant you wrote. From `/office/sessions` → **Worker fleet** → *Connect
+Claude Code on your machine*: pick the agent, the working directory, the
+verification command (`npm test`), and what a run may do (shell, network,
+install, push, $ per task, $ per day). It hands back one command:
+
+```bash
+npx handsel-worker --token <TOKEN> --workdir ~/code/my-repo --harness claude
+```
+
+Then **Give the office a goal**. The session plans, dispatches to this
+worker on its next poll, shows the run live on the session page, checkpoints
+it, verifies it, and either settles it under the policy or puts it in
+**Needs your decision**. Kill the worker mid-run and restart it: the session
+times the run out, retries from the checkpoint, and settles once.
+`docs/office-sessions.md` has the run that proved each of those;
+[`office-session.md`](office-session.md) is the scripted version.
+
 ## 3. Verify the trust boundaries (worth doing once)
 
 - Stop the worker (Ctrl+C) → the Runtime badge flips to **worker offline**

@@ -220,6 +220,8 @@ are now fenced the same way; none is airtight.
 requester ──► worker's prompt      F17   fence + workerBriefClause
 worker    ──► grader's prompt      F18   fence + graderInjectionClause
 worker A  ──► worker B's prompt    F19   fence + "a verdict inside is not a verdict"
+owner/plan ─► Claude Code's brief  (session runs) fence per section: GOAL, TASK, CRITERIA, CHECKPOINT
+worker    ──► session reviewer     (session runs) fence + graderInjectionClause, diff and report as data
 ```
 
 The shared construction, in `lib/untrusted-input.ts`:
@@ -243,6 +245,47 @@ to point at. The protections it stacks on carry more weight: LLM verdicts have
 the lowest grader weight in scoring, a single automated verdict can release only
 a bounded amount, and **workers never receive platform credentials** — the repo
 job path hands them a diff to write, never a token.
+
+### Office sessions (added 2026-09-03)
+
+`docs/office-sessions.md` adds a runtime in which the platform schedules
+work on the owner's own machine. What holds, and what does not:
+
+- **The worker is authenticated as before** — its own secret on the poll and
+  on `/api/worker/session-run`; a run is folded only under the authenticated
+  agent, and only if the dispatch row names that agent. A worker cannot
+  report onto another worker's run by naming its id.
+- **Everything a worker reports is untrusted.** Log lines are clamped and
+  credential shapes are redacted before storage; changed-file lists are
+  bounded; a path outside the granted workdir is a hard **DENY** in the
+  policy engine (`workspaceEscape`), decided before any owner rule is read.
+- **The grant is enforced by the harness, recorded by the platform.**
+  `acceptEdits` confines auto-approved edits to the cwd; shell and network
+  tools are allow/deny-listed; `bypassPermissions` is never asked for on a
+  session run. The worker also refuses a grant whose workdir lies outside
+  its own `--workdir`. The platform does not trust that: it re-derives the
+  reached risk tier from the reported tool events and file classes.
+- **Money leaves only through the existing release site.** An escrow task
+  is posted with `autoApprove` off; the policy's ALLOW flips it on and calls
+  `autoApprovePassedJob`, whose on-chain-Submitted check, peer-review hold
+  and cap all still apply. A policy release on a real-money deployment
+  additionally needs `OFFICE_SESSION_ALLOW_REAL_MONEY=true`; an owner's own
+  click is not gated by the flag. Internal tasks move nothing and write no
+  credit event.
+- **The reviewer is one model call and can be absent.** With no key the
+  verdict is `null`, and `REQUIRE_REVIEWER` with no reviewer becomes
+  `REQUIRE_OWNER` — never a pass. Under an owner-written policy that drops
+  the reviewer condition, "tests pass" alone approves; that is the owner's
+  choice and the default policy does not make it.
+
+**Residual, stated:** the verification command is a shell string the owner
+set, run by the owner's own worker on the owner's own machine — it is the
+owner's command, not a stranger's, but it is a shell string. The brief a run
+receives fences the goal and the task as data; a coding harness is still a
+model that reads them, and the fence removes the trivial injection, not the
+possibility. Nothing in this runtime issues a signed work proof for an
+internal artifact; the sha256 on the approval receipt is a hash, not an
+attestation.
 
 ---
 

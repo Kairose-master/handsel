@@ -256,7 +256,7 @@ office, and the only lane a stranger's real money has moved through is the
   a red suite got pushed under a green read. Same defect as the `tee` in
   `solana-devnet.yml` and the `bump` nothing wrote: **a check that cannot fail
   is not a check.** Never pipe a gate.
-- `npm run test` — vitest (currently 207 files, ~2,912 tests). The pure logic
+- `npm run test` — vitest (currently 287 files, ~4,100 tests). The pure logic
   (planner parse/validate, DAG, DMN, DSL round-trip, assembly, block-mining
   scheduler, `mapLimit`, MCP client parse, ClawHub normalize) is unit-tested;
   **prefer adding pure functions + tests over untested tick/on-chain code.**
@@ -305,6 +305,13 @@ needs to change, re-pin it or write our own next to it.
   MCP integration lacks `actions:write` — desktop releases must be triggered
   from the GitHub web UI (create the `desktop-v*` tag there).
 - `edge-tts` needs `SSL_CERT_FILE=/root/.ccr/ca-bundle.crt` + `--proxy`.
+- **Background processes are reaped between shell calls** — unless started
+  with `setsid nohup … &` inside a subshell, which survives (Postgres,
+  `next start` and the worker all ran across calls that way for the
+  office-session end-to-end). And **`pkill -f` / `pgrep -f` match your own
+  shell** when the pattern appears in your command line: filter with
+  `grep -vx "$$"` or use a bracket trick (`next-serve[r]`). Three sessions
+  have now lost a shell to this.
 
 ## Git workflow
 

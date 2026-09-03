@@ -1767,6 +1767,7 @@ Check these before reading code:
 | Runtime logs, `[ops-cycle] traffic tick:` | One line per tick with every sweep's result — the fastest way to see whether background work is running at all. |
 | `/api/admin/health` → `settlementQueue` | Work we accepted and haven't paid for. `abandoned > 0` means retries are exhausted and nothing will move it without a person (§19). |
 | `POST /api/admin/rescore` (no `?apply`) | Are the stored scores what the current engine would compute? Every row with a non-zero `delta` is a public number the code no longer agrees with (§20). Writes nothing without `?apply=true`. |
+| `/office/sessions` → a session's page | What an office session is waiting on (its status sentence names it), the live run's own lines, every approval with the evidence it was decided on, and whether replaying the event log reproduces the state shown. Runtime logs: `[office-session] <id> (<status>): …` one line per tick (§70). |
 
 ## 33. A peer review gate that never held, and a REVISE the platform caused
 
@@ -3213,6 +3214,13 @@ Keep these true, and this class of bug stays dead:
 73. **Stamp identity on every diagnostic line.** Four delegations shared
    every step title; a title-keyed log line steered the diagnosis to the
    wrong pipeline for an hour (§62).
+74. **A worker that cannot report is a dead worker to the platform, so
+   reporting must never depend on having capacity.** The session worker
+   stopped polling while busy, and every checkpoint and heartbeat arrived
+   after the run had already ended (§70).
+75. **Whatever counts a resource as busy must be released by the same code
+   that declares its work over.** A run the loop had timed out kept its
+   dispatch row `claimed`, and the restarted worker was "busy" forever (§70).
 
 ## 63. Nothing could end: 8 verdicts, 0 approvals, and a terminus that was not one (2026-09-01)
 

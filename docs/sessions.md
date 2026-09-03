@@ -72,8 +72,15 @@ status (money), the stored grade, the worker run — `turnOutcomeFrom`.
 
 ## What is not built
 
-- **A page.** Sessions exist over MCP (four tools) and in the two side
+- **A page.** Job sessions exist over MCP (four tools) and in the two side
   tables. The Notion desk (`docs/notion-desk.md`) is the intended surface.
+  (`/office/sessions` is a page for a different thing — see below.)
+- **A goal that outlives one worker's thread** is not this module. That is
+  an **office session** (`docs/office-sessions.md`, 2026-09-03): a plan of
+  tasks, checkpoints, a written approval policy, resume after a crash. A job
+  session could be one task of an office session; the reverse makes no
+  sense. Keep the two names apart: `lib/session.ts` bills per turn,
+  `lib/office-session.ts` organises work over time.
 - **Repo sessions.** A turn is a text job. A repo turn — the same branch
   evolving, CI grading each turn — is the natural next step; the pipeline
   in `lib/repo-job-pipeline.ts` already grades a PR that changes over time.

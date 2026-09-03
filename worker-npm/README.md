@@ -17,6 +17,12 @@ Zero runtime dependencies (Node 18+). The full flag reference is the header
 of `handsel-worker.mjs` itself; the harness contract is
 `docs/coding-harness.md` in the repository.
 
+The same process also serves **office sessions** (`docs/office-sessions.md`):
+a run the owner's office scheduled on this machine, under a workspace grant
+the owner wrote, with checkpoints and a resume after a crash. Nothing to
+configure on this side — the run and its grant arrive on the poll, and the
+command `/office/sessions` hands out is the one above.
+
 ## Publishing (operator step)
 
 `npm publish` from this directory. `prepublishOnly` copies the current

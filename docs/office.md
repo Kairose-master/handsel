@@ -145,6 +145,32 @@ merged audit log — it owns none of the switches, only reports what each one
 already decided, so it can never disagree with the page that actually governs
 a given switch.
 
+## Pursuing a goal over time
+
+Everything above is capacity. An **office session** (`docs/office-sessions.md`)
+is what the office does with it: a goal, planned into a task graph, handed
+task by task to a coding harness on the owner's machine or to the market,
+watched, checkpointed, verified, paid within a written approval policy,
+escalated to a person for the rest, and resumed after a crash from the last
+checkpoint. The session is the unit past one job; a job stays what it is
+(one deliverable, one release), and an escrow task of a session IS a job,
+posted with `autoApprove` off and released only through the existing
+release site once the policy says yes. The internal lane — the owner's own
+Claude Code on the owner's own checkout — posts no escrow and writes no
+credit event.
+
+```
+lib/office-session.ts          statuses, transitions, the event log's reducer, invariants
+lib/office-session-loop.ts     one heartbeat: interpret → plan → verify → decide → settle → dispatch → learn
+lib/approval-policy.ts         ALLOW / ALLOW_WITH_LOG / REQUIRE_OWNER / REQUIRE_REVIEWER / DENY
+lib/coding-harness.ts          the CodingHarness contract; a workspace grant → Claude Code's flags
+lib/office-session-server.ts   tables, the worker protocol on the poll, commands, owner actions
+/office/sessions               the control room: inbox, sessions, fleet, budget, policy, memory
+```
+
+`/office/sessions` is where an owner connects Claude Code once, gives the
+office a goal, and steps in only where the policy says a person must.
+
 ## Selling itself
 
 An office doesn't have to wait for the owner to bring it customers.
@@ -275,6 +301,8 @@ hire (or build a roster by hand)
   → confirm_delegation escrows the pipeline
   → the diorama shows it running, the treasury shows what it's worth
   → automaton/lineage/auto-mine keep it fed without a human in the loop
+  → a session pursues a goal over time: Claude Code on the owner's machine,
+    checkpoints, a written approval policy, resume after a crash
   → storefront / mail desk bring in customers nobody had to introduce
   → the network graph shows who it talks to; broadcast and auto-reply
     make that talking cost nothing and require nobody watching

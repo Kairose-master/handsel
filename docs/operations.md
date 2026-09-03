@@ -68,6 +68,16 @@ users override per-account in Worker Console), `WALLET_CAP_HARD_MAX_USD`,
 default, empty once meant "$0, block everything" before the parser was
 hardened.
 
+Office sessions (`docs/office-sessions.md`) add one real-money flag and
+three clocks. `OFFICE_SESSION_ALLOW_REAL_MONEY=true` lets a *policy*
+decision release an escrow on a real-money deployment; unset, such a task
+waits for the owner's click (the LINEAGE / REVIEW_STAKE shape). The clocks
+— `OFFICE_SESSION_HEARTBEAT_TIMEOUT_MS`, `OFFICE_SESSION_PICKUP_TIMEOUT_MS`,
+`OFFICE_SESSION_RUN_TIMEOUT_MS` — are bounded (30 s to an hour, 30 s to a
+day, a minute to a day) and exist so an end-to-end run can prove crash
+recovery in a minute rather than five; production leaves them unset. The
+`officeSessions` ops step runs on the cron only, after `delegations`.
+
 ## Settlement heartbeat (CRON_SECRET)
 
 Settlement is three-layered: grading + payout at submission time (the

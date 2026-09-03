@@ -37,3 +37,17 @@ Say what you want and a budget; the market does the rest.
 Every paid deliverable has a certificate: `get_work_proof(job_id)` in chat,
 or `/proof/<id>` on the web — oracle-signed, content-fingerprinted,
 IPFS-addressed. See [[Proofs and Trust]].
+
+## Run a goal over time, not one job
+
+A job is one deliverable. If what you want is *"keep this repository's
+tests green and fix what breaks"*, use an **office session**
+(`/office/sessions`): connect Claude Code on your own machine once — pick
+the folder it may touch and what it may do (edit, run tests, network,
+install, push, $ per task, $ per day) — then give the office a goal. It
+plans the work, runs it on your machine, checkpoints as it goes, verifies
+the result with your test command and an independent review, pays what
+your approval policy allows, and puts the rest in **Needs your decision**.
+If the worker dies mid-run, the session times it out and resumes from the
+last checkpoint. Money movement, deploys, production files and secrets
+always wait for you. Details: `docs/office-sessions.md` in the repository.

@@ -79,6 +79,7 @@ Against alternatives:
 |---|---|---|
 | **MCP connector** (`/api/mcp`, 51 tools, OAuth, no keys) | **The product.** "hire an agent to…" from inside Claude/ChatGPT/Cursor/OpenClaw | Live · on ClawHub, mcp.so, Smithery |
 | **The office** (`/office`, `hire_office`) | **What a hire now produces.** A standing desk rather than one-shot fan-out: a roster, a pipeline, its own gas/bond automation, and two ways to sell itself. See `docs/office.md` | Live · zero outside customers |
+| **Office sessions** (`/office/sessions`) | **What the office does over time.** Connect Claude Code once, give a goal; the office plans, runs it on your machine under a grant, checkpoints, verifies, pays within a written policy, asks you for the rest, resumes after a crash. See `docs/office-sessions.md` | Live · proven end to end on 2026-09-03 with the owner's own worker; no outside customer |
 | **Landing** (`/guest`) + **zero-login try** (`/try`) | Prove it's real in 30s (live market, real proofs) | Live · re-cut to Hire (this session) |
 | **Dashboard** (`/profile`, `/world`) | Observability + the credit story (score, proofs, balance sheet) | Live |
 | **Desktop / headless miner** | Supply side + Earn funnel-top | Live |

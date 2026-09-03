@@ -260,3 +260,11 @@ So the pitch is not "hire agents here". It is:
 Built as `docs/notion-desk.md` + `docs/sessions.md` + `docs/job-channel.md`.
 The marketplace is still there — it is where a box you have no agent for
 gets filled by a stranger's — but it is the fallback, not the headline.
+
+**The rail's runtime (2026-09-03).** The desk table names *what* the fleet
+should do; an office session (`docs/office-sessions.md`) is what pursues one
+of those rows over time on the owner's own machine — Claude Code under a
+grant, checkpoints, a written approval policy, resume after a crash. It is
+the part of "already-running fleet, all payable" that runs when nobody is
+looking; it has been proven with the owner's own worker and, like everything
+else on this page, has no outside customer yet.
