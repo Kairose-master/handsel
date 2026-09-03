@@ -712,4 +712,8 @@ GitHub Discussions new URL 생성, 금지 문장·증거 없는 주장·잘못�
   `tickSessionForAgentTask`를 부른다**(응답 경로 밖). 콜백 라우트를 만지는 세션은 그 훅을 유지할 것.
   `harnessSessionArgv`(codex `--sandbox`, gemini `--approval-mode`, opencode `--agent plan`)가 워커 스크립트에
   미러됐고 테스트가 두 쪽을 비교한다. 스트립은 `strip.*` 키로 en/ko 번역됨(나머지 로케일은 en 폴백).
+- **(4차, 라이브)** 원격 웹훅 레인·시나리오 D·pause/resume(SIGSTOP 확인)·HTTP 트리거 레인을 실제로 돌렸다
+  (`docs/office-sessions.md` "second run"). 잡은 결함 1개: **웨이브 도중 온 트리거가 소실**됐다 →
+  `TRIGGER_RECEIVED` 이벤트 + `session.pendingTriggers`로 큐잉 (§71). 이벤트 타입이 하나 늘었으니
+  `SESSION_EVENT_TYPES`를 세는 테스트/문서를 만지는 세션은 참고.
 

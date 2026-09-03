@@ -69,6 +69,7 @@ the owner's command and an independent review.
 | `one_shot` | plan once, run to completion |
 | `long_running` | same, over hours or days — heartbeats, checkpoints, resume |
 | `scheduled` | after a wave completes, `WAKE_SCHEDULED` at the next fire; on wake, `WAVE_STARTED` and a fresh plan. The schedule is the SAME session's repeated run, not a new session |
+| `event_driven` | a trigger is `TRIGGER_RECEIVED` the moment it fires — paused, mid-wave, whatever — into `pendingTriggers`; once the wave is done, `WAVE_STARTED` carries that list and clears it. A trigger that lands mid-wave is queued, never dropped (§71) |
 | `event_driven` | idle after a wave (`nextWakeAt = null`); `fireSessionTrigger(userId, 'github.ci_failed')` wakes it with a new wave |
 | `local_coding` | bound to one local worker and its workspace grant; the default plan is one coding task |
 
@@ -360,6 +361,15 @@ prefixed `http:` on the way in so a caller can never spell a GitHub-sourced
 one. A wake only starts the session's own next wave from its own budget
 under its own policy — a trigger is never a payment.
 
+A trigger that arrives while a wave is still running is **queued**: the
+loop records `TRIGGER_RECEIVED` first, before any early return (paused,
+budget short, wave in progress), and starts the next wave from
+`pendingTriggers` once the current one is terminal. The first live run of
+the HTTP lane fired six seconds after dispatch and the wake was silently
+consumed — the session sat "idle until a trigger" holding the trigger it
+had just been sent (`docs/failure-modes.md` §71). The rule now: nothing
+that fired is ever lost, and the same name is not queued twice.
+
 ## Permission layering
 
 The grant a run actually gets is `narrowGrant(worker grant, session
@@ -445,6 +455,38 @@ OpenCode `--auto` vs `--agent plan`. Cline, dsh and a custom command have
 no such knob: the cwd is the whole grant and `HARNESS_SESSION_SUPPORT`
 says `cwd-only`. Streaming and native resume remain Claude Code's alone.
 
+### What the second run showed (2026-09-03, after the remote lane, pause and triggers)
+
+Same environment, a fresh scratch cluster (`node scripts/migrate.mjs`),
+the build from this commit, one local worker on the real `claude`, and a
+30-line stand-in webhook server (`scripts/office-session-e2e.ts` gained
+`remote-setup`, `start-remote`, `pause`, `resume`).
+
+- **Remote lane** — a `long_running` session with no workspace and no
+  bound worker chose the webhook agent (`dispatched to e2e-hook`), the
+  platform POSTed the brief (1,206 chars, fenced, no grant section), the
+  stand-in called back, `/api/runtime/callback` answered
+  `{"status":"ok","grading":null,"settlement":"queued"}` and woke the
+  session, the output became the `deliverable` artifact, the lenient
+  policy ALLOWed, the task settled, replay matched. 17 events, ~10 s.
+- **Scenario D** — a goal editing `.github/workflows/ci.yml` on the local
+  Claude Code worker: 2 files, verification exit 0, and the policy
+  answered `REQUIRE_OWNER — production configuration is affected`;
+  `SESSION_ESCALATED`, the session waited. The owner's approval settled
+  it; `decidedBy=owner`. Nothing moved (internal task).
+- **Pause, for real** — 12 s into a run, `pause`: the dispatch row went
+  `claimed(paused)`, the worker logged `paused`, `ps` showed the `claude
+  --print` process in state `T` (stopped), and the run stayed `running`
+  with its heartbeat (no timeout). `resume`: `SIGCONT`, `resumed`, the
+  run finished, 3 checkpoints, settled, replay matched.
+- **HTTP trigger lane** — a wrong secret → 401; `x:*` → 400 (no
+  wildcard); an unlisted name → `woke: 0`; `nightly` → `woke: 1`. And the
+  defect this found: the wake landed mid-wave and was dropped (§71). Fixed
+  in the same commit; the pure test now pins the queue.
+
+Still not driven live: an escrow task (`post_escrow_job` / `settle_escrow`
+against a chain) and a real external MCP server as the remote worker.
+
 ## What is not built
 
 - **Independent review needs a model key** (`resolveLlm`). Without one the
@@ -459,7 +501,7 @@ says `cwd-only`. Streaming and native resume remain Claude Code's alone.
 - **The control room pages are English-only.** The first-screen strip is
   translated (en, ko; the rest fall back to English); `/office/sessions`
   and the session page are not.
-- **Scenario D and the escrow lane ran only under test.** `post_escrow_job`
-  / `settle_escrow` are unit-tested and pinned to the one release site;
-  they have not moved testnet money in a live session yet. The remote
-  lane has likewise not been driven end to end against a real MCP server.
+- **The escrow lane ran only under test.** `post_escrow_job` /
+  `settle_escrow` are unit-tested and pinned to the one release site;
+  they have not moved testnet money in a live session yet. The remote lane
+  ran live against a stand-in webhook server, not yet a real MCP server.

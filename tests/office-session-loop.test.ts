@@ -549,6 +549,47 @@ describe('selectWorker', () => {
   })
 })
 
+describe('a trigger that lands mid-wave is queued, not lost', () => {
+  it('is recorded at once and starts the next wave when the current one is done', () => {
+    let s = create({ kind: 'event_driven', triggers: ['github:acme/api:ci.failed', 'http:nightly'] })
+    s = planned(s, [{ id: 't1', title: 'Note', brief: 'write', acceptanceCriteria: 'one paragraph', kind: 'research', verify: { command: null, independentReview: false } }])
+    let r = tick(s, obs(T0), lenient)
+    const runId = (r.commands.find((c) => c.kind === 'dispatch_run') as { runId: string }).runId
+    s = ev(r.state, 'RUN_STARTED', { runId }, T0 + 1000)
+    // the trigger fires while the run is still going
+    r = tick(s, obs(T0 + 5000, { triggersFired: ['http:nightly'] }), lenient)
+    expect(r.events.map((e) => e.type)).toContain('TRIGGER_RECEIVED')
+    expect(r.events.map((e) => e.type)).not.toContain('WAVE_STARTED')
+    expect(r.state.session.pendingTriggers).toEqual(['http:nightly'])
+    expect(r.state.session.wave).toBe(1)
+    // the same name again is not queued twice; a second name is
+    r = tick(r.state, obs(T0 + 6000, { triggersFired: ['http:nightly', 'github:acme/api:ci.failed'] }), lenient)
+    expect(r.state.session.pendingTriggers).toEqual(['http:nightly', 'github:acme/api:ci.failed'])
+    // the wave finishes and settles
+    s = ev(r.state, 'RUN_FINISHED', { runId, exitCode: null, changedFiles: [] }, T0 + 10_000)
+    s = ev(s, 'TASK_SUBMITTED', { taskId: 't1', deliverable: 'A note.', changedFiles: [], contentHash: 'h' }, T0 + 10_000)
+    r = tick(s, obs(T0 + 11_000), lenient)
+    expect(r.state.tasks.t1.status).toBe('settled')
+    // next tick, no new trigger: wave 2 starts from what was queued, and the queue is cleared
+    r = tick(r.state, obs(T0 + 12_000), lenient)
+    const wave = r.events.find((e) => e.type === 'WAVE_STARTED')
+    expect(wave?.payload.triggers).toEqual(['http:nightly', 'github:acme/api:ci.failed'])
+    expect(r.state.session.wave).toBe(2)
+    expect(r.state.session.pendingTriggers).toEqual([])
+    expect(kinds(r.commands)).toContain('plan')
+  })
+
+  it('a paused session still records the trigger and does not start a wave', () => {
+    let s = create({ kind: 'event_driven', triggers: ['http:nightly'] })
+    s = planned(s, [{ id: 't1', title: 'Note', brief: 'write', acceptanceCriteria: 'one paragraph', kind: 'research', verify: { command: null, independentReview: false } }])
+    s = ev(s, 'SESSION_PAUSED', { reason: 'owner' }, T0 + 500, 'user')
+    const r = tick(s, obs(T0 + 1000, { triggersFired: ['http:nightly'] }), lenient)
+    expect(r.events.map((e) => e.type)).toEqual(['TRIGGER_RECEIVED'])
+    expect(r.state.session.pendingTriggers).toEqual(['http:nightly'])
+    expect(r.state.session.status).toBe('paused')
+  })
+})
+
 describe('remote workers (cloud / MCP / webhook) on a session task', () => {
   const remote: WorkerCandidate = { ...local, agentId: 'agent-mcp', runtimeType: 'mcp', harnessId: null }
 

@@ -84,6 +84,53 @@ async function main(): Promise<void> {
     void workdir
     return
   }
+  if (phase === 'remote-setup') {
+    // A webhook-runtime agent on the same account: the platform POSTs the
+    // brief to <url> and the server there calls back with the output. The
+    // secret is printed so the stand-in server can authenticate its callback.
+    const [url] = args
+    await ensureUserAndAgent()
+    const { generateWebhookSecret, encryptWebhookSecret } = await import('@/lib/webhook')
+    const secret = generateWebhookSecret()
+    const [a] = await db.select({ id: agent.id }).from(agent).where(eq(agent.id, 'e2e-hook'))
+    if (!a) await db.insert(agent).values({ id: 'e2e-hook', userId: USER_ID, name: 'Hook worker (webhook)', runtimeType: 'webhook', walletAddress: `0x${'2'.repeat(40)}` } as never)
+    await db.update(agent).set({ runtimeType: 'webhook', webhookUrl: url, webhookSecretEnc: encryptWebhookSecret(secret), updatedAt: new Date() }).where(eq(agent.id, 'e2e-hook'))
+    console.log(`SECRET=${secret}`)
+    return
+  }
+  if (phase === 'start-remote') {
+    // No workspace, no bound worker: the loop must pick the remote agent
+    // (or the local one if it is online and better).
+    const [goal, kindArg, policyName, triggersArg] = args
+    if (policyName === 'lenient') {
+      const { DEFAULT_APPROVAL_POLICY } = await import('@/lib/approval-policy')
+      const r = await os.setOfficePolicy(USER_ID, 1, { ...DEFAULT_APPROVAL_POLICY, id: 'office', requireReviewer: [], autoApprove: DEFAULT_APPROVAL_POLICY.autoApprove.filter((c) => c.field !== 'reviewerVerdict') })
+      if (!r.ok) throw new Error(r.error)
+    }
+    const { parseTriggerList } = await import('@/lib/session-triggers')
+    const session = await os.createOfficeSession({
+      userId: USER_ID,
+      slot: 1,
+      kind: (kindArg as 'long_running') || 'long_running',
+      goal,
+      budgetLimitUsd: 5,
+      workerAgentId: null,
+      workspace: null,
+      triggers: parseTriggerList(triggersArg ?? ''),
+    })
+    const t1 = await os.tickOfficeSession(session.id)
+    const t2 = await os.tickOfficeSession(session.id)
+    console.log(`SESSION=${session.id}`)
+    console.log(`tick1: ${t1.status} ${t1.notes.join(' | ')}`)
+    console.log(`tick2: ${t2.status} ${t2.notes.join(' | ')}`)
+    return
+  }
+  if (phase === 'pause' || phase === 'resume') {
+    const st = phase === 'pause' ? await os.pauseOfficeSession(USER_ID, args[0], 'e2e pause') : await os.resumeOfficeSession(USER_ID, args[0])
+    const { rows } = await pool.query<{ run_id: string; status: string; paused: boolean }>(`SELECT run_id, status, paused FROM office_session_dispatch WHERE session_id = $1`, [args[0]])
+    console.log(`${phase}d: ${st.session.status}; dispatch rows: ${rows.map((r) => `${r.run_id}=${r.status}${r.paused ? '(paused)' : ''}`).join(', ')}`)
+    return
+  }
   if (phase === 'tick') {
     const r = await os.tickOfficeSession(args[0])
     console.log(`${r.status}: ${r.notes.join(' | ')}${r.skipped ? ` (${r.skipped})` : ''}`)
@@ -125,7 +172,7 @@ async function main(): Promise<void> {
       console.log(`  task ${t.id}: ${t.status} attempts=${t.attempts} files=${t.outcome?.changedFiles.length ?? 0} tests=${t.outcome?.tests ? (t.outcome.tests.passed ? 'pass' : `fail(${t.outcome.tests.exitCode})`) : '-'} review=${t.outcome?.review ? String(t.outcome.review.approve) : '-'} hash=${t.outcome?.contentHash?.slice(0, 12) ?? '-'}`)
     }
     for (const r of Object.values(state.runs)) {
-      console.log(`  run ${r.id}: ${r.status} attempt=${r.attempt} resumedFrom=${r.resumedFromCheckpointId ?? '-'} checkpoint=${r.checkpointId ?? '-'} files=${r.changedFiles.length} cost=${r.costUsd ?? '-'} exit=${r.exitCode ?? '-'}`)
+      console.log(`  run ${r.id}: ${r.status} worker=${r.workerAgentId} attempt=${r.attempt} resumedFrom=${r.resumedFromCheckpointId ?? '-'} checkpoint=${r.checkpointId ?? '-'} files=${r.changedFiles.length} cost=${r.costUsd ?? '-'} exit=${r.exitCode ?? '-'}`)
     }
     for (const a of Object.values(state.approvals)) {
       console.log(`  approval ${a.id}: ${a.policyOutcome} decidedBy=${a.decidedBy ?? '-'} granted=${a.granted} moved=${a.moved ? a.moved.amountUsd : 'nothing'} reasons=${a.reasons.join('; ')}`)

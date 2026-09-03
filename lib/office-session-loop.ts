@@ -235,6 +235,13 @@ export function tickSession(input: SessionState, obs: Observation, policy: LoopP
     notes.push(`terminal (${s().status}); nothing to do`)
     return { events, commands, notes, state }
   }
+  // A trigger is recorded the moment it fires, before anything can return
+  // early (paused, budget, a wave still running). The next wave starts from
+  // the recorded list, so nothing that fired is ever lost.
+  if (s().kind === 'event_driven' && obs.triggersFired.length > 0) {
+    emit('TRIGGER_RECEIVED', { triggers: obs.triggersFired }, `${now}:${obs.triggersFired.join(',')}`, 'system')
+    notes.push(`trigger(s) received: ${obs.triggersFired.join(', ')}`)
+  }
   if (s().deadlineAt !== null && now >= s().deadlineAt!) {
     for (const run of liveRuns(state)) {
       commands.push({ kind: 'cancel_run', runId: run.id, workerAgentId: run.workerAgentId })
@@ -304,9 +311,10 @@ export function tickSession(input: SessionState, obs: Observation, policy: LoopP
   /* a scheduled/event-driven session whose wave finished: start the next when due */
   if (s().kind === 'scheduled' || s().kind === 'event_driven') {
     const waveDone = tasksOfWave(state).length > 0 && allTasksTerminal(state)
-    const due = s().kind === 'event_driven' ? obs.triggersFired.length > 0 : s().nextWakeAt !== null && now >= s().nextWakeAt!
+    const pending = s().pendingTriggers ?? []
+    const due = s().kind === 'event_driven' ? pending.length > 0 : s().nextWakeAt !== null && now >= s().nextWakeAt!
     if (waveDone && due) {
-      emit('WAVE_STARTED', { wave: s().wave + 1, triggers: obs.triggersFired }, `w${s().wave + 1}`)
+      emit('WAVE_STARTED', { wave: s().wave + 1, triggers: pending }, `w${s().wave + 1}`)
       commands.push({ kind: 'plan', wave: s().wave })
       notes.push(`wave ${s().wave} started`)
       return { events, commands, notes, state }

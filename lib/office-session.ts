@@ -445,6 +445,8 @@ export type OfficeSession = {
   schedule: SessionSchedule | null
   /** Event kinds that wake an event-driven session (e.g. 'github.ci_failed'). */
   triggers: string[]
+  /** Triggers that fired while a wave was still running — the next wave starts on them, they are never lost. */
+  pendingTriggers: string[]
   /** The worker a local coding session is bound to. */
   workerAgentId: string | null
   /** The office agent whose wallet escrows any `escrow` task of this session. */
@@ -725,6 +727,7 @@ export const SESSION_EVENT_TYPES = [
   'SESSION_ESCALATED',
   'SESSION_WAITING',
   'WAVE_STARTED',
+  'TRIGGER_RECEIVED',
   'WAKE_SCHEDULED',
   'SESSION_COMPLETED',
   'SESSION_FAILED',
@@ -1365,10 +1368,21 @@ export function applyEvent(prev: SessionState, event: SessionEvent): SessionStat
       break
     }
 
+    case 'TRIGGER_RECEIVED': {
+      // Recorded whenever a trigger fires, whatever the wave is doing: the
+      // loop starts the next wave from this list once the current one is
+      // done, so a trigger that lands mid-wave is queued, not dropped.
+      const incoming = Array.isArray(p.triggers) ? (p.triggers as unknown[]).filter((t): t is string => typeof t === 'string') : []
+      const have = new Set(s.pendingTriggers ?? [])
+      s.pendingTriggers = [...(s.pendingTriggers ?? []), ...incoming.filter((t) => !have.has(t))]
+      break
+    }
+
     case 'WAVE_STARTED': {
       s.wave = num(p.wave, s.wave + 1)
       s.currentNodeId = null
       s.currentRunId = null
+      s.pendingTriggers = []
       // A new wave re-plans; the previous wave's tasks stay on the record.
       if (s.status !== 'draft') move(state, 'ready', event.type, `wave ${s.wave}`, at)
       break
@@ -1448,6 +1462,7 @@ export function initialState(event: SessionEvent): SessionState {
     checkpointId: null,
     schedule: p.schedule ?? null,
     triggers: p.triggers ?? [],
+    pendingTriggers: [],
     workerAgentId: p.workerAgentId ?? null,
     payerAgentId: p.payerAgentId ?? null,
     workspace: p.workspace ?? null,

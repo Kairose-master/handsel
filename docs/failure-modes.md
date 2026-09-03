@@ -3626,3 +3626,32 @@ Invariants these add: **a worker that cannot report is a dead worker to
 the platform, so reporting must never depend on having capacity** (§4);
 and **whatever counts a resource as busy must be released by the same
 code that declares its work over** (§2).
+
+## 71. A trigger that fired mid-wave was silently dropped (2026-09-03)
+
+**Seen.** First live run of `POST /api/office/sessions/trigger`: the
+event-driven session had been created six seconds earlier, its first wave
+was still running on the webhook worker, the route answered `woke: 1`, the
+tick ran — and nothing. When the wave settled the session sat `ready` with
+the status line "wave 1 done; idle until a trigger", holding the trigger it
+had just been sent. No error anywhere: the tick had consumed
+`triggersFired` and found the wave not done.
+
+**Cause.** The loop treated a trigger as a property of the tick it arrived
+on (`due = obs.triggersFired.length > 0`) and only acted on it when
+`waveDone` was also true in that same tick. A trigger during a wave, a
+pause or a budget hold met an early return and was gone. The unit test
+covered the one ordering that works — wave done, then trigger.
+
+**Fix.** `TRIGGER_RECEIVED` is recorded the moment a trigger fires, before
+any early return, into `session.pendingTriggers` (de-duplicated). The next
+wave starts from that list once the current one is terminal, and
+`WAVE_STARTED` clears it. `tests/office-session-loop.test.ts` pins both
+orderings and the paused case.
+
+**Lesson.** An external event is state, not an argument: if the thing that
+receives it can return early, it has to be written down first. The same
+shape as §35 (a plan that could double-post on confirm) from the other
+side — there the input was applied twice, here it was applied zero times.
+Both came from letting a transient carry something durable.
+
