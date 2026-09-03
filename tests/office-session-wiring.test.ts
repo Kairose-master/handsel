@@ -100,6 +100,22 @@ describe('office-session wiring', () => {
     expect(server).toContain('jobRef: `oses:${state.session.id}:${taskId}`')
   })
 
+  it('a remote worker is invoked through the market\'s own dispatch, and its callback ticks the session', () => {
+    const server = read('lib/office-session-server.ts')
+    expect(server).toContain("if (workerRow && workerRow.runtimeType !== 'local') return dispatchRemoteRun(state, c, workerRow)")
+    expect(server).toContain("runAgentTask({ agent: worker, task: brief, callbackUrl: absoluteUrl('/api/runtime/callback') })")
+    expect(server).toContain('ADD COLUMN IF NOT EXISTS agent_task_id')
+    // the poll only ever hands out 'queued' rows — a remote row is never given to a polling worker
+    expect(server).toMatch(/WHERE agent_id = \$1 AND status = 'queued' ORDER BY created_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED/)
+    expect(server).toContain('const collected = await collectRemoteRuns(state)')
+    expect(server).toContain("status IN ('queued', 'claimed', 'remote') GROUP BY agent_id")
+    const cb = read('app/api/runtime/callback/route.ts')
+    expect(cb).toContain('void wakeSessionRun(taskId)')
+    expect(cb).toContain('tickSessionForAgentTask(taskId)')
+    // and a coding task with a workspace still cannot land on one
+    expect(read('lib/office-session-loop.ts')).toContain("task.kind === 'coding' && state.session.workspace && c.runtimeType !== 'local'")
+  })
+
   it('the MCP control room mirrors the page: start, status, decide, control', () => {
     const src = read('lib/mcp/handlers/office-sessions.ts')
     for (const t of ['start_office_session', 'office_session_status', 'decide_session_approval', 'control_office_session']) expect(src).toContain(`case '${t}':`)

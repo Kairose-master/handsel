@@ -15,6 +15,15 @@ import {
 // in settlement_queue rather than nothing at all.
 export const maxDuration = 300
 
+async function wakeSessionRun(taskId: string): Promise<void> {
+  try {
+    const { tickSessionForAgentTask } = await import('@/lib/office-session-server')
+    await tickSessionForAgentTask(taskId)
+  } catch (e) {
+    console.error('[runtime/callback] office-session wake failed:', e)
+  }
+}
+
 /**
  * POST /api/runtime/callback
  * Called by the Python runtime OR a user's own BYO-agent webhook when a task
@@ -179,6 +188,9 @@ export async function POST(request: Request) {
       })
       .where(eq(agentTask.id, taskId))
     await enqueueSettlement(taskId, agentId)
+    // An office-session run on a remote worker: the session folds this
+    // result on its next tick — give it that tick now, off the response.
+    void wakeSessionRun(taskId)
   } catch (error) {
     // Only the persistence above can reach here, and a task whose deliverable
     // could not be stored genuinely did fail.

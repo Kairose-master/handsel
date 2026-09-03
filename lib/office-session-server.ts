@@ -65,7 +65,7 @@ import {
 import { DEFAULT_APPROVAL_POLICY, parsePolicy, type ApprovalPolicy } from '@/lib/approval-policy'
 import { triggerMatches } from '@/lib/session-triggers'
 import { defaultPlan, planFromSubtasks } from '@/lib/office-session-plan'
-import { SESSION_DELIVERABLE_PATH, redactSecrets, sessionRunBrief, type HarnessEvent } from '@/lib/coding-harness'
+import { SESSION_DELIVERABLE_PATH, redactSecrets, remoteRunBrief, sessionRunBrief, type HarnessEvent } from '@/lib/coding-harness'
 import type { CompleteFn } from '@/lib/delegation'
 
 /* ── Tables ───────────────────────────────────────────────────────────── */
@@ -133,6 +133,10 @@ async function ensureTables(): Promise<void> {
       // Added after the first deploy: a paused session stops its live harness
       // process on the worker (SIGSTOP), and the poll carries this flag there.
       await pool.query(`ALTER TABLE office_session_dispatch ADD COLUMN IF NOT EXISTS paused boolean NOT NULL DEFAULT false`)
+      // A run on a cloud / MCP / webhook worker is an agent_tasks row the
+      // platform dispatched itself (status 'remote'); the poll never hands it
+      // out, and its result arrives on /api/runtime/callback.
+      await pool.query(`ALTER TABLE office_session_dispatch ADD COLUMN IF NOT EXISTS agent_task_id text`)
       await pool.query(
         `CREATE TABLE IF NOT EXISTS office_session_run_log (
            id bigserial PRIMARY KEY,
@@ -713,12 +717,17 @@ async function candidateWorkers(state: SessionState): Promise<WorkerCandidate[]>
       webhookSecretEnc: agent.webhookSecretEnc,
       autoMine: agent.autoMine,
       capabilities: agent.capabilities,
+      webhookUrl: agent.webhookUrl,
+      cloudBaseUrl: agent.cloudBaseUrl,
+      cloudApiKeyEnc: agent.cloudApiKeyEnc,
+      mcpServerUrl: agent.mcpServerUrl,
+      mcpToolName: agent.mcpToolName,
     })
     .from(agent)
     .where(eq(agent.userId, state.session.userId))
   const harness = await harnessesFor(rows.map((r) => r.id)).catch(() => new Map<string, string>())
   const busy = await pool.query<{ agent_id: string; n: string }>(
-    `SELECT agent_id, COUNT(*)::text AS n FROM office_session_dispatch WHERE status IN ('queued', 'claimed') GROUP BY agent_id`,
+    `SELECT agent_id, COUNT(*)::text AS n FROM office_session_dispatch WHERE status IN ('queued', 'claimed', 'remote') GROUP BY agent_id`,
   )
   const busyBy = new Map(busy.rows.map((r) => [r.agent_id, Number(r.n)]))
   // Real history: every run this account's sessions ever gave each worker,
@@ -728,7 +737,7 @@ async function candidateWorkers(state: SessionState): Promise<WorkerCandidate[]>
   const history = workerHistoryFrom(past.rows.map((r) => r.state))
   const now = new Date()
   return rows
-    .filter((r) => r.runtimeType === 'local') // a session run is handed out on the poll; only a polling worker can take one
+    .filter((r) => remoteRuntimeOf(r) !== null || r.runtimeType === 'local')
     .map((r) => {
       const status = classifyWorker(
         { runtimeType: r.runtimeType, lastPollAt: r.lastPollAt, provisioned: true, hasKey: Boolean(r.webhookSecretEnc), autoMine: r.autoMine },
@@ -736,7 +745,7 @@ async function candidateWorkers(state: SessionState): Promise<WorkerCandidate[]>
       )
       return {
         agentId: r.id,
-        runtimeType: 'local' as const,
+        runtimeType: remoteRuntimeOf(r) ?? ('local' as const),
         harnessId: harness.get(r.id) ?? null,
         alive: status.phase === 'Ready',
         successRate: history.get(r.id)?.successRate ?? null,
@@ -748,6 +757,19 @@ async function candidateWorkers(state: SessionState): Promise<WorkerCandidate[]>
         capabilities: Array.isArray(r.capabilities) ? (r.capabilities as string[]) : [],
       }
     })
+}
+
+/**
+ * A worker the platform can invoke itself (lib/agent-tasks.ts `runAgentTask`),
+ * as opposed to a local worker that polls. Configured, not just declared:
+ * a cloud agent without a key or an MCP agent without a tool is not a
+ * candidate, however its row is labelled.
+ */
+function remoteRuntimeOf(r: { runtimeType: string | null; webhookUrl: string | null; cloudBaseUrl: string | null; cloudApiKeyEnc: string | null; mcpServerUrl: string | null; mcpToolName: string | null }): 'cloud' | 'mcp' | 'webhook' | null {
+  if (r.runtimeType === 'cloud' && r.cloudBaseUrl && r.cloudApiKeyEnc) return 'cloud'
+  if (r.runtimeType === 'mcp' && r.mcpServerUrl && r.mcpToolName) return 'mcp'
+  if (r.runtimeType === 'webhook' && r.webhookUrl) return 'webhook'
+  return null
 }
 
 async function escrowObservation(state: SessionState): Promise<Observation['escrow']> {
@@ -835,10 +857,14 @@ export async function tickOfficeSession(sessionId: string, opts?: { triggers?: s
     const state = await loadSessionState(sessionId)
     if (STATUS_META[state.session.status].terminal) return { sessionId, status: state.session.status, events: 0, commands: 0, notes: ['terminal'] }
     await closeDispatchesForTerminalRuns(state)
-    const policy = await getOfficePolicy(state.session.userId, state.session.officeSlot)
-    const observation = await observe(state, opts?.triggers ?? [])
-    const result = tickSession(state, observation, { approval: policy, newId, ...loopTimingFromEnv() })
-    let after = state
+    // Runs on cloud / MCP / webhook workers report through agent_tasks, not
+    // the poll: fold what has arrived (and a heartbeat for what is still
+    // running) before the loop looks at the clock.
+    const collected = await collectRemoteRuns(state)
+    const policy = await getOfficePolicy(collected.session.userId, collected.session.officeSlot)
+    const observation = await observe(collected, opts?.triggers ?? [])
+    const result = tickSession(collected, observation, { approval: policy, newId, ...loopTimingFromEnv() })
+    let after = collected
     if (result.events.length) after = await appendEvents(sessionId, result.events)
     // A run the loop closed (timed out, lost, cancelled) still holds its
     // dispatch row, and that row is what counts a worker as busy. Left
@@ -1027,6 +1053,8 @@ async function dispatchRun(state: SessionState, c: Extract<Command, { kind: 'dis
   const s = state.session
   const task = state.tasks[c.taskId]
   if (!task) return state
+  const [workerRow] = await db.select().from(agent).where(eq(agent.id, c.workerAgentId))
+  if (workerRow && workerRow.runtimeType !== 'local') return dispatchRemoteRun(state, c, workerRow)
   const grantRow = await getWorkerGrant(c.workerAgentId)
   // Layered permissions: the worker's own grant is the ceiling (what the
   // machine's owner connected it with); the session's workspace can only
@@ -1071,6 +1099,111 @@ async function dispatchRun(state: SessionState, c: Extract<Command, { kind: 'dis
     ],
   )
   return state
+}
+
+/**
+ * A run on a cloud / MCP / webhook worker: the platform invokes the worker
+ * exactly as it does for a market job (`runAgentTask` — same skills, same
+ * custom instructions, same callback), records the agent_tasks id on the
+ * dispatch row as status 'remote', and marks the run started now, because
+ * there is no pickup to wait for. The result lands on /api/runtime/callback
+ * (which ticks the session) and is folded by `collectRemoteRuns` on the
+ * next tick. No workspace, so no grant, no diff and no verify command: the
+ * output is the deliverable, and the review layer is what verifies it.
+ */
+async function dispatchRemoteRun(state: SessionState, c: Extract<Command, { kind: 'dispatch_run' }>, worker: typeof agent.$inferSelect): Promise<SessionState> {
+  const s = state.session
+  const task = state.tasks[c.taskId]
+  if (!task) return state
+  const { untrustedNonce } = await import('@/lib/untrusted-input')
+  const feedback = retryFeedback(state, task)
+  const brief = remoteRunBrief({
+    goal: s.goal,
+    taskTitle: task.title,
+    taskBrief: feedback ? `${task.brief}\n\n${feedback}` : task.brief,
+    acceptanceCriteria: task.acceptanceCriteria,
+    memory: await sessionMemoryBrief(s.userId, s.officeSlot),
+    nonce: untrustedNonce(),
+    previousAttempt: task.attempts > 1 ? (task.outcome?.deliverable?.slice(0, 4000) ?? null) : null,
+  })
+  const { runAgentTask } = await import('@/lib/agent-tasks')
+  const { absoluteUrl } = await import('@/lib/origin')
+  let agentTaskId: string
+  try {
+    agentTaskId = (await runAgentTask({ agent: worker, task: brief, callbackUrl: absoluteUrl('/api/runtime/callback') })).taskId
+  } catch (e) {
+    return appendEvents(s.id, [
+      officeEvent(s.id, 'RUN_FAILED', { runId: c.runId, failureCode: 'DEP-002', reason: `could not invoke ${worker.runtimeType} worker: ${e instanceof Error ? e.message.slice(0, 300) : String(e)}` }, `${c.runId}:invoke`, 'system'),
+    ])
+  }
+  await pool.query(
+    `INSERT INTO office_session_dispatch (run_id, session_id, task_id, agent_id, status, brief, workspace_grant, verify_command, resume, timeout_ms, harness_id, agent_task_id, claimed_at)
+     VALUES ($1, $2, $3, $4, 'remote', $5, $6::jsonb, NULL, NULL, $7, NULL, $8, now()) ON CONFLICT (run_id) DO NOTHING`,
+    [c.runId, s.id, task.id, c.workerAgentId, brief, JSON.stringify({ workdir: '', ...DEFAULT_WORKSPACE_GRANT, write: false, shell: false }), DEFAULT_RUN_TIMEOUT_MS, agentTaskId],
+  )
+  return appendEvents(s.id, [officeEvent(s.id, 'RUN_STARTED', { runId: c.runId, agentTaskId }, c.runId, 'worker')])
+}
+
+/** Remote runs of this session that have not been folded yet. */
+async function openRemoteDispatches(sessionId: string): Promise<Array<{ run_id: string; task_id: string; agent_id: string; agent_task_id: string; claimed_at: Date }>> {
+  const { rows } = await pool.query<{ run_id: string; task_id: string; agent_id: string; agent_task_id: string; claimed_at: Date }>(
+    `SELECT run_id, task_id, agent_id, agent_task_id, claimed_at FROM office_session_dispatch WHERE session_id = $1 AND status = 'remote' AND agent_task_id IS NOT NULL`,
+    [sessionId],
+  )
+  return rows
+}
+
+export const REMOTE_HEARTBEAT_MS = 60_000
+
+/**
+ * Fold every remote run's agent_tasks row into the session: completed →
+ * the same events a local worker's finish report produces (the output is
+ * the deliverable); failed → RUN_FAILED; still running → a heartbeat at most
+ * once a minute, so the loop's dead-worker timeout means "the platform lost
+ * the task", not "the callback has not come yet". Returns the folded state.
+ */
+export async function collectRemoteRuns(state: SessionState): Promise<SessionState> {
+  const open = await openRemoteDispatches(state.session.id)
+  if (open.length === 0) return state
+  let cur = state
+  for (const d of open) {
+    const run = cur.runs[d.run_id]
+    if (!run || RUN_CLOSED.has(run.status)) {
+      await pool.query(`UPDATE office_session_dispatch SET status = 'done', finished_at = COALESCE(finished_at, now()) WHERE run_id = $1`, [d.run_id])
+      continue
+    }
+    const { agentTask } = await import('@/lib/db/schema')
+    const [t] = await db.select({ status: agentTask.status, output: agentTask.output, result: agentTask.result, error: agentTask.error }).from(agentTask).where(eq(agentTask.id, d.agent_task_id))
+    if (!t) {
+      cur = await foldRunReport(cur.session.id, d.task_id, d.run_id, { ok: false, failureCode: 'DEP-003', error: 'the dispatched agent task vanished' }, 'system')
+      continue
+    }
+    if (t.status === 'completed') {
+      const result = (t.result ?? {}) as { success?: unknown; tokenCost?: unknown }
+      const output = typeof t.output === 'string' ? t.output : ''
+      cur =
+        result.success === false || output.trim().length === 0
+          ? await foldRunReport(cur.session.id, d.task_id, d.run_id, { ok: false, failureCode: 'DET-002', error: output.trim().length === 0 ? 'the worker returned nothing' : 'the worker reported failure' }, 'worker')
+          : await foldRunReport(cur.session.id, d.task_id, d.run_id, { ok: true, deliverable: output, ...(typeof result.tokenCost === 'number' ? { tokensUsed: result.tokenCost } : {}) }, 'worker')
+    } else if (t.status === 'failed') {
+      cur = await foldRunReport(cur.session.id, d.task_id, d.run_id, { ok: false, failureCode: 'DEP-002', error: t.error ?? 'the worker runtime failed' }, 'worker')
+    } else {
+      const last = run.lastHeartbeatAt ?? run.startedAt ?? run.dispatchedAt
+      if (Date.now() - last >= REMOTE_HEARTBEAT_MS) {
+        cur = await appendEvents(cur.session.id, [officeEvent(cur.session.id, 'RUN_HEARTBEAT', { runId: d.run_id, agentTaskStatus: t.status }, `${d.run_id}:hb:${Math.floor(Date.now() / REMOTE_HEARTBEAT_MS)}`, 'system')])
+      }
+    }
+  }
+  return cur
+}
+
+/** The runtime callback's hook: an agent task that belongs to a session run ticks that session now. */
+export async function tickSessionForAgentTask(agentTaskId: string): Promise<boolean> {
+  await ensureTables()
+  const { rows } = await pool.query<{ session_id: string }>(`SELECT session_id FROM office_session_dispatch WHERE agent_task_id = $1 AND status = 'remote' LIMIT 1`, [agentTaskId])
+  if (!rows[0]) return false
+  await tickOfficeSession(rows[0].session_id).catch((e) => console.error(`[office-session] tick for agent task ${agentTaskId} failed:`, e))
+  return true
 }
 
 /**
@@ -1120,7 +1253,7 @@ async function closeDispatchesForTerminalRuns(state: SessionState): Promise<void
     .map((r) => r.id)
   if (ids.length === 0) return
   await pool
-    .query(`UPDATE office_session_dispatch SET status = 'done', finished_at = COALESCE(finished_at, now()) WHERE run_id = ANY($1) AND status IN ('queued', 'claimed', 'cancel')`, [ids])
+    .query(`UPDATE office_session_dispatch SET status = 'done', finished_at = COALESCE(finished_at, now()) WHERE run_id = ANY($1) AND status IN ('queued', 'claimed', 'cancel', 'remote')`, [ids])
     .catch((e) => console.error('[office-session] closing dispatch rows failed:', e))
 }
 
@@ -1398,6 +1531,21 @@ export async function finishSessionRun(agentId: string, report: SessionRunFinish
   const diff = typeof report.diff === 'string' ? report.diff : null
   if (deliverable && Buffer.byteLength(deliverable, 'utf8') > MAX_DELIVERABLE_BYTES) return { ok: false, error: `deliverable over ${MAX_DELIVERABLE_BYTES / 1024}KB`, status: 413 }
   if (diff && Buffer.byteLength(diff, 'utf8') > MAX_DIFF_BYTES) return { ok: false, error: `diff over ${MAX_DIFF_BYTES / 1024}KB`, status: 413 }
+  await foldRunReport(d.session_id, d.task_id, runId, report, 'worker')
+  await tickOfficeSession(d.session_id).catch((e) => console.error(`[office-session] tick after finish failed for ${d.session_id}:`, e))
+  return { ok: true, sessionId: d.session_id }
+}
+
+/**
+ * One run's outcome as session events — the same fold for a local worker's
+ * finish report and a remote worker's callback: RUN_FINISHED or RUN_FAILED,
+ * the artifacts by hash, TASK_SUBMITTED, a test report and a checkpoint
+ * when present. Closes the dispatch row. Idempotent per run id.
+ */
+async function foldRunReport(sessionId: string, taskId: string, runId: string, report: Omit<SessionRunFinish, 'runId'>, actor: NewEvent['actorType']): Promise<SessionState> {
+  const d = { session_id: sessionId, task_id: taskId }
+  const deliverable = typeof report.deliverable === 'string' ? report.deliverable.slice(0, MAX_DELIVERABLE_BYTES) : null
+  const diff = typeof report.diff === 'string' ? report.diff : null
   const { createHash } = await import('node:crypto')
   const sha = (t: string) => createHash('sha256').update(t).digest('hex')
   const now = Date.now()
@@ -1417,7 +1565,7 @@ export async function finishSessionRun(agentId: string, report: SessionRunFinish
           reason: typeof report.error === 'string' ? redactSecrets(report.error).slice(0, 500) : 'worker reported failure',
         },
         `${runId}:finish`,
-        'worker',
+        actor,
       ),
     )
   } else {
@@ -1503,11 +1651,10 @@ export async function finishSessionRun(agentId: string, report: SessionRunFinish
       ),
     )
   }
-  await appendEvents(d.session_id, events)
+  const state = await appendEvents(d.session_id, events)
   await pool.query(`UPDATE office_session_dispatch SET status = 'done', finished_at = now() WHERE run_id = $1`, [runId])
   void now
-  await tickOfficeSession(d.session_id).catch((e) => console.error(`[office-session] tick after finish failed for ${d.session_id}:`, e))
-  return { ok: true, sessionId: d.session_id }
+  return state
 }
 
 /** An external event (webhook, CI, issue) that may wake event-driven sessions of this account. */

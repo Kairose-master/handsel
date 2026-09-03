@@ -707,4 +707,9 @@ GitHub Discussions new URL 생성, 금지 문장·증거 없는 주장·잘못�
   `docs/mcp-connector.md`의 `## Tools (N)` 카운트와 행을 고정한다. 툴을 추가하면 문서 카운트도 올려라(65).
 - `narrowGrant`(권한은 안쪽으로만), `workerHistoryFrom`(선택에 실제 성공률), `issue_proof`
   커맨드(internal 태스크 정산 시 EIP-712 proof → `proof` 아티팩트, `/api/proof/<id>`).
+- **(3차) 클라우드/MCP/웹훅 워커도 세션 태스크를 받는다**: `dispatchRemoteRun`이 마켓과 같은 `runAgentTask`로
+  호출하고 dispatch 행을 `status='remote'` + `agent_task_id`로 남긴다. **`/api/runtime/callback`이 완료 후
+  `tickSessionForAgentTask`를 부른다**(응답 경로 밖). 콜백 라우트를 만지는 세션은 그 훅을 유지할 것.
+  `harnessSessionArgv`(codex `--sandbox`, gemini `--approval-mode`, opencode `--agent plan`)가 워커 스크립트에
+  미러됐고 테스트가 두 쪽을 비교한다. 스트립은 `strip.*` 키로 en/ko 번역됨(나머지 로케일은 en 폴백).
 

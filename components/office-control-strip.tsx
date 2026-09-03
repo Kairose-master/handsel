@@ -17,6 +17,7 @@ import Link from 'next/link'
 import { Check, X, Loader2, Workflow, Plug, ShieldCheck } from 'lucide-react'
 import { decideSessionApproval, officeSessionOverview, type SessionOverview } from '@/app/actions/office-session'
 import { STATUS_META } from '@/lib/office-session'
+import { useI18n } from '@/lib/i18n'
 
 const usd = (n: number) => `$${n.toFixed(2)}`
 const when = (ms: number | null) => (ms === null ? '—' : new Date(ms).toLocaleTimeString())
@@ -25,14 +26,15 @@ export function OfficeControlStrip({ slot = 1 }: { slot?: number }) {
   const [view, setView] = useState<SessionOverview | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [acting, setActing] = useState<string | null>(null)
+  const { t } = useI18n()
   const load = useCallback(async () => {
     try {
       setView(await officeSessionOverview(slot))
       setError(null)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not read the office.')
+      setError(e instanceof Error ? e.message : t('strip.readError'))
     }
-  }, [slot])
+  }, [slot, t])
   useEffect(() => {
     void load()
     const t = setInterval(() => void load(), 15_000)
@@ -40,7 +42,7 @@ export function OfficeControlStrip({ slot = 1 }: { slot?: number }) {
   }, [load])
 
   if (error) return <p className="text-xs text-destructive">{error}</p>
-  if (!view) return <p className="text-xs text-muted-foreground">Reading the office…</p>
+  if (!view) return <p className="text-xs text-muted-foreground">{t('strip.reading')}</p>
 
   const live = view.sessions.filter((s) => !STATUS_META[s.status].terminal)
   const onlineWorkers = view.workers.filter((w) => w.alive)
@@ -64,25 +66,25 @@ export function OfficeControlStrip({ slot = 1 }: { slot?: number }) {
       <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-2">
         <div className="flex items-center gap-2 text-sm font-medium">
           <Workflow className="h-4 w-4" />
-          Office right now
+          {t('strip.title')}
           <span className="text-xs font-normal text-muted-foreground">
-            {view.realMoney ? `real money · ${view.chainName}` : `${view.chainName} · no monetary value`}
+            {view.realMoney ? t('strip.realMoney', { chain: view.chainName }) : t('strip.noValue', { chain: view.chainName })}
           </span>
         </div>
         <Link href="/office/sessions" className="text-xs underline">
-          control room →
+          {t('strip.controlRoom')}
         </Link>
       </header>
 
       {/* the counters the spec asks for on the first screen */}
       <div className="grid grid-cols-2 gap-px border-b border-border bg-border text-xs sm:grid-cols-4 lg:grid-cols-7">
-        <Stat label="needs you" value={String(view.inbox.length)} tone={view.inbox.length ? 'warn' : undefined} />
-        <Stat label="sessions live" value={String(live.length)} />
-        <Stat label="running now" value={String(running.length)} tone={running.length ? 'ok' : undefined} />
-        <Stat label="workers online" value={`${onlineWorkers.length}/${view.workers.length}`} tone={view.workers.length && !onlineWorkers.length ? 'warn' : undefined} />
-        <Stat label="paid today" value={usd(view.spentTodayUsd)} sub={`auto ${usd(view.autoApprovedTodayUsd)} · cap ${usd(view.policy.dailyBudgetUsd)}`} />
-        <Stat label="retries / failed" value={`${retries} / ${failed}`} tone={failed ? 'bad' : undefined} />
-        <Stat label="memory used" value={String(view.memory.length)} sub="lessons in briefs" />
+        <Stat label={t('strip.needsYou')} value={String(view.inbox.length)} tone={view.inbox.length ? 'warn' : undefined} />
+        <Stat label={t('strip.sessionsLive')} value={String(live.length)} />
+        <Stat label={t('strip.runningNow')} value={String(running.length)} tone={running.length ? 'ok' : undefined} />
+        <Stat label={t('strip.workersOnline')} value={`${onlineWorkers.length}/${view.workers.length}`} tone={view.workers.length && !onlineWorkers.length ? 'warn' : undefined} />
+        <Stat label={t('strip.paidToday')} value={usd(view.spentTodayUsd)} sub={t('strip.paidTodaySub', { auto: usd(view.autoApprovedTodayUsd), cap: usd(view.policy.dailyBudgetUsd) })} />
+        <Stat label={t('strip.retriesFailed')} value={`${retries} / ${failed}`} tone={failed ? 'bad' : undefined} />
+        <Stat label={t('strip.memoryUsed')} value={String(view.memory.length)} sub={t('strip.memorySub')} />
       </div>
 
       <div className="space-y-2 p-3 text-sm">
@@ -101,10 +103,10 @@ export function OfficeControlStrip({ slot = 1 }: { slot?: number }) {
                 </div>
                 <div className="flex gap-1">
                   <button type="button" disabled={acting === i.approvalId} onClick={() => decide(i.sessionId, i.approvalId, true)} className="inline-flex items-center gap-1 rounded border border-border px-2 py-0.5 text-xs hover:bg-secondary">
-                    {acting === i.approvalId ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} approve
+                    {acting === i.approvalId ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} {t('strip.approve')}
                   </button>
                   <button type="button" disabled={acting === i.approvalId} onClick={() => decide(i.sessionId, i.approvalId, false)} className="inline-flex items-center gap-1 rounded border border-border px-2 py-0.5 text-xs hover:bg-secondary">
-                    <X className="h-3 w-3" /> deny
+                    <X className="h-3 w-3" /> {t('strip.deny')}
                   </button>
                 </div>
               </div>
@@ -115,18 +117,18 @@ export function OfficeControlStrip({ slot = 1 }: { slot?: number }) {
         {live.length === 0 && view.workers.length === 0 && (
           <p className="text-muted-foreground">
             <Plug className="mr-1 inline h-3.5 w-3.5" />
-            Nothing is running. Connect Claude Code on your machine, then give the office a goal —{' '}
+            {t('strip.nothingRunning')}{' '}
             <Link href="/office/sessions" className="underline">
-              two steps, one command
+              {t('strip.twoSteps')}
             </Link>
             .
           </p>
         )}
         {live.length === 0 && view.workers.length > 0 && (
           <p className="text-muted-foreground">
-            {onlineWorkers.length ? `${onlineWorkers.map((w) => w.name).join(', ')} online and idle.` : `${view.workers.map((w) => w.name).join(', ')} connected but offline.`}{' '}
+            {onlineWorkers.length ? t('strip.onlineIdle', { names: onlineWorkers.map((w) => w.name).join(', ') }) : t('strip.connectedOffline', { names: view.workers.map((w) => w.name).join(', ') })}{' '}
             <Link href="/office/sessions" className="underline">
-              Give the office a goal
+              {t('strip.giveGoal')}
             </Link>
             .
           </p>
@@ -144,23 +146,31 @@ export function OfficeControlStrip({ slot = 1 }: { slot?: number }) {
               </span>
             </div>
             <div className="text-xs text-muted-foreground">
-              {s.currentTask ? `now: ${s.currentTask.title.slice(0, 60)} (${s.currentTask.status.replace(/_/g, ' ')}, attempt ${s.currentTask.attempt}${s.currentTask.workerAgentId ? `, on ${view.workers.find((w) => w.agentId === s.currentTask!.workerAgentId)?.name ?? s.currentTask.workerAgentId}` : ''})` : `${s.tasksDone}/${s.tasksTotal} tasks done`}
-              {' · '}next: {s.nextStep.replace(/\.$/, '').toLowerCase()}
-              {s.nextWakeAt ? ` (checks again ${when(s.nextWakeAt)})` : ''}
+              {s.currentTask
+                ? t('strip.nowTask', {
+                    task: s.currentTask.title.slice(0, 60),
+                    status: s.currentTask.status.replace(/_/g, ' '),
+                    attempt: s.currentTask.attempt,
+                    on: s.currentTask.workerAgentId ? t('strip.onWorker', { worker: view.workers.find((w) => w.agentId === s.currentTask!.workerAgentId)?.name ?? s.currentTask.workerAgentId }) : '',
+                  })
+                : t('strip.tasksDone', { done: s.tasksDone, total: s.tasksTotal })}
               {' · '}
-              {usd(s.spentUsd)} of {usd(s.budgetLimitUsd)}
+              {t('strip.next', { step: s.nextStep.replace(/\.$/, '').toLowerCase() })}
+              {s.nextWakeAt ? ` ${t('strip.checksAgain', { at: when(s.nextWakeAt) })}` : ''}
+              {' · '}
+              {t('strip.ofBudget', { spent: usd(s.spentUsd), budget: usd(s.budgetLimitUsd) })}
             </div>
           </div>
         ))}
         {live.length > 4 && (
           <Link href="/office/sessions" className="text-xs underline">
-            +{live.length - 4} more
+            {t('strip.more', { n: live.length - 4 })}
           </Link>
         )}
 
         {lastArtifact && (
           <p className="text-xs text-muted-foreground">
-            latest artifact: {lastArtifact.kind} · {lastArtifact.name} · sha256 {lastArtifact.sha256.slice(0, 12)}… · {when(lastArtifact.at)}
+            {t('strip.latestArtifact', { kind: lastArtifact.kind, name: lastArtifact.name, sha: lastArtifact.sha256.slice(0, 12), at: when(lastArtifact.at) })}
           </p>
         )}
       </div>

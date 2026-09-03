@@ -1893,6 +1893,26 @@ function claudeSessionArgv(i) {
   return argv
 }
 
+/**
+ * Mirror of lib/coding-harness.ts `harnessSessionArgv` — the grant on the
+ * other harnesses' own permission knobs (codex --sandbox, gemini
+ * --approval-mode, opencode --agent). Null means "this harness has no such
+ * knob": the cwd is the whole grant, and the platform records it that way.
+ */
+function harnessSessionArgv(i) {
+  const model = i.model ? ['--model', i.model] : []
+  switch (i.harnessId) {
+    case 'codex':
+      return ['exec', ...model, '--cd', i.workdir, '--sandbox', i.grant.write ? 'workspace-write' : 'read-only', '--skip-git-repo-check', i.brief]
+    case 'gemini':
+      return [...model, '--approval-mode', i.grant.shell ? 'yolo' : i.grant.write ? 'auto_edit' : 'default', '--prompt', i.brief]
+    case 'opencode':
+      return ['run', ...model, '--dir', i.workdir, ...(i.grant.write ? ['--auto'] : ['--agent', 'plan']), i.brief]
+    default:
+      return null
+  }
+}
+
 const CHECKPOINT_EVERY_MS = 60_000
 const CHECKPOINT_PATCH_MAX = 200_000
 const VERIFY_TIMEOUT_MS = 10 * 60_000
@@ -2194,7 +2214,10 @@ async function runSessionRun(handout) {
     // Claude Code takes the brief on STDIN for a session run: its tool
     // flags are variadic and a positional after them is read as a tool name
     // (lib/coding-harness.ts records the run that found this).
-    const argv = HARNESS.id === 'claude' ? claudeSessionArgv({ grant, model, resumeSessionId: null }) : HARNESS.argv({ brief: handout.brief, workdir: run.cwd, model })
+    const argv =
+      HARNESS.id === 'claude'
+        ? claudeSessionArgv({ grant, model, resumeSessionId: null })
+        : (harnessSessionArgv({ harnessId: HARNESS.id, grant, model, brief: handout.brief, workdir: run.cwd }) ?? HARNESS.argv({ brief: handout.brief, workdir: run.cwd, model }))
     const briefOnStdin = HARNESS.id === 'claude' || Boolean(HARNESS.briefOnStdin)
     sessionNote(run, 'started', `${HARNESS.label} started (${HARNESS.id === 'claude' ? 'stream-json' : 'stdout'})`)
     const timeoutMs = Math.max(60_000, Number(handout.timeout_ms) || HARNESS_TIMEOUT_MS)

@@ -168,6 +168,10 @@ export function selectWorker(task: SessionTask, state: SessionState, candidates:
     if (!c.alive) return false
     if (c.busyRuns >= maxLive) return false
     if (task.kind === 'coding' && c.runtimeType === 'local' && !c.harnessId) return false
+    // A coding task on a session with a workspace produces a diff IN that
+    // workspace; a remote worker has no access to it. Without a workspace a
+    // remote coder may answer in prose (its output is the deliverable).
+    if (task.kind === 'coding' && state.session.workspace && c.runtimeType !== 'local') return false
     if (task.settlement === 'escrow' && !c.bondReady) return false
     if (task.settlement === 'internal' && !c.sameAccount) return false
     return true
@@ -183,6 +187,9 @@ export function selectWorker(task: SessionTask, state: SessionState, candidates:
     if (rate === null || rate === undefined) s += 0.45 // unknown: below a known 0.5+, above a known failure record
     else s += rate
     if (task.settlement === 'internal' && c.sameAccount) s += 0.5
+    // A polling worker with a harness streams, checkpoints and resumes; a
+    // remote one is a single call. Prefer the former for code, all else equal.
+    if (task.kind === 'coding' && c.runtimeType === 'local' && c.harnessId) s += 0.25
     if (c.estCostUsd !== null) s -= Math.min(0.3, c.estCostUsd / 100)
     return s
   }

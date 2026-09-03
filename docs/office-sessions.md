@@ -410,22 +410,56 @@ Four MCP tools mirror the control room (`lib/mcp/handlers/office-sessions.ts`,
 cancel / raise_budget / tick / trigger). Every write goes through the same
 owner-scoped server functions the page uses.
 
+## Remote workers (cloud / MCP / webhook)
+
+A session task no longer needs a polling worker. `candidateWorkers` now
+offers every configured cloud, MCP and webhook agent on the account as well
+(configured, not just declared: a cloud agent without a key or an MCP agent
+without a tool is not a candidate). `dispatchRemoteRun` invokes one through
+the market's own `runAgentTask` (same skills, same custom instructions,
+same `/api/runtime/callback`), records the `agent_tasks` id on the dispatch
+row as status `remote`, and marks the run started at once — there is no
+pickup to wait for. The brief is `remoteRunBrief`: same fences, no grant
+section, no verify command, no deliverable file; the worker's output IS the
+deliverable, exactly as on a market job. The callback ticks the session
+(`tickSessionForAgentTask`) and `collectRemoteRuns` folds the result through
+the same `foldRunReport` a local finish uses; while the task is still
+running it emits a heartbeat at most once a minute, so the loop's
+dead-worker timeout means "the platform lost the task", not "the callback
+has not come yet".
+
+Two rules keep this honest (`tests/office-session-loop.test.ts`): a
+`coding` task on a session **with a workspace** never goes remote — the
+result has to be a diff in that workspace — and for code a local harness
+scores above a remote worker all else equal, because it streams,
+checkpoints and resumes and a remote run is one call.
+
+## The other harnesses' grants
+
+`harnessSessionArgv` (`lib/coding-harness.ts`, mirrored in the worker)
+compiles the grant onto each CLI's own coarse knob: Codex
+`--sandbox workspace-write | read-only` (never `--full-auto`, never
+`danger-full-access`; network stays off), Gemini `--approval-mode yolo |
+auto_edit | default` (headless, an unapproved tool call simply fails),
+OpenCode `--auto` vs `--agent plan`. Cline, dsh and a custom command have
+no such knob: the cwd is the whole grant and `HARNESS_SESSION_SUPPORT`
+says `cwd-only`. Streaming and native resume remain Claude Code's alone.
+
 ## What is not built
 
-- **Cloud/MCP workers on a session task.** A session run is handed out on
-  the poll, so only a polling (local) worker can take one today. Escrow
-  tasks reach cloud/MCP agents the ordinary way (the market), which is the
-  right lane for them; internal tasks cannot.
-- **Codex/OpenCode/Cline/Gemini streaming and tool grants.** They run, they
-  checkpoint from git, their grant is the cwd. The per-tool allow-lists exist
-  only for Claude Code.
 - **Independent review needs a model key** (`resolveLlm`). Without one the
   reviewer answers "unavailable" and the policy sends the task to the owner
   — never to an automatic pass. A session reviewer's pay is not yet staked
   on its verdict (`lib/review-stake.ts` is wired to the delegation lane
   only).
-- **The strip and the control room are English-only**; the nav entry is
-  the only string of theirs in `lib/i18n-dict.ts`.
+- **A remote run cannot be paused or cancelled mid-flight.** `pause` and
+  `cancel` stop dispatching; a cloud/MCP call already in progress runs to
+  its callback, and the result is then folded or discarded by the run's
+  state. SIGSTOP is a local worker's privilege.
+- **The control room pages are English-only.** The first-screen strip is
+  translated (en, ko; the rest fall back to English); `/office/sessions`
+  and the session page are not.
 - **Scenario D and the escrow lane ran only under test.** `post_escrow_job`
   / `settle_escrow` are unit-tested and pinned to the one release site;
-  they have not moved testnet money in a live session yet.
+  they have not moved testnet money in a live session yet. The remote
+  lane has likewise not been driven end to end against a real MCP server.

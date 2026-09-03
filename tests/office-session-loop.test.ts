@@ -549,6 +549,47 @@ describe('selectWorker', () => {
   })
 })
 
+describe('remote workers (cloud / MCP / webhook) on a session task', () => {
+  const remote: WorkerCandidate = { ...local, agentId: 'agent-mcp', runtimeType: 'mcp', harnessId: null }
+
+  it('a coding task on a session WITH a workspace never goes to a remote worker', () => {
+    const s = planned(create({ workerAgentId: null }))
+    const t = Object.values(s.tasks)[0]
+    expect(selectWorker(t, s, [remote], 1)).toBeNull()
+    expect(selectWorker(t, s, [remote, local], 1)?.agentId).toBe('agent-local')
+  })
+
+  it('without a workspace a remote worker may take it; a local harness is still preferred for code', () => {
+    const s = planned(create({ workerAgentId: null, workspace: null, kind: 'long_running' }))
+    const t = Object.values(s.tasks)[0]
+    expect(selectWorker(t, s, [remote], 1)?.agentId).toBe('agent-mcp')
+    expect(selectWorker(t, s, [remote, local], 1)?.agentId).toBe('agent-local')
+    const research = planned(create({ workerAgentId: null, workspace: null, kind: 'long_running' }), [
+      { id: 't1', title: 'Survey', brief: 'read', acceptanceCriteria: 'cites', kind: 'research', verify: { command: null, independentReview: true } },
+    ])
+    const rt = Object.values(research.tasks)[0]
+    // equal footing on non-code: the better record wins, not the runtime
+    expect(selectWorker(rt, research, [{ ...remote, successRate: 0.9 }, { ...local, successRate: 0.5 }], 1)?.agentId).toBe('agent-mcp')
+  })
+
+  it('the loop dispatches to it and the folded callback settles like any run', () => {
+    let s = planned(create({ workerAgentId: null, workspace: null, kind: 'long_running' }), [
+      { id: 't1', title: 'Survey', brief: 'read', acceptanceCriteria: 'cites', kind: 'research', verify: { command: null, independentReview: false } },
+    ])
+    let r = tick(s, obs(T0, { candidates: [remote] }), lenient)
+    const dispatch = r.commands.find((c) => c.kind === 'dispatch_run') as { runId: string; workerAgentId: string; harnessId: string | null }
+    expect(dispatch).toMatchObject({ workerAgentId: 'agent-mcp', harnessId: null })
+    s = r.state
+    // the server folds RUN_STARTED at dispatch time and the callback's output as the deliverable
+    s = ev(s, 'RUN_STARTED', { runId: dispatch.runId, agentTaskId: 'task-x' }, T0 + 1000)
+    s = ev(s, 'RUN_FINISHED', { runId: dispatch.runId, exitCode: null, changedFiles: [] }, T0 + 30_000)
+    s = ev(s, 'TASK_SUBMITTED', { taskId: 't1', deliverable: 'The survey.', changedFiles: [], contentHash: 'h' }, T0 + 30_000)
+    r = tick(s, obs(T0 + 31_000, { candidates: [remote] }), lenient)
+    expect(r.events.map((e) => e.type)).toEqual(expect.arrayContaining(['APPROVAL_REQUESTED', 'APPROVAL_GRANTED', 'TASK_SETTLED', 'SESSION_COMPLETED']))
+    expect(r.state.session.status).toBe('completed')
+  })
+})
+
 describe('a paused session stops the clock on its live run', () => {
   function running(): { s: SessionState; runId: string } {
     let s = planned(create())
