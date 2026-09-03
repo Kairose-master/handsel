@@ -370,6 +370,48 @@ export const DEFAULT_WORKSPACE_GRANT: Omit<WorkspaceGrant, 'workdir'> = {
   dailyLimitUsd: 20,
 }
 
+/**
+ * Permission layering: the grant a run actually gets is the intersection of
+ * every layer above it — the worker's own grant (what the machine's owner
+ * connected it with), the session's workspace (what this goal was allowed),
+ * and any per-task narrowing. A layer can only take a permission away or
+ * lower a limit; it can never widen the one below it, and a workdir stays
+ * the base's unless the narrower one is inside it.
+ */
+export function narrowGrant(base: WorkspaceGrant, ...layers: Array<Partial<WorkspaceGrant> | null | undefined>): WorkspaceGrant {
+  let g: WorkspaceGrant = { ...base }
+  for (const layer of layers) {
+    if (!layer) continue
+    const bool = (k: 'write' | 'shell' | 'network' | 'install' | 'secrets' | 'gitPush' | 'externalPayments') =>
+      layer[k] === undefined ? g[k] : g[k] && Boolean(layer[k])
+    const limit = (k: 'perTaskLimitUsd' | 'dailyLimitUsd') =>
+      typeof layer[k] === 'number' && Number.isFinite(layer[k]) ? Math.max(0, Math.min(g[k], layer[k] as number)) : g[k]
+    const workdir = typeof layer.workdir === 'string' && layer.workdir.length > 0 && isInsideDir(g.workdir, layer.workdir) ? layer.workdir : g.workdir
+    g = {
+      workdir,
+      write: bool('write'),
+      shell: bool('shell'),
+      network: bool('network'),
+      install: bool('install'),
+      secrets: bool('secrets'),
+      gitPush: bool('gitPush'),
+      externalPayments: bool('externalPayments'),
+      perTaskLimitUsd: limit('perTaskLimitUsd'),
+      dailyLimitUsd: limit('dailyLimitUsd'),
+    }
+  }
+  return g
+}
+
+/** `inner` is `outer` or a path under it (string-level; no filesystem). */
+function isInsideDir(outer: string, inner: string): boolean {
+  if (!outer) return false
+  const norm = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '')
+  const o = norm(outer)
+  const i = norm(inner)
+  return i === o || i.startsWith(`${o}/`)
+}
+
 /* ── The session ──────────────────────────────────────────────────────── */
 
 export type OfficeSession = {

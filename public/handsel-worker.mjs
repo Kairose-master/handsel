@@ -1866,6 +1866,8 @@ if (!HARNESS) await warmupModel()
  *     changed files are captured and reported, so a run that dies leaves
  *     something to resume from;
  *   - it can be stopped: the poll's `session_cancel` list kills the child;
+ *   - it can be paused: the poll's `session_pause` list SIGSTOPs the child
+ *     and its absence SIGCONTs it (see pauseSessionRuns);
  *   - the grant is enforced by the harness flags (claude) and by the cwd
  *     (everything else), and the platform re-checks the reported files
  *     against the workdir regardless.
@@ -2059,6 +2061,39 @@ function cancelSessionRuns(runIds) {
   }
 }
 
+/**
+ * The poll's `session_pause` list is the set of this worker's runs whose
+ * session the owner paused. A listed run's harness process is stopped with
+ * SIGSTOP (it keeps its memory, its files and its place in the task); a run
+ * no longer listed is continued with SIGCONT. Progress keeps reporting either
+ * way, so the platform's heartbeat stays fresh and a paused run is never
+ * mistaken for a dead one. Windows has no SIGSTOP — there the pause is noted
+ * and the run keeps going, which the log says out loud.
+ */
+function pauseSessionRuns(runIds) {
+  const wanted = new Set(runIds ?? [])
+  for (const [id, run] of sessionRuns) {
+    if (run.done || run.cancelled || !run.child || run.child.exitCode !== null) continue
+    const shouldPause = wanted.has(id)
+    if (shouldPause === Boolean(run.paused)) continue
+    if (process.platform === 'win32') {
+      if (shouldPause && !run.pauseWarned) {
+        run.pauseWarned = true
+        console.log(`\n[worker] session run ${id}: pause requested, but this platform cannot stop a process — the run continues`)
+      }
+      continue
+    }
+    try {
+      run.child.kill(shouldPause ? 'SIGSTOP' : 'SIGCONT')
+      run.paused = shouldPause
+      sessionNote(run, 'progress', shouldPause ? 'paused by the owner (process stopped)' : 'resumed by the owner (process continued)')
+      console.log(`\n[worker] session run ${id}: ${shouldPause ? 'paused' : 'resumed'}`)
+    } catch {
+      /* already gone */
+    }
+  }
+}
+
 async function runVerify(command, cwd, run) {
   const startedAt = Date.now()
   sessionNote(run, 'tool', `$ ${command} (verification)`)
@@ -2095,6 +2130,7 @@ async function runSessionRun(handout) {
     checkpoint: null,
     lastProgress: '',
     child: null,
+    paused: false,
     cancelled: false,
     done: false,
     costUsd: undefined,
@@ -2278,6 +2314,7 @@ for (;;) {
           session_runs: drainSessionRuns(),
         })
         cancelSessionRuns(heard.session_cancel)
+        pauseSessionRuns(heard.session_pause)
       } catch (e) {
         console.error(`\n[worker] report poll failed: ${e instanceof Error ? e.message : e}`)
       }
@@ -2311,6 +2348,7 @@ for (;;) {
     task = polled.task
     sessionRun = polled.session_run ?? null
     cancelSessionRuns(polled.session_cancel)
+    pauseSessionRuns(polled.session_pause)
     consecutiveErrors = 0
   } catch (e) {
     consecutiveErrors += 1

@@ -79,6 +79,11 @@ export async function POST(request: Request) {
     return Response.json({ error: 'Bad payload' }, { status: 400 })
   }
 
+  // Event-driven office sessions wake on this delivery, whoever handles the
+  // rest of it. Best-effort and off the response path: a session tick can
+  // take seconds, and GitHub's retry must never be a second wake.
+  void wakeOfficeSessions(event, payload)
+
   try {
     if (event === 'pull_request') return await handlePullRequest(payload)
     if (event === 'check_suite' || event === 'check_run') return await handleCheck(event, payload)
@@ -96,6 +101,19 @@ export async function POST(request: Request) {
     console.error(`[github/webhook] ${event} handling failed:`, error)
     // 500 so GitHub retries — settlement paths are all idempotent.
     return Response.json({ error: 'Handler failed' }, { status: 500 })
+  }
+}
+
+async function wakeOfficeSessions(event: string, payload: unknown): Promise<void> {
+  try {
+    const { githubTriggersFor } = await import('@/lib/session-triggers')
+    const fired = githubTriggersFor(event, payload)
+    if (fired.length === 0) return
+    const { fireSessionTriggers } = await import('@/lib/office-session-server')
+    const n = await fireSessionTriggers(fired)
+    if (n > 0) console.log(`[github/webhook] ${event} woke ${n} office session(s): ${fired.join(', ')}`)
+  } catch (e) {
+    console.error('[github/webhook] office-session trigger failed:', e)
   }
 }
 

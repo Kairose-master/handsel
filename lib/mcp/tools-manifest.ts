@@ -1057,4 +1057,83 @@ export const TOOLS = [
       additionalProperties: false,
     },
   },
+  {
+    name: 'start_office_session',
+    description:
+      'Give an office a GOAL to pursue over time rather than one job: the office plans it into tasks, dispatches ' +
+      'a connected local coding agent (Claude Code on the owner\'s machine) or posts escrowed jobs, verifies each ' +
+      'result, pays by the office\'s approval policy, and resumes after a crash. Kinds: one_shot, long_running, ' +
+      'scheduled (every_minutes), event_driven (triggers such as github:owner/repo:issues.opened or http:nightly), ' +
+      'local_coding (needs worker_agent_id — a local worker connected with a workspace). Nothing above the policy\'s ' +
+      'auto-approve limits moves without the owner; office_session_status shows what is waiting. Budget is a cap, not a charge.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        goal: { type: 'string', description: 'What the office should achieve (10-8000 chars)' },
+        budget_usd: { type: 'number', description: 'Spending cap for the whole session (0-1000)' },
+        kind: { type: 'string', enum: ['one_shot', 'long_running', 'scheduled', 'event_driven', 'local_coding'], description: 'Default long_running' },
+        office: { type: 'number', description: 'Office slot (1-3, default 1)' },
+        worker_agent_id: { type: 'string', description: 'A connected local worker with a workspace grant (required for local_coding)' },
+        verify_command: { type: 'string', description: 'Shell command that must pass for a task to count (e.g. "npm test")' },
+        deadline_hours: { type: 'number', description: 'Expire the session after this many hours' },
+        every_minutes: { type: 'number', description: 'scheduled only: run a wave this often' },
+        triggers: { type: 'array', items: { type: 'string' }, description: 'event_driven only: names to wake on' },
+      },
+      required: ['goal', 'budget_usd'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'office_session_status',
+    description:
+      'Where an office session is: status in one sentence, the task plan with each task\'s state, approvals waiting on ' +
+      'you (with the policy receipt that explains why), artifacts with hashes, the live run\'s last lines, and the ' +
+      'timeline. Without session_id it lists every session on the account plus the approval inbox.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        session_id: { type: 'string', description: 'A session id (oses_…); omit to list all' },
+        office: { type: 'number', description: 'When listing: only this office slot' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'decide_session_approval',
+    description:
+      'Answer an approval the office\'s policy routed to you (REQUIRE_OWNER / REQUIRE_REVIEWER): grant or deny one ' +
+      'task\'s result. Granting an escrow task releases its bounty through the market\'s own release path on the next ' +
+      'heartbeat; an internal task just settles. Denying fails the attempt (the office may retry within its plan).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        session_id: { type: 'string', description: 'The session (oses_…)' },
+        approval_id: { type: 'string', description: 'The approval id from office_session_status' },
+        granted: { type: 'boolean', description: 'true to approve, false to deny' },
+        reason: { type: 'string', description: 'Optional note kept on the decision' },
+      },
+      required: ['session_id', 'approval_id', 'granted'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'control_office_session',
+    description:
+      'Operate a session: pause (stops the live harness process on the worker and dispatches nothing), resume, ' +
+      'cancel (live runs are told to stop), raise_budget (budget_usd), tick (run one heartbeat now and read what it ' +
+      'decided), or trigger (fire an http: trigger name at this account\'s event-driven sessions). No action here ' +
+      'moves money by itself.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        session_id: { type: 'string', description: 'The session (oses_…); any value for action=trigger' },
+        action: { type: 'string', enum: ['pause', 'resume', 'cancel', 'raise_budget', 'tick', 'trigger'] },
+        budget_usd: { type: 'number', description: 'raise_budget: the new cap (0-1000)' },
+        trigger: { type: 'string', description: 'trigger: the name to fire (prefixed http: automatically)' },
+        reason: { type: 'string', description: 'pause/cancel: kept on the timeline' },
+      },
+      required: ['session_id', 'action'],
+      additionalProperties: false,
+    },
+  },
 ]

@@ -61,6 +61,56 @@ describe('office-session wiring', () => {
     expect(src).toContain("is outside this worker's --workdir")
   })
 
+  it('pause reaches the harness process: the poll carries the list, the worker stops and continues the child', () => {
+    const poll = read('app/api/worker/poll/route.ts')
+    expect(poll).toContain('pausedRunsFor(agentId)')
+    expect(poll.match(/session_pause: sessionPause/g)?.length).toBeGreaterThanOrEqual(3)
+    const worker = read('public/handsel-worker.mjs')
+    expect(worker).toContain('function pauseSessionRuns(')
+    expect(worker).toContain("'SIGSTOP' : 'SIGCONT'")
+    expect(worker.match(/pauseSessionRuns\((polled|heard)\.session_pause\)/g)?.length).toBe(2)
+    const server = read('lib/office-session-server.ts')
+    expect(server).toContain('ADD COLUMN IF NOT EXISTS paused')
+    expect(server).toContain('setDispatchesPaused(sessionId, true)')
+    expect(server).toContain('setDispatchesPaused(sessionId, false)')
+  })
+
+  it('event-driven sessions wake from the GitHub webhook and from the HTTP lane', () => {
+    const webhook = read('app/api/github/webhook/route.ts')
+    // fired before the handlers, off the response path, after the signature check
+    expect(webhook.indexOf('void wakeOfficeSessions(event, payload)')).toBeGreaterThan(webhook.indexOf('verifyGithubSignature(raw'))
+    expect(webhook.indexOf('void wakeOfficeSessions(event, payload)')).toBeLessThan(webhook.indexOf("if (event === 'pull_request') return await handlePullRequest"))
+    expect(webhook).toContain('githubTriggersFor(event, payload)')
+    expect(webhook).toContain('fireSessionTriggers(fired)')
+    const http = read('app/api/office/sessions/trigger/route.ts')
+    expect(http).toContain("callbackSecretMatches(auth, request.headers.get('x-runtime-secret'))")
+    expect(http).toContain("ag.runtimeType !== 'local'")
+    expect(http).toContain('httpTrigger(body.trigger)')
+    // scoped to the authenticated agent's own account, never a body-supplied user
+    expect(http).toContain('fireSessionTriggers([trigger], ag.userId)')
+    expect(http).not.toMatch(/body\??\.user_id/)
+  })
+
+  it('the grant a run gets is layered, never widened, and the session pays for its own proof', () => {
+    const server = read('lib/office-session-server.ts')
+    expect(server).toContain('narrowGrant(base, grantRow ? s.workspace : null, taskGrantLayer(task))')
+    expect(server).toContain('workerHistoryFrom(past.rows')
+    expect(server).toContain("case 'issue_proof':")
+    expect(server).toContain('issueWorkProof({')
+    expect(server).toContain('jobRef: `oses:${state.session.id}:${taskId}`')
+  })
+
+  it('the MCP control room mirrors the page: start, status, decide, control', () => {
+    const src = read('lib/mcp/handlers/office-sessions.ts')
+    for (const t of ['start_office_session', 'office_session_status', 'decide_session_approval', 'control_office_session']) expect(src).toContain(`case '${t}':`)
+    // every write goes through the owner-scoped server functions
+    expect(src).toContain('decideApproval(auth.userId')
+    expect(src).toContain('pauseOfficeSession(auth.userId')
+    expect(src).toContain('fireSessionTriggers([trigger], auth.userId)')
+    expect(src).not.toContain('autoApprovePassedJob')
+    expect(read('app/api/mcp/route.ts')).toContain('handleOfficeSessions')
+  })
+
   it('the loop timing knobs are bounded', async () => {
     const { loopTimingFromEnv } = await import('@/lib/office-session-server')
     expect(loopTimingFromEnv({ OFFICE_SESSION_HEARTBEAT_TIMEOUT_MS: '1' } as unknown as NodeJS.ProcessEnv).heartbeatTimeoutMs).toBe(30_000)

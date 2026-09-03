@@ -136,6 +136,8 @@ export type StartSessionInput = {
 }
 
 /** Create and immediately tick: the first heartbeat plans, the second dispatches. */
+import { parseTriggerList } from '@/lib/session-triggers'
+
 export async function startOfficeSession(input: StartSessionInput): Promise<{ ok: true; session: OfficeSession } | { ok: false; error: string }> {
   const user = await requireUser()
   const goal = String(input.goal ?? '').trim()
@@ -151,6 +153,9 @@ export async function startOfficeSession(input: StartSessionInput): Promise<{ ok
     workspace = grant.grant
   }
   if (input.kind === 'local_coding' && !workspace) return { ok: false, error: 'A local coding session needs a connected worker with a workspace.' }
+  if (input.kind === 'event_driven' && parseTriggerList((input.triggers ?? []).join(',')).length === 0) {
+    return { ok: false, error: 'An event-driven session needs at least one trigger, e.g. github:owner/repo:issues.opened or http:nightly.' }
+  }
   const session = await os.createOfficeSession({
     userId: user.id,
     slot: input.slot,
@@ -159,7 +164,7 @@ export async function startOfficeSession(input: StartSessionInput): Promise<{ ok
     budgetLimitUsd: budget,
     deadlineAt: input.deadlineHours ? Date.now() + input.deadlineHours * 3_600_000 : null,
     schedule: input.schedule ?? null,
-    triggers: input.triggers ?? [],
+    triggers: parseTriggerList((input.triggers ?? []).join(',')),
     workerAgentId: input.workerAgentId ?? null,
     payerAgentId: input.payerAgentId ?? null,
     workspace,

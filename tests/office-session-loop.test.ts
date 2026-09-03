@@ -21,6 +21,7 @@ import {
   renderLessons,
   selectWorker,
   tickSession,
+  workerHistoryFrom,
   type Command,
   type Observation,
   type WorkerCandidate,
@@ -545,5 +546,119 @@ describe('selectWorker', () => {
     const other: WorkerCandidate = { ...local, agentId: 'other' }
     expect(selectWorker(s.tasks.t1, s, [local, other])?.agentId).toBe('other')
     expect(selectWorker(s.tasks.t1, s, [local])?.agentId).toBe('agent-local')
+  })
+})
+
+describe('a paused session stops the clock on its live run', () => {
+  function running(): { s: SessionState; runId: string } {
+    let s = planned(create())
+    const r = tick(s, obs(T0))
+    s = r.state
+    const runId = (r.commands.find((c) => c.kind === 'dispatch_run') as { runId: string }).runId
+    s = ev(s, 'RUN_STARTED', { runId }, T0 + 5_000)
+    return { s, runId }
+  }
+
+  it('the wall clock is not charged while paused, but a dead worker still times out', () => {
+    const { s, runId } = running()
+    const paused = ev(s, 'SESSION_PAUSED', { reason: 'owner stepped away' }, T0 + 10_000, 'user')
+    const short = { ...policy, runTimeoutMs: 60_000 }
+    // The worker keeps reporting while the process is SIGSTOPped, so the
+    // heartbeat stays fresh — nothing should happen at 5x the wall clock.
+    let cur = paused
+    for (let i = 1; i <= 5; i++) cur = ev(cur, 'RUN_HEARTBEAT', { runId }, T0 + 10_000 + i * 55_000)
+    const r = tick(cur, obs(T0 + 10_000 + 5 * 55_000 + 1000), short)
+    expect(r.events.map((e) => e.type)).toEqual([])
+    expect(kinds(r.commands)).toEqual([])
+    expect(r.state.runs[runId].status).toBe('running')
+    // Same elapsed time on a running session: the wall clock cancels it.
+    let live = s
+    for (let i = 1; i <= 5; i++) live = ev(live, 'RUN_HEARTBEAT', { runId }, T0 + 10_000 + i * 55_000)
+    const r2 = tick(live, obs(T0 + 10_000 + 5 * 55_000 + 1000), short)
+    expect(r2.events.map((e) => e.type)).toContain('RUN_CANCEL_REQUESTED')
+    // And a paused session whose worker went silent still loses the run.
+    const r3 = tick(paused, obs(T0 + 10_000 + HEARTBEAT_TIMEOUT_MS + 1000), short)
+    expect(r3.events.map((e) => e.type)).toContain('RUN_TIMED_OUT')
+  })
+})
+
+describe('a settled internal task asks for a signed proof', () => {
+  it('issue_proof follows TASK_SETTLED when there is a content hash, and only then', () => {
+    let s = planned(create())
+    let r = tick(s, obs(T0))
+    s = r.state
+    const runId = (r.commands.find((c) => c.kind === 'dispatch_run') as { runId: string }).runId
+    s = ev(s, 'RUN_STARTED', { runId }, T0 + 5_000)
+    s = ev(s, 'RUN_FINISHED', { runId, exitCode: 0, changedFiles: ['lib/auth.ts'], costUsd: 0.01 }, T0 + 60_000)
+    s = ev(s, 'TASK_SUBMITTED', { taskId: 't1', diff: '--- a\n+++ b', changedFiles: ['lib/auth.ts'], contentHash: 'h1', costUsd: 0.01 }, T0 + 60_000)
+    s = ev(s, 'TEST_REPORTED', { taskId: 't1', report: { command: 'npm test', exitCode: 0, passed: true, tail: 'ok', durationMs: 900 } }, T0 + 60_000)
+    r = tick(s, obs(T0 + 61_000))
+    s = ev(r.state, 'REVIEW_RECEIVED', { taskId: 't1', verdict: { reviewer: 'model', reviewerId: 'grader', approve: true, note: 'ok', at: T0 + 90_000 } }, T0 + 90_000, 'reviewer')
+    r = tick(s, obs(T0 + 91_000))
+    expect(r.events.map((e) => e.type)).toContain('TASK_SETTLED')
+    expect(r.commands).toContainEqual({ kind: 'issue_proof', taskId: 't1' })
+    // The proof is a command, never money: the session's spend is untouched.
+    expect(r.state.session.spentUsd).toBe(0)
+  })
+})
+
+describe('workerHistoryFrom — real numbers for selectWorker', () => {
+  function withRuns(runs: Array<{ agent: string; status: string; kind?: string; cost?: number | null }>): SessionState {
+    const s = planned(
+      create(),
+      runs.map((r, i) => ({ id: `t${i}`, title: `t${i}`, brief: 'b', acceptanceCriteria: 'c', kind: r.kind ?? 'coding', verify: { command: null, independentReview: false } })),
+    )
+    // Build the runs by hand: the shape is what the reducer would leave.
+    const out = structuredClone(s) as SessionState
+    runs.forEach((r, i) => {
+      out.runs[`run-${i}`] = {
+        id: `run-${i}`,
+        sessionId: s.session.id,
+        taskId: `t${i}`,
+        attempt: 1,
+        workerAgentId: r.agent,
+        harnessId: 'claude',
+        status: r.status,
+        dispatchedAt: T0,
+        startedAt: T0,
+        finishedAt: T0 + 1000,
+        lastHeartbeatAt: T0,
+        cancelRequestedAt: null,
+        exitCode: null,
+        failureCode: null,
+        changedFiles: [],
+        diffStat: null,
+        costUsd: r.cost ?? null,
+        tokensUsed: null,
+        harnessSessionId: null,
+        resumedFromCheckpointId: null,
+      } as unknown as SessionState['runs'][string]
+    })
+    return out
+  }
+
+  it('finished over terminal, per kind, mean cost; cancelled counts as neither; live is not history', () => {
+    const h = workerHistoryFrom([
+      withRuns([
+        { agent: 'a', status: 'finished', kind: 'coding', cost: 0.2 },
+        { agent: 'a', status: 'failed', kind: 'coding' },
+        { agent: 'a', status: 'finished', kind: 'research', cost: 0.4 },
+        { agent: 'a', status: 'cancelled', kind: 'research' },
+        { agent: 'a', status: 'running', kind: 'research' },
+        { agent: 'b', status: 'lost' },
+      ]),
+    ])
+    expect(h.get('a')).toEqual({ successRate: 2 / 3, kindSuccess: { coding: 0.5, research: 1 }, estCostUsd: 0.3, runs: 4 })
+    expect(h.get('b')).toEqual({ successRate: 0, kindSuccess: { coding: 0 }, estCostUsd: null, runs: 1 })
+    expect(h.get('c')).toBeUndefined()
+    expect(workerHistoryFrom([])).toEqual(new Map())
+  })
+
+  it('feeds selectWorker: the worker with the better record on this kind wins', () => {
+    const h = workerHistoryFrom([withRuns([{ agent: 'good', status: 'finished' }, { agent: 'good', status: 'finished' }, { agent: 'bad', status: 'failed' }, { agent: 'bad', status: 'timed_out' }])])
+    const cands: WorkerCandidate[] = ['bad', 'good'].map((id) => ({ ...local, agentId: id, successRate: h.get(id)!.successRate, kindSuccess: h.get(id)!.kindSuccess }))
+    const s = planned(create({ workerAgentId: null }))
+    const picked = selectWorker(Object.values(s.tasks)[0], s, cands, 1)
+    expect(picked?.agentId).toBe('good')
   })
 })

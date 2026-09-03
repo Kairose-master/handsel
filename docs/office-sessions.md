@@ -335,6 +335,81 @@ waiting_on_worker` edge, and a busy worker that did not poll — so no
 checkpoint or heartbeat reached the platform until the run ended.
 `docs/failure-modes.md` §70 has each one and its fix.
 
+## Waking on events, and the HTTP lane
+
+An `event_driven` session lists the names it wakes on (`lib/session-triggers.ts`
+is the vocabulary; `tests/session-triggers.test.ts` pins it). Names are
+`source:qualifier…:event`, lower-case, and a session may end one with `:*`
+to take everything under a prefix:
+
+| name | fires when |
+|---|---|
+| `github:acme/api:issues.opened` | the App's webhook delivers `issues` / `opened` for that repo (also `reopened` `closed` `edited` `assigned`, `issues.labeled`, `issues.labeled:<label>`, `issue_comment.created`) |
+| `github:acme/api:pull_request.opened` | likewise `reopened` `synchronize` `ready_for_review` `review_requested`, and `pull_request.merged` vs `pull_request.closed` |
+| `github:acme/api:ci.failed` / `ci.passed` | a `check_suite` or `workflow_run` **completed** with that conclusion (an in-progress check fires nothing) |
+| `github:issues.opened` | the same, on any repo the App sees |
+| `http:nightly` | `POST /api/office/sessions/trigger` with `{agent_id, trigger: "nightly"}` and the worker's `x-runtime-secret` |
+
+The webhook (`app/api/github/webhook/route.ts`) fires `fireSessionTriggers`
+**after the signature check, before its own handlers, off the response
+path**, so a session tick can never make GitHub retry the delivery. It
+names no user: the repo-qualified name is the scope, and the App's
+installation is the boundary. The HTTP lane is authenticated exactly like
+the worker's poll and is scoped to that agent's account; the name is
+prefixed `http:` on the way in so a caller can never spell a GitHub-sourced
+one. A wake only starts the session's own next wave from its own budget
+under its own policy — a trigger is never a payment.
+
+## Permission layering
+
+The grant a run actually gets is `narrowGrant(worker grant, session
+workspace, task layer)` (`lib/office-session.ts`): the worker's own grant
+(what the machine's owner connected it with) is the ceiling, the session's
+workspace can only take a permission away or lower a limit, and a `review`
+or `verify` task loses `write`/`gitPush`/`install` on top. A layer can never
+widen the one below it, and a workdir moves only inward. The worker still
+enforces its own `--workdir` regardless of what the platform sends
+(`docs/failure-modes.md` §70).
+
+## Pause, for real
+
+`pause` used to mean "dispatch nothing and time out the dead". Now the
+dispatch rows of the session's live runs are flagged `paused`, the poll
+carries them as `session_pause`, and the worker `SIGSTOP`s the harness
+process (`SIGCONT` when the flag clears on resume). The worker keeps
+polling, so the heartbeat stays fresh and the loop does not charge the wall
+clock while paused — only a worker that actually goes silent still loses
+the run (`tests/office-session-loop.test.ts`, "a paused session stops the
+clock"). Windows has no `SIGSTOP`; there the worker says so and the run
+continues.
+
+## Worker selection on real history
+
+`workerHistoryFrom` (pure, in the loop module) folds every run this
+account's sessions ever gave each worker into a success rate, a per-kind
+rate and a mean reported cost — from the session states themselves, no
+separate ledger. `candidateWorkers` reads the last 200 sessions; a
+cancelled run is neither success nor failure; an untried worker stays
+`null`, which `selectWorker` treats as unknown, not average.
+
+## A signed proof per internal artifact
+
+When an internal task settles with a content hash, the loop emits
+`issue_proof` and the server signs the same EIP-712 work proof a paid market
+job gets (`lib/work-proof-store.ts`, `jobRef` `oses:<session>:<task>`), then
+records it as a `proof` artifact whose `ref` is `/api/proof/<id>` — so a
+third party can verify what this office decided on without trusting the
+page. No attester key configured → no proof, and the sha256 receipt on the
+artifact stands alone; the task is settled either way.
+
+## From inside the chat
+
+Four MCP tools mirror the control room (`lib/mcp/handlers/office-sessions.ts`,
+`docs/mcp-connector.md`): `start_office_session`, `office_session_status`,
+`decide_session_approval`, `control_office_session` (pause / resume /
+cancel / raise_budget / tick / trigger). Every write goes through the same
+owner-scoped server functions the page uses.
+
 ## What is not built
 
 - **Cloud/MCP workers on a session task.** A session run is handed out on
@@ -344,16 +419,13 @@ checkpoint or heartbeat reached the platform until the run ended.
 - **Codex/OpenCode/Cline/Gemini streaming and tool grants.** They run, they
   checkpoint from git, their grant is the cwd. The per-tool allow-lists exist
   only for Claude Code.
-- **Pause/resume of a live process.** `pause` at the session level stops
-  dispatching and times out dead runs; it does not SIGSTOP a harness.
 - **Independent review needs a model key** (`resolveLlm`). Without one the
   reviewer answers "unavailable" and the policy sends the task to the owner
-  — never to an automatic pass.
-- **Worker success rates in selection.** `WorkerCandidate.successRate` is
-  null (no fake numbers); selection uses the bound worker, liveness,
-  capability and bond readiness.
-- **A signed proof per internal artifact.** Artifacts are hashed and the
-  approval receipt names the hash; the EIP-712 work proof is issued only on
-  the escrow lane (`issueProofForJobSpec`).
-- **MCP tools** for sessions. The control room and the actions are the
-  surface; `open_session`/`session_*` remain the job-session tools.
+  — never to an automatic pass. A session reviewer's pay is not yet staked
+  on its verdict (`lib/review-stake.ts` is wired to the delegation lane
+  only).
+- **The strip and the control room are English-only**; the nav entry is
+  the only string of theirs in `lib/i18n-dict.ts`.
+- **Scenario D and the escrow lane ran only under test.** `post_escrow_job`
+  / `settle_escrow` are unit-tested and pinned to the one release site;
+  they have not moved testnet money in a live session yet.

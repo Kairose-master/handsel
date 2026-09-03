@@ -34,6 +34,7 @@ import {
   applyEvent,
   eventKey,
   initialState,
+  narrowGrant,
   replay,
   sessionInvariants,
   type ApprovalRecord,
@@ -55,12 +56,14 @@ import {
   learnFromSession,
   renderLessons,
   tickSession,
+  workerHistoryFrom,
   type Command,
   type Observation,
   type SessionLesson,
   type WorkerCandidate,
 } from '@/lib/office-session-loop'
 import { DEFAULT_APPROVAL_POLICY, parsePolicy, type ApprovalPolicy } from '@/lib/approval-policy'
+import { triggerMatches } from '@/lib/session-triggers'
 import { defaultPlan, planFromSubtasks } from '@/lib/office-session-plan'
 import { SESSION_DELIVERABLE_PATH, redactSecrets, sessionRunBrief, type HarnessEvent } from '@/lib/coding-harness'
 import type { CompleteFn } from '@/lib/delegation'
@@ -127,6 +130,9 @@ async function ensureTables(): Promise<void> {
          )`,
       )
       await pool.query(`CREATE INDEX IF NOT EXISTS office_session_dispatch_agent ON office_session_dispatch (agent_id, status, created_at)`)
+      // Added after the first deploy: a paused session stops its live harness
+      // process on the worker (SIGSTOP), and the poll carries this flag there.
+      await pool.query(`ALTER TABLE office_session_dispatch ADD COLUMN IF NOT EXISTS paused boolean NOT NULL DEFAULT false`)
       await pool.query(
         `CREATE TABLE IF NOT EXISTS office_session_run_log (
            id bigserial PRIMARY KEY,
@@ -522,14 +528,31 @@ const userEvent = (type: SessionEventType, payload: Record<string, unknown>, use
 
 export async function pauseOfficeSession(userId: string, sessionId: string, reason = 'paused by owner'): Promise<SessionState> {
   await ownedSession(userId, sessionId)
-  return appendEvents(sessionId, [userEvent('SESSION_PAUSED', { reason }, userId, `${Date.now()}`, sessionId)])
+  const state = await appendEvents(sessionId, [userEvent('SESSION_PAUSED', { reason }, userId, `${Date.now()}`, sessionId)])
+  // The live harness process pauses too: the worker SIGSTOPs it on its next
+  // poll and SIGCONTs on resume. Nothing is dispatched meanwhile (the loop
+  // returns early on `paused`), and the wall clock is not charged.
+  await setDispatchesPaused(sessionId, true)
+  return state
 }
 
 export async function resumeOfficeSession(userId: string, sessionId: string): Promise<SessionState> {
   await ownedSession(userId, sessionId)
   const state = await appendEvents(sessionId, [userEvent('SESSION_RESUMED', {}, userId, `${Date.now()}`, sessionId)])
+  await setDispatchesPaused(sessionId, false)
   await tickOfficeSession(sessionId).catch((e) => console.error(`[office-session] tick after resume failed for ${sessionId}:`, e))
   return state
+}
+
+async function setDispatchesPaused(sessionId: string, paused: boolean): Promise<void> {
+  await pool.query(`UPDATE office_session_dispatch SET paused = $2 WHERE session_id = $1 AND status IN ('queued', 'claimed')`, [sessionId, paused])
+}
+
+/** Run ids this worker holds that the owner paused — the poll's `session_pause` list. */
+export async function pausedRunsFor(agentId: string): Promise<string[]> {
+  await ensureTables()
+  const { rows } = await pool.query<{ run_id: string }>(`SELECT run_id FROM office_session_dispatch WHERE agent_id = $1 AND status = 'claimed' AND paused`, [agentId])
+  return rows.map((r) => r.run_id)
 }
 
 export async function cancelOfficeSession(userId: string, sessionId: string, reason = 'cancelled by owner'): Promise<SessionState> {
@@ -698,6 +721,11 @@ async function candidateWorkers(state: SessionState): Promise<WorkerCandidate[]>
     `SELECT agent_id, COUNT(*)::text AS n FROM office_session_dispatch WHERE status IN ('queued', 'claimed') GROUP BY agent_id`,
   )
   const busyBy = new Map(busy.rows.map((r) => [r.agent_id, Number(r.n)]))
+  // Real history: every run this account's sessions ever gave each worker,
+  // by outcome and task kind. Recent sessions only — a worker is scored on
+  // what it did lately, and a jsonb scan of 200 states is cheap.
+  const past = await pool.query<{ state: SessionState }>(`SELECT state FROM office_session WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 200`, [state.session.userId])
+  const history = workerHistoryFrom(past.rows.map((r) => r.state))
   const now = new Date()
   return rows
     .filter((r) => r.runtimeType === 'local') // a session run is handed out on the poll; only a polling worker can take one
@@ -711,9 +739,9 @@ async function candidateWorkers(state: SessionState): Promise<WorkerCandidate[]>
         runtimeType: 'local' as const,
         harnessId: harness.get(r.id) ?? null,
         alive: status.phase === 'Ready',
-        successRate: null,
-        kindSuccess: {},
-        estCostUsd: null,
+        successRate: history.get(r.id)?.successRate ?? null,
+        kindSuccess: history.get(r.id)?.kindSuccess ?? {},
+        estCostUsd: history.get(r.id)?.estCostUsd ?? null,
         bondReady: Boolean(r.smartAccountAddress),
         sameAccount: true,
         busyRuns: busyBy.get(r.id) ?? 0,
@@ -917,7 +945,63 @@ async function performCommand(state: SessionState, command: Command): Promise<Se
       return appendEvents(sid, [
         officeEvent(sid, 'SESSION_ESCALATED', { reason: command.reason, taskId: command.taskId }, `${command.taskId ?? 'session'}:${command.reason.slice(0, 60)}`),
       ])
+    case 'issue_proof':
+      return issueTaskProof(state, command.taskId)
   }
+}
+
+/**
+ * A signed work proof over a settled INTERNAL task — the same EIP-712 record
+ * a paid market job gets (lib/work-proof-store.ts), so a third party can
+ * verify what this office decided on without trusting us. The deliverable
+ * (or diff) is the content; the session's owner is the requester, the
+ * worker's wallet the worker, and the grader is whatever verified it. No
+ * attester key configured → no proof, and the task stays settled: the
+ * sha256 receipt on the artifact is still there.
+ */
+async function issueTaskProof(state: SessionState, taskId: string): Promise<SessionState> {
+  const task = state.tasks[taskId]
+  if (!task || task.status !== 'settled' || task.settlement !== 'internal') return state
+  const content = task.outcome?.deliverable ?? task.outcome?.diff
+  if (!content) return state
+  const already = Object.values(state.artifacts ?? {}).some((a) => a.taskId === taskId && a.kind === 'proof')
+  if (already) return state
+  const { issueWorkProof } = await import('@/lib/work-proof-store')
+  const [worker] = task.assignedWorkerId
+    ? await db.select({ smartAccountAddress: agent.smartAccountAddress }).from(agent).where(eq(agent.id, task.assignedWorkerId))
+    : []
+  const workerAddr = worker?.smartAccountAddress ?? `agent:${task.assignedWorkerId ?? 'unassigned'}`
+  const grader = task.outcome?.review ? 'office-session:reviewer' : task.outcome?.tests ? `office-session:tests(${task.outcome.tests.command.slice(0, 80)})` : 'office-session:policy'
+  const proof = await issueWorkProof({
+    jobRef: `oses:${state.session.id}:${taskId}`,
+    kind: task.kind,
+    worker: workerAddr,
+    requester: `user:${state.session.userId}`,
+    grader,
+    deliverable: { text: content },
+    gradedAt: Math.floor((task.updatedAt || Date.now()) / 1000),
+  })
+  if (!proof) return state
+  const text = JSON.stringify({ id: proof.id, attester: proof.attester, signature: proof.signature, cid: proof.cid, proof: proof.proof }, null, 2)
+  const { createHash } = await import('node:crypto')
+  return appendEvents(state.session.id, [
+    officeEvent(
+      state.session.id,
+      'ARTIFACT_CREATED',
+      {
+        artifactId: `art-${taskId}-proof`,
+        taskId,
+        runId: task.currentRunId,
+        kind: 'proof',
+        name: `${taskId}.proof.json`,
+        sha256: createHash('sha256').update(text).digest('hex'),
+        bytes: Buffer.byteLength(text, 'utf8'),
+        inline: text.length <= 64_000 ? text : null,
+        ref: `/api/proof/${proof.id}`,
+      },
+      `${taskId}:proof`,
+    ),
+  ])
 }
 
 async function planSession(state: SessionState): Promise<{ tasks: ReturnType<typeof defaultPlan>; source: 'default' | 'llm' }> {
@@ -944,7 +1028,11 @@ async function dispatchRun(state: SessionState, c: Extract<Command, { kind: 'dis
   const task = state.tasks[c.taskId]
   if (!task) return state
   const grantRow = await getWorkerGrant(c.workerAgentId)
-  const grant: WorkspaceGrant = grantRow?.grant ?? s.workspace ?? { workdir: '', ...DEFAULT_WORKSPACE_GRANT }
+  // Layered permissions: the worker's own grant is the ceiling (what the
+  // machine's owner connected it with); the session's workspace can only
+  // narrow it; a task can narrow further by risk. Never widened here.
+  const base: WorkspaceGrant = grantRow?.grant ?? s.workspace ?? { workdir: '', ...DEFAULT_WORKSPACE_GRANT }
+  const grant: WorkspaceGrant = narrowGrant(base, grantRow ? s.workspace : null, taskGrantLayer(task))
   if (!grant.workdir) {
     return appendEvents(s.id, [
       officeEvent(s.id, 'RUN_FAILED', { runId: c.runId, failureCode: 'AUTH-001', reason: 'no workspace grant for this worker — connect it with a working directory first' }, `${c.runId}:nogrant`, 'system'),
@@ -983,6 +1071,17 @@ async function dispatchRun(state: SessionState, c: Extract<Command, { kind: 'dis
     ],
   )
   return state
+}
+
+/**
+ * The per-task layer of the grant. A review or verification task reads and
+ * runs; it never writes the workspace or pushes. Everything else keeps the
+ * session's grant — the risk tier the plan assigned is what the policy
+ * engine judges the RESULT by, not a reason to pre-empt the tools.
+ */
+function taskGrantLayer(task: SessionTask): Partial<WorkspaceGrant> | null {
+  if (task.kind === 'review' || task.kind === 'verify') return { write: false, gitPush: false, install: false }
+  return null
 }
 
 /** The grader's or reviewer's words for a retried attempt, fenced for the brief. */
@@ -1413,18 +1512,33 @@ export async function finishSessionRun(agentId: string, report: SessionRunFinish
 
 /** An external event (webhook, CI, issue) that may wake event-driven sessions of this account. */
 export async function fireSessionTrigger(userId: string, trigger: string): Promise<number> {
+  return fireSessionTriggers([trigger], userId)
+}
+
+/**
+ * Wake every event-driven session whose trigger list matches any of the
+ * fired names (lib/session-triggers.ts). `userId` narrows to one account
+ * (the HTTP lane, authenticated as that account's worker); the GitHub
+ * webhook passes none — the repo-qualified names are the scope there.
+ * Returns how many sessions were ticked.
+ */
+export async function fireSessionTriggers(fired: string[], userId?: string | null): Promise<number> {
+  if (fired.length === 0) return 0
   await ensureTables()
   const { rows } = await pool.query<{ id: string; state: SessionState }>(
-    `SELECT id, state FROM office_session WHERE user_id = $1 AND kind = 'event_driven' AND status NOT IN ('completed', 'partially_completed', 'failed', 'cancelled', 'expired', 'paused')`,
-    [userId],
+    `SELECT id, state FROM office_session WHERE ($1::text IS NULL OR user_id = $1) AND kind = 'event_driven'
+       AND status NOT IN ('completed', 'partially_completed', 'failed', 'cancelled', 'expired', 'paused')
+     ORDER BY updated_at DESC LIMIT 500`,
+    [userId ?? null],
   )
-  let fired = 0
+  let ticked = 0
   for (const r of rows) {
-    if (!r.state.session.triggers.includes(trigger)) continue
-    fired += 1
-    await tickOfficeSession(r.id, { triggers: [trigger] }).catch((e) => console.error(`[office-session] trigger tick failed for ${r.id}:`, e))
+    const hits = triggerMatches(r.state.session.triggers ?? [], fired)
+    if (hits.length === 0) continue
+    ticked += 1
+    await tickOfficeSession(r.id, { triggers: hits }).catch((e) => console.error(`[office-session] trigger tick failed for ${r.id}:`, e))
   }
-  return fired
+  return ticked
 }
 
 /** Undecided approvals across an account — the inbox. */

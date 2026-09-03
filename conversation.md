@@ -692,3 +692,19 @@ GitHub Discussions new URL 생성, 금지 문장·증거 없는 주장·잘못�
   호출 사이에 안 죽는다 — 위 "컨테이너가 백그라운드 프로세스를 수거한다" 노트의 우회법).
   **`pkill -f`/`pgrep -f` 패턴이 자기 커맨드라인에 있으면 자기 셸을 죽인다**(위 노트 그대로 두 번 더 당함).
   `grep -vx "$$"`로 걸러라.
+
+### 오피스 세션 — 스펙에서 빠져 있던 것들을 채웠다 (session-runtime 세션, 2026-09-03, 2차)
+
+- **이벤트 드리븐 세션이 실제로 깨어난다**: `lib/session-triggers.ts`(순수)가 GitHub 딜리버리를
+  `github:<owner/repo>:issues.opened` / `ci.failed` 같은 이름으로 바꾸고, `app/api/github/webhook/route.ts`가
+  서명 검증 직후·핸들러 전에 `fireSessionTriggers`를 **응답 경로 밖에서** 부른다(세션 틱이 GitHub 재시도를
+  유발하면 안 되니까). 유저를 지정하지 않는다 — repo 이름이 스코프. HTTP 레인
+  `POST /api/office/sessions/trigger`는 워커 토큰 인증, `http:` 접두어 강제.
+- **`/api/worker/poll` 응답에 `session_pause`가 추가됐다**: 워커가 자식 프로세스를 SIGSTOP/SIGCONT.
+  `office_session_dispatch.paused` 컬럼(ALTER TABLE IF NOT EXISTS, 자동). 루프는 paused 동안 wall-clock
+  취소를 안 건다(heartbeat 타임아웃은 그대로). 워커 스크립트를 바꾸는 세션은 `pauseSessionRuns` 유의.
+- **MCP 툴 4개**(`lib/mcp/handlers/office-sessions.ts`) — `tests/mcp-manifest-shape.test.ts`가
+  `docs/mcp-connector.md`의 `## Tools (N)` 카운트와 행을 고정한다. 툴을 추가하면 문서 카운트도 올려라(65).
+- `narrowGrant`(권한은 안쪽으로만), `workerHistoryFrom`(선택에 실제 성공률), `issue_proof`
+  커맨드(internal 태스크 정산 시 EIP-712 proof → `proof` 아티팩트, `/api/proof/<id>`).
+

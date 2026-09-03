@@ -22,6 +22,7 @@ import {
   doomedTasks,
   eventKey,
   initialState,
+  narrowGrant,
   nextScheduledAt,
   plannedCostUsd,
   replay,
@@ -515,5 +516,27 @@ describe('time helpers', () => {
     const s = initialState(created())
     expect(sessionSentence(s.session)).toBe(STATUS_META.draft.sentence)
     expect(sessionSentence({ ...s.session, statusReason: 'x' })).toContain('(x)')
+  })
+})
+
+describe('narrowGrant — permission layering', () => {
+  const base = { workdir: '/home/me/repo', write: true, shell: true, network: true, install: true, secrets: false, gitPush: true, externalPayments: false, perTaskLimitUsd: 5, dailyLimitUsd: 50 }
+  it('a layer can only take away or lower; never widen', () => {
+    const g = narrowGrant(base, { network: false, perTaskLimitUsd: 2 }, { gitPush: false, dailyLimitUsd: 100, secrets: true, externalPayments: true })
+    expect(g).toEqual({ ...base, network: false, gitPush: false, perTaskLimitUsd: 2, dailyLimitUsd: 50 })
+  })
+  it('an absent field keeps the base; a null layer is a no-op', () => {
+    expect(narrowGrant(base, null, undefined, {})).toEqual(base)
+  })
+  it('a workdir moves only inward', () => {
+    expect(narrowGrant(base, { workdir: '/home/me/repo/packages/api' }).workdir).toBe('/home/me/repo/packages/api')
+    expect(narrowGrant(base, { workdir: '/home/me/other' }).workdir).toBe('/home/me/repo')
+    expect(narrowGrant(base, { workdir: '/home/me/repo2' }).workdir).toBe('/home/me/repo')
+    expect(narrowGrant(base, { workdir: '' }).workdir).toBe('/home/me/repo')
+    expect(narrowGrant({ ...base, workdir: '' }, { workdir: '/anything' }).workdir).toBe('')
+  })
+  it('a limit never goes negative or non-finite', () => {
+    expect(narrowGrant(base, { perTaskLimitUsd: -1 }).perTaskLimitUsd).toBe(0)
+    expect(narrowGrant(base, { perTaskLimitUsd: Number.NaN }).perTaskLimitUsd).toBe(5)
   })
 })

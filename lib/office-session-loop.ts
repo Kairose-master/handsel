@@ -135,6 +135,8 @@ export type Command =
   | { kind: 'settle_escrow'; taskId: string; approvalId: string }
   | { kind: 'record_memory'; wave: number }
   | { kind: 'notify_owner'; reason: string; taskId: string | null }
+  /** Sign a work proof over a settled internal task's artifact (escrow tasks get theirs from the market's own release path). */
+  | { kind: 'issue_proof'; taskId: string }
 
 export type TickResult = {
   events: SessionEvent[]
@@ -239,7 +241,7 @@ export function tickSession(input: SessionState, obs: Observation, policy: LoopP
     notes.push(`${s().status}: waiting on the owner`)
     // Still watch the clock on live runs: a paused session must not let a
     // dead run sit as "running" on the page.
-    timeOutRuns()
+    timeOutRuns({ wallClock: false })
     return { events, commands, notes, state }
   }
 
@@ -262,7 +264,10 @@ export function tickSession(input: SessionState, obs: Observation, policy: LoopP
   }
 
   /* observe the clock on runs */
-  function timeOutRuns(): void {
+  // While the session is paused the harness process is stopped (SIGSTOP on
+  // the worker), so the wall clock does not count against it — only a dead
+  // worker (no heartbeat, never picked up, cancel grace) still times out.
+  function timeOutRuns(opts: { wallClock: boolean } = { wallClock: true }): void {
     for (const run of liveRuns(state)) {
       if (run.cancelRequestedAt !== null && now - run.cancelRequestedAt > cancelGraceMs) {
         emit('RUN_CANCELLED', { runId: run.id, failureCode: 'TIM-003', reason: 'cancel grace elapsed' }, run.id)
@@ -280,7 +285,7 @@ export function tickSession(input: SessionState, obs: Observation, policy: LoopP
         notes.push(`run ${run.id}: heartbeat timeout`)
         continue
       }
-      if (run.startedAt !== null && now - run.startedAt > runTimeoutMs && run.cancelRequestedAt === null) {
+      if (opts.wallClock && run.startedAt !== null && now - run.startedAt > runTimeoutMs && run.cancelRequestedAt === null) {
         commands.push({ kind: 'cancel_run', runId: run.id, workerAgentId: run.workerAgentId })
         emit('RUN_CANCEL_REQUESTED', { runId: run.id, reason: 'run wall-clock exceeded' }, run.id)
         notes.push(`run ${run.id}: over the wall clock → cancel requested`)
@@ -369,6 +374,7 @@ export function tickSession(input: SessionState, obs: Observation, policy: LoopP
     if (!approval) continue
     if (t.settlement === 'internal') {
       emit('TASK_SETTLED', { taskId: t.id, reason: 'internal task — nothing to pay; the artifact hash and the decision are the receipt', costUsd: t.outcome?.costUsd ?? null }, t.id)
+      if (t.outcome?.contentHash) commands.push({ kind: 'issue_proof', taskId: t.id })
       notes.push(`task ${t.id}: settled (internal)`)
       continue
     }
@@ -728,3 +734,59 @@ export function renderLessons(lessons: readonly SessionLesson[]): string {
 
 /** A first-class type re-export so the server can type its decision path without importing the policy module. */
 export type { ApprovalDecision }
+
+/* ── Worker history ───────────────────────────────────────────────────── */
+
+export type WorkerHistory = {
+  /** Finished runs / (finished + failed + timed out + lost), null with no terminal run. */
+  successRate: number | null
+  kindSuccess: Partial<Record<TaskKind, number | null>>
+  /** Mean reported cost of a finished run, null when none reported one. */
+  estCostUsd: number | null
+  runs: number
+}
+
+/**
+ * What each worker actually did on this account's sessions — the real
+ * numbers `selectWorker` scores on, from the session states themselves.
+ * A cancelled run is neither success nor failure (the owner stopped it), so
+ * it counts toward `runs` and nothing else. "No history" stays null: an
+ * untried worker is unknown, not average.
+ */
+export function workerHistoryFrom(states: readonly SessionState[]): Map<string, WorkerHistory> {
+  type Acc = { ok: number; bad: number; runs: number; cost: number[]; kinds: Map<TaskKind, { ok: number; bad: number }> }
+  const acc = new Map<string, Acc>()
+  for (const st of states) {
+    for (const run of Object.values(st.runs ?? {})) {
+      const a: Acc = acc.get(run.workerAgentId) ?? { ok: 0, bad: 0, runs: 0, cost: [], kinds: new Map() }
+      const kind = st.tasks[run.taskId]?.kind
+      const k = kind ? (a.kinds.get(kind) ?? { ok: 0, bad: 0 }) : null
+      if (run.status === 'finished') {
+        a.ok += 1
+        if (k) k.ok += 1
+        if (typeof run.costUsd === 'number' && Number.isFinite(run.costUsd)) a.cost.push(run.costUsd)
+      } else if (run.status === 'failed' || run.status === 'timed_out' || run.status === 'lost') {
+        a.bad += 1
+        if (k) k.bad += 1
+      } else if (run.status !== 'cancelled') {
+        continue // live: not history yet
+      }
+      a.runs += 1
+      if (kind && k) a.kinds.set(kind, k)
+      acc.set(run.workerAgentId, a)
+    }
+  }
+  const out = new Map<string, WorkerHistory>()
+  for (const [agentId, a] of acc) {
+    const total = a.ok + a.bad
+    const kindSuccess: Partial<Record<TaskKind, number | null>> = {}
+    for (const [kind, k] of a.kinds) kindSuccess[kind] = k.ok + k.bad > 0 ? k.ok / (k.ok + k.bad) : null
+    out.set(agentId, {
+      successRate: total > 0 ? a.ok / total : null,
+      kindSuccess,
+      estCostUsd: a.cost.length > 0 ? Math.round((a.cost.reduce((x, y) => x + y, 0) / a.cost.length) * 10000) / 10000 : null,
+      runs: a.runs,
+    })
+  }
+  return out
+}

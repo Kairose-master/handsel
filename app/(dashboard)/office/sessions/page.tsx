@@ -385,6 +385,7 @@ function NewSession({ view, reload }: { view: SessionOverview; reload: () => Pro
   const [workerAgentId, setWorkerAgentId] = useState(view.workers[0]?.agentId ?? '')
   const [hours, setHours] = useState('')
   const [everyMin, setEveryMin] = useState('60')
+  const [triggers, setTriggers] = useState('')
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const start = async () => {
@@ -399,6 +400,7 @@ function NewSession({ view, reload }: { view: SessionOverview; reload: () => Pro
         workerAgentId: workerAgentId || null,
         deadlineHours: hours ? Number(hours) : null,
         schedule: kind === 'scheduled' ? { kind: 'interval', everyMs: Math.max(1, Number(everyMin)) * 60_000 } : null,
+        triggers: kind === 'event_driven' ? triggers.split(/[\n,]/).map((t) => t.trim()).filter(Boolean) : [],
       })
       if (!r.ok) setMsg(r.error)
       else {
@@ -451,6 +453,21 @@ function NewSession({ view, reload }: { view: SessionOverview; reload: () => Pro
             </label>
           )}
         </div>
+        {kind === 'event_driven' && (
+          <label className="block text-xs">
+            Wakes on (comma-separated)
+            <input
+              className="mt-1 w-full rounded border border-border bg-background p-1 font-mono"
+              value={triggers}
+              onChange={(e) => setTriggers(e.target.value)}
+              placeholder="github:owner/repo:issues.opened, github:owner/repo:ci.failed, http:nightly"
+            />
+            <span className="text-muted-foreground">
+              GitHub names fire from the App&apos;s webhook (issues.opened · issues.labeled:&lt;label&gt; · pull_request.opened · ci.failed · ci.passed · push); an{' '}
+              <code>http:</code> name fires from <code>POST /api/office/sessions/trigger</code> with a worker token.
+            </span>
+          </label>
+        )}
         <Button size="sm" type="button" disabled={busy || goal.trim().length < 10} onClick={start}>
           {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />} Start session
         </Button>
