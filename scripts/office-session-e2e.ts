@@ -98,10 +98,24 @@ async function main(): Promise<void> {
     console.log(`SECRET=${secret}`)
     return
   }
+  if (phase === 'mcp-setup') {
+    // A real external MCP server as the worker, in proxy mode (its output is
+    // the deliverable; assisted mode would need a model key this run lacks).
+    const [serverUrl, toolName] = args
+    await ensureUserAndAgent()
+    const { generateWebhookSecret, encryptWebhookSecret } = await import('@/lib/webhook')
+    const [a] = await db.select({ id: agent.id }).from(agent).where(eq(agent.id, 'e2e-mcp'))
+    if (!a) await db.insert(agent).values({ id: 'e2e-mcp', userId: USER_ID, name: 'Docs search (MCP)', runtimeType: 'mcp', walletAddress: `0x${'3'.repeat(40)}` } as never)
+    await db.update(agent).set({ runtimeType: 'mcp', mcpServerUrl: serverUrl, mcpToolName: toolName, webhookSecretEnc: encryptWebhookSecret(generateWebhookSecret()), updatedAt: new Date() }).where(eq(agent.id, 'e2e-mcp'))
+    const { setMcpMode } = await import('@/lib/mcp-mode')
+    await setMcpMode('e2e-mcp', 'proxy')
+    console.log(`MCP=e2e-mcp ${serverUrl} ${toolName} (proxy)`)
+    return
+  }
   if (phase === 'start-remote') {
     // No workspace, no bound worker: the loop must pick the remote agent
     // (or the local one if it is online and better).
-    const [goal, kindArg, policyName, triggersArg] = args
+    const [goal, kindArg, policyName, triggersArg, workerArg] = args
     if (policyName === 'lenient') {
       const { DEFAULT_APPROVAL_POLICY } = await import('@/lib/approval-policy')
       const r = await os.setOfficePolicy(USER_ID, 1, { ...DEFAULT_APPROVAL_POLICY, id: 'office', requireReviewer: [], autoApprove: DEFAULT_APPROVAL_POLICY.autoApprove.filter((c) => c.field !== 'reviewerVerdict') })
@@ -114,7 +128,7 @@ async function main(): Promise<void> {
       kind: (kindArg as 'long_running') || 'long_running',
       goal,
       budgetLimitUsd: 5,
-      workerAgentId: null,
+      workerAgentId: workerArg || null,
       workspace: null,
       triggers: parseTriggerList(triggersArg ?? ''),
     })

@@ -1117,6 +1117,10 @@ async function dispatchRemoteRun(state: SessionState, c: Extract<Command, { kind
   if (!task) return state
   const { untrustedNonce } = await import('@/lib/untrusted-input')
   const feedback = retryFeedback(state, task)
+  // A tool-backed worker gets one query line: its tool is a search box, and
+  // the market's own briefs hand it a phrase the same way (lib/mcp-client.ts).
+  const { scopeForQuery } = await import('@/lib/mcp-client')
+  const mcpQuery = worker.runtimeType === 'mcp' ? scopeForQuery(task.brief || task.title) : null
   const brief = remoteRunBrief({
     goal: s.goal,
     taskTitle: task.title,
@@ -1125,6 +1129,7 @@ async function dispatchRemoteRun(state: SessionState, c: Extract<Command, { kind
     memory: await sessionMemoryBrief(s.userId, s.officeSlot),
     nonce: untrustedNonce(),
     previousAttempt: task.attempts > 1 ? (task.outcome?.deliverable?.slice(0, 4000) ?? null) : null,
+    mcpQuery,
   })
   const { runAgentTask } = await import('@/lib/agent-tasks')
   const { absoluteUrl } = await import('@/lib/origin')

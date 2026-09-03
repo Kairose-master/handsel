@@ -716,4 +716,11 @@ GitHub Discussions new URL 생성, 금지 문장·증거 없는 주장·잘못�
   (`docs/office-sessions.md` "second run"). 잡은 결함 1개: **웨이브 도중 온 트리거가 소실**됐다 →
   `TRIGGER_RECEIVED` 이벤트 + `session.pendingTriggers`로 큐잉 (§71). 이벤트 타입이 하나 늘었으니
   `SESSION_EVENT_TYPES`를 세는 테스트/문서를 만지는 세션은 참고.
+- **(5차, 라이브)** 실제 외부 MCP 서버(Microsoft Learn)를 세션 워커로 돌렸다. 여기서 잡은 결함:
+  **`after()`가 요청 스코프 밖에서 throw** → `runAgentTask`의 catch가 태스크를 실패 처리해서
+  cloud/mcp 워커가 호출도 못 되고 죽었다 (§72). `deferDispatch()`로 감쌌다 —
+  `lib/agent-tasks.ts`의 cloud/mcp 디스패치를 만지는 세션은 이 헬퍼를 유지할 것 (요청 밖에서는
+  inline으로 시작). 크론이 아닌 곳(스크립트/틱)에서 디스패치하려면 `CRON_SECRET`이 있어야
+  `/api/runtime/execute`로 넘어간다(없으면 inline이라 호출자 프로세스와 함께 죽는다).
+  `remoteRunBrief`는 mcp 워커에게 `[mcp-query]` 한 줄을 붙인다(검색 서버는 브리프 전체가 질의가 아님).
 

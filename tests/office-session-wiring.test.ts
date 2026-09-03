@@ -135,3 +135,44 @@ describe('office-session wiring', () => {
     expect(loopTimingFromEnv({} as unknown as NodeJS.ProcessEnv)).toEqual({})
   })
 })
+
+describe('dispatching outside a request scope', () => {
+  it('falls back to running now when after() refuses, and never throws at the caller', async () => {
+    const { deferDispatch } = await import('@/lib/agent-tasks')
+    // The real failure: Next's after() throws outside a request scope, that
+    // throw reached runAgentTask's catch, and the task was marked failed
+    // before the worker was ever called (failure-modes §72).
+    let ran = 0
+    const refuse = () => {
+      throw new Error('`after` was called outside a request scope.')
+    }
+    expect(() =>
+      deferDispatch(async () => {
+        ran += 1
+      }, refuse),
+    ).not.toThrow()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(ran).toBe(1)
+    // inside a request scope it is scheduled, not run inline
+    const scheduled: Array<() => Promise<void>> = []
+    deferDispatch(async () => {
+      ran += 1
+    }, (f) => scheduled.push(f))
+    expect(scheduled).toHaveLength(1)
+    expect(ran).toBe(1)
+    // a failing dispatch is logged, not an unhandled rejection
+    expect(() =>
+      deferDispatch(async () => {
+        throw new Error('boom')
+      }, refuse),
+    ).not.toThrow()
+    await new Promise((r) => setTimeout(r, 0))
+  })
+
+  it('both deferred dispatch sites go through it', () => {
+    const src = read('lib/agent-tasks.ts')
+    expect(src.match(/deferDispatch\(async \(\) => \{/g)).toHaveLength(2)
+    // no bare after() left on a dispatch path
+    expect(src).not.toMatch(/\n {6}after\(async/)
+  })
+})

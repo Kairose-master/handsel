@@ -476,6 +476,13 @@ export function sessionRunBrief(i: SessionBriefInput): string {
 export type RemoteBriefInput = Pick<SessionBriefInput, 'goal' | 'taskTitle' | 'taskBrief' | 'acceptanceCriteria' | 'memory' | 'nonce'> & {
   /** What a previous attempt produced, when this is a retry with feedback. */
   previousAttempt: string | null
+  /**
+   * For a tool-backed (MCP) worker: the one query its tool receives, on the
+   * `[mcp-query]` line lib/mcp-client.ts reads. A search box wants a phrase,
+   * not this brief; an agent-shaped server ignores the line. Null for any
+   * other worker.
+   */
+  mcpQuery?: string | null
 }
 
 /**
@@ -498,7 +505,8 @@ export function remoteRunBrief(i: RemoteBriefInput): string {
     `## Acceptance criteria (what the independent grader checks)\n\n${fence('CRITERIA', i.acceptanceCriteria)}\n` +
     memory +
     prev +
-    `\nYour reply IS the deliverable: return the finished work itself, complete and self-contained, with no preamble about what you are about to do.`
+    `\nYour reply IS the deliverable: return the finished work itself, complete and self-contained, with no preamble about what you are about to do.` +
+    (i.mcpQuery ? `\n\n[mcp-query] ${i.mcpQuery.replace(/\s+/g, ' ').trim().slice(0, 300)}` : '')
   )
 }
 

@@ -484,8 +484,32 @@ the build from this commit, one local worker on the real `claude`, and a
   defect this found: the wake landed mid-wave and was dropped (§71). Fixed
   in the same commit; the pure test now pins the queue.
 
+### A real external MCP server as the worker (2026-09-03, third run)
+
+`e2e-mcp` wired to **Microsoft Learn** (`https://learn.microsoft.com/api/mcp`,
+`microsoft_docs_search`, proxy mode) took a session task and settled it: the
+platform dispatched through `runAgentTask`, `/api/runtime/execute` did the
+call in its own invocation, the callback woke the session, and the
+deliverable was 27,736 bytes of Microsoft's own documentation (the
+`functionTimeout` section, Consumption plan included), hashed and settled
+with replay integrity intact.
+
+Two things that run taught, beyond "it works":
+
+- **The brief carries a query line.** A tool-backed worker's "tool" is a
+  search box, and the whole brief is not a query. `remoteRunBrief` now ends
+  with `[mcp-query] <phrase>` for `runtimeType: 'mcp'` — the same marker the
+  market's briefs use (`lib/mcp-client.ts`), collapsed to one line. An
+  agent-shaped MCP server ignores it; a search-shaped one needs it.
+- **Proxy mode delivers a result dump.** The deliverable above is the
+  server's raw JSON, which is right for an agent-shaped server and wrong for
+  a search one — exactly what `docs/office-connectors.md` says about
+  `assisted` vs `proxy`. `assisted` (the mode every shipped template uses)
+  needs a model key, which this run did not have. A session hiring a search
+  server should be in `assisted` mode or expect to read JSON.
+
 Still not driven live: an escrow task (`post_escrow_job` / `settle_escrow`
-against a chain) and a real external MCP server as the remote worker.
+against a chain).
 
 ## What is not built
 
@@ -503,5 +527,6 @@ against a chain) and a real external MCP server as the remote worker.
   and the session page are not.
 - **The escrow lane ran only under test.** `post_escrow_job` /
   `settle_escrow` are unit-tested and pinned to the one release site;
-  they have not moved testnet money in a live session yet. The remote lane
-  ran live against a stand-in webhook server, not yet a real MCP server.
+  they have not moved testnet money in a live session yet. (The remote lane
+  itself has now run live against both a stand-in webhook server and a real
+  external MCP server.)

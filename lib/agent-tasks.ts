@@ -174,7 +174,7 @@ export async function runAgentTask(input: {
       // zero callbacks. Handing the work to our own HTTP endpoint gives each
       // dispatch a full budget of its own. The inline path stays as the
       // fallback when the handoff cannot happen (no CRON_SECRET, refused).
-      after(async () => {
+      deferDispatch(async () => {
         if (!(await handoffDispatchExecution(taskId, callbackUrl))) {
           await dispatchToCloudApi(agent, taskId, effectiveTask, callbackUrl)
         }
@@ -183,7 +183,7 @@ export async function runAgentTask(input: {
       // An external MCP server does the work. Same handoff-then-fallback
       // shape as cloud: the execute endpoint calls the tool in its own
       // invocation, then POSTs our own callback with the result.
-      after(async () => {
+      deferDispatch(async () => {
         if (!(await handoffDispatchExecution(taskId, callbackUrl))) {
           await dispatchToMcpWorker(agent, taskId, effectiveTask, callbackUrl)
         }
@@ -202,6 +202,31 @@ export async function runAgentTask(input: {
   }
 
   return { taskId }
+}
+
+/**
+ * Run the dispatch after this response — when there IS a response.
+ *
+ * `after()` throws "called outside a request scope" whenever the caller is
+ * not inside a Next request: the ops cron's own module context, a script, or
+ * an office-session heartbeat ticked from either. That throw used to escape
+ * into runAgentTask's catch, which marks the task failed — so a cloud/MCP
+ * worker dispatched from a session tick died on the spot with DEP-002 and
+ * never called the tool at all (`docs/failure-modes.md` §72).
+ *
+ * Outside a request there is no response to run after, so the work simply
+ * starts now, unawaited. The handoff to /api/runtime/execute inside `fn` is
+ * what keeps it off this call stack in production either way.
+ *
+ * `schedule` is injectable so the fallback is testable without Next.
+ */
+export function deferDispatch(fn: () => Promise<void>, schedule: (f: () => Promise<void>) => void = after): void {
+  try {
+    schedule(fn)
+  } catch (error) {
+    console.warn('[agent-tasks] no request scope for after(); dispatching inline:', error instanceof Error ? error.message : error)
+    void fn().catch((e) => console.error('[agent-tasks] inline dispatch failed:', e))
+  }
 }
 
 /** POST the task to the agent owner's own HTTP endpoint. No code from the

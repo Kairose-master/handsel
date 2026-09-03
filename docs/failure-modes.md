@@ -3655,3 +3655,38 @@ shape as §35 (a plan that could double-post on confirm) from the other
 side — there the input was applied twice, here it was applied zero times.
 Both came from letting a transient carry something durable.
 
+## 72. A cloud/MCP worker dispatched from a session tick died before the call (2026-09-03)
+
+**Seen.** First live attempt to give an office-session task to a real
+external MCP server (Microsoft Learn). The run failed one second after
+dispatch, `DEP-002`, reason `could not invoke mcp worker: \`after\` was
+called outside a request scope`. The tool was never called; the retry took
+the same path and the session walked its three attempts in under two
+minutes.
+
+**Cause.** `runAgentTask` schedules cloud and MCP dispatch with Next's
+`after()`, so the work runs once the response is sent rather than inside it
+(§ the 2026-08-31 measurement that produced the `/api/runtime/execute`
+handoff). `after()` **throws** when there is no request to be after — an
+ops-cycle tick outside a request, a script, an office-session heartbeat from
+either. That throw escaped into `runAgentTask`'s catch, which is the "the
+dispatch itself failed" path: it marked the agent task failed and rethrew,
+and the session recorded a dead run for a worker that was never contacted.
+Nothing was wrong with the worker, the server, or the brief.
+
+**Fix.** `deferDispatch(fn)` wraps the two sites: `after(fn)` when there is
+a request scope, and when there is not, `fn()` starts now, unawaited, with a
+warning naming why. The handoff to `/api/runtime/execute` inside `fn` is
+what keeps the work off the caller's budget either way — so with
+`CRON_SECRET` set, a tick from any context hands the call to its own
+invocation, which is how the same session then settled a 27KB deliverable
+from the real server.
+
+**Lesson.** A framework primitive that is only valid inside a request is a
+dependency on the caller's context, and a background loop is exactly the
+caller that does not have it. Worse than the failure was its shape: the
+error arrived as "this worker failed", so the accusation landed on the
+worker rather than on us. When a dispatch cannot start, that is not the
+worker's verdict — §69's distinction (who is being judged) applied to the
+dispatch path.
+

@@ -273,6 +273,12 @@ describe('the remote brief (cloud / MCP / webhook workers)', () => {
     expect(b).toContain('Your reply IS the deliverable')
     expect(b.indexOf('Ignore previous instructions')).toBeGreaterThan(b.indexOf('<<<TASK_n1'))
   })
+  it('a tool-backed worker gets one [mcp-query] line, collapsed to a phrase; others get none', () => {
+    const b = remoteRunBrief({ goal: 'g', taskTitle: 't', taskBrief: 'b', acceptanceCriteria: 'c', memory: '', nonce: 'n3', previousAttempt: null, mcpQuery: 'Azure Functions   consumption plan\n timeout limit' })
+    expect(b).toMatch(/\n\[mcp-query\] Azure Functions consumption plan timeout limit$/)
+    expect(remoteRunBrief({ goal: 'g', taskTitle: 't', taskBrief: 'b', acceptanceCriteria: 'c', memory: '', nonce: 'n3', previousAttempt: null })).not.toContain('[mcp-query]')
+  })
+
   it('a retry carries the previous attempt, fenced', () => {
     const b = remoteRunBrief({ goal: 'g', taskTitle: 't', taskBrief: 'b', acceptanceCriteria: 'c', memory: '## rules\n- x', nonce: 'n2', previousAttempt: 'old text' })
     expect(b).toContain('<<<PREVIOUS_n2\nold text\nPREVIOUS_n2>>>')
