@@ -659,3 +659,36 @@ Comfy Org·TextQL(Algora 조직 개설, $0), OpenMind OM1(바운티 라벨 활�
 `lib/pilot-outreach.ts`(순수): 타겟별 진짜 문장 + 증거 URL로 메시지 A를 합성, mailto: /
 GitHub Discussions new URL 생성, 금지 문장·증거 없는 주장·잘못된 주소 거부(테스트).
 페이지(비공개 아티팩트)는 이 모듈로 렌더링 — 문장의 단일 출처. 아무것도 자동 발송 안 함.
+
+### 오피스 세션 런타임 — 목표를 시간 속에서 수행하는 단위를 넣었다 (session-runtime 세션, 2026-09-03)
+
+"핵심 제품 단위는 job이 아니라 session이다"라는 오너 방향을 구현했다. `docs/office-sessions.md`가
+전체 설계, 아래는 다른 세션이 걸려 넘어질 수 있는 것만:
+
+- **새 모듈, 기존 건 안 건드림**: `lib/office-session.ts`(상태기계+리듀서+불변식, 순수),
+  `lib/office-session-loop.ts`(한 하트비트, 순수), `lib/approval-policy.ts`(결재 엔진),
+  `lib/coding-harness.ts`(CodingHarness 계약 + Claude Code grant→argv), `lib/office-session-server.ts`
+  (이벤트 로그·워커 프로토콜·커맨드). **`lib/session.ts`(잡 세션/턴)과는 별개**다 — 이름이 겹쳐서
+  `OfficeSession`으로 부른다. 테이블 전부 자가 생성(`office_session*`, `office_policy`,
+  `office_worker_grant`). `agent` 컬럼 추가 없음.
+- **ops 스텝 `officeSessions`** — `delegations` 뒤, `fleetTick` 앞, cron 전용. 세션당 리스
+  `office-session:<id>`. 틱 순서를 바꾸는 세션은 `tests/office-session-wiring.test.ts`가 고정한다는 것 유의.
+- **`/api/worker/poll`에 세션 런 채널이 탔다**: 응답에 `session_run`(런 핸드아웃), `session_cancel`,
+  요청에 `session_runs`(진행/체크포인트 리포트). 세션 런이 마켓 태스크보다 우선. 워커 스크립트에
+  `runSessionRun`이 추가됐다 — `--harness claude` 워커가 세션 런을 받으면 **brief를 stdin으로**
+  `claude --print --output-format stream-json --permission-mode acceptEdits --allowedTools/--disallowedTools`
+  를 띄운다. bypassPermissions는 세션 런에서 절대 안 쓴다(그래서 root에서도 돈다).
+- **돈 경로는 새로 안 만들었다.** escrow 태스크는 `postSpecJob(autoApprove:false)`로 올리고, 정책이
+  ALLOW하면 `autoApprove`를 켜고 `autoApprovePassedJob`(기존 단일 릴리즈 사이트)를 부른다. 실돈
+  배포에서 정책 자동 릴리즈는 `OFFICE_SESSION_ALLOW_REAL_MONEY=true` 없이는 안 나간다(오너 클릭은 예외).
+  internal 태스크(오너 자기 워커)는 escrow도 credit 이벤트도 없다.
+- **실제로 돌려서 잡은 것 3개** (`docs/failure-modes.md` §70):
+  (1) Claude Code의 `--allowedTools`/`--disallowedTools`가 variadic이라 뒤의 positional brief를 먹었다
+  → 1초 만에 3회 실패, 시도 소진. brief를 stdin으로 옮김. (2) 실패한 런의 dispatch 행이 `claimed`로
+  남아 재시작한 워커가 영원히 "busy" → 틱마다 터미널 런의 dispatch 행을 닫는다. (3) `retrying`에서
+  `waiting_on_worker`로 못 가서 틱이 throw → 전이 추가.
+- e2e는 `scripts/office-session-e2e.ts` + 스크래치 Postgres + 실제 `next start` + 실제
+  `handsel-worker.mjs` + 실제 `claude`로 돌렸다(이 컨테이너에서 됨: `setsid nohup`으로 띄우면
+  호출 사이에 안 죽는다 — 위 "컨테이너가 백그라운드 프로세스를 수거한다" 노트의 우회법).
+  **`pkill -f`/`pgrep -f` 패턴이 자기 커맨드라인에 있으면 자기 셸을 죽인다**(위 노트 그대로 두 번 더 당함).
+  `grep -vx "$$"`로 걸러라.

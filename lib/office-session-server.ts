@@ -1,0 +1,1424 @@
+/**
+ * Storage, observation and side effects for office sessions.
+ *
+ * The pure halves decide everything (lib/office-session.ts is the state,
+ * lib/office-session-loop.ts the decisions, lib/approval-policy.ts the
+ * money rules). This file is what touches the world:
+ *
+ *   - the tables (self-migrating, side tables only — never a column on
+ *     `agent`; lib/office.ts's header says why);
+ *   - `appendEvents`: the one write path. Row-locked per session, idempotent
+ *     on the event key, invariant-checked before commit. A tick, a worker
+ *     report and an owner's click all go through it, so they serialise;
+ *   - the observation a tick needs: which workers are alive, what the chain
+ *     says about escrow tasks, what the office spent today;
+ *   - the commands a tick emits: hand a run to a worker, ask a reviewer,
+ *     post an escrow job, flip an approved job's autoApprove and let the
+ *     existing release site pay it, write the office's session memory;
+ *   - the worker protocol: the run handed out on `/api/worker/poll`, the
+ *     reports that ride on the same poll, the finish report.
+ *
+ * Money never leaves from here. `settle_escrow` sets `jobSpec.autoApprove`
+ * and calls lib/labor-settle.ts's `autoApprovePassedJob`, which is the one
+ * release site every other path uses, with its on-chain status check, its
+ * peer-review hold and its cap intact. The session only decides WHEN that
+ * site may say yes.
+ */
+import { pool, db } from '@/lib/db'
+import { agent } from '@/lib/db/schema'
+import { eq } from 'drizzle-orm'
+import { nanoid } from 'nanoid'
+import {
+  DEFAULT_WORKSPACE_GRANT,
+  STATUS_META,
+  applyEvent,
+  eventKey,
+  initialState,
+  replay,
+  sessionInvariants,
+  type ApprovalRecord,
+  type Checkpoint,
+  type NewEvent,
+  type OfficeSession,
+  type SessionCreatedPayload,
+  type SessionEvent,
+  type SessionEventType,
+  type SessionKind,
+  type SessionSchedule,
+  type SessionState,
+  type SessionTask,
+  type TestReport,
+  type WorkspaceGrant,
+} from '@/lib/office-session'
+import {
+  latestCheckpoint,
+  learnFromSession,
+  renderLessons,
+  tickSession,
+  type Command,
+  type Observation,
+  type SessionLesson,
+  type WorkerCandidate,
+} from '@/lib/office-session-loop'
+import { DEFAULT_APPROVAL_POLICY, parsePolicy, type ApprovalPolicy } from '@/lib/approval-policy'
+import { defaultPlan, planFromSubtasks } from '@/lib/office-session-plan'
+import { SESSION_DELIVERABLE_PATH, redactSecrets, sessionRunBrief, type HarnessEvent } from '@/lib/coding-harness'
+import type { CompleteFn } from '@/lib/delegation'
+
+/* ── Tables ───────────────────────────────────────────────────────────── */
+
+let ready: Promise<void> | null = null
+async function ensureTables(): Promise<void> {
+  if (!ready) {
+    ready = (async () => {
+      await pool.query(
+        `CREATE TABLE IF NOT EXISTS office_session (
+           id text PRIMARY KEY,
+           user_id text NOT NULL,
+           slot integer NOT NULL,
+           kind text NOT NULL,
+           goal text NOT NULL,
+           status text NOT NULL,
+           status_reason text,
+           priority integer NOT NULL DEFAULT 0,
+           next_wake_at timestamptz,
+           deadline_at timestamptz,
+           budget_limit_usd numeric NOT NULL DEFAULT 0,
+           spent_usd numeric NOT NULL DEFAULT 0,
+           worker_agent_id text,
+           version integer NOT NULL DEFAULT 0,
+           state jsonb NOT NULL,
+           created_at timestamptz NOT NULL DEFAULT now(),
+           updated_at timestamptz NOT NULL DEFAULT now()
+         )`,
+      )
+      await pool.query(`CREATE INDEX IF NOT EXISTS office_session_owner ON office_session (user_id, slot, created_at DESC)`)
+      await pool.query(`CREATE INDEX IF NOT EXISTS office_session_wake ON office_session (next_wake_at) WHERE next_wake_at IS NOT NULL`)
+      await pool.query(
+        `CREATE TABLE IF NOT EXISTS office_session_event (
+           seq bigserial PRIMARY KEY,
+           id text NOT NULL,
+           session_id text NOT NULL,
+           type text NOT NULL,
+           occurred_at timestamptz NOT NULL,
+           actor_type text NOT NULL,
+           actor_id text,
+           payload jsonb NOT NULL DEFAULT '{}',
+           idempotency_key text NOT NULL UNIQUE
+         )`,
+      )
+      await pool.query(`CREATE INDEX IF NOT EXISTS office_session_event_session ON office_session_event (session_id, seq)`)
+      await pool.query(
+        `CREATE TABLE IF NOT EXISTS office_session_dispatch (
+           run_id text PRIMARY KEY,
+           session_id text NOT NULL,
+           task_id text NOT NULL,
+           agent_id text NOT NULL,
+           status text NOT NULL DEFAULT 'queued',
+           brief text NOT NULL,
+           workspace_grant jsonb NOT NULL,
+           verify_command text,
+           resume jsonb,
+           timeout_ms integer NOT NULL,
+           harness_id text,
+           created_at timestamptz NOT NULL DEFAULT now(),
+           claimed_at timestamptz,
+           finished_at timestamptz
+         )`,
+      )
+      await pool.query(`CREATE INDEX IF NOT EXISTS office_session_dispatch_agent ON office_session_dispatch (agent_id, status, created_at)`)
+      await pool.query(
+        `CREATE TABLE IF NOT EXISTS office_session_run_log (
+           id bigserial PRIMARY KEY,
+           session_id text NOT NULL,
+           run_id text NOT NULL,
+           at timestamptz NOT NULL,
+           kind text NOT NULL,
+           text text NOT NULL,
+           path text
+         )`,
+      )
+      await pool.query(`CREATE INDEX IF NOT EXISTS office_session_run_log_run ON office_session_run_log (run_id, id)`)
+      await pool.query(
+        `CREATE TABLE IF NOT EXISTS office_policy (
+           user_id text NOT NULL,
+           slot integer NOT NULL,
+           policy jsonb NOT NULL,
+           updated_at timestamptz NOT NULL DEFAULT now(),
+           PRIMARY KEY (user_id, slot)
+         )`,
+      )
+      await pool.query(
+        `CREATE TABLE IF NOT EXISTS office_session_memory (
+           user_id text NOT NULL,
+           slot integer NOT NULL,
+           lessons jsonb NOT NULL DEFAULT '[]',
+           updated_at timestamptz NOT NULL DEFAULT now(),
+           PRIMARY KEY (user_id, slot)
+         )`,
+      )
+      await pool.query(
+        `CREATE TABLE IF NOT EXISTS office_worker_grant (
+           agent_id text PRIMARY KEY,
+           user_id text NOT NULL,
+           slot integer NOT NULL,
+           workspace_grant jsonb NOT NULL,
+           verify_command text,
+           updated_at timestamptz NOT NULL DEFAULT now()
+         )`,
+      )
+    })()
+      .then(() => undefined)
+      .catch((e) => {
+        ready = null // not cached on failure, or every later call believes it exists
+        throw e
+      })
+  }
+  return ready
+}
+
+/* ── Event log ────────────────────────────────────────────────────────── */
+
+const newId = (prefix: string) => `${prefix}-${nanoid(12)}`
+
+export class SessionNotFound extends Error {
+  constructor(id: string) {
+    super(`office session ${id} not found`)
+  }
+}
+
+export class InvariantViolation extends Error {
+  constructor(
+    public readonly sessionId: string,
+    public readonly violations: string[],
+  ) {
+    super(`office session ${sessionId} would violate: ${violations.join('; ')}`)
+  }
+}
+
+type SessionRow = { id: string; user_id: string; slot: number; version: number; state: SessionState }
+
+/** Load the materialized state. Falls back to replay when the row's JSON is unreadable. */
+export async function loadSessionState(sessionId: string): Promise<SessionState> {
+  await ensureTables()
+  const { rows } = await pool.query<SessionRow>(`SELECT id, user_id, slot, version, state FROM office_session WHERE id = $1`, [sessionId])
+  const row = rows[0]
+  if (!row) throw new SessionNotFound(sessionId)
+  if (row.state && typeof row.state === 'object' && row.state.session && row.state.version === row.version) return row.state
+  return replaySession(sessionId)
+}
+
+/** The truth: rebuild from the log alone. */
+export async function replaySession(sessionId: string): Promise<SessionState> {
+  await ensureTables()
+  const { rows } = await pool.query<{
+    id: string
+    type: SessionEventType
+    occurred_at: Date
+    actor_type: SessionEvent['actorType']
+    actor_id: string | null
+    payload: Record<string, unknown>
+    idempotency_key: string
+  }>(`SELECT id, type, occurred_at, actor_type, actor_id, payload, idempotency_key FROM office_session_event WHERE session_id = $1 ORDER BY seq ASC`, [sessionId])
+  if (rows.length === 0) throw new SessionNotFound(sessionId)
+  return replay(
+    rows.map((r) => ({
+      id: r.id,
+      sessionId,
+      type: r.type,
+      occurredAt: r.occurred_at.getTime(),
+      actorType: r.actor_type,
+      actorId: r.actor_id,
+      payload: r.payload ?? {},
+      idempotencyKey: r.idempotency_key,
+    })),
+  )
+}
+
+/** Materialized row vs replay — the integrity check a doctor page or a test runs. */
+export async function verifySessionIntegrity(sessionId: string): Promise<{ ok: boolean; materializedVersion: number; replayedVersion: number; violations: string[] }> {
+  const replayed = await replaySession(sessionId)
+  const { rows } = await pool.query<{ version: number }>(`SELECT version FROM office_session WHERE id = $1`, [sessionId])
+  const materializedVersion = rows[0]?.version ?? -1
+  const violations = sessionInvariants(replayed)
+  return { ok: materializedVersion === replayed.version && violations.length === 0, materializedVersion, replayedVersion: replayed.version, violations }
+}
+
+function materialize(client: { query: typeof pool.query }, state: SessionState): Promise<unknown> {
+  const s = state.session
+  return client.query(
+    `UPDATE office_session SET status = $2, status_reason = $3, next_wake_at = $4, deadline_at = $5, budget_limit_usd = $6, spent_usd = $7,
+        worker_agent_id = $8, version = $9, state = $10::jsonb, priority = $11, updated_at = now()
+      WHERE id = $1`,
+    [
+      s.id,
+      s.status,
+      s.statusReason,
+      s.nextWakeAt === null ? null : new Date(s.nextWakeAt),
+      s.deadlineAt === null ? null : new Date(s.deadlineAt),
+      s.budgetLimitUsd,
+      s.spentUsd,
+      s.workerAgentId,
+      state.version,
+      JSON.stringify(state),
+      s.priority,
+    ],
+  )
+}
+
+/**
+ * Append events. Serialised per session by a row lock; duplicates (by
+ * idempotency key) are skipped, and the batch is refused whole if the
+ * resulting state breaks an invariant. Returns the state after the batch.
+ */
+export async function appendEvents(sessionId: string, events: readonly NewEvent[]): Promise<SessionState> {
+  await ensureTables()
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    const { rows } = await client.query<SessionRow>(`SELECT id, user_id, slot, version, state FROM office_session WHERE id = $1 FOR UPDATE`, [sessionId])
+    const row = rows[0]
+    if (!row) throw new SessionNotFound(sessionId)
+    let state: SessionState = row.state && row.state.version === row.version ? row.state : await replaySession(sessionId)
+    let changed = false
+    for (const e of events) {
+      const full: SessionEvent = {
+        id: newId('ev'),
+        sessionId,
+        type: e.type,
+        occurredAt: e.occurredAt,
+        actorType: e.actorType,
+        actorId: e.actorId,
+        payload: e.payload,
+        idempotencyKey: e.idempotencyKey ?? eventKey(sessionId, e.type, `${e.occurredAt}:${nanoid(6)}`),
+      }
+      if (state.applied.includes(full.idempotencyKey)) continue
+      const next = applyEvent(state, full)
+      if (next === state) continue
+      const violations = sessionInvariants(next)
+      if (violations.length) throw new InvariantViolation(sessionId, violations)
+      const ins = await client.query(
+        `INSERT INTO office_session_event (id, session_id, type, occurred_at, actor_type, actor_id, payload, idempotency_key)
+         VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8) ON CONFLICT (idempotency_key) DO NOTHING`,
+        [full.id, sessionId, full.type, new Date(full.occurredAt), full.actorType, full.actorId, JSON.stringify(full.payload), full.idempotencyKey],
+      )
+      if (ins.rowCount === 0) continue // written by a concurrent path already folded into the row we hold
+      state = next
+      changed = true
+    }
+    if (changed) await materialize(client, state)
+    await client.query('COMMIT')
+    return state
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => undefined)
+    throw e
+  } finally {
+    client.release()
+  }
+}
+
+/* ── Create / list / read ─────────────────────────────────────────────── */
+
+export type CreateSessionInput = {
+  userId: string
+  slot: number
+  kind: SessionKind
+  goal: string
+  budgetLimitUsd: number
+  deadlineAt?: number | null
+  schedule?: SessionSchedule | null
+  triggers?: string[]
+  workerAgentId?: string | null
+  payerAgentId?: string | null
+  workspace?: WorkspaceGrant | null
+  verifyCommand?: string | null
+  priority?: number
+}
+
+export async function createOfficeSession(input: CreateSessionInput): Promise<OfficeSession> {
+  await ensureTables()
+  const id = newId('oses')
+  const now = Date.now()
+  const memory = await getSessionMemory(input.userId, input.slot).catch(() => [] as SessionLesson[])
+  const payload: SessionCreatedPayload = {
+    userId: input.userId,
+    officeSlot: input.slot,
+    kind: input.kind,
+    goal: input.goal,
+    budgetLimitUsd: input.budgetLimitUsd,
+    deadlineAt: input.deadlineAt ?? null,
+    schedule: input.schedule ?? null,
+    triggers: input.triggers ?? [],
+    workerAgentId: input.workerAgentId ?? null,
+    payerAgentId: input.payerAgentId ?? null,
+    workspace: input.workspace ?? null,
+    verifyCommand: input.verifyCommand ?? null,
+    priority: input.priority ?? 0,
+    approvalPolicyId: 'office',
+    memoryRulesUsed: memory.map((l) => l.kind),
+  }
+  const created: SessionEvent = {
+    id: newId('ev'),
+    sessionId: id,
+    type: 'SESSION_CREATED',
+    occurredAt: now,
+    actorType: 'user',
+    actorId: input.userId,
+    payload: payload as unknown as Record<string, unknown>,
+    idempotencyKey: eventKey(id, 'SESSION_CREATED', 'create'),
+  }
+  const state = initialState(created)
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    await client.query(
+      `INSERT INTO office_session (id, user_id, slot, kind, goal, status, status_reason, priority, next_wake_at, deadline_at, budget_limit_usd, spent_usd, worker_agent_id, version, state)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 0, $12, $13, $14::jsonb)`,
+      [
+        id,
+        input.userId,
+        input.slot,
+        input.kind,
+        state.session.goal,
+        state.session.status,
+        null,
+        state.session.priority,
+        new Date(now),
+        input.deadlineAt ? new Date(input.deadlineAt) : null,
+        input.budgetLimitUsd,
+        input.workerAgentId ?? null,
+        state.version,
+        JSON.stringify(state),
+      ],
+    )
+    await client.query(
+      `INSERT INTO office_session_event (id, session_id, type, occurred_at, actor_type, actor_id, payload, idempotency_key) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)`,
+      [created.id, id, created.type, new Date(now), created.actorType, created.actorId, JSON.stringify(created.payload), created.idempotencyKey],
+    )
+    await client.query('COMMIT')
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => undefined)
+    throw e
+  } finally {
+    client.release()
+  }
+  return state.session
+}
+
+export type SessionListRow = Pick<OfficeSession, 'id' | 'kind' | 'goal' | 'status' | 'statusReason' | 'nextWakeAt' | 'budgetLimitUsd' | 'spentUsd' | 'createdAt' | 'wave' | 'officeSlot'> & {
+  openApprovals: number
+  liveRuns: number
+  tasksDone: number
+  tasksTotal: number
+}
+
+export async function listOfficeSessions(userId: string, slot?: number, limit = 50): Promise<SessionListRow[]> {
+  await ensureTables()
+  const { rows } = await pool.query<SessionRow>(
+    `SELECT id, user_id, slot, version, state FROM office_session WHERE user_id = $1 ${slot !== undefined ? 'AND slot = $3' : ''} ORDER BY created_at DESC LIMIT $2`,
+    slot !== undefined ? [userId, limit, slot] : [userId, limit],
+  )
+  return rows.map((r) => {
+    const st = r.state
+    const tasks = Object.values(st.tasks ?? {}).filter((t) => t.wave === st.session.wave)
+    return {
+      id: st.session.id,
+      kind: st.session.kind,
+      goal: st.session.goal,
+      status: st.session.status,
+      statusReason: st.session.statusReason,
+      nextWakeAt: st.session.nextWakeAt,
+      budgetLimitUsd: st.session.budgetLimitUsd,
+      spentUsd: st.session.spentUsd,
+      createdAt: st.session.createdAt,
+      wave: st.session.wave,
+      officeSlot: st.session.officeSlot,
+      openApprovals: Object.values(st.approvals ?? {}).filter((a) => a.decidedAt === null && (a.policyOutcome === 'REQUIRE_OWNER' || a.policyOutcome === 'REQUIRE_REVIEWER')).length,
+      liveRuns: Object.values(st.runs ?? {}).filter((x) => x.status === 'dispatched' || x.status === 'started' || x.status === 'running').length,
+      tasksDone: tasks.filter((t) => t.status === 'settled').length,
+      tasksTotal: tasks.length,
+    }
+  })
+}
+
+/** The session with its event log and run logs — the timeline page's read. */
+export async function readOfficeSession(userId: string, sessionId: string): Promise<{ state: SessionState; events: SessionEvent[]; runLog: RunLogLine[] } | null> {
+  await ensureTables()
+  const { rows } = await pool.query<SessionRow>(`SELECT id, user_id, slot, version, state FROM office_session WHERE id = $1`, [sessionId])
+  const row = rows[0]
+  if (!row || row.user_id !== userId) return null
+  const state = row.state && row.state.version === row.version ? row.state : await replaySession(sessionId)
+  const ev = await pool.query<{
+    id: string
+    type: SessionEventType
+    occurred_at: Date
+    actor_type: SessionEvent['actorType']
+    actor_id: string | null
+    payload: Record<string, unknown>
+    idempotency_key: string
+  }>(`SELECT id, type, occurred_at, actor_type, actor_id, payload, idempotency_key FROM office_session_event WHERE session_id = $1 ORDER BY seq DESC LIMIT 400`, [sessionId])
+  const log = await pool.query<{ run_id: string; at: Date; kind: string; text: string; path: string | null }>(
+    `SELECT run_id, at, kind, text, path FROM office_session_run_log WHERE session_id = $1 ORDER BY id DESC LIMIT 300`,
+    [sessionId],
+  )
+  return {
+    state,
+    events: ev.rows
+      .map((r) => ({
+        id: r.id,
+        sessionId,
+        type: r.type,
+        occurredAt: r.occurred_at.getTime(),
+        actorType: r.actor_type,
+        actorId: r.actor_id,
+        payload: r.payload,
+        idempotencyKey: r.idempotency_key,
+      }))
+      .reverse(),
+    runLog: log.rows.map((r) => ({ runId: r.run_id, at: r.at.getTime(), kind: r.kind, text: r.text, path: r.path })).reverse(),
+  }
+}
+
+export type RunLogLine = { runId: string; at: number; kind: string; text: string; path: string | null }
+
+async function ownedSession(userId: string, sessionId: string): Promise<SessionState> {
+  const state = await loadSessionState(sessionId)
+  if (state.session.userId !== userId) throw new SessionNotFound(sessionId)
+  return state
+}
+
+/* ── Owner actions ────────────────────────────────────────────────────── */
+
+const userEvent = (type: SessionEventType, payload: Record<string, unknown>, userId: string, key: string, sessionId: string): NewEvent => ({
+  type,
+  occurredAt: Date.now(),
+  actorType: 'user',
+  actorId: userId,
+  payload,
+  idempotencyKey: eventKey(sessionId, type, key),
+})
+
+export async function pauseOfficeSession(userId: string, sessionId: string, reason = 'paused by owner'): Promise<SessionState> {
+  await ownedSession(userId, sessionId)
+  return appendEvents(sessionId, [userEvent('SESSION_PAUSED', { reason }, userId, `${Date.now()}`, sessionId)])
+}
+
+export async function resumeOfficeSession(userId: string, sessionId: string): Promise<SessionState> {
+  await ownedSession(userId, sessionId)
+  const state = await appendEvents(sessionId, [userEvent('SESSION_RESUMED', {}, userId, `${Date.now()}`, sessionId)])
+  await tickOfficeSession(sessionId).catch((e) => console.error(`[office-session] tick after resume failed for ${sessionId}:`, e))
+  return state
+}
+
+export async function cancelOfficeSession(userId: string, sessionId: string, reason = 'cancelled by owner'): Promise<SessionState> {
+  const before = await ownedSession(userId, sessionId)
+  const state = await appendEvents(sessionId, [userEvent('SESSION_CANCELLED', { reason }, userId, 'cancel', sessionId)])
+  // Tell every live run to stop — the poll carries the cancel to the worker.
+  for (const run of Object.values(before.runs)) {
+    if (run.status === 'dispatched' || run.status === 'started' || run.status === 'running') await markDispatchCancelled(run.id)
+  }
+  return state
+}
+
+export async function raiseSessionBudget(userId: string, sessionId: string, budgetLimitUsd: number): Promise<SessionState> {
+  await ownedSession(userId, sessionId)
+  if (!Number.isFinite(budgetLimitUsd) || budgetLimitUsd < 0) throw new Error('budget must be a non-negative number')
+  const state = await appendEvents(sessionId, [userEvent('BUDGET_RAISED', { budgetLimitUsd }, userId, `${budgetLimitUsd}:${Date.now()}`, sessionId)])
+  await tickOfficeSession(sessionId).catch((e) => console.error(`[office-session] tick after budget raise failed for ${sessionId}:`, e))
+  return state
+}
+
+/** The owner answers an approval the policy could not decide. */
+export async function decideApproval(userId: string, sessionId: string, approvalId: string, granted: boolean, reason?: string): Promise<SessionState> {
+  const state = await ownedSession(userId, sessionId)
+  const approval = state.approvals[approvalId]
+  if (!approval) throw new Error('no such approval')
+  if (approval.decidedAt !== null) return state
+  const next = await appendEvents(sessionId, [
+    userEvent(
+      granted ? 'APPROVAL_GRANTED' : 'APPROVAL_DENIED',
+      { approvalId, decidedBy: 'owner', decidedById: userId, ...(reason ? { reason } : {}) },
+      userId,
+      approvalId,
+      sessionId,
+    ),
+  ])
+  await tickOfficeSession(sessionId).catch((e) => console.error(`[office-session] tick after approval failed for ${sessionId}:`, e))
+  return next
+}
+
+/* ── Policy, memory, grants ───────────────────────────────────────────── */
+
+export async function getOfficePolicy(userId: string, slot: number): Promise<ApprovalPolicy> {
+  await ensureTables()
+  const { rows } = await pool.query<{ policy: unknown }>(`SELECT policy FROM office_policy WHERE user_id = $1 AND slot = $2`, [userId, slot])
+  if (!rows[0]) return { ...DEFAULT_APPROVAL_POLICY, id: 'office' }
+  const parsed = parsePolicy(rows[0].policy)
+  return parsed.ok ? parsed.policy : { ...DEFAULT_APPROVAL_POLICY, id: 'office' }
+}
+
+export async function setOfficePolicy(userId: string, slot: number, raw: unknown): Promise<{ ok: true; policy: ApprovalPolicy } | { ok: false; error: string }> {
+  await ensureTables()
+  const parsed = parsePolicy(raw)
+  if (!parsed.ok) return parsed
+  const current = await getOfficePolicy(userId, slot)
+  const policy: ApprovalPolicy = { ...parsed.policy, id: 'office', version: Math.max(parsed.policy.version, current.version + 1) }
+  await pool.query(
+    `INSERT INTO office_policy (user_id, slot, policy) VALUES ($1, $2, $3::jsonb) ON CONFLICT (user_id, slot) DO UPDATE SET policy = $3::jsonb, updated_at = now()`,
+    [userId, slot, JSON.stringify(policy)],
+  )
+  return { ok: true, policy }
+}
+
+export const MAX_SESSION_LESSONS = 30
+
+export async function getSessionMemory(userId: string, slot: number): Promise<SessionLesson[]> {
+  await ensureTables()
+  const { rows } = await pool.query<{ lessons: SessionLesson[] }>(`SELECT lessons FROM office_session_memory WHERE user_id = $1 AND slot = $2`, [userId, slot])
+  return Array.isArray(rows[0]?.lessons) ? rows[0].lessons : []
+}
+
+async function recordSessionMemory(state: SessionState, wave: number): Promise<SessionLesson[]> {
+  const lessons = learnFromSession(state, wave).map((l) => ({ ...l, text: `${state.session.id}/w${wave}: ${l.text}` }))
+  if (lessons.length === 0) return []
+  await ensureTables()
+  // Read-modify-write under the session row lock's neighbour: a per-office
+  // advisory lock, so two sessions finishing at once do not clobber each
+  // other's lessons (the office_memory writer has exactly that defect).
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`office_session_memory:${state.session.userId}:${state.session.officeSlot}`])
+    const { rows } = await client.query<{ lessons: SessionLesson[] }>(`SELECT lessons FROM office_session_memory WHERE user_id = $1 AND slot = $2`, [
+      state.session.userId,
+      state.session.officeSlot,
+    ])
+    const existing = Array.isArray(rows[0]?.lessons) ? rows[0].lessons : []
+    const merged = [...existing.filter((l) => !lessons.some((n) => n.text === l.text)), ...lessons].slice(-MAX_SESSION_LESSONS)
+    await client.query(
+      `INSERT INTO office_session_memory (user_id, slot, lessons) VALUES ($1, $2, $3::jsonb)
+       ON CONFLICT (user_id, slot) DO UPDATE SET lessons = $3::jsonb, updated_at = now()`,
+      [state.session.userId, state.session.officeSlot, JSON.stringify(merged)],
+    )
+    await client.query('COMMIT')
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => undefined)
+    throw e
+  } finally {
+    client.release()
+  }
+  return lessons
+}
+
+export type WorkerGrantRow = { agentId: string; userId: string; slot: number; grant: WorkspaceGrant; verifyCommand: string | null }
+
+/** The owner's grant for one of their local workers — set on connect, read on every dispatch. */
+export async function setWorkerGrant(userId: string, agentId: string, slot: number, grant: WorkspaceGrant, verifyCommand: string | null): Promise<void> {
+  await ensureTables()
+  const [row] = await db.select({ id: agent.id, userId: agent.userId }).from(agent).where(eq(agent.id, agentId))
+  if (!row || row.userId !== userId) throw new Error('not your agent')
+  await pool.query(
+    `INSERT INTO office_worker_grant (agent_id, user_id, slot, workspace_grant, verify_command) VALUES ($1, $2, $3, $4::jsonb, $5)
+     ON CONFLICT (agent_id) DO UPDATE SET slot = $3, workspace_grant = $4::jsonb, verify_command = $5, updated_at = now()`,
+    [agentId, userId, slot, JSON.stringify(grant), verifyCommand],
+  )
+}
+
+export async function getWorkerGrant(agentId: string): Promise<WorkerGrantRow | null> {
+  await ensureTables()
+  const { rows } = await pool.query<{ agent_id: string; user_id: string; slot: number; grant: WorkspaceGrant; verify_command: string | null }>(
+    `SELECT agent_id, user_id, slot, workspace_grant AS grant, verify_command FROM office_worker_grant WHERE agent_id = $1`,
+    [agentId],
+  )
+  const r = rows[0]
+  return r ? { agentId: r.agent_id, userId: r.user_id, slot: r.slot, grant: r.grant, verifyCommand: r.verify_command } : null
+}
+
+export async function workerGrantsFor(userId: string, slot: number): Promise<WorkerGrantRow[]> {
+  await ensureTables()
+  const { rows } = await pool.query<{ agent_id: string; user_id: string; slot: number; grant: WorkspaceGrant; verify_command: string | null }>(
+    `SELECT agent_id, user_id, slot, workspace_grant AS grant, verify_command FROM office_worker_grant WHERE user_id = $1 AND slot = $2`,
+    [userId, slot],
+  )
+  return rows.map((r) => ({ agentId: r.agent_id, userId: r.user_id, slot: r.slot, grant: r.grant, verifyCommand: r.verify_command }))
+}
+
+/* ── Observation ──────────────────────────────────────────────────────── */
+
+async function dailySpent(userId: string, slot: number): Promise<number> {
+  const { rows } = await pool.query<{ total: string | null }>(
+    `SELECT COALESCE(SUM((e.payload->>'amountUsd')::numeric), 0)::text AS total
+       FROM office_session_event e JOIN office_session s ON s.id = e.session_id
+      WHERE s.user_id = $1 AND s.slot = $2 AND e.type = 'PAYMENT_SETTLED' AND e.occurred_at > now() - interval '24 hours'`,
+    [userId, slot],
+  )
+  const n = Number(rows[0]?.total ?? '0')
+  return Number.isFinite(n) ? n : 0
+}
+
+async function candidateWorkers(state: SessionState): Promise<WorkerCandidate[]> {
+  const { classifyWorker } = await import('@/lib/worker-fleet')
+  const { harnessesFor } = await import('@/lib/agent-harness-server')
+  const rows = await db
+    .select({
+      id: agent.id,
+      runtimeType: agent.runtimeType,
+      lastPollAt: agent.lastPollAt,
+      smartAccountAddress: agent.smartAccountAddress,
+      webhookSecretEnc: agent.webhookSecretEnc,
+      autoMine: agent.autoMine,
+      capabilities: agent.capabilities,
+    })
+    .from(agent)
+    .where(eq(agent.userId, state.session.userId))
+  const harness = await harnessesFor(rows.map((r) => r.id)).catch(() => new Map<string, string>())
+  const busy = await pool.query<{ agent_id: string; n: string }>(
+    `SELECT agent_id, COUNT(*)::text AS n FROM office_session_dispatch WHERE status IN ('queued', 'claimed') GROUP BY agent_id`,
+  )
+  const busyBy = new Map(busy.rows.map((r) => [r.agent_id, Number(r.n)]))
+  const now = new Date()
+  return rows
+    .filter((r) => r.runtimeType === 'local') // a session run is handed out on the poll; only a polling worker can take one
+    .map((r) => {
+      const status = classifyWorker(
+        { runtimeType: r.runtimeType, lastPollAt: r.lastPollAt, provisioned: true, hasKey: Boolean(r.webhookSecretEnc), autoMine: r.autoMine },
+        now,
+      )
+      return {
+        agentId: r.id,
+        runtimeType: 'local' as const,
+        harnessId: harness.get(r.id) ?? null,
+        alive: status.phase === 'Ready',
+        successRate: null,
+        kindSuccess: {},
+        estCostUsd: null,
+        bondReady: Boolean(r.smartAccountAddress),
+        sameAccount: true,
+        busyRuns: busyBy.get(r.id) ?? 0,
+        capabilities: Array.isArray(r.capabilities) ? (r.capabilities as string[]) : [],
+      }
+    })
+}
+
+async function escrowObservation(state: SessionState): Promise<Observation['escrow']> {
+  const out: Observation['escrow'] = {}
+  const withSpec = Object.values(state.tasks).filter((t) => t.settlement === 'escrow' && t.specHash)
+  if (withSpec.length === 0) return out
+  let jobs: Array<{ specHash: string; status: string }> = []
+  try {
+    const { readJobs } = await import('@/lib/onchain/labor')
+    jobs = await readJobs()
+  } catch {
+    // Unreadable chain: every escrow task reads as unknown. Never as any status.
+    for (const t of withSpec) out[t.id] = { jobStatus: null, paid: false, txHash: null, gradePassed: null }
+    return out
+  }
+  const { jobSpec } = await import('@/lib/db/schema')
+  for (const t of withSpec) {
+    const job = jobs.find((j) => j.specHash.toLowerCase() === t.specHash!.toLowerCase())
+    let gradePassed: boolean | null = null
+    try {
+      const [spec] = await db.select({ testResult: jobSpec.testResult }).from(jobSpec).where(eq(jobSpec.specHash, t.specHash as `0x${string}`))
+      const tr = spec?.testResult as { passed?: boolean | null } | null
+      gradePassed = typeof tr?.passed === 'boolean' ? tr.passed : null
+    } catch {
+      /* pre-migration: no verdict */
+    }
+    out[t.id] = { jobStatus: job?.status ?? null, paid: job?.status === 'Completed', txHash: null, gradePassed }
+  }
+  return out
+}
+
+async function observe(state: SessionState, triggers: string[]): Promise<Observation> {
+  const { isRealMoney } = await import('@/lib/onchain/real-money')
+  return {
+    now: Date.now(),
+    dailySpentUsd: await dailySpent(state.session.userId, state.session.officeSlot).catch(() => 0),
+    candidates: await candidateWorkers(state).catch(() => []),
+    escrow: await escrowObservation(state),
+    realMoney: isRealMoney(),
+    allowRealMoneyFlag: process.env.OFFICE_SESSION_ALLOW_REAL_MONEY,
+    triggersFired: triggers,
+  }
+}
+
+/* ── The tick ─────────────────────────────────────────────────────────── */
+
+/**
+ * Operator knobs for the loop's clocks, bounded rather than trusted. An
+ * end-to-end run wants a 30-second heartbeat timeout to prove a crash is
+ * recovered; production wants five minutes so a thinking harness is not
+ * declared dead. Neither should be a code change.
+ */
+export function loopTimingFromEnv(env: NodeJS.ProcessEnv = process.env): { heartbeatTimeoutMs?: number; pickupTimeoutMs?: number; runTimeoutMs?: number } {
+  const read = (name: string, min: number, max: number): number | undefined => {
+    const raw = env[name]
+    if (raw === undefined || !/^\d+$/.test(raw.trim())) return undefined
+    return Math.min(max, Math.max(min, Number(raw.trim())))
+  }
+  const out: { heartbeatTimeoutMs?: number; pickupTimeoutMs?: number; runTimeoutMs?: number } = {}
+  const hb = read('OFFICE_SESSION_HEARTBEAT_TIMEOUT_MS', 30_000, 60 * 60_000)
+  const pk = read('OFFICE_SESSION_PICKUP_TIMEOUT_MS', 30_000, 24 * 60 * 60_000)
+  const rt = read('OFFICE_SESSION_RUN_TIMEOUT_MS', 60_000, 24 * 60 * 60_000)
+  if (hb !== undefined) out.heartbeatTimeoutMs = hb
+  if (pk !== undefined) out.pickupTimeoutMs = pk
+  if (rt !== undefined) out.runTimeoutMs = rt
+  return out
+}
+
+export const SESSION_TICK_LEASE_MS = 2 * 60_000
+
+export type TickReport = { sessionId: string; status: string; events: number; commands: number; notes: string[]; skipped?: string }
+
+/**
+ * One heartbeat for one session: lease → observe → decide → persist the
+ * decisions → perform the commands (each persisting its own outcome). A
+ * command that fails is logged with the session id and leaves a state the
+ * next tick re-derives from — never a half-applied batch.
+ */
+export async function tickOfficeSession(sessionId: string, opts?: { triggers?: string[] }): Promise<TickReport> {
+  await ensureTables()
+  const { acquireOpsLease, releaseOpsLease } = await import('@/lib/ops-lease')
+  const leaseName = `office-session:${sessionId}`
+  if (!(await acquireOpsLease(leaseName, SESSION_TICK_LEASE_MS))) return { sessionId, status: 'unknown', events: 0, commands: 0, notes: [], skipped: 'another tick holds the lease' }
+  try {
+    const state = await loadSessionState(sessionId)
+    if (STATUS_META[state.session.status].terminal) return { sessionId, status: state.session.status, events: 0, commands: 0, notes: ['terminal'] }
+    await closeDispatchesForTerminalRuns(state)
+    const policy = await getOfficePolicy(state.session.userId, state.session.officeSlot)
+    const observation = await observe(state, opts?.triggers ?? [])
+    const result = tickSession(state, observation, { approval: policy, newId, ...loopTimingFromEnv() })
+    let after = state
+    if (result.events.length) after = await appendEvents(sessionId, result.events)
+    // A run the loop closed (timed out, lost, cancelled) still holds its
+    // dispatch row, and that row is what counts a worker as busy. Left
+    // open, the restarted worker is "busy" forever and the retry can never
+    // dispatch — the first end-to-end crash test sat in waiting_on_worker
+    // for five minutes on exactly that.
+    await closeDispatchesForTerminalRuns(after)
+    for (const command of result.commands) {
+      try {
+        after = await performCommand(after, command)
+      } catch (e) {
+        console.error(`[office-session] ${sessionId}: command ${command.kind} failed:`, e)
+        after = await appendEvents(sessionId, [
+          {
+            type: 'SESSION_ESCALATED',
+            occurredAt: Date.now(),
+            actorType: 'system',
+            actorId: null,
+            payload: { reason: `${command.kind} failed: ${e instanceof Error ? e.message.slice(0, 300) : String(e)}`, taskId: 'taskId' in command ? command.taskId : null },
+            idempotencyKey: eventKey(sessionId, 'SESSION_ESCALATED', `${command.kind}:${Date.now()}`),
+          },
+        ]).catch(() => after)
+      }
+    }
+    if (result.notes.length) console.info(`[office-session] ${sessionId} (${after.session.status}): ${result.notes.join(' | ')}`)
+    return { sessionId, status: after.session.status, events: result.events.length, commands: result.commands.length, notes: result.notes }
+  } finally {
+    await releaseOpsLease(leaseName)
+  }
+}
+
+/** Every session that is due, for the ops cycle. Never throws. */
+export async function tickOfficeSessions(): Promise<string | Record<string, unknown>> {
+  try {
+    await ensureTables()
+  } catch {
+    return 'table missing (migration pending)'
+  }
+  const { rows } = await pool.query<{ id: string }>(
+    `SELECT id FROM office_session
+      WHERE status NOT IN ('completed', 'partially_completed', 'failed', 'cancelled', 'expired')
+        AND (next_wake_at IS NULL OR next_wake_at <= now())
+        AND status NOT IN ('paused', 'awaiting_budget')
+      ORDER BY priority DESC, next_wake_at ASC NULLS LAST LIMIT 25`,
+  )
+  // Idle event-driven sessions have next_wake_at NULL and nothing to do; a
+  // tick on them is cheap (the loop returns at once), so they stay in the
+  // list only to time out dead runs.
+  if (rows.length === 0) return { due: 0 }
+  const report: Record<string, unknown> = { due: rows.length }
+  const TICK_TIMEOUT_MS = 90_000
+  for (const row of rows) {
+    console.info(`[office-session] tick start ${row.id}`)
+    await Promise.race([
+      tickOfficeSession(row.id),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`tick timed out after ${TICK_TIMEOUT_MS / 1000}s`)), TICK_TIMEOUT_MS)),
+    ])
+      .then((r) => {
+        report[row.id] = r.skipped ?? `${r.status} +${r.events}ev/${r.commands}cmd`
+      })
+      .catch((e) => {
+        report[row.id] = String(e)
+        console.error(`[office-session] tick failed for ${row.id}:`, e)
+      })
+  }
+  return report
+}
+
+/* ── Commands ─────────────────────────────────────────────────────────── */
+
+const officeEvent = (sessionId: string, type: SessionEventType, payload: Record<string, unknown>, key: string, actorType: NewEvent['actorType'] = 'office'): NewEvent => ({
+  type,
+  occurredAt: Date.now(),
+  actorType,
+  actorId: null,
+  payload,
+  idempotencyKey: eventKey(sessionId, type, key),
+})
+
+async function performCommand(state: SessionState, command: Command): Promise<SessionState> {
+  const sid = state.session.id
+  switch (command.kind) {
+    case 'plan': {
+      const tasks = await planSession(state)
+      return appendEvents(sid, [officeEvent(sid, 'PLAN_CREATED', { tasks: tasks.tasks, source: tasks.source, wave: state.session.wave }, `w${state.session.wave}`)])
+    }
+    case 'dispatch_run':
+      return dispatchRun(state, command)
+    case 'cancel_run':
+      await markDispatchCancelled(command.runId)
+      return state
+    case 'run_review':
+      return reviewTask(state, command.taskId)
+    case 'post_escrow_job':
+      return postEscrowTask(state, command.taskId)
+    case 'settle_escrow':
+      return settleEscrow(state, command.taskId, command.approvalId)
+    case 'record_memory': {
+      const lessons = await recordSessionMemory(state, command.wave)
+      if (lessons.length === 0) return state
+      return appendEvents(sid, [officeEvent(sid, 'MEMORY_RECORDED', { wave: command.wave, lessons }, `w${command.wave}`)])
+    }
+    case 'notify_owner':
+      return appendEvents(sid, [
+        officeEvent(sid, 'SESSION_ESCALATED', { reason: command.reason, taskId: command.taskId }, `${command.taskId ?? 'session'}:${command.reason.slice(0, 60)}`),
+      ])
+  }
+}
+
+async function planSession(state: SessionState): Promise<{ tasks: ReturnType<typeof defaultPlan>; source: 'default' | 'llm' }> {
+  const s = state.session
+  // A coding session on a workspace plans deterministically: one task, the
+  // goal, verified by the command and a review. A goal for the market is
+  // decomposed by the delegation planner when a model key is configured.
+  if (s.kind === 'local_coding' || s.workspace !== null || !s.payerAgentId) return { tasks: defaultPlan(s), source: 'default' }
+  try {
+    const { planDelegation } = await import('@/lib/delegation')
+    const subtasks = await planDelegation(s.userId, s.goal, Math.max(2, s.budgetLimitUsd - s.spentUsd))
+    const tasks = planFromSubtasks(subtasks, s.wave)
+    if (tasks.length) return { tasks, source: 'llm' }
+  } catch (e) {
+    console.warn(`[office-session] ${s.id}: planner unavailable, using the default plan:`, e instanceof Error ? e.message : e)
+  }
+  return { tasks: defaultPlan(s), source: 'default' }
+}
+
+export const DEFAULT_RUN_TIMEOUT_MS = 30 * 60_000
+
+async function dispatchRun(state: SessionState, c: Extract<Command, { kind: 'dispatch_run' }>): Promise<SessionState> {
+  const s = state.session
+  const task = state.tasks[c.taskId]
+  if (!task) return state
+  const grantRow = await getWorkerGrant(c.workerAgentId)
+  const grant: WorkspaceGrant = grantRow?.grant ?? s.workspace ?? { workdir: '', ...DEFAULT_WORKSPACE_GRANT }
+  if (!grant.workdir) {
+    return appendEvents(s.id, [
+      officeEvent(s.id, 'RUN_FAILED', { runId: c.runId, failureCode: 'AUTH-001', reason: 'no workspace grant for this worker — connect it with a working directory first' }, `${c.runId}:nogrant`, 'system'),
+    ])
+  }
+  const verifyCommand = task.verify.command ?? grantRow?.verifyCommand ?? s.verifyCommand
+  const { untrustedNonce } = await import('@/lib/untrusted-input')
+  const memoryText = await sessionMemoryBrief(s.userId, s.officeSlot)
+  const checkpoint: Checkpoint | null = c.resumeFrom ?? latestCheckpoint(state, task.id)
+  const feedback = retryFeedback(state, task)
+  const brief = sessionRunBrief({
+    goal: s.goal,
+    taskTitle: task.title,
+    taskBrief: feedback ? `${task.brief}\n\n${feedback}` : task.brief,
+    acceptanceCriteria: task.acceptanceCriteria,
+    grant,
+    checkpoint,
+    memory: memoryText,
+    verifyCommand: grant.shell ? verifyCommand : null,
+    nonce: untrustedNonce(),
+  })
+  await pool.query(
+    `INSERT INTO office_session_dispatch (run_id, session_id, task_id, agent_id, status, brief, workspace_grant, verify_command, resume, timeout_ms, harness_id)
+     VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, $7, $8::jsonb, $9, $10) ON CONFLICT (run_id) DO NOTHING`,
+    [
+      c.runId,
+      s.id,
+      task.id,
+      c.workerAgentId,
+      brief,
+      JSON.stringify(grant),
+      grant.shell ? verifyCommand : null,
+      checkpoint ? JSON.stringify({ checkpointId: checkpoint.id, summary: checkpoint.summary, patch: checkpoint.patch, gitHead: checkpoint.gitHead }) : null,
+      DEFAULT_RUN_TIMEOUT_MS,
+      c.harnessId,
+    ],
+  )
+  return state
+}
+
+/** The grader's or reviewer's words for a retried attempt, fenced for the brief. */
+function retryFeedback(state: SessionState, task: SessionTask): string | null {
+  if (task.attempts <= 1) return null
+  const o = task.outcome
+  const parts: string[] = []
+  if (o?.tests && o.tests.passed === false) parts.push(`The previous attempt's verification command (\`${o.tests.command}\`) failed with exit ${o.tests.exitCode}. Its output ended:\n${o.tests.tail.slice(-1500)}`)
+  if (o?.review && o.review.approve === false) parts.push(`An independent reviewer asked for revision: ${o.review.note.slice(0, 1500)}`)
+  if (task.statusReason && !parts.length) parts.push(`The previous attempt ended: ${task.statusReason}`)
+  if (!parts.length) return null
+  return `### Feedback on attempt ${task.attempts - 1}\n\n${parts.join('\n\n')}`
+}
+
+async function sessionMemoryBrief(userId: string, slot: number): Promise<string> {
+  const parts: string[] = []
+  try {
+    const { renderedOfficeMemory } = await import('@/lib/office-memory-server')
+    const paid = await renderedOfficeMemory(userId, slot)
+    if (paid) parts.push(paid)
+  } catch {
+    /* memory is context, never a reason not to dispatch */
+  }
+  const lessons = await getSessionMemory(userId, slot).catch(() => [] as SessionLesson[])
+  const rendered = renderLessons(lessons.slice(-10))
+  if (rendered) parts.push(rendered)
+  return parts.join('\n\n')
+}
+
+const RUN_CLOSED = new Set(['finished', 'failed', 'timed_out', 'cancelled', 'lost'])
+
+/** Close dispatch rows for runs the state already considers over. Idempotent, cheap. */
+async function closeDispatchesForTerminalRuns(state: SessionState): Promise<void> {
+  const ids = Object.values(state.runs)
+    .filter((r) => RUN_CLOSED.has(r.status))
+    .map((r) => r.id)
+  if (ids.length === 0) return
+  await pool
+    .query(`UPDATE office_session_dispatch SET status = 'done', finished_at = COALESCE(finished_at, now()) WHERE run_id = ANY($1) AND status IN ('queued', 'claimed', 'cancel')`, [ids])
+    .catch((e) => console.error('[office-session] closing dispatch rows failed:', e))
+}
+
+async function markDispatchCancelled(runId: string): Promise<void> {
+  await ensureTables()
+  await pool.query(`UPDATE office_session_dispatch SET status = 'cancel' WHERE run_id = $1 AND status IN ('queued', 'claimed')`, [runId])
+}
+
+const REVIEWER_SYSTEM = `You are an independent reviewer for an autonomous engineering office. Judge whether the submitted work satisfies the acceptance criteria. The criteria are the contract: do not invent extra requirements, and do not excuse a clear failure. Output ONLY a JSON object {"approve": boolean, "note": "one or two sentences naming what you checked, quoting the deliverable where it decides the verdict"}.`
+
+async function reviewTask(state: SessionState, taskId: string): Promise<SessionState> {
+  const s = state.session
+  const task = state.tasks[taskId]
+  if (!task || !task.outcome) return state
+  const at = Date.now()
+  const fold = (approve: boolean | null, note: string, reviewerId: string | null) =>
+    appendEvents(s.id, [
+      officeEvent(s.id, 'REVIEW_RECEIVED', { taskId, verdict: { reviewer: 'model', reviewerId, approve, note: note.slice(0, 2000), at } }, `${taskId}:a${task.attempts}`, 'reviewer'),
+    ])
+  let complete: CompleteFn | null = null
+  try {
+    const { resolveLlm } = await import('@/lib/delegation')
+    complete = await resolveLlm(s.userId)
+  } catch (e) {
+    return fold(null, `no reviewer available: ${e instanceof Error ? e.message.slice(0, 200) : String(e)}`, null)
+  }
+  const { fenceUntrusted, graderInjectionClause, untrustedNonce } = await import('@/lib/untrusted-input')
+  const nonce = untrustedNonce()
+  const o = task.outcome
+  const body =
+    `Task: ${task.title}\n\nBrief:\n${task.brief.slice(0, 6000)}\n\nAcceptance criteria:\n${task.acceptanceCriteria}\n\n` +
+    (o.tests ? `Deterministic check: \`${o.tests.command}\` exited ${o.tests.exitCode} (${o.tests.passed ? 'pass' : 'fail'}).\n\n` : 'No deterministic check ran.\n\n') +
+    `Files changed: ${o.changedFiles.slice(0, 40).join(', ') || 'none reported'}\n\n` +
+    (o.diff ? `Diff:\n${fenceUntrusted('diff', o.diff.slice(0, 20_000), nonce)}\n\n` : '') +
+    (o.deliverable ? `Worker's report:\n${fenceUntrusted('report', o.deliverable.slice(0, 8000), nonce)}` : '')
+  try {
+    const raw = await complete!({ stable: REVIEWER_SYSTEM, volatile: graderInjectionClause(nonce) }, body, 800, { effort: 'low' })
+    const text = raw.replace(/^```(?:json)?\s*|\s*```$/g, '')
+    const parsed = JSON.parse(text) as { approve?: unknown; note?: unknown }
+    if (typeof parsed.approve !== 'boolean') return fold(null, 'reviewer returned no parseable verdict', 'model')
+    return fold(parsed.approve, String(parsed.note ?? ''), 'model')
+  } catch (e) {
+    return fold(null, `reviewer failed: ${e instanceof Error ? e.message.slice(0, 200) : String(e)}`, 'model')
+  }
+}
+
+async function postEscrowTask(state: SessionState, taskId: string): Promise<SessionState> {
+  const s = state.session
+  const task = state.tasks[taskId]
+  if (!task || task.specHash) return state
+  if (!s.payerAgentId) throw new Error('this session has no payer agent; escrow tasks need one')
+  const { postSpecJob } = await import('@/lib/job-post')
+  const posted = await postSpecJob({
+    payerAgentId: s.payerAgentId,
+    title: task.title,
+    description: `${task.brief}\n\n(Office session ${s.id}, task ${task.id}.)`,
+    acceptanceCriteria: task.acceptanceCriteria,
+    bountyUsd: task.bountyUsd,
+    reserveForAgentId: task.assignedWorkerId ?? null,
+    // The session decides when this may release: posted with autoApprove
+    // OFF, flipped on by settle_escrow after the policy said yes.
+    autoApprove: false,
+    officeOwnerId: s.userId,
+  })
+  return appendEvents(s.id, [officeEvent(s.id, 'TASK_POSTED', { taskId, specHash: posted.specHash, onchainJobId: posted.onchainJobId }, `${taskId}:${posted.specHash}`)])
+}
+
+async function settleEscrow(state: SessionState, taskId: string, approvalId: string): Promise<SessionState> {
+  const task = state.tasks[taskId]
+  const approval: ApprovalRecord | undefined = state.approvals[approvalId]
+  if (!task || !task.specHash || !approval || approval.granted !== true) return state
+  const { jobSpec } = await import('@/lib/db/schema')
+  const [spec] = await db.select().from(jobSpec).where(eq(jobSpec.specHash, task.specHash as `0x${string}`))
+  if (!spec) throw new Error(`no job spec for ${task.specHash}`)
+  if (!spec.autoApprove) await db.update(jobSpec).set({ autoApprove: true }).where(eq(jobSpec.specHash, spec.specHash))
+  const { autoApprovePassedJob } = await import('@/lib/labor-settle')
+  // The one release site. Its own guards (on-chain Submitted, peer-review
+  // hold, cap) still apply; the next tick observes whether the chain moved.
+  await autoApprovePassedJob({ ...spec, autoApprove: true })
+  return state
+}
+
+/* ── Worker protocol ──────────────────────────────────────────────────── */
+
+export type SessionRunHandout = {
+  run_id: string
+  session_id: string
+  task_id: string
+  brief: string
+  grant: WorkspaceGrant
+  verify_command: string | null
+  resume: { checkpointId: string; summary: string; patch: string | null; gitHead: string | null } | null
+  timeout_ms: number
+  deliverable_path: string
+}
+
+/** Hand the oldest queued run for this agent out — atomic claim. Marks it started. */
+export async function claimSessionRunFor(agentId: string): Promise<SessionRunHandout | null> {
+  await ensureTables()
+  const { rows } = await pool.query<{
+    run_id: string
+    session_id: string
+    task_id: string
+    brief: string
+    grant: WorkspaceGrant
+    verify_command: string | null
+    resume: SessionRunHandout['resume']
+    timeout_ms: number
+  }>(
+    `UPDATE office_session_dispatch SET status = 'claimed', claimed_at = now()
+      WHERE run_id = (SELECT run_id FROM office_session_dispatch WHERE agent_id = $1 AND status = 'queued' ORDER BY created_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED)
+      RETURNING run_id, session_id, task_id, brief, workspace_grant AS grant, verify_command, resume, timeout_ms`,
+    [agentId],
+  )
+  const r = rows[0]
+  if (!r) return null
+  await appendEvents(r.session_id, [officeEvent(r.session_id, 'RUN_STARTED', { runId: r.run_id }, r.run_id, 'worker')]).catch((e) =>
+    console.error(`[office-session] RUN_STARTED for ${r.run_id} failed:`, e),
+  )
+  return {
+    run_id: r.run_id,
+    session_id: r.session_id,
+    task_id: r.task_id,
+    brief: r.brief,
+    grant: r.grant,
+    verify_command: r.verify_command,
+    resume: r.resume,
+    timeout_ms: r.timeout_ms,
+    deliverable_path: SESSION_DELIVERABLE_PATH,
+  }
+}
+
+/** Runs this agent should stop — the cancel channel on the poll. */
+export async function cancelledRunsFor(agentId: string): Promise<string[]> {
+  await ensureTables()
+  const { rows } = await pool.query<{ run_id: string }>(`SELECT run_id FROM office_session_dispatch WHERE agent_id = $1 AND status = 'cancel'`, [agentId])
+  return rows.map((r) => r.run_id)
+}
+
+export type SessionRunReport = {
+  runId: unknown
+  events?: unknown
+  changedFiles?: unknown
+  checkpoint?: unknown
+  tokensUsed?: unknown
+  costUsd?: unknown
+}
+
+const MAX_LOG_LINES_PER_REPORT = 60
+const MAX_REPORT_FILES = 200
+
+function strList(v: unknown, max = MAX_REPORT_FILES): string[] {
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && x.length < 500).slice(0, max) : []
+}
+
+/**
+ * Fold one progress report from the poll. The agent id is the AUTHENTICATED
+ * one; the run must be that agent's. Log lines go to the run log, bounded
+ * and redacted; the domain log gets one RUN_PROGRESS per report and one
+ * CHECKPOINT_CREATED per checkpoint sequence.
+ */
+export async function recordSessionRunReport(agentId: string, report: SessionRunReport): Promise<void> {
+  const runId = typeof report.runId === 'string' ? report.runId.slice(0, 80) : null
+  if (!runId) return
+  await ensureTables()
+  const { rows } = await pool.query<{ session_id: string; status: string }>(`SELECT session_id, status FROM office_session_dispatch WHERE run_id = $1 AND agent_id = $2`, [
+    runId,
+    agentId,
+  ])
+  const d = rows[0]
+  if (!d) return
+  const now = Date.now()
+  const events: HarnessEvent[] = Array.isArray(report.events)
+    ? (report.events as unknown[])
+        .slice(0, MAX_LOG_LINES_PER_REPORT)
+        .map((e): HarnessEvent | null => {
+          const r = (e ?? {}) as Record<string, unknown>
+          const text = typeof r.text === 'string' ? redactSecrets(r.text).slice(0, 400) : ''
+          if (!text) return null
+          return {
+            at: typeof r.at === 'number' && Math.abs(r.at - now) < 86_400_000 ? r.at : now,
+            kind: typeof r.kind === 'string' && r.kind.length < 20 ? (r.kind as HarnessEvent['kind']) : 'stdout',
+            text,
+            path: typeof r.path === 'string' ? r.path.slice(0, 300) : null,
+            data: null,
+          }
+        })
+        .filter((e): e is HarnessEvent => e !== null)
+    : []
+  if (events.length) {
+    const values: unknown[] = []
+    const rowsSql = events.map((e, i) => {
+      const b = i * 6
+      values.push(d.session_id, runId, new Date(e.at), e.kind, e.text, e.path)
+      return `($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5}, $${b + 6})`
+    })
+    await pool.query(`INSERT INTO office_session_run_log (session_id, run_id, at, kind, text, path) VALUES ${rowsSql.join(', ')}`, values).catch(() => undefined)
+  }
+  const changed = strList(report.changedFiles)
+  const domain: NewEvent[] = [
+    officeEvent(
+      d.session_id,
+      'RUN_PROGRESS',
+      {
+        runId,
+        changedFiles: changed,
+        lines: events.length,
+        ...(typeof report.tokensUsed === 'number' ? { tokensUsed: report.tokensUsed } : {}),
+        ...(typeof report.costUsd === 'number' ? { costUsd: report.costUsd } : {}),
+      },
+      `${runId}:${now}`,
+      'worker',
+    ),
+  ]
+  const cp = report.checkpoint as Record<string, unknown> | undefined
+  if (cp && typeof cp === 'object' && typeof cp.seq === 'number') {
+    domain.push(
+      officeEvent(
+        d.session_id,
+        'CHECKPOINT_CREATED',
+        {
+          runId,
+          checkpointId: `cp-${runId}-${cp.seq}`,
+          seq: cp.seq,
+          summary: typeof cp.summary === 'string' ? redactSecrets(cp.summary).slice(0, 2000) : '',
+          gitHead: typeof cp.gitHead === 'string' ? cp.gitHead.slice(0, 64) : null,
+          patch: typeof cp.patch === 'string' ? redactSecrets(cp.patch) : null,
+          filesChanged: strList(cp.filesChanged),
+        },
+        `${runId}:cp${cp.seq}`,
+        'worker',
+      ),
+    )
+  }
+  await appendEvents(d.session_id, domain).catch((e) => console.error(`[office-session] report for ${runId} not folded:`, e))
+}
+
+export type SessionRunFinish = {
+  runId: unknown
+  ok?: unknown
+  exitCode?: unknown
+  deliverable?: unknown
+  diff?: unknown
+  changedFiles?: unknown
+  deletedFiles?: unknown
+  tests?: unknown
+  costUsd?: unknown
+  tokensUsed?: unknown
+  harnessSessionId?: unknown
+  error?: unknown
+  failureCode?: unknown
+  checkpoint?: unknown
+}
+
+export const MAX_DELIVERABLE_BYTES = 256 * 1024
+export const MAX_DIFF_BYTES = 512 * 1024
+
+/**
+ * The finish report. Persists the artifacts (hashed), the test report and
+ * the submission in one append, then ticks the session so verification
+ * begins now rather than on the next cron.
+ */
+export async function finishSessionRun(agentId: string, report: SessionRunFinish): Promise<{ ok: true; sessionId: string } | { ok: false; error: string; status: number }> {
+  const runId = typeof report.runId === 'string' ? report.runId.slice(0, 80) : null
+  if (!runId) return { ok: false, error: 'runId required', status: 400 }
+  await ensureTables()
+  const { rows } = await pool.query<{ session_id: string; task_id: string; status: string }>(
+    `SELECT session_id, task_id, status FROM office_session_dispatch WHERE run_id = $1 AND agent_id = $2`,
+    [runId, agentId],
+  )
+  const d = rows[0]
+  if (!d) return { ok: false, error: 'unknown run', status: 404 }
+  if (d.status === 'done') return { ok: true, sessionId: d.session_id } // idempotent
+  const deliverable = typeof report.deliverable === 'string' ? report.deliverable : null
+  const diff = typeof report.diff === 'string' ? report.diff : null
+  if (deliverable && Buffer.byteLength(deliverable, 'utf8') > MAX_DELIVERABLE_BYTES) return { ok: false, error: `deliverable over ${MAX_DELIVERABLE_BYTES / 1024}KB`, status: 413 }
+  if (diff && Buffer.byteLength(diff, 'utf8') > MAX_DIFF_BYTES) return { ok: false, error: `diff over ${MAX_DIFF_BYTES / 1024}KB`, status: 413 }
+  const { createHash } = await import('node:crypto')
+  const sha = (t: string) => createHash('sha256').update(t).digest('hex')
+  const now = Date.now()
+  const changed = strList(report.changedFiles)
+  const events: NewEvent[] = []
+  const ok = report.ok === true
+  const exitCode = typeof report.exitCode === 'number' ? report.exitCode : null
+  if (!ok) {
+    events.push(
+      officeEvent(
+        d.session_id,
+        'RUN_FAILED',
+        {
+          runId,
+          exitCode,
+          failureCode: typeof report.failureCode === 'string' ? report.failureCode.slice(0, 16) : 'DET-000',
+          reason: typeof report.error === 'string' ? redactSecrets(report.error).slice(0, 500) : 'worker reported failure',
+        },
+        `${runId}:finish`,
+        'worker',
+      ),
+    )
+  } else {
+    events.push(
+      officeEvent(
+        d.session_id,
+        'RUN_FINISHED',
+        {
+          runId,
+          exitCode,
+          changedFiles: changed,
+          diffStat: diff ? (await import('@/lib/harness-run')).diffStat(diff) : null,
+          ...(typeof report.costUsd === 'number' ? { costUsd: report.costUsd } : {}),
+          ...(typeof report.tokensUsed === 'number' ? { tokensUsed: report.tokensUsed } : {}),
+        },
+        `${runId}:finish`,
+        'worker',
+      ),
+    )
+    const artifacts: Array<{ kind: 'diff' | 'deliverable' | 'test_report'; name: string; text: string }> = []
+    if (diff) artifacts.push({ kind: 'diff', name: `${runId}.patch`, text: diff })
+    if (deliverable) artifacts.push({ kind: 'deliverable', name: `${runId}.md`, text: deliverable })
+    const tests = report.tests as Record<string, unknown> | undefined
+    let testReport: TestReport | null = null
+    if (tests && typeof tests === 'object' && typeof tests.command === 'string') {
+      const ec = typeof tests.exitCode === 'number' ? tests.exitCode : null
+      testReport = {
+        command: tests.command.slice(0, 300),
+        exitCode: ec,
+        passed: ec === null ? null : ec === 0,
+        tail: typeof tests.tail === 'string' ? redactSecrets(tests.tail).slice(-4000) : '',
+        durationMs: typeof tests.durationMs === 'number' ? tests.durationMs : null,
+      }
+      artifacts.push({ kind: 'test_report', name: `${runId}.tests.txt`, text: `$ ${testReport.command}\nexit ${ec}\n${testReport.tail}` })
+    }
+    for (const a of artifacts) {
+      events.push(
+        officeEvent(
+          d.session_id,
+          'ARTIFACT_CREATED',
+          { artifactId: `art-${runId}-${a.kind}`, taskId: d.task_id, runId, kind: a.kind, name: a.name, sha256: sha(a.text), bytes: Buffer.byteLength(a.text, 'utf8'), inline: a.text.length <= 64_000 ? a.text : null, ref: null },
+          `${runId}:${a.kind}`,
+          'worker',
+        ),
+      )
+    }
+    const content = diff ?? deliverable ?? ''
+    events.push(
+      officeEvent(
+        d.session_id,
+        'TASK_SUBMITTED',
+        {
+          taskId: d.task_id,
+          deliverable,
+          diff,
+          changedFiles: changed,
+          contentHash: content ? sha(content) : null,
+          ...(typeof report.costUsd === 'number' ? { costUsd: report.costUsd } : {}),
+        },
+        `${runId}:submitted`,
+        'worker',
+      ),
+    )
+    if (testReport) events.push(officeEvent(d.session_id, 'TEST_REPORTED', { taskId: d.task_id, report: testReport }, `${runId}:tests`, 'worker'))
+  }
+  const cp = report.checkpoint as Record<string, unknown> | undefined
+  if (cp && typeof cp === 'object' && typeof cp.seq === 'number') {
+    events.unshift(
+      officeEvent(
+        d.session_id,
+        'CHECKPOINT_CREATED',
+        {
+          runId,
+          checkpointId: `cp-${runId}-${cp.seq}`,
+          seq: cp.seq,
+          summary: typeof cp.summary === 'string' ? redactSecrets(cp.summary).slice(0, 2000) : '',
+          gitHead: typeof cp.gitHead === 'string' ? cp.gitHead.slice(0, 64) : null,
+          patch: typeof cp.patch === 'string' ? redactSecrets(cp.patch) : null,
+          filesChanged: strList(cp.filesChanged),
+        },
+        `${runId}:cp${cp.seq}`,
+        'worker',
+      ),
+    )
+  }
+  await appendEvents(d.session_id, events)
+  await pool.query(`UPDATE office_session_dispatch SET status = 'done', finished_at = now() WHERE run_id = $1`, [runId])
+  void now
+  await tickOfficeSession(d.session_id).catch((e) => console.error(`[office-session] tick after finish failed for ${d.session_id}:`, e))
+  return { ok: true, sessionId: d.session_id }
+}
+
+/** An external event (webhook, CI, issue) that may wake event-driven sessions of this account. */
+export async function fireSessionTrigger(userId: string, trigger: string): Promise<number> {
+  await ensureTables()
+  const { rows } = await pool.query<{ id: string; state: SessionState }>(
+    `SELECT id, state FROM office_session WHERE user_id = $1 AND kind = 'event_driven' AND status NOT IN ('completed', 'partially_completed', 'failed', 'cancelled', 'expired', 'paused')`,
+    [userId],
+  )
+  let fired = 0
+  for (const r of rows) {
+    if (!r.state.session.triggers.includes(trigger)) continue
+    fired += 1
+    await tickOfficeSession(r.id, { triggers: [trigger] }).catch((e) => console.error(`[office-session] trigger tick failed for ${r.id}:`, e))
+  }
+  return fired
+}
+
+/** Undecided approvals across an account — the inbox. */
+export async function approvalInbox(userId: string): Promise<Array<{ session: OfficeSession; task: SessionTask; approval: ApprovalRecord }>> {
+  await ensureTables()
+  const { rows } = await pool.query<SessionRow>(`SELECT id, user_id, slot, version, state FROM office_session WHERE user_id = $1 AND status = 'waiting_on_approval' ORDER BY updated_at DESC LIMIT 100`, [
+    userId,
+  ])
+  const out: Array<{ session: OfficeSession; task: SessionTask; approval: ApprovalRecord }> = []
+  for (const r of rows) {
+    for (const a of Object.values(r.state.approvals ?? {})) {
+      if (a.decidedAt !== null) continue
+      if (a.policyOutcome !== 'REQUIRE_OWNER' && a.policyOutcome !== 'REQUIRE_REVIEWER') continue
+      const task = r.state.tasks[a.taskId]
+      if (task) out.push({ session: r.state.session, task, approval: a })
+    }
+  }
+  return out
+}

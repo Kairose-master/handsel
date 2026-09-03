@@ -3562,3 +3562,59 @@ inline path uses; a local agent's task goes back to `queued` so its poll
 re-hands it out with the reasons. Every path a verdict can take now ends in
 the next attempt or a settlement, never in a worker that was told 'queued'.
 \n
+
+## 70. The office session runtime, and the four things the first real run found (2026-09-03)
+
+`docs/office-sessions.md` is the design. This is what running it — a scratch
+Postgres, the real `next start`, the real `handsel-worker.mjs`, a real
+`claude` process on a git fixture whose `add()` subtracts — found that the
+unit suite (which was green throughout) could not.
+
+**1. Claude Code's tool flags ate the brief.** `--allowedTools` and
+`--disallowedTools` are variadic (`<tools...>`), so the positional brief
+after them was read as one more tool name and every run died in a second
+with *"Input must be provided either through stdin or as a prompt
+argument"*. `docs/coding-harness.md` already records this trap for
+`--add-dir`; the session adapter needs the tool flags, so the brief now
+goes on **stdin** (`CLAUDE_SESSION_BRIEF_ON_STDIN`). Two consequences were
+fixed with it: a harness that exits non-zero having produced nothing is
+now a **failed run** carrying the harness's last stderr line, not an empty
+submission that fails the fixture's own test and hides the cause; and a
+retry after failed tests **backs off** with the retry policy instead of
+re-firing at once — the three attempts had been spent in six seconds.
+
+**2. A dead run's dispatch row kept the worker "busy" forever.** The loop
+timed the run out and scheduled the retry; the restarted worker polled;
+the retry never dispatched, because `office_session_dispatch` still had
+the run as `claimed` and that row is what counts a worker's live runs.
+Five minutes in `waiting_on_worker` with a worker online. The tick now
+closes dispatch rows for every run the state considers over, before and
+after it decides.
+
+**3. `retrying` could not wait on a worker.** The backoff elapsed seconds
+after the worker restarted, the worker read as stale, and the loop's
+"no eligible worker" transition threw `InvalidTransition(retrying →
+waiting_on_worker)` — the tick died instead of waiting. The transition
+table gained the edge; the test that pins it dispatches on the next tick.
+
+**4. A busy worker went silent.** The worker deliberately does not poll
+while at capacity (it must not claim a second job), so a session run's
+progress, checkpoints and heartbeat only reached the platform after the
+run had finished — every crash test landed its kill after the finish
+report, and a genuinely long run would have been declared dead at five
+minutes while its harness was working. The worker now polls with
+`capacity: 0` while a session run is live; the poll folds the reports and
+hands out nothing.
+
+Two observations that are not defects but belong on the record: without a
+model key there is no independent reviewer, so the default policy sends
+every task to the owner (correct — `REQUIRE_REVIEWER` with no reviewer
+becomes `REQUIRE_OWNER`, never a pass); and under a policy that does not
+require a reviewer, a run that exits 0 with passing tests but incomplete
+work IS auto-approved — "tests pass" is one condition, and the reviewer
+condition exists for exactly that gap.
+
+Invariants these add: **a worker that cannot report is a dead worker to
+the platform, so reporting must never depend on having capacity** (§4);
+and **whatever counts a resource as busy must be released by the same
+code that declares its work over** (§2).

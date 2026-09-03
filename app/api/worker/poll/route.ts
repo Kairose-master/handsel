@@ -75,6 +75,30 @@ export async function POST(request: Request) {
     }
   }
 
+  // Office-session runs ride the same poll (lib/office-session-server.ts).
+  // Reports first — a run's progress must land even on a poll that hands
+  // out nothing — then the cancel list, then a queued run if this worker has
+  // one. A session run takes priority over a market task: it is work the
+  // owner's own office scheduled on the owner's own machine.
+  let sessionCancel: string[] = []
+  try {
+    const os = await import('@/lib/office-session-server')
+    if (Array.isArray(body?.session_runs) && body.session_runs.length > 0) {
+      for (const report of body.session_runs.slice(0, 8)) await os.recordSessionRunReport(agentId, report).catch(() => {})
+    }
+    sessionCancel = await os.cancelledRunsFor(agentId).catch(() => [])
+    if (body?.session_capacity !== 0) {
+      const handout = await os.claimSessionRunFor(agentId)
+      if (handout) return Response.json({ task: null, session_run: handout, session_cancel: sessionCancel })
+    }
+  } catch (e) {
+    console.error('[worker/poll] office-session step failed:', e)
+  }
+
+  // A report-only poll: the worker is at capacity and only wants its
+  // reports folded and its cancel list. Hand out nothing.
+  if (body?.capacity === 0) return Response.json({ task: null, session_cancel: sessionCancel })
+
   // Oldest queued task first; atomic claim so a concurrent poll gets nothing.
   let [candidate] = await db
     .select()
@@ -103,7 +127,7 @@ export async function POST(request: Request) {
     }
   }
 
-  if (!candidate) return Response.json({ task: null })
+  if (!candidate) return Response.json({ task: null, session_cancel: sessionCancel })
 
   const claimed = await db
     .update(agentTask)
@@ -192,5 +216,6 @@ export async function POST(request: Request) {
       repo,
       media,
     },
+    session_cancel: sessionCancel,
   })
 }

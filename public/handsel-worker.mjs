@@ -1852,6 +1852,394 @@ if (!HARNESS) await warmupModel()
 // Probed once at startup, not assumed from a flag: a worker that DECLARES
 // video and cannot render is matched to media jobs it will fail, and a
 // failed job costs the agent its own credit score.
+
+/* ── Office-session runs ────────────────────────────────────────────────
+ *
+ * A session run is a task an office scheduled on THIS machine, with a
+ * grant the owner wrote (lib/office-session.ts WorkspaceGrant), a brief the
+ * platform composed, and a checkpoint to resume from when a previous
+ * attempt died. It differs from a market task in four ways:
+ *
+ *   - it is watched: harness output is parsed into events that ride the
+ *     next poll (`session_runs`), so the owner's page shows the run live;
+ *   - it checkpoints: every CHECKPOINT_EVERY_MS the working tree's diff and
+ *     changed files are captured and reported, so a run that dies leaves
+ *     something to resume from;
+ *   - it can be stopped: the poll's `session_cancel` list kills the child;
+ *   - the grant is enforced by the harness flags (claude) and by the cwd
+ *     (everything else), and the platform re-checks the reported files
+ *     against the workdir regardless.
+ *
+ * The functions below are pure mirrors of lib/coding-harness.ts where they
+ * decide what runs (claudeSessionArgv) — pinned by tests/coding-harness.test.ts.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/** Mirror of lib/coding-harness.ts claudeSessionArgv — keep byte-for-byte in sync. */
+function claudeSessionArgv(i) {
+  const argv = ['--print', '--output-format', 'stream-json', '--verbose']
+  if (i.model) argv.push('--model', i.model)
+  if (i.resumeSessionId) argv.push('--resume', i.resumeSessionId)
+  argv.push('--permission-mode', i.grant.write ? 'acceptEdits' : 'plan')
+  const allowed = []
+  const disallowed = []
+  if (!i.grant.write) disallowed.push('Edit', 'Write', 'MultiEdit', 'NotebookEdit')
+  if (i.grant.shell) allowed.push('Bash')
+  else disallowed.push('Bash')
+  if (!i.grant.network) disallowed.push('WebFetch', 'WebSearch')
+  if (allowed.length) argv.push('--allowedTools', allowed.join(','))
+  if (disallowed.length) argv.push('--disallowedTools', disallowed.join(','))
+  return argv
+}
+
+const CHECKPOINT_EVERY_MS = 60_000
+const CHECKPOINT_PATCH_MAX = 200_000
+const VERIFY_TIMEOUT_MS = 10 * 60_000
+const SECRET_RE = [
+  /sk-ant-[A-Za-z0-9_-]{20,}/g,
+  /sk-[A-Za-z0-9]{20,}/g,
+  /gh[pousr]_[A-Za-z0-9]{30,}/g,
+  /AKIA[0-9A-Z]{16}/g,
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
+  /\b0x[a-fA-F0-9]{64}\b/g,
+]
+function redact(text) {
+  let out = String(text)
+  for (const re of SECRET_RE) out = out.replace(re, '[redacted]')
+  return out
+}
+
+/** runId → live run bookkeeping; drained into each poll. */
+const sessionRuns = new Map()
+
+function sessionNote(run, kind, text, path = null) {
+  try {
+    if (!text) return
+    if (run.events.length > 400) run.events.splice(0, run.events.length - 400)
+    run.events.push({ at: Date.now(), kind, text: redact(text).slice(0, 400), path })
+    if (kind === 'progress') run.lastProgress = String(text).slice(0, 300)
+  } catch {
+    /* telemetry never breaks a run */
+  }
+}
+
+/** One stream-json line → events (tolerant mirror of parseClaudeStreamLine). */
+function claudeLineEvents(run, line) {
+  const t = line.trim()
+  if (!t) return
+  if (!t.startsWith('{')) return sessionNote(run, 'stdout', t)
+  let obj
+  try {
+    obj = JSON.parse(t)
+  } catch {
+    return sessionNote(run, 'stdout', t)
+  }
+  if (obj.type === 'system') {
+    if (typeof obj.session_id === 'string') run.harnessSessionId = obj.session_id
+    return sessionNote(run, 'started', `claude session ${obj.session_id ?? '?'}`)
+  }
+  if (obj.type === 'assistant' || obj.type === 'user') {
+    const content = Array.isArray(obj.message?.content) ? obj.message.content : []
+    for (const b of content) {
+      if (b.type === 'text' && typeof b.text === 'string' && b.text.trim()) sessionNote(run, 'progress', b.text.trim())
+      else if (b.type === 'tool_use') {
+        const input = b.input ?? {}
+        const path = [input.file_path, input.path, input.notebook_path].find((v) => typeof v === 'string' && v.trim()) ?? null
+        const isEdit = ['Edit', 'Write', 'MultiEdit', 'NotebookEdit'].includes(b.name)
+        if (typeof input.command === 'string') run.shellUsed = true
+        sessionNote(run, isEdit && path ? 'file' : 'tool', b.name === 'Bash' && typeof input.command === 'string' ? `$ ${input.command.slice(0, 200)}` : path ? `${b.name} ${path}` : String(b.name), path)
+        // An edit is worth a checkpoint by itself: a run killed between its
+        // first edit and the minute ticker would otherwise leave nothing to
+        // resume from. Rate-limited so a burst of edits is one capture.
+        if (isEdit && Date.now() - (run.lastCheckpointAt ?? 0) > 10_000) {
+          run.lastCheckpointAt = Date.now()
+          setTimeout(() => captureCheckpoint(run).catch(() => {}), 1500)
+        }
+      } else if (b.type === 'tool_result' && b.is_error === true && typeof b.content === 'string') sessionNote(run, 'error', b.content)
+    }
+    return
+  }
+  if (obj.type === 'result') {
+    if (typeof obj.total_cost_usd === 'number') run.costUsd = obj.total_cost_usd
+    const u = obj.usage ?? {}
+    if (typeof u.input_tokens === 'number' || typeof u.output_tokens === 'number') run.tokensUsed = Number(u.input_tokens ?? 0) + Number(u.output_tokens ?? 0)
+    if (typeof obj.session_id === 'string') run.harnessSessionId = obj.session_id
+    if (typeof obj.result === 'string') run.resultText = obj.result.slice(0, 20_000)
+    sessionNote(run, 'cost', typeof obj.total_cost_usd === 'number' ? `cost $${obj.total_cost_usd.toFixed(4)}` : 'run finished')
+  }
+}
+
+async function isGitRepo(cwd) {
+  try {
+    await git(['rev-parse', '--is-inside-work-tree'], cwd)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Changed + deleted files relative to the index/HEAD, and a bounded diff including untracked files. */
+async function workspaceState(cwd, repo) {
+  if (!repo) return { changedFiles: [], deletedFiles: [], diff: null, head: null }
+  const status = await git(['status', '--porcelain', '--untracked-files=all'], cwd).catch(() => '')
+  const changedFiles = []
+  const deletedFiles = []
+  const untracked = []
+  for (const line of status.split('\n')) {
+    if (!line.trim()) continue
+    const code = line.slice(0, 2)
+    const file = line.slice(3).trim().replace(/^"|"$/g, '')
+    if (code.includes('D')) deletedFiles.push(file)
+    else changedFiles.push(file)
+    if (code === '??') untracked.push(file)
+  }
+  let diff = await git(['diff', 'HEAD', '--no-color', '--no-ext-diff'], cwd).catch(() => git(['diff', '--no-color', '--no-ext-diff'], cwd).catch(() => ''))
+  for (const f of untracked.slice(0, 20)) {
+    if (f.startsWith('.handsel/')) continue
+    try {
+      const st = await fs.stat(path.join(cwd, f))
+      if (!st.isFile() || st.size > 65_536) continue
+      // exit 1 means "differences", which is the whole point; execFile rejects on it.
+      const d = await new Promise((resolve) =>
+        execFile('git', ['diff', '--no-index', '--no-color', '/dev/null', f], { cwd, maxBuffer: 1 << 22 }, (e, stdout) => resolve(stdout || '')),
+      )
+      if (d) diff += (diff.endsWith('\n') || !diff ? '' : '\n') + d
+    } catch {
+      /* unreadable file: not in the diff, still in the list */
+    }
+  }
+  const head = await git(['rev-parse', 'HEAD'], cwd).then((h) => h.trim()).catch(() => null)
+  return { changedFiles: changedFiles.filter((f) => !f.startsWith('.handsel/')), deletedFiles, diff: diff.length > CHECKPOINT_PATCH_MAX ? diff.slice(0, CHECKPOINT_PATCH_MAX) : diff || null, head }
+}
+
+async function captureCheckpoint(run) {
+  if (run.done) return
+  const ws = await workspaceState(run.cwd, run.repo)
+  run.lastCheckpointAt = Date.now()
+  run.seq += 1
+  run.checkpoint = {
+    seq: run.seq,
+    summary: run.lastProgress ? `Last said: ${run.lastProgress}` : 'No progress text yet',
+    gitHead: ws.head,
+    patch: ws.diff,
+    filesChanged: ws.changedFiles,
+  }
+  run.changedFiles = ws.changedFiles
+  sessionNote(run, 'checkpoint', `checkpoint ${run.seq}: ${ws.changedFiles.length} file(s) changed`)
+}
+
+/** Everything the running session runs have to say since the last poll. */
+function drainSessionRuns() {
+  const out = []
+  for (const [runId, run] of sessionRuns) {
+    const report = { runId, events: run.events.splice(0, 60), changedFiles: run.changedFiles.slice(0, 200) }
+    if (run.checkpoint && run.reportedSeq !== run.checkpoint.seq) {
+      report.checkpoint = run.checkpoint
+      run.reportedSeq = run.checkpoint.seq
+    }
+    if (typeof run.costUsd === 'number') report.costUsd = run.costUsd
+    if (typeof run.tokensUsed === 'number') report.tokensUsed = run.tokensUsed
+    out.push(report)
+    if (run.done && run.events.length === 0) sessionRuns.delete(runId)
+  }
+  return out
+}
+
+function cancelSessionRuns(runIds) {
+  for (const id of runIds ?? []) {
+    const run = sessionRuns.get(id)
+    if (run && !run.done && !run.cancelled) {
+      run.cancelled = true
+      console.log(`\n[worker] session run ${id}: stop requested by the platform`)
+      try {
+        run.child?.kill()
+      } catch {
+        /* already gone */
+      }
+    }
+  }
+}
+
+async function runVerify(command, cwd, run) {
+  const startedAt = Date.now()
+  sessionNote(run, 'tool', `$ ${command} (verification)`)
+  return new Promise((resolve) => {
+    let tail = ''
+    const child = spawn('/bin/sh', ['-c', command], { cwd, stdio: ['ignore', 'pipe', 'pipe'], env: process.env })
+    const timer = setTimeout(() => child.kill(), VERIFY_TIMEOUT_MS)
+    const onData = (d) => {
+      tail = (tail + d).slice(-8000)
+    }
+    child.stdout.on('data', onData)
+    child.stderr.on('data', onData)
+    child.on('error', (e) => {
+      clearTimeout(timer)
+      resolve({ command, exitCode: null, tail: `could not run: ${e.message}`, durationMs: Date.now() - startedAt })
+    })
+    child.on('close', (code) => {
+      clearTimeout(timer)
+      sessionNote(run, code === 0 ? 'progress' : 'error', `verification exited ${code}`)
+      resolve({ command, exitCode: code, tail: tail.slice(-4000), durationMs: Date.now() - startedAt })
+    })
+  })
+}
+
+async function runSessionRun(handout) {
+  const run = {
+    id: handout.run_id,
+    cwd: handout.grant?.workdir ? path.resolve(String(handout.grant.workdir)) : '',
+    repo: false,
+    events: [],
+    changedFiles: [],
+    seq: 0,
+    reportedSeq: 0,
+    checkpoint: null,
+    lastProgress: '',
+    child: null,
+    cancelled: false,
+    done: false,
+    costUsd: undefined,
+    tokensUsed: undefined,
+    harnessSessionId: null,
+    resultText: null,
+    shellUsed: false,
+  }
+  sessionRuns.set(run.id, run)
+  console.log(`\n[worker] session run ${run.id} (task ${handout.task_id}) in ${run.cwd || '(no workdir)'}`)
+  const finish = (payload) =>
+    platformPost('/api/worker/session-run', { agent_id: AGENT_ID, run_id: run.id, ...payload }).catch((e) => {
+      console.error(`[worker] session-run report failed: ${e.message}`)
+      return null
+    })
+  const fail = async (failureCode, error) => {
+    sessionNote(run, 'error', error)
+    run.done = true
+    console.log(`[worker] session run ${run.id} FAILED: ${error}`)
+    await finish({ ok: false, failure_code: failureCode, error: String(error).slice(0, 500), changed_files: run.changedFiles, checkpoint: run.checkpoint })
+  }
+  try {
+    // The grant's working directory is the boundary — and the one thing the
+    // platform cannot check for us. Refuse anything but an existing
+    // directory INSIDE the directory this worker was started with (when one
+    // was given): the owner started this process with --workdir as the
+    // widest thing it may touch, and a grant does not widen that.
+    if (!run.cwd) return await fail('AUTH-001', 'no working directory in the grant')
+    const st = await fs.stat(run.cwd).catch(() => null)
+    if (!st || !st.isDirectory()) return await fail('DEP-003', `working directory does not exist: ${run.cwd}`)
+    if (WORKDIR && run.cwd !== WORKDIR && !run.cwd.startsWith(WORKDIR + path.sep)) {
+      return await fail('AUTH-001', `grant workdir ${run.cwd} is outside this worker's --workdir ${WORKDIR}`)
+    }
+    if (!HARNESS) return await fail('DEP-002', 'no coding harness on this worker — start it with --harness claude (or codex, opencode, cline, gemini)')
+    run.repo = await isGitRepo(run.cwd)
+
+    // Resume: the previous attempt's patch, when this checkout no longer carries it.
+    if (handout.resume?.patch && run.repo) {
+      const current = await git(['status', '--porcelain'], run.cwd).catch(() => 'x')
+      if (!current.trim()) {
+        const tmp = path.join(os.tmpdir(), `handsel-resume-${run.id}.patch`)
+        await fs.writeFile(tmp, handout.resume.patch)
+        const applied = await git(['apply', '--check', tmp], run.cwd)
+          .then(() => git(['apply', tmp], run.cwd))
+          .then(() => true)
+          .catch(() => false)
+        await fs.unlink(tmp).catch(() => {})
+        sessionNote(run, 'checkpoint', applied ? `resumed: previous attempt's patch re-applied (${handout.resume.checkpointId})` : `resume: previous patch did not apply cleanly; starting from the brief's description of it`)
+      } else {
+        sessionNote(run, 'checkpoint', `resumed: working tree already carries changes (${handout.resume.checkpointId})`)
+      }
+    }
+
+    const rel = handout.deliverable_path || '.handsel/session-deliverable.md'
+    const abs = path.resolve(run.cwd, rel)
+    await fs.mkdir(path.dirname(abs), { recursive: true })
+    await fs.unlink(abs).catch(() => {})
+
+    const grant = handout.grant
+    const model = flag('harness-model') ?? null
+    // Claude Code takes the brief on STDIN for a session run: its tool
+    // flags are variadic and a positional after them is read as a tool name
+    // (lib/coding-harness.ts records the run that found this).
+    const argv = HARNESS.id === 'claude' ? claudeSessionArgv({ grant, model, resumeSessionId: null }) : HARNESS.argv({ brief: handout.brief, workdir: run.cwd, model })
+    const briefOnStdin = HARNESS.id === 'claude' || Boolean(HARNESS.briefOnStdin)
+    sessionNote(run, 'started', `${HARNESS.label} started (${HARNESS.id === 'claude' ? 'stream-json' : 'stdout'})`)
+    const timeoutMs = Math.max(60_000, Number(handout.timeout_ms) || HARNESS_TIMEOUT_MS)
+    const startedAt = Date.now()
+    const { code, timedOut } = await new Promise((resolve) => {
+      const child = spawn(HARNESS.bin, argv, { cwd: run.cwd, stdio: [briefOnStdin ? 'pipe' : 'ignore', 'pipe', 'pipe'], env: process.env })
+      run.child = child
+      let pending = ''
+      let timedOut = false
+      const timer = setTimeout(() => {
+        timedOut = true
+        child.kill()
+      }, timeoutMs)
+      const ticker = setInterval(() => captureCheckpoint(run).catch(() => {}), CHECKPOINT_EVERY_MS)
+      if (briefOnStdin) child.stdin.end(handout.brief)
+      child.stdout.on('data', (d) => {
+        pending += d
+        const lines = pending.split('\n')
+        pending = lines.pop() ?? ''
+        for (const line of lines) {
+          if (HARNESS.id === 'claude') claudeLineEvents(run, line)
+          else if (line.trim()) sessionNote(run, 'stdout', line)
+        }
+      })
+      child.stderr.on('data', (d) => {
+        for (const line of String(d).split('\n')) if (line.trim()) sessionNote(run, 'stderr', line)
+      })
+      child.on('error', (e) => {
+        clearTimeout(timer)
+        clearInterval(ticker)
+        sessionNote(run, 'error', `could not run ${HARNESS.bin}: ${e.message}`)
+        resolve({ code: null, timedOut: false })
+      })
+      child.on('close', (code) => {
+        clearTimeout(timer)
+        clearInterval(ticker)
+        if (pending.trim()) HARNESS.id === 'claude' ? claudeLineEvents(run, pending) : sessionNote(run, 'stdout', pending)
+        resolve({ code, timedOut })
+      })
+    })
+    run.child = null
+    sessionNote(run, 'exit', `${HARNESS.label} exited ${code}${timedOut ? ' (timeout)' : ''}${run.cancelled ? ' (cancelled)' : ''}`)
+    await captureCheckpoint(run).catch(() => {})
+    if (run.cancelled) return await fail('TIM-003', 'cancelled by the platform')
+    if (timedOut) return await fail('TIM-002', `harness exceeded the run timeout (${Math.round(timeoutMs / 1000)}s)`)
+
+    const ws = await workspaceState(run.cwd, run.repo)
+    run.changedFiles = ws.changedFiles
+    let deliverable = await fs.readFile(abs, 'utf8').catch(() => null)
+    if (!deliverable || !deliverable.trim()) deliverable = run.resultText
+    // A harness that exited non-zero having produced nothing did not work;
+    // submitting an empty deliverable for verification would grade the
+    // fixture's own failing test as THIS run's failure and hide the real
+    // cause (the harness's last words) behind a test log.
+    if (code !== 0 && !deliverable && ws.changedFiles.length === 0 && ws.deletedFiles.length === 0) {
+      const lastErr = run.events.filter((e) => e.kind === 'stderr' || e.kind === 'error').slice(-3).map((e) => e.text).join(' / ')
+      return await fail('DET-001', `${HARNESS.label} exited ${code} and produced nothing${lastErr ? `: ${lastErr}` : ''}`)
+    }
+    let tests = null
+    if (handout.verify_command && grant?.shell) tests = await runVerify(String(handout.verify_command), run.cwd, run)
+    run.done = true
+    const elapsed = Math.round((Date.now() - startedAt) / 1000)
+    console.log(`\n[worker] session run ${run.id}: ${ws.changedFiles.length} file(s) changed, ${tests ? `verification exit ${tests.exitCode}, ` : ''}${elapsed}s`)
+    await finish({
+      ok: true,
+      exit_code: code,
+      deliverable: deliverable ? deliverable.trim().slice(0, 200_000) : null,
+      diff: ws.diff,
+      changed_files: ws.changedFiles,
+      deleted_files: ws.deletedFiles,
+      tests,
+      cost_usd: run.costUsd,
+      tokens_used: run.tokensUsed,
+      harness_session_id: run.harnessSessionId,
+      checkpoint: run.checkpoint,
+    })
+  } catch (e) {
+    await fail('DET-000', e instanceof Error ? e.message : String(e))
+  }
+}
+
 const FFMPEG = await detectFfmpeg()
 console.log(FFMPEG.present ? `[worker] ffmpeg    ${FFMPEG.version}` : '[worker] ffmpeg    not found — media jobs will not be offered')
 
@@ -1872,16 +2260,39 @@ let active = 0
 let consecutiveErrors = 0
 for (;;) {
   if (active >= CONCURRENCY) {
+    // Full, but a session run in flight still has to be HEARD: its progress,
+    // checkpoints and heartbeat ride the poll, and a worker that goes quiet
+    // for five minutes is declared dead by the platform even while its
+    // harness is working. So poll anyway, with capacity 0 — the platform
+    // hands out nothing and folds the reports. The first end-to-end runs
+    // showed every checkpoint landing only after the run had finished,
+    // which is exactly when it is no longer worth anything.
+    if (sessionRuns.size > 0) {
+      try {
+        const heard = await platformPost('/api/worker/poll', {
+          agent_id: AGENT_ID,
+          harness: HARNESS ? HARNESS.id : null,
+          capacity: 0,
+          session_capacity: 0,
+          runs: drainRuns(),
+          session_runs: drainSessionRuns(),
+        })
+        cancelSessionRuns(heard.session_cancel)
+      } catch (e) {
+        console.error(`\n[worker] report poll failed: ${e instanceof Error ? e.message : e}`)
+      }
+    }
     await sleep(POLL_MS)
     continue
   }
 
   let task
+  let sessionRun = null
   try {
     // The harness is reported on every poll, not once at startup: a worker
     // gets restarted with a different --harness all the time, and a value
     // stored once would go on describing the tool that used to be here.
-    ;({ task } = await platformPost('/api/worker/poll', {
+    const polled = await platformPost('/api/worker/poll', {
       agent_id: AGENT_ID,
       harness: HARNESS ? HARNESS.id : null,
       // Declared from a probe, so the match is on a machine that has the
@@ -1893,7 +2304,13 @@ for (;;) {
       // an authenticated round trip on a few-second cadence, and a second
       // channel would be a second thing to get wrong.
       runs: drainRuns(),
-    }))
+      // Office-session runs: their progress, checkpoints and heartbeat ride
+      // the same round trip; the reply may carry a run to start and runs to stop.
+      session_runs: drainSessionRuns(),
+    })
+    task = polled.task
+    sessionRun = polled.session_run ?? null
+    cancelSessionRuns(polled.session_cancel)
     consecutiveErrors = 0
   } catch (e) {
     consecutiveErrors += 1
@@ -1906,7 +2323,16 @@ for (;;) {
     continue
   }
 
-  if (task) {
+  if (sessionRun) {
+    active += 1
+    runSessionRun(sessionRun)
+      .catch((e) => console.error(`\n[worker] session run ${sessionRun.run_id} crashed: ${e instanceof Error ? e.message : e}`))
+      .finally(() => {
+        active -= 1
+      })
+    if (active < CONCURRENCY) continue
+    await sleep(POLL_MS)
+  } else if (task) {
     active += 1
     // Run in the background; free the slot when done. Never let one task's
     // failure take down the loop — runOne already reports failures upstream.

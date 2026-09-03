@@ -294,6 +294,17 @@ export const OPS_STEPS: OpsStep[] = [
       return { active: active.length, ticked, failed, stakesResolved }
     },
   },
+  // Office sessions tick right after delegations and for the same reason:
+  // a session's tick is what hands the next run to a worker and what
+  // releases an approved escrow, so it must not sit behind the fleet sweep
+  // whose cost grows with the fleet. NOT fast — it reads worker liveness
+  // and may call a reviewer model. Each session leases itself
+  // (office-session:<id>), so a traffic-driven finish report and the cron
+  // never advance the same session at once.
+  {
+    name: 'officeSessions',
+    run: async () => (await import('@/lib/office-session-server')).tickOfficeSessions(),
+  },
   {
     name: 'fleetTick',
     run: async ({ origin }) => {
