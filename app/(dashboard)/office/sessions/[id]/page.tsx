@@ -15,11 +15,13 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { cancelSession, decideSessionApproval, officeSessionDetail, pauseSession, resumeSession, tickSessionNow, type SessionDetail } from '@/app/actions/office-session'
 import { STATUS_META, sessionSentence } from '@/lib/office-session'
+import { useI18n } from '@/lib/i18n'
 
 const when = (ms: number | null) => (ms === null ? '—' : new Date(ms).toLocaleString())
 const usd = (n: number | null) => (n === null ? '—' : `$${n.toFixed(2)}`)
 
 export default function OfficeSessionDetailPage() {
+  const { t: tr } = useI18n()
   const params = useParams<{ id: string }>()
   const id = params.id
   const [d, setD] = useState<SessionDetail | null>(null)
@@ -44,7 +46,7 @@ export default function OfficeSessionDetailPage() {
   }, [load])
 
   if (error) return <p className="text-sm text-destructive">{error}</p>
-  if (!d) return <p className="text-sm text-muted-foreground">Loading…</p>
+  if (!d) return <p className="text-sm text-muted-foreground">{tr('sess.loading')}</p>
   const s = d.state.session
   const terminal = STATUS_META[s.status].terminal
   const tasks = Object.values(d.state.tasks).sort((a, b) => a.createdAt - b.createdAt)
@@ -66,15 +68,15 @@ export default function OfficeSessionDetailPage() {
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <Link href="/office/sessions" className="text-xs text-muted-foreground underline">
-            ← sessions
+            ← {tr('sess.sessions')}
           </Link>
           <h1 className="text-lg font-semibold">{s.goal.slice(0, 160)}</h1>
           <p className="text-sm">
-            <span className="font-medium">{s.status.replace(/_/g, ' ')}</span> — {sessionSentence(s)}
+            <span className="font-medium">{tr(`sess.status.${s.status}`)}</span> — {sessionSentence(s)}
           </p>
           <p className="text-xs text-muted-foreground">
-            {s.kind.replace(/_/g, ' ')} · wave {s.wave} · created {when(s.createdAt)} · started {when(s.startedAt)} · last heartbeat {when(s.lastHeartbeatAt)} · next wake {when(s.nextWakeAt)} · deadline {when(s.deadlineAt)} ·{' '}
-            {usd(s.spentUsd)} of {usd(s.budgetLimitUsd)} · checkpoint {s.checkpointId ?? '—'} · policy {s.approvalPolicyId} ·{' '}
+            {tr(`sess.kindOf.${s.kind}`)} · {tr('sess.wave', { n: s.wave })} · created {when(s.createdAt)} · started {when(s.startedAt)} · last heartbeat {when(s.lastHeartbeatAt)} · next wake {when(s.nextWakeAt)} · deadline {when(s.deadlineAt)} ·{' '}
+            {tr('sess.ofBudget', { spent: usd(s.spentUsd), budget: usd(s.budgetLimitUsd) })} · checkpoint {s.checkpointId ?? '—'} · policy {s.approvalPolicyId} ·{' '}
             {d.integrity ? (d.integrity.ok ? 'replay matches' : `INTEGRITY: ${d.integrity.violations.join('; ') || 'materialized state is behind the log'}`) : 'integrity unchecked'}
           </p>
         </div>
@@ -96,7 +98,7 @@ export default function OfficeSessionDetailPage() {
                   <Pause className="h-3.5 w-3.5" />
                 </Button>
               )}
-              <Button size="sm" type="button" variant="outline" onClick={() => confirm('Cancel this session?') && act(() => cancelSession(id))}>
+              <Button size="sm" type="button" variant="outline" onClick={() => confirm(tr('sess.confirmCancel')) && act(() => cancelSession(id))}>
                 <XCircle className="h-3.5 w-3.5" />
               </Button>
             </>
@@ -107,7 +109,7 @@ export default function OfficeSessionDetailPage() {
       {approvals.some((a) => a.decidedAt === null && (a.policyOutcome === 'REQUIRE_OWNER' || a.policyOutcome === 'REQUIRE_REVIEWER')) && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Your decision</CardTitle>
+            <CardTitle className="text-base">{tr('sess.yourDecision')}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             {approvals
@@ -122,10 +124,10 @@ export default function OfficeSessionDetailPage() {
                       </span>
                       <div className="flex gap-2">
                         <Button size="sm" type="button" onClick={() => act(() => decideSessionApproval(id, a.id, true))}>
-                          <Check className="h-3.5 w-3.5" /> Approve
+                          <Check className="h-3.5 w-3.5" /> {tr('sess.approve')}
                         </Button>
                         <Button size="sm" type="button" variant="outline" onClick={() => act(() => decideSessionApproval(id, a.id, false, 'denied by owner'))}>
-                          <X className="h-3.5 w-3.5" /> Deny
+                          <X className="h-3.5 w-3.5" /> {tr('sess.deny')}
                         </Button>
                       </div>
                     </div>
@@ -136,7 +138,7 @@ export default function OfficeSessionDetailPage() {
                     </ul>
                     {t?.outcome?.diff && (
                       <details>
-                        <summary className="cursor-pointer text-xs">Diff</summary>
+                        <summary className="cursor-pointer text-xs">{tr('sess.diff')}</summary>
                         <pre className="max-h-80 overflow-auto rounded bg-secondary p-2 text-[11px]">{t.outcome.diff.slice(0, 40_000)}</pre>
                       </details>
                     )}
@@ -150,7 +152,7 @@ export default function OfficeSessionDetailPage() {
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Tasks</CardTitle>
+            <CardTitle className="text-base">{tr('sess.tasks')}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             {tasks.map((t) => (
@@ -163,7 +165,7 @@ export default function OfficeSessionDetailPage() {
                   </span>
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  wave {t.wave} · {t.kind} · {t.settlement} · {usd(t.bountyUsd)} · risk {t.riskTier} · attempt {t.attempts}/{t.maxAttempts}
+                  {tr('sess.wave', { n: t.wave })} · {t.kind} · {t.settlement} · {usd(t.bountyUsd)} · risk {t.riskTier} · attempt {t.attempts}/{t.maxAttempts}
                   {t.dependsOn.length ? ` · after ${t.dependsOn.join(', ')}` : ''}
                   {t.verify.command ? ` · verify: ${t.verify.command}` : ''}
                   {t.specHash ? ` · job ${t.onchainJobId ?? t.specHash.slice(0, 10)}` : ''}
@@ -192,10 +194,12 @@ export default function OfficeSessionDetailPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Live run {liveRun ? `· ${liveRun.id}` : ''}</CardTitle>
+            <CardTitle className="text-base">
+              {tr('sess.liveRun')} {liveRun ? `· ${liveRun.id}` : ''}
+            </CardTitle>
           </CardHeader>
           <CardContent className="text-sm space-y-2">
-            {!liveRun && <p className="text-muted-foreground">No run yet.</p>}
+            {!liveRun && <p className="text-muted-foreground">{tr('sess.noRunYet')}</p>}
             {liveRun && (
               <div className="text-xs text-muted-foreground">
                 {liveRun.status} · worker {liveRun.workerAgentId} · {liveRun.harnessId ?? 'harness ?'} · attempt {liveRun.attempt} · dispatched {when(liveRun.dispatchedAt)} · started {when(liveRun.startedAt)} · heartbeat {when(liveRun.lastHeartbeatAt)}
@@ -234,7 +238,7 @@ export default function OfficeSessionDetailPage() {
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Timeline</CardTitle>
+            <CardTitle className="text-base">{tr('sess.timeline')}</CardTitle>
           </CardHeader>
           <CardContent>
             <ul className="max-h-[32rem] space-y-1 overflow-auto text-xs">
@@ -255,7 +259,7 @@ export default function OfficeSessionDetailPage() {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Approvals &amp; artifacts</CardTitle>
+            <CardTitle className="text-base">{tr('sess.approvalsArtifacts')}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-xs">
             {approvals.map((a) => (
@@ -266,7 +270,7 @@ export default function OfficeSessionDetailPage() {
                   {a.moved ? ` · moved ${usd(a.moved.amountUsd)}${a.moved.txHash ? ` ${a.moved.txHash.slice(0, 12)}…` : ''}` : ' · nothing moved'}
                 </div>
                 <details>
-                  <summary className="cursor-pointer">Evidence read</summary>
+                  <summary className="cursor-pointer">{tr('sess.evidenceRead')}</summary>
                   <pre className="overflow-auto rounded bg-secondary p-1">{JSON.stringify(a.evidence, null, 1)}</pre>
                 </details>
               </div>
@@ -278,13 +282,13 @@ export default function OfficeSessionDetailPage() {
                 </div>
                 {a.inline && (
                   <details>
-                    <summary className="cursor-pointer">Show</summary>
+                    <summary className="cursor-pointer">{tr('sess.show')}</summary>
                     <pre className="max-h-64 overflow-auto rounded bg-secondary p-1">{a.inline.slice(0, 20_000)}</pre>
                   </details>
                 )}
               </div>
             ))}
-            {approvals.length === 0 && artifacts.length === 0 && <p className="text-muted-foreground">None yet.</p>}
+            {approvals.length === 0 && artifacts.length === 0 && <p className="text-muted-foreground">{tr('sess.noneYet')}</p>}
           </CardContent>
         </Card>
       </div>

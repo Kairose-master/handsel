@@ -723,4 +723,8 @@ GitHub Discussions new URL 생성, 금지 문장·증거 없는 주장·잘못�
   inline으로 시작). 크론이 아닌 곳(스크립트/틱)에서 디스패치하려면 `CRON_SECRET`이 있어야
   `/api/runtime/execute`로 넘어간다(없으면 inline이라 호출자 프로세스와 함께 죽는다).
   `remoteRunBrief`는 mcp 워커에게 `[mcp-query]` 한 줄을 붙인다(검색 서버는 브리프 전체가 질의가 아님).
+- **(6차) 컨트롤룸 i18n**: `/office/sessions`, 세션 상세, 스트립이 전부 `lib/i18n`을 탄다(en/ko, 나머지는 en 폴백).
+  **상태/종류 어휘도 키다** — `sess.status.<status>`, `sess.kindOf.<kind>`. 상태를 새로 추가하는 세션은
+  두 딕셔너리에 라벨을 넣어야 한다(`tests/office-session-wiring.test.ts`가 막는다; 없으면 화면에 키가 그대로 뜬다).
+  `statusReason`은 루프가 만드는 문장이라 번역하지 않는다.
 

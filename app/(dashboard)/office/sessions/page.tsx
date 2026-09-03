@@ -27,6 +27,7 @@ import {
   startOfficeSession,
   type SessionOverview,
 } from '@/app/actions/office-session'
+import { useI18n } from '@/lib/i18n'
 import { STATUS_META, type SessionKind, type SessionStatus } from '@/lib/office-session'
 
 const TONE: Record<SessionStatus, string> = {
@@ -52,6 +53,7 @@ const when = (ms: number | null) => (ms === null ? '—' : new Date(ms).toLocale
 const usd = (n: number) => `$${n.toFixed(2)}`
 
 export default function OfficeSessionsPage() {
+  const { t } = useI18n()
   const [view, setView] = useState<SessionOverview | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -63,11 +65,11 @@ export default function OfficeSessionsPage() {
     try {
       setView(await officeSessionOverview(slot))
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not read the office.')
+      setError(e instanceof Error ? e.message : t('sess.readError'))
     } finally {
       setBusy(false)
     }
-  }, [slot])
+  }, [slot, t])
   useEffect(() => {
     void load()
     const t = setInterval(() => void load(), 15_000)
@@ -78,13 +80,13 @@ export default function OfficeSessionsPage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h1 className="text-xl font-semibold">Office sessions</h1>
+          <h1 className="text-xl font-semibold">{t('sess.title')}</h1>
           <p className="text-sm text-muted-foreground">
-            What this office is doing, what it does next, and where it needs you.
+            {t('sess.subtitle')}
             {view && (
               <>
                 {' '}
-                <span className={view.realMoney ? 'text-destructive' : 'text-muted-foreground'}>{view.realMoney ? `REAL MONEY (${view.chainName})` : `${view.chainName} — no monetary value`}</span>
+                <span className={view.realMoney ? 'text-destructive' : 'text-muted-foreground'}>{view.realMoney ? t('sess.realMoney', { chain: view.chainName }) : t('sess.noValue', { chain: view.chainName })}</span>
               </>
             )}
           </p>
@@ -94,7 +96,7 @@ export default function OfficeSessionsPage() {
         </Button>
       </div>
       {error && <p className="text-sm text-destructive">{error}</p>}
-      {!view && !error && <p className="text-sm text-muted-foreground">Loading…</p>}
+      {!view && !error && <p className="text-sm text-muted-foreground">{t('sess.loading')}</p>}
       {view && (
         <>
           <Inbox view={view} reload={load} />
@@ -115,6 +117,7 @@ export default function OfficeSessionsPage() {
 }
 
 function Inbox({ view, reload }: { view: SessionOverview; reload: () => Promise<void> }) {
+  const { t } = useI18n()
   const [acting, setActing] = useState<string | null>(null)
   const decide = async (sessionId: string, approvalId: string, granted: boolean) => {
     setActing(approvalId)
@@ -130,11 +133,11 @@ function Inbox({ view, reload }: { view: SessionOverview; reload: () => Promise<
     <Card>
       <CardHeader>
         <CardTitle className="text-base flex items-center gap-2">
-          <ShieldCheck className="h-4 w-4" /> Needs your decision {view.inbox.length > 0 && <span className="rounded bg-warning/20 px-1.5 text-xs text-warning">{view.inbox.length}</span>}
+          <ShieldCheck className="h-4 w-4" /> {t('sess.inbox')} {view.inbox.length > 0 && <span className="rounded bg-warning/20 px-1.5 text-xs text-warning">{view.inbox.length}</span>}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        {view.inbox.length === 0 && <p className="text-sm text-muted-foreground">Nothing is waiting on you. Sessions inside their policy settle by themselves and appear in the timeline as done.</p>}
+        {view.inbox.length === 0 && <p className="text-sm text-muted-foreground">{t('sess.inboxEmpty')}</p>}
         {view.inbox.map((i) => (
           <div key={i.approvalId} className="rounded border border-border p-3 text-sm space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -144,15 +147,15 @@ function Inbox({ view, reload }: { view: SessionOverview; reload: () => Promise<
                   <Link className="underline" href={`/office/sessions/${i.sessionId}`}>
                     {i.sessionGoal.slice(0, 80)}
                   </Link>{' '}
-                  · asked {when(i.requestedAt)}
+                  · {t('sess.asked', { at: when(i.requestedAt) })}
                 </div>
               </div>
               <div className="flex gap-2">
                 <Button size="sm" type="button" disabled={acting === i.approvalId} onClick={() => decide(i.sessionId, i.approvalId, true)}>
-                  <Check className="h-3.5 w-3.5" /> Approve
+                  <Check className="h-3.5 w-3.5" /> {t('sess.approve')}
                 </Button>
                 <Button size="sm" type="button" variant="outline" disabled={acting === i.approvalId} onClick={() => decide(i.sessionId, i.approvalId, false)}>
-                  <X className="h-3.5 w-3.5" /> Deny
+                  <X className="h-3.5 w-3.5" /> {t('sess.deny')}
                 </Button>
               </div>
             </div>
@@ -181,6 +184,7 @@ function Inbox({ view, reload }: { view: SessionOverview; reload: () => Promise<
 }
 
 function Sessions({ view, reload }: { view: SessionOverview; reload: () => Promise<void> }) {
+  const { t } = useI18n()
   const act = async (fn: () => Promise<void>) => {
     try {
       await fn()
@@ -192,10 +196,10 @@ function Sessions({ view, reload }: { view: SessionOverview; reload: () => Promi
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Sessions</CardTitle>
+        <CardTitle className="text-base">{t('sess.sessions')}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">
-        {view.sessions.length === 0 && <p className="text-sm text-muted-foreground">No session yet. Connect a worker below and give the office a goal.</p>}
+        {view.sessions.length === 0 && <p className="text-sm text-muted-foreground">{t('sess.sessionsEmpty')}</p>}
         {view.sessions.map((s) => {
           const live = !STATUS_META[s.status].terminal
           return (
@@ -205,11 +209,12 @@ function Sessions({ view, reload }: { view: SessionOverview; reload: () => Promi
                   {s.goal.slice(0, 120)}
                 </Link>
                 <div className="text-xs text-muted-foreground">
-                  <span className={TONE[s.status]}>{s.status.replace(/_/g, ' ')}</span>
-                  {s.statusReason ? ` — ${s.statusReason}` : ''} · {s.kind.replace(/_/g, ' ')} · wave {s.wave} · {s.tasksDone}/{s.tasksTotal} tasks · {usd(s.spentUsd)} of {usd(s.budgetLimitUsd)}
-                  {s.liveRuns > 0 ? ` · ${s.liveRuns} run live` : ''}
-                  {s.openApprovals > 0 ? ` · ${s.openApprovals} awaiting you` : ''}
-                  {live && s.nextWakeAt ? ` · next check ${when(s.nextWakeAt)}` : ''}
+                  <span className={TONE[s.status]}>{t(`sess.status.${s.status}`)}</span>
+                  {s.statusReason ? ` — ${s.statusReason}` : ''} · {t(`sess.kindOf.${s.kind}`)} · {t('sess.wave', { n: s.wave })} · {t('sess.tasksOf', { done: s.tasksDone, total: s.tasksTotal })} ·{' '}
+                  {t('sess.ofBudget', { spent: usd(s.spentUsd), budget: usd(s.budgetLimitUsd) })}
+                  {s.liveRuns > 0 ? ` · ${t('sess.runsLive', { n: s.liveRuns })}` : ''}
+                  {s.openApprovals > 0 ? ` · ${t('sess.awaitingYou', { n: s.openApprovals })}` : ''}
+                  {live && s.nextWakeAt ? ` · ${t('sess.nextCheck', { at: when(s.nextWakeAt) })}` : ''}
                 </div>
               </div>
               {live && (
@@ -223,7 +228,7 @@ function Sessions({ view, reload }: { view: SessionOverview; reload: () => Promi
                       <Pause className="h-3.5 w-3.5" />
                     </Button>
                   )}
-                  <Button size="sm" type="button" variant="outline" onClick={() => confirm('Cancel this session? Live runs are told to stop.') && act(() => cancelSession(s.id))}>
+                  <Button size="sm" type="button" variant="outline" onClick={() => confirm(t('sess.confirmCancel')) && act(() => cancelSession(s.id))}>
                     <XCircle className="h-3.5 w-3.5" />
                   </Button>
                 </div>
@@ -237,6 +242,8 @@ function Sessions({ view, reload }: { view: SessionOverview; reload: () => Promi
 }
 
 function Workers({ view, reload }: { view: SessionOverview; reload: () => Promise<void> }) {
+  const { t } = useI18n()
+  const yn = (v: boolean) => (v ? t('sess.yes') : t('sess.no'))
   const [agents, setAgents] = useState<Array<{ id: string; name: string; runtimeType: string | null }>>([])
   const [agentId, setAgentId] = useState('')
   const [workdir, setWorkdir] = useState('')
@@ -273,31 +280,38 @@ function Workers({ view, reload }: { view: SessionOverview; reload: () => Promis
     <Card>
       <CardHeader>
         <CardTitle className="text-base flex items-center gap-2">
-          <Plug className="h-4 w-4" /> Worker fleet
+          <Plug className="h-4 w-4" /> {t('sess.fleet')}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
-        {view.workers.length === 0 && <p className="text-muted-foreground">No worker is connected to this office with a workspace.</p>}
+        {view.workers.length === 0 && <p className="text-muted-foreground">{t('sess.fleetEmpty')}</p>}
         {view.workers.map((w) => (
           <div key={w.agentId} className="rounded border border-border p-2">
             <div className="flex items-center justify-between">
               <span className="font-medium">{w.name}</span>
-              <span className={w.alive ? 'text-success' : 'text-muted-foreground'}>{w.alive ? '● online' : w.lastPollAt ? `offline (last ${when(w.lastPollAt)})` : 'never polled'}</span>
+              <span className={w.alive ? 'text-success' : 'text-muted-foreground'}>{w.alive ? t('sess.online') : w.lastPollAt ? t('sess.offlineSince', { at: when(w.lastPollAt) }) : t('sess.neverPolled')}</span>
             </div>
             <div className="text-xs text-muted-foreground">
-              {w.harnessId ?? 'no harness reported'} · {w.grant.workdir} · edit {w.grant.write ? 'yes' : 'no'} · shell {w.grant.shell ? 'yes' : 'no'} · network {w.grant.network ? 'yes' : 'no'} · install{' '}
-              {w.grant.install ? 'yes' : 'no'} · push {w.grant.gitPush ? 'yes' : 'no'} · {usd(w.grant.perTaskLimitUsd)}/task · {usd(w.grant.dailyLimitUsd)}/day
-              {w.verifyCommand ? ` · verify: ${w.verifyCommand}` : ''}
+              {w.harnessId ?? t('sess.noHarness')} · {w.grant.workdir} ·{' '}
+              {t('sess.grantLine', {
+                write: yn(w.grant.write),
+                shell: yn(w.grant.shell),
+                network: yn(w.grant.network),
+                install: yn(w.grant.install),
+                push: yn(w.grant.gitPush),
+              })}{' '}
+              · {t('sess.perTask', { amount: usd(w.grant.perTaskLimitUsd) })} · {t('sess.perDay', { amount: usd(w.grant.dailyLimitUsd) })}
+              {w.verifyCommand ? ` · ${t('sess.verifyIs', { command: w.verifyCommand })}` : ''}
             </div>
           </div>
         ))}
         <details className="rounded border border-dashed border-border p-2">
-          <summary className="cursor-pointer">Connect Claude Code on your machine</summary>
+          <summary className="cursor-pointer">{t('sess.connectTitle')}</summary>
           <div className="mt-2 space-y-2">
             <label className="block text-xs">
-              Agent
+              {t('sess.agent')}
               <select className="mt-1 w-full rounded border border-border bg-background p-1" value={agentId} onChange={(e) => setAgentId(e.target.value)}>
-                <option value="">— choose —</option>
+                <option value="">{t('sess.choose')}</option>
                 {agents.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.name} ({a.runtimeType ?? 'platform'})
@@ -306,25 +320,25 @@ function Workers({ view, reload }: { view: SessionOverview; reload: () => Promis
               </select>
             </label>
             <label className="block text-xs">
-              Working directory (absolute path on your machine — the boundary of everything a run may touch)
+              {t('sess.workdir')}
               <input className="mt-1 w-full rounded border border-border bg-background p-1" value={workdir} onChange={(e) => setWorkdir(e.target.value)} placeholder="/home/me/code/my-repo" />
             </label>
             <label className="block text-xs">
-              Verification command (run after every task; exit 0 = pass)
+              {t('sess.verifyCommand')}
               <input className="mt-1 w-full rounded border border-border bg-background p-1" value={verify} onChange={(e) => setVerify(e.target.value)} placeholder="npm test" />
             </label>
             <div className="grid grid-cols-2 gap-1 text-xs">
               <label>
-                <input type="checkbox" checked={shell} onChange={(e) => setShell(e.target.checked)} /> shell / tests (E2)
+                <input type="checkbox" checked={shell} onChange={(e) => setShell(e.target.checked)} /> {t('sess.grantShell')}
               </label>
               <label>
-                <input type="checkbox" checked={network} onChange={(e) => setNetwork(e.target.checked)} /> network (E3)
+                <input type="checkbox" checked={network} onChange={(e) => setNetwork(e.target.checked)} /> {t('sess.grantNetwork')}
               </label>
               <label>
-                <input type="checkbox" checked={install} onChange={(e) => setInstall(e.target.checked)} /> install packages (E3)
+                <input type="checkbox" checked={install} onChange={(e) => setInstall(e.target.checked)} /> {t('sess.grantInstall')}
               </label>
               <label>
-                <input type="checkbox" checked={gitPush} onChange={(e) => setGitPush(e.target.checked)} /> git push (E3)
+                <input type="checkbox" checked={gitPush} onChange={(e) => setGitPush(e.target.checked)} /> {t('sess.grantPush')}
               </label>
               <label>
                 $/task <input className="w-16 rounded border border-border bg-background p-0.5" value={perTask} onChange={(e) => setPerTask(e.target.value)} />
@@ -333,13 +347,13 @@ function Workers({ view, reload }: { view: SessionOverview; reload: () => Promis
                 $/day <input className="w-16 rounded border border-border bg-background p-0.5" value={daily} onChange={(e) => setDaily(e.target.value)} />
               </label>
             </div>
-            <p className="text-xs text-muted-foreground">Secrets and external payments are never granted from here. Money movement, deploys and production changes always wait for you.</p>
+            <p className="text-xs text-muted-foreground">{t('sess.neverGranted')}</p>
             <Button size="sm" type="button" disabled={!agentId || !workdir || busy} onClick={connect}>
-              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plug className="h-3.5 w-3.5" />} Connect
+              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plug className="h-3.5 w-3.5" />} {t('sess.connect')}
             </Button>
             {command && (
               <div className="space-y-1">
-                <p className="text-xs">Run this once on the machine that holds the working directory (the token is shown once):</p>
+                <p className="text-xs">{t('sess.runOnce')}</p>
                 <pre className="overflow-auto rounded bg-secondary p-2 text-[11px]">{command}</pre>
               </div>
             )}
@@ -351,6 +365,7 @@ function Workers({ view, reload }: { view: SessionOverview; reload: () => Promis
 }
 
 function Budget({ view }: { view: SessionOverview }) {
+  const { t } = useI18n()
   const live = view.sessions.filter((s) => !STATUS_META[s.status].terminal)
   const committed = live.reduce((n, s) => n + s.budgetLimitUsd, 0)
   const spent = view.sessions.reduce((n, s) => n + s.spentUsd, 0)
@@ -358,27 +373,22 @@ function Budget({ view }: { view: SessionOverview }) {
     <Card>
       <CardHeader>
         <CardTitle className="text-base flex items-center gap-2">
-          <Wallet className="h-4 w-4" /> Budget
+          <Wallet className="h-4 w-4" /> {t('sess.budget')}
         </CardTitle>
       </CardHeader>
       <CardContent className="text-sm space-y-1">
-        <div>
-          Paid out today: <span className="font-medium">{usd(view.spentTodayUsd)}</span> of {usd(view.policy.dailyBudgetUsd)} daily
-        </div>
-        <div>
-          Of which auto-approved by policy: <span className="font-medium">{usd(view.autoApprovedTodayUsd)}</span>
-        </div>
-        <div>Budget committed to live sessions: {usd(committed)}</div>
-        <div>Spent across all sessions: {usd(spent)}</div>
-        <div className="text-xs text-muted-foreground">
-          Single task limit {usd(view.policy.singleTaskLimitUsd)}. Internal tasks (your own worker on your own machine) cost nothing here; their harness cost is recorded on the task when the harness reports it.
-        </div>
+        <div>{t('sess.paidToday', { spent: usd(view.spentTodayUsd), cap: usd(view.policy.dailyBudgetUsd) })}</div>
+        <div>{t('sess.ofWhichAuto', { amount: usd(view.autoApprovedTodayUsd) })}</div>
+        <div>{t('sess.committed', { amount: usd(committed) })}</div>
+        <div>{t('sess.spentAll', { amount: usd(spent) })}</div>
+        <div className="text-xs text-muted-foreground">{t('sess.singleTaskNote', { amount: usd(view.policy.singleTaskLimitUsd) })}</div>
       </CardContent>
     </Card>
   )
 }
 
 function NewSession({ view, reload }: { view: SessionOverview; reload: () => Promise<void> }) {
+  const { t } = useI18n()
   const [goal, setGoal] = useState('')
   const [kind, setKind] = useState<SessionKind>('local_coding')
   const [budget, setBudget] = useState('5')
@@ -404,7 +414,7 @@ function NewSession({ view, reload }: { view: SessionOverview; reload: () => Pro
       })
       if (!r.ok) setMsg(r.error)
       else {
-        setMsg(`Session ${r.session.id} started.`)
+        setMsg(t('sess.started', { id: r.session.id }))
         setGoal('')
       }
       await reload()
@@ -415,61 +425,58 @@ function NewSession({ view, reload }: { view: SessionOverview; reload: () => Pro
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Give the office a goal</CardTitle>
+        <CardTitle className="text-base">{t('sess.giveGoal')}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-2 text-sm">
-        <textarea className="w-full rounded border border-border bg-background p-2" rows={3} value={goal} onChange={(e) => setGoal(e.target.value)} placeholder="Find and fix the auth bug in the refresh endpoint, add a regression test, and make npm test pass." />
+        <textarea className="w-full rounded border border-border bg-background p-2" rows={3} value={goal} onChange={(e) => setGoal(e.target.value)} placeholder={t('sess.goalPlaceholder')} />
         <div className="flex flex-wrap gap-2 text-xs">
           <label>
-            Kind{' '}
+            {t('sess.kind')}{' '}
             <select className="rounded border border-border bg-background p-1" value={kind} onChange={(e) => setKind(e.target.value as SessionKind)}>
-              <option value="local_coding">local coding (Claude Code on your machine)</option>
-              <option value="one_shot">one shot</option>
-              <option value="long_running">long running</option>
-              <option value="scheduled">scheduled</option>
-              <option value="event_driven">event driven</option>
+              <option value="local_coding">{t('sess.kindLocalCoding')}</option>
+              <option value="one_shot">{t('sess.kindOneShot')}</option>
+              <option value="long_running">{t('sess.kindLongRunning')}</option>
+              <option value="scheduled">{t('sess.kindScheduled')}</option>
+              <option value="event_driven">{t('sess.kindEventDriven')}</option>
             </select>
           </label>
           <label>
-            Worker{' '}
+            {t('sess.worker')}{' '}
             <select className="rounded border border-border bg-background p-1" value={workerAgentId} onChange={(e) => setWorkerAgentId(e.target.value)}>
-              <option value="">— none —</option>
+              <option value="">{t('sess.none')}</option>
               {view.workers.map((w) => (
                 <option key={w.agentId} value={w.agentId}>
-                  {w.name} {w.alive ? '(online)' : '(offline)'}
+                  {w.name} {w.alive ? t('sess.workerOnline') : t('sess.workerOffline')}
                 </option>
               ))}
             </select>
           </label>
           <label>
-            Budget $ <input className="w-16 rounded border border-border bg-background p-1" value={budget} onChange={(e) => setBudget(e.target.value)} />
+            {t('sess.budgetField')} <input className="w-16 rounded border border-border bg-background p-1" value={budget} onChange={(e) => setBudget(e.target.value)} />
           </label>
           <label>
-            Deadline (h) <input className="w-16 rounded border border-border bg-background p-1" value={hours} onChange={(e) => setHours(e.target.value)} placeholder="—" />
+            {t('sess.deadlineField')} <input className="w-16 rounded border border-border bg-background p-1" value={hours} onChange={(e) => setHours(e.target.value)} placeholder="—" />
           </label>
           {kind === 'scheduled' && (
             <label>
-              Every (min) <input className="w-16 rounded border border-border bg-background p-1" value={everyMin} onChange={(e) => setEveryMin(e.target.value)} />
+              {t('sess.everyField')} <input className="w-16 rounded border border-border bg-background p-1" value={everyMin} onChange={(e) => setEveryMin(e.target.value)} />
             </label>
           )}
         </div>
         {kind === 'event_driven' && (
           <label className="block text-xs">
-            Wakes on (comma-separated)
+            {t('sess.wakesOn')}
             <input
               className="mt-1 w-full rounded border border-border bg-background p-1 font-mono"
               value={triggers}
               onChange={(e) => setTriggers(e.target.value)}
               placeholder="github:owner/repo:issues.opened, github:owner/repo:ci.failed, http:nightly"
             />
-            <span className="text-muted-foreground">
-              GitHub names fire from the App&apos;s webhook (issues.opened · issues.labeled:&lt;label&gt; · pull_request.opened · ci.failed · ci.passed · push); an{' '}
-              <code>http:</code> name fires from <code>POST /api/office/sessions/trigger</code> with a worker token.
-            </span>
+            <span className="text-muted-foreground">{t('sess.triggerHelp')}</span>
           </label>
         )}
         <Button size="sm" type="button" disabled={busy || goal.trim().length < 10} onClick={start}>
-          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />} Start session
+          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />} {t('sess.start')}
         </Button>
         {msg && <p className="text-xs">{msg}</p>}
       </CardContent>
@@ -478,12 +485,13 @@ function NewSession({ view, reload }: { view: SessionOverview; reload: () => Pro
 }
 
 function Policy({ view, reload }: { view: SessionOverview; reload: () => Promise<void> }) {
+  const { t } = useI18n()
   const [editing, setEditing] = useState(false)
   const [raw, setRaw] = useState(JSON.stringify(view.policy, null, 2))
   const [msg, setMsg] = useState<string | null>(null)
   const save = async () => {
     const r = await saveOfficePolicy(view.slot, raw)
-    setMsg(r.ok ? 'Saved.' : r.error)
+    setMsg(r.ok ? t('sess.saved') : r.error)
     if (r.ok) {
       setEditing(false)
       await reload()
@@ -493,7 +501,7 @@ function Policy({ view, reload }: { view: SessionOverview; reload: () => Promise
     <Card>
       <CardHeader>
         <CardTitle className="text-base flex items-center gap-2">
-          <ShieldCheck className="h-4 w-4" /> Approval policy
+          <ShieldCheck className="h-4 w-4" /> {t('sess.policy')}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-2 text-sm">
@@ -502,15 +510,15 @@ function Policy({ view, reload }: { view: SessionOverview; reload: () => Promise
         <div className="flex gap-2">
           {!editing ? (
             <Button size="sm" type="button" variant="outline" onClick={() => setEditing(true)}>
-              Edit as JSON
+              {t('sess.editJson')}
             </Button>
           ) : (
             <>
               <Button size="sm" type="button" onClick={save}>
-                Save
+                {t('sess.save')}
               </Button>
               <Button size="sm" type="button" variant="outline" onClick={() => setEditing(false)}>
-                Cancel
+                {t('sess.cancel')}
               </Button>
             </>
           )}
@@ -522,15 +530,16 @@ function Policy({ view, reload }: { view: SessionOverview; reload: () => Promise
 }
 
 function Memory({ view }: { view: SessionOverview }) {
+  const { t } = useI18n()
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-base flex items-center gap-2">
-          <Brain className="h-4 w-4" /> What this office learned
+          <Brain className="h-4 w-4" /> {t('sess.learned')}
         </CardTitle>
       </CardHeader>
       <CardContent className="text-sm">
-        {view.memory.length === 0 && <p className="text-muted-foreground">Nothing yet. Lessons are derived from finished sessions — which worker delivered, what it cost, where a person had to step in — and fold into the next session&apos;s brief.</p>}
+        {view.memory.length === 0 && <p className="text-muted-foreground">{t('sess.learnedEmpty')}</p>}
         <ul className="space-y-1 text-xs">
           {view.memory
             .slice()

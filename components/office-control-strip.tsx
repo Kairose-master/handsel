@@ -141,7 +141,7 @@ export function OfficeControlStrip({ slot = 1 }: { slot?: number }) {
                 {s.goal.slice(0, 100)}
               </Link>
               <span className="text-xs">
-                <span className={s.liveRuns ? 'text-success' : s.status === 'waiting_on_approval' ? 'text-warning' : ''}>{s.status.replace(/_/g, ' ')}</span>
+                <span className={s.liveRuns ? 'text-success' : s.status === 'waiting_on_approval' ? 'text-warning' : ''}>{t(`sess.status.${s.status}`)}</span>
                 {s.statusReason ? ` — ${s.statusReason.slice(0, 80)}` : ''}
               </span>
             </div>

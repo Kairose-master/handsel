@@ -176,3 +176,29 @@ describe('dispatching outside a request scope', () => {
     expect(src).not.toMatch(/\n {6}after\(async/)
   })
 })
+
+describe('the control room speaks the owner\'s language', () => {
+  it('every status and kind has a label in en and ko — a missing one renders its own key', async () => {
+    const { DICTIONARIES } = await import('@/lib/i18n-dict')
+    const { SESSION_STATUSES, SESSION_KINDS } = await import('@/lib/office-session')
+    for (const loc of ['en', 'ko'] as const) {
+      for (const s of SESSION_STATUSES) expect(DICTIONARIES[loc][`sess.status.${s}`], `${loc}/${s}`).toBeTruthy()
+      for (const k of SESSION_KINDS) expect(DICTIONARIES[loc][`sess.kindOf.${k}`], `${loc}/${k}`).toBeTruthy()
+    }
+  })
+
+  it('the pages and the strip render those labels through t(), not the raw enum', () => {
+    const page = read('app/(dashboard)/office/sessions/page.tsx')
+    const detail = read('app/(dashboard)/office/sessions/[id]/page.tsx')
+    const strip = read('components/office-control-strip.tsx')
+    for (const [name, src] of [['page', page], ['detail', detail], ['strip', strip]] as const) {
+      expect(src, name).toContain('sess.status.${')
+      expect(src, name).toContain('useI18n')
+      // the old raw rendering is gone
+      expect(src, name).not.toContain("{s.status.replace(/_/g, ' ')}")
+    }
+    // and the ko dictionary actually differs from en (a copy would be a silent no-op)
+    expect(page).toContain("t('sess.title')")
+    expect(detail).toContain("tr('sess.timeline')")
+  })
+})

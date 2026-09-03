@@ -522,9 +522,14 @@ against a chain).
   `cancel` stop dispatching; a cloud/MCP call already in progress runs to
   its callback, and the result is then folded or discarded by the run's
   state. SIGSTOP is a local worker's privilege.
-- **The control room pages are English-only.** The first-screen strip is
-  translated (en, ko; the rest fall back to English); `/office/sessions`
-  and the session page are not.
+- **Only English and Korean.** The strip, `/office/sessions` and the
+  session page all run through `lib/i18n` now — including the status and
+  kind vocabulary (`sess.status.*`, `sess.kindOf.*`, pinned per status by
+  `tests/office-session-wiring.test.ts` so a new status cannot ship
+  showing its own key). The other eleven locales fall back to English,
+  as everything outside the nav and the guide does; filling them needs
+  `scripts/translate-dict.mjs` and a key. **`statusReason` stays English**
+  in every locale: it is a sentence the loop generates, not a label.
 - **The escrow lane ran only under test.** `post_escrow_job` /
   `settle_escrow` are unit-tested and pinned to the one release site;
   they have not moved testnet money in a live session yet. (The remote lane
