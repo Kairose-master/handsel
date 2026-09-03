@@ -405,11 +405,20 @@ export async function createOfficeSession(input: CreateSessionInput): Promise<Of
   return state.session
 }
 
-export type SessionListRow = Pick<OfficeSession, 'id' | 'kind' | 'goal' | 'status' | 'statusReason' | 'nextWakeAt' | 'budgetLimitUsd' | 'spentUsd' | 'createdAt' | 'wave' | 'officeSlot'> & {
+export type SessionListRow = Pick<OfficeSession, 'id' | 'kind' | 'goal' | 'status' | 'statusReason' | 'nextWakeAt' | 'budgetLimitUsd' | 'spentUsd' | 'createdAt' | 'wave' | 'officeSlot' | 'lastHeartbeatAt'> & {
   openApprovals: number
   liveRuns: number
   tasksDone: number
   tasksTotal: number
+  tasksFailed: number
+  /** Attempts beyond the first, summed over the wave — what "retries" means on the strip. */
+  retries: number
+  /** The task the loop is on right now, and who has it. */
+  currentTask: { id: string; title: string; status: string; workerAgentId: string | null; attempt: number } | null
+  /** What the loop will do next, in the status table's words. */
+  nextStep: string
+  lastArtifact: { kind: string; name: string; at: number; sha256: string } | null
+  memoryRulesUsed: number
 }
 
 export async function listOfficeSessions(userId: string, slot?: number, limit = 50): Promise<SessionListRow[]> {
@@ -421,7 +430,20 @@ export async function listOfficeSessions(userId: string, slot?: number, limit = 
   return rows.map((r) => {
     const st = r.state
     const tasks = Object.values(st.tasks ?? {}).filter((t) => t.wave === st.session.wave)
+    const current =
+      (st.session.currentNodeId ? st.tasks[st.session.currentNodeId] : undefined) ??
+      tasks.find((t) => t.status === 'running' || t.status === 'dispatched') ??
+      tasks.find((t) => t.status === 'awaiting_approval' || t.status === 'verifying' || t.status === 'submitted') ??
+      null
+    const artifacts = Object.values(st.artifacts ?? {}).sort((a, b) => b.createdAt - a.createdAt)
     return {
+      lastHeartbeatAt: st.session.lastHeartbeatAt,
+      tasksFailed: tasks.filter((t) => t.status === 'failed').length,
+      retries: tasks.reduce((n, t) => n + Math.max(0, t.attempts - 1), 0),
+      currentTask: current ? { id: current.id, title: current.title, status: current.status, workerAgentId: current.assignedWorkerId, attempt: current.attempts } : null,
+      nextStep: STATUS_META[st.session.status].onHeartbeat,
+      lastArtifact: artifacts[0] ? { kind: artifacts[0].kind, name: artifacts[0].name, at: artifacts[0].createdAt, sha256: artifacts[0].sha256 } : null,
+      memoryRulesUsed: st.session.memoryRulesUsed.length,
       id: st.session.id,
       kind: st.session.kind,
       goal: st.session.goal,

@@ -7,6 +7,7 @@ import { getAgents, bootstrapFirstAgent, createAgent } from '@/app/actions/agent
 import { getPlatformFeed } from '@/app/actions/feed'
 import { useI18n } from '@/lib/i18n'
 import { Chip, PageHead, Panel, StatusDot } from '@/components/deck'
+import { OfficeControlStrip } from '@/components/office-control-strip'
 
 type FeedEvent = { id: string; kind: string; summary: string; createdAt: string | Date }
 
@@ -133,6 +134,8 @@ export default function DashboardPage() {
   return (
     <div className="space-y-5">
       <PageHead title={t('dash.welcome', { name: user?.name || t('dash.defaultUserName') })} subtitle={t('dash.subtitle')} />
+
+      <OfficeControlStrip />
 
       <Panel
         title={t('dash.yourAgents', { count: agents.length })}

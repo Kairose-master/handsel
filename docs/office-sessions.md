@@ -278,6 +278,14 @@ owner is told.
 
 ## The control room (`/office/sessions`)
 
+**First screen first.** `components/office-control-strip.tsx` sits at the
+top of the dashboard home and of `/office`: needs-you count with inline
+approve/deny, live sessions with their current task, worker and next step,
+running-now, workers online, paid today (and how much of it the policy
+approved by itself), retries/failures, the latest artifact by hash, and how
+many lessons the briefs opened with. Every number is the same
+`officeSessionOverview` query the control room uses; it links into it.
+
 Needs your decision (the inbox: reasons, files, the diff, approve/deny) →
 Sessions (status sentence, wave, tasks done, spent/budget, live runs, next
 check; pause/resume/cancel) → Worker fleet (grant, liveness, harness;

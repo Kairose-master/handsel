@@ -169,7 +169,9 @@ lib/office-session-server.ts   tables, the worker protocol on the poll, commands
 ```
 
 `/office/sessions` is where an owner connects Claude Code once, gives the
-office a goal, and steps in only where the policy says a person must.
+office a goal, and steps in only where the policy says a person must — and
+the strip at the top of `/office` and the dashboard home is the same
+picture in one glance: what is running, what needs you, what was paid.
 
 ## Selling itself
 

@@ -20,6 +20,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { getAgentRun, type ConsoleRun } from '@/app/actions/harness-runs'
 import { StatusDot } from '@/components/deck'
+import { OfficeControlStrip } from '@/components/office-control-strip'
 import { PhaseRail, RunLines, RUN_LABEL, RUN_TONE } from '@/components/harness-live'
 import { elapsedLabel, furthestPhase, phaseIndex, runStatus, touchedFiles } from '@/lib/harness-run'
 import { Copy, RefreshCw, Loader2, UserPlus, Building2, Plus, X, Maximize2, Minimize2, Plug, Unplug, Coins, Fuel, Network } from 'lucide-react'
@@ -3131,6 +3132,10 @@ export default function OfficePage() {
           Network
         </Link>
       </div>
+
+      {/* What this office is doing right now — the first thing on the
+          screen, before the desk view (docs/office-sessions.md §control room). */}
+      <OfficeControlStrip slot={activeSlot} />
 
       <CompanyHqBar />
 
