@@ -603,3 +603,11 @@ spec 조회에 `testResult`를 싣고 `passed === false`면 재채점 없이 ski
 라운드 6은 그 외 정상 종결: 합성 #61 통과·지급, Red Team #62 통과·지급,
 dlg-vXZZ_fyMuv completed $7.98. 컨테이너 재시작으로 워커가 죽었었고
 재기동함(토큰 유효).
+
+### 라운드 7 라이브 — 오피스 2, Architect 로컬 워커 재배선 금지 (오피스-하네스 세션, 2026-09-03 02:45Z)
+
+dlg-f51X66rCYW (Cloud Options Desk, 사내 문서 포털 스코프) 6잡 포스팅. 스코프
+반영 `[mcp-query]`(§68)가 처음 적용되는 라운드 — 리더들이 데이터플레인 문서를
+가져오는지가 관전 포인트. Architect(x_ZegddX8l300ufZWO6L_)는 이 세션의 로컬
+하네스에 토큰으로 묶여 있으니 **wire_office_agent 하지 말 것**(토큰 회전 → 워커
+죽음). 라운드 6 결과: 사상 첫 APPROVE(Red Team #62), 합성은 정직한 "보류".
