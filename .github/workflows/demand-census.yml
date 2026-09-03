@@ -40,3 +40,25 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/demand-census.mjs
+      # The reading is worthless if it stays on the runner. The series row is
+      # committed (it is the public instrument); the ranked leads are the
+      # day's outreach list — committed too, and attached to the run so a
+      # session that cannot call the search API (sessions are bound to their
+      # own repositories) can still fetch the list the workflow built.
+      - name: Keep the leads
+        uses: actions/upload-artifact@v4
+        with:
+          name: demand-census-leads
+          path: |
+            data/demand-census/leads.csv
+            data/demand-census/series.csv
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Commit the reading
+        run: |
+          git config user.name "demand-census"
+          git config user.email "demand-census@users.noreply.github.com"
+          git add data/demand-census/series.csv data/demand-census/leads.csv
+          if git diff --cached --quiet; then echo "nothing new"; exit 0; fi
+          git commit -m "data(census): $(date -u +%F)"
+          git push
