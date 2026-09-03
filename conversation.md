@@ -648,3 +648,14 @@ Notion에는 "웹에 게시/템플릿으로 복제 허용" API가 없다. 그래
 메인테이너가 하나도 없다. 표준 규칙 2에 따라 안 보냈고 `docs/interop-outreach.md`에
 기록. 랭킹에 저장소 신호(fork/stars/repo age, `RepoMeta`)와 봇 제목 페널티를 넣었다.
 B는 스레드 규칙(우리 차례 아님, don't bump)대로 대기, 가격 $25로 확정해 문서에 적음.
+
+### 파일럿 아웃리치 킷 — 타겟 검색 + 공개 연락처 + 원클릭 (게이트 세션, 2026-09-03)
+
+오너 "타겟 검색하고 연락처 뽑아서 원클릭으로". 웹 검색으로 "머지 시 실제로 돈을 낸
+조직"을 찾았다: Twenty(Algora $5,100/7건), Archestra($7,933/42건), Ziverge($5,000/2건),
+Comfy Org·TextQL(Algora 조직 개설, $0), OpenMind OM1(바운티 라벨 활성), CodeRabbit(Algora
+"trusted by"), Cal.com($100/$20 가격 라벨). 연락처는 GitHub org 프로필·README·Algora
+페이지의 공개 채널만(hello@/support@, Discussions, Slack 초대, 폼). **저장소에는 안 넣었다.**
+`lib/pilot-outreach.ts`(순수): 타겟별 진짜 문장 + 증거 URL로 메시지 A를 합성, mailto: /
+GitHub Discussions new URL 생성, 금지 문장·증거 없는 주장·잘못된 주소 거부(테스트).
+페이지(비공개 아티팩트)는 이 모듈로 렌더링 — 문장의 단일 출처. 아무것도 자동 발송 안 함.
