@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { PublicShell } from '@/components/public-shell'
 import { RepoDiagnostic } from '@/components/repo-diagnostic'
+import { RepoCarePricing } from '@/components/repo-care-pricing'
 import { isRealMoney } from '@/lib/onchain/real-money'
 import { PILOT_OFFER } from '@/lib/billing'
 
@@ -96,50 +97,7 @@ export default function RepoCarePage() {
         </section>
 
         {/* ── Pricing ───────────────────────────────────────────── */}
-        <section className="space-y-4">
-          <h2 className="text-lg font-medium">가격</h2>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="rounded-lg border border-border p-4">
-              <div className="text-sm font-semibold">저장소 진단</div>
-              <div className="mt-1 text-2xl font-bold">무료</div>
-              <p className="mt-2 text-xs text-muted-foreground">계정 없이, 지금 바로. 위 진단 도구를 사용하세요.</p>
-            </div>
-            <div className="rounded-lg border-2 border-primary p-4">
-              <div className="text-sm font-semibold">{PILOT_OFFER.days}일 파일럿</div>
-              <div className="mt-1 text-2xl font-bold">${PILOT_OFFER.priceUsd}</div>
-              <p className="mt-2 text-xs text-muted-foreground">
-                저장소 하나, {PILOT_OFFER.days}일. 매일 밤 최대 3개 작업, 검증, PR, 아침 보고서.
-              </p>
-            </div>
-            <div className="rounded-lg border border-border p-4">
-              <div className="text-sm font-semibold">계속 사용</div>
-              <div className="mt-1 text-2xl font-bold">월 $299~</div>
-              <p className="mt-2 text-xs text-muted-foreground">
-                파일럿 결과를 본 뒤 결정하세요. 정확한 요금은 저장소 수와 야간 처리량에 따라 정합니다.
-              </p>
-            </div>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            지갑과 USDC가 필요하지 않습니다. 일반 카드 결제로 시작하며, 고객의 코드는 고객 환경에 남습니다.
-          </p>
-
-          {checkoutUrl ? (
-            <a
-              href={checkoutUrl}
-              className="inline-flex items-center justify-center rounded-md bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
-            >
-              {PILOT_OFFER.days}일 파일럿 시작 — ${PILOT_OFFER.priceUsd}
-            </a>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              파일럿 결제가 아직 열려 있지 않습니다.{' '}
-              <a className="underline underline-offset-4" href="mailto:hello@handsel.dev?subject=Repo%20Care%20pilot">
-                hello@handsel.dev로 문의
-              </a>
-              해주세요.
-            </p>
-          )}
-        </section>
+        <RepoCarePricing checkoutUrl={checkoutUrl} />
 
         <p className="text-xs text-muted-foreground">
           결제는 저희의 merchant of record인 Lemon Squeezy가 처리합니다 — Handsel은 카드 정보를 보거나 저장하지

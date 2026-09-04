@@ -100,11 +100,23 @@ describe('wiring: signature before parsing, and no dead button', () => {
   })
 
   it('/repo-care never renders a checkout link with nothing behind it', () => {
-    const src = read('app/repo-care/page.tsx')
-    expect(src).toContain('LEMONSQUEEZY_PILOT_CHECKOUT_URL')
-    expect(src).toMatch(/checkoutUrl \?/)
-    expect(src).toContain('mailto:')
-    expect(src).toContain('<PublicShell')
+    const page = read('app/repo-care/page.tsx')
+    expect(page).toContain('LEMONSQUEEZY_PILOT_CHECKOUT_URL')
+    expect(page).toContain('<PublicShell')
+    expect(page).toContain('<RepoCarePricing checkoutUrl={checkoutUrl} />')
+    const pricing = read('components/repo-care-pricing.tsx')
+    expect(pricing).toMatch(/checkoutUrl \?/)
+    expect(pricing).toContain('mailto:')
+  })
+
+  it('the pricing section sells exactly the real offer — no fake tiers, no billing toggle', () => {
+    // docs/positioning.md §8: no subscription ladder before the first rung
+    // has sold once. A monthly/yearly toggle or an invented fourth tier
+    // would be exactly that ladder, dressed up as a UI component.
+    const pricing = read('components/repo-care-pricing.tsx')
+    expect(pricing).toContain('PILOT_OFFER.priceUsd')
+    expect(pricing).toContain('PILOT_OFFER.days')
+    expect(pricing).not.toMatch(/useState.*billing|billingCycle|toggle.*yearly/i)
   })
 
   it('/admin/pilots is gated on the billing permission, not just a session', () => {

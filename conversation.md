@@ -870,3 +870,18 @@ GitHub Discussions new URL 생성, 금지 문장·증거 없는 주장·잘못�
   auth.userId 스코프 확인하고 addendum으로 붙임(나머지 ~36개는 미검토라고 정직하게 남김).
   **desktop-v* 릴리스 링크는 안 건드림** — git ls-remote로 재확인, 여전히 이 레포엔
   desktop-v* 태그가 없어서 V1 archive가 진짜 맞는 위치임(surface-audit.md 기존 기록과 일치).
+
+- (17차) /repo-care 가격 섹션 리디자인 — components/repo-care-pricing.tsx 신설.
+  운영자가 originkit(`npx originkit@latest add pricing-02`) CLI를 라이브 API 키와 함께
+  돌려달라고 했는데, **classifier가 두 번 다 차단**(npx든 curl이든, 라이브 키를 네트워크로
+  내보내는 패턴 자체를 막음) — 우회 시도 안 하고 사용자에게 그대로 설명함. 대신 운영자가
+  originkit 프리뷰 페이지의 공개 `.mjs` 모듈 URL을 직접 줘서, WebFetch로 **읽기만**
+  해서(fetch() 없음, 정적 SVG 참조뿐인 순수 UI 컴포넌트 확인) 디자인 패턴만 참고했다.
+  원본은 월간/연간 토글이 있는 범용 SaaS 3티어 템플릿이라 **그대로 안 씀** — §8("첫 판매
+  전까지 구독 사다리 안 만든다")과 충돌하고 minify된 번들이라 이 repo 스타일에도 안 맞음.
+  그래서 실제 `PILOT_OFFER` 데이터에 연결된 새 컴포넌트를 손으로 다시 짬(체크마크
+  피처 리스트, "지금 판매 중" 뱃지, CTA 버튼 shine 호버 — CSS만, 외부 라이브러리 없음).
+  `app/repo-care/page.tsx`의 인라인 가격표 블록을 이 컴포넌트로 교체했고,
+  `tests/billing.test.ts`의 "checkout 링크 뒤에 아무것도 없으면 안 됨" 테스트를
+  새 컴포넌트 파일 쪽으로 옮기고, "가짜 티어·토글 없음"을 확인하는 테스트 추가.
+  next dev로 렌더 확인함(에러 없음, 3티어 다 뜸, checkoutUrl 없을 때 메일 폴백 정상).
