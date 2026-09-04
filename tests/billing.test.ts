@@ -99,8 +99,8 @@ describe('wiring: signature before parsing, and no dead button', () => {
     expect(read('lib/billing-server.ts')).toContain('ON CONFLICT (order_id) DO NOTHING')
   })
 
-  it('/pilot never renders a checkout link with nothing behind it', () => {
-    const src = read('app/pilot/page.tsx')
+  it('/repo-care never renders a checkout link with nothing behind it', () => {
+    const src = read('app/repo-care/page.tsx')
     expect(src).toContain('LEMONSQUEEZY_PILOT_CHECKOUT_URL')
     expect(src).toMatch(/checkoutUrl \?/)
     expect(src).toContain('mailto:')

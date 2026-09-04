@@ -325,7 +325,7 @@ Still owed, and honestly outside what code alone can close:
 - ~~Card payment and a pilot flow~~ **Landed 2026-09-04** (`docs/billing.md`):
   Lemon Squeezy, not Stripe — Korea is not a Stripe-supported seller
   country, and Lemon Squeezy is a merchant of record so no US entity is
-  needed. `/pilot` sells exactly the $500/14-day offer below, its webhook
+  needed. `/repo-care` sells exactly the $500/14-day offer below, its webhook
   (`/api/webhooks/lemonsqueezy`) records who paid, `/admin/pilots` is where
   the operator reads it. Still a human's job: creating the Lemon Squeezy
   store and product, and onboarding each pilot once it is sold — building

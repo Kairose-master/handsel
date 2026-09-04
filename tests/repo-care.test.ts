@@ -18,6 +18,7 @@ import {
   isDocsIssue,
   morningReport,
   repoCareGoal,
+  summarizeTriage,
   triageIssues,
   type RepoCareSettings,
   type RepoIssue,
@@ -152,5 +153,46 @@ describe('what the owner reads', () => {
     const report = morningReport({ repoFullName: 'acme/api', lines: [], skipped: [], costUsd: null })
     expect(report).toContain('0 landed · 0 need you · 0 failed · 0 left for a person')
     expect(report).not.toContain('$')
+  })
+})
+
+describe('summarizeTriage — the honest 3-bucket count the free diagnostic shows', () => {
+  it('buckets a real triage: taken is workable, label/title skips are excluded, everything else is review', () => {
+    const issues: RepoIssue[] = [
+      issue({ number: 1 }), // taken
+      issue({ number: 2, labels: ['security'] }), // skip: label
+      issue({ number: 3, title: 'Rotate the API key' }), // skip: title
+      issue({ number: 4, body: 'short' }), // skip: too_vague
+      issue({ number: 5 }), // pull request, dropped entirely
+    ]
+    issues[4].isPullRequest = true
+    const triage = triageIssues(issues, settings)
+    const diag = summarizeTriage('acme/api', triage)
+    expect(diag.repoFullName).toBe('acme/api')
+    expect(diag.workable).toBe(1)
+    expect(diag.excluded).toBe(2)
+    expect(diag.review).toBe(1)
+    expect(diag.totalOpenIssues).toBe(4) // the pull request never counts as an issue
+    const byNumber = new Map(diag.issues.map((i) => [i.number, i]))
+    expect(byNumber.get(1)?.bucket).toBe('workable')
+    expect(byNumber.get(1)?.reason).toBeNull()
+    expect(byNumber.get(2)?.bucket).toBe('excluded')
+    expect(byNumber.get(3)?.bucket).toBe('excluded')
+    expect(byNumber.get(4)?.bucket).toBe('review')
+    expect(byNumber.has(5)).toBe(false)
+  })
+
+  it('a label-filter or over-cap skip reads as review, not excluded — it is a setting, not a risk', () => {
+    const capped = { ...settings, maxPerWave: 1 }
+    const triage = triageIssues([issue({ number: 1 }), issue({ number: 2 })], capped)
+    const diag = summarizeTriage('acme/api', triage)
+    expect(diag.workable).toBe(1)
+    expect(diag.review).toBe(1)
+    expect(diag.excluded).toBe(0)
+  })
+
+  it('an all-clean repo is a real zero, not fabricated risk', () => {
+    const diag = summarizeTriage('acme/api', { taken: [], skipped: [] })
+    expect(diag).toEqual({ repoFullName: 'acme/api', totalOpenIssues: 0, workable: 0, excluded: 0, review: 0, issues: [] })
   })
 })

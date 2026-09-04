@@ -24,7 +24,8 @@ one sale at a time) that difference is noise.
 | Reading an `order_created` event | `lib/billing.ts` `parsePilotOrder` — every other event name, and every malformed body, reads as "not an order" |
 | Recording the lead | `lib/billing-server.ts` — a self-migrating `pilot_lead` table, insert is idempotent on `order_id` (a webhook retry changes nothing) |
 | Receiving the webhook | `POST /api/webhooks/lemonsqueezy` — verifies before parsing, always answers 200 (Lemon Squeezy retries a non-2xx) |
-| The public offer | `/pilot` — English, like `/start`; the "Start the pilot" button is `LEMONSQUEEZY_PILOT_CHECKOUT_URL`, and its absence is not an error — the page shows a plain email ask instead |
+| The public offer | `/repo-care` — the landing page, in Korean (the operator's own copy — see the page's own header comment before changing it); `/repo-care`'s diagnostic and `/office/repo-care`'s wizard both end at the same `LEMONSQUEEZY_PILOT_CHECKOUT_URL` checkout, and its absence is not an error — both show a plain email ask instead |
+| The guided onboarding | `/office/repo-care` — worker connect, posture (`PRESET_POLICIES`), a final plan review, then the same checkout button. Starts the real session immediately (`startRepoCare`) — Repo Care's own work is `settlement: 'internal'`, so nothing here waits on payment to run at $0 on-platform cost |
 | Reading who paid | `/admin/pilots` — `billing` permission (`lib/admin.ts`), name/email/amount, newest first |
 
 What is **not** built, on purpose: a subscription, a second tier, an
@@ -45,7 +46,7 @@ reading `/admin/pilots` and doing it by hand.
    the actual charge never say two different things.
 3. Copy the product's hosted checkout URL into `LEMONSQUEEZY_PILOT_CHECKOUT_URL`
    (Vercel env, both this repo's deployments as needed). This alone is enough
-   for `/pilot` to accept a real payment — no API key, no webhook required
+   for `/repo-care` to accept a real payment — no API key, no webhook required
    for the button to work.
 4. In the store's webhook settings, add `https://<your-domain>/api/webhooks/lemonsqueezy`,
    subscribed to `order_created`. Copy the signing secret into

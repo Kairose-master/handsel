@@ -762,3 +762,23 @@ GitHub Discussions new URL 생성, 금지 문장·증거 없는 주장·잘못�
   (안 넣으면 대시보드 다크 테마로 열림, `tests/deck-theme.test.ts`가 잡는다)와 `tests/public-shell.test.ts`의
   `PUBLIC_PAGES`(환경 공시 강제). 구독/티어는 일부러 안 만들었다 — 파일럿 한 건도 안 팔린 상태에서 사다리부터
   만드는 게 §8이 경고한 실수라서, `docs/billing.md`가 그 이유와 Lemon Squeezy 계정 세팅 런북을 갖고 있다.
+
+- **(11차) 판매 패키지 v1 — `/pilot` → `/repo-care`로 승격, 무료 진단, 온보딩 마법사.**
+  운영자가 랜딩 카피·가격표·DM·온보딩 화면 스펙을 통째로 고정했다. `/pilot`은 삭제하고
+  `/repo-care`로 이름을 바꿨다(체크아웃 링크 하나짜리 페이지에서 실제 무료 진단이 있는
+  진짜 프론트도어가 됐기 때문). `lib/repo-care.ts`에 `summarizeTriage`(순수 — 실제 triage
+  결과를 "오늘 밤 처리 가능/사람이 봐야 함/자동 제외" 3버킷으로 접는다, PR은 카운트에서
+  빠진다)를 추가했고, `lib/repo-diagnose-server.ts`(GitHub 공개 REST API, **App 설치 없이** —
+  `lib/github-app.ts`의 `listOpenIssues`는 설치가 필요해서 못 씀)가 그 위에서 계정 없는
+  방문자용 진단을 돈다(`app/actions/repo-diagnose.ts`, 의도적으로 `requireUser()` 없음).
+  `/office/repo-care`는 새 3단계 마법사(워커 연결 → 운영 자세 → 최종 확인+결제) —
+  운영 자세 3개는 JSON 에디터가 아니라 버튼 3개 + 한국어 문장 요약(`POSTURE_KO`,
+  `policyInWords`의 번역이 아니라 별도 검증한 패러프레이즈). **체크아웃 URL은
+  `LEMONSQUEEZY_PILOT_CHECKOUT_URL`을 서버 컴포넌트(`page.tsx`)에서 읽어 prop으로
+  클라이언트(`wizard-client.tsx`)에 내려준다** — `NEXT_PUBLIC_` 프리픽스 없이 클라이언트가
+  직접 `process.env`를 읽으면 항상 undefined가 되는 버그를 피하려고 `app/guest/page.tsx` +
+  `PipelineDemo` 패턴을 그대로 따랐다. 세션 시작은 결제를 기다리지 않는다 — Repo Care 작업은
+  `settlement: 'internal'`이라 플랫폼 비용이 $0이기 때문(`docs/billing.md`에 이유 적어둠).
+  `/repo-care`를 만지는 세션은 `lib/public-routes.ts`와 `tests/public-shell.test.ts`를
+  같이 확인할 것(이미 `pilot`→`repo-care`로 갱신됨). 영업 DM·계정 모집·아침 리포트 숫자
+  화면(⑥)은 이번 라운드 스코프 밖 — 전자는 운영자가 손으로 하는 GTM, 후자는 다음 라운드로 미룸.

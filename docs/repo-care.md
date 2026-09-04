@@ -24,6 +24,9 @@ would be wrong.
 | Landing the work | `SessionTask.deliverPr` → the loop's `open_pr` command → `openPrFromDiff` |
 | The morning report | `morningReport` (pure), assembled per read by `repoCareReport` |
 | Setting it up | the Repo Care card on `/office/sessions` (en/ko), or `start_repo_care` over MCP |
+| The free, no-account diagnostic (any public repo, before signing in) | `lib/repo-diagnose-server.ts` — the same `triageIssues` rules, but read via GitHub's public REST API instead of the App's installation, and reduced to three honest counts by `summarizeTriage` (`lib/repo-care.ts`) |
+| The sales package: landing copy, pricing, the diagnostic | `/repo-care` (`app/repo-care/page.tsx`, `components/repo-diagnostic.tsx`) — public, Korean, `docs/billing.md` |
+| The guided onboarding (worker connect → posture → pay) | `/office/repo-care` (`app/(dashboard)/office/repo-care/`) — the customer-facing wizard onto the same `startRepoCare` action the `/office/sessions` card uses |
 
 ## The triage, and why it is boring on purpose
 

@@ -27,7 +27,7 @@ export const PUBLIC_ROUTE_PREFIXES = [
   'live',
   'oauth',
   'participation',
-  'pilot', // the Repo Care pilot offer (docs/billing.md)
+  'repo-care', // the Repo Care landing + free diagnostic (docs/billing.md)
   'privacy',
   'proof',
   'sign-in',

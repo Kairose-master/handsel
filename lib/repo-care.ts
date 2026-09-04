@@ -298,3 +298,63 @@ export function morningReport(input: { repoFullName: string; lines: readonly Tas
   }
   return out.join('\n').trimEnd()
 }
+
+/* ── The free diagnostic ─────────────────────────────────────────────── */
+
+/**
+ * The three buckets the landing page shows before anyone has an account or
+ * has connected anything. Built from the same `triageIssues` a real
+ * session plans from — the diagnostic is not a simplified opinion, it is
+ * the real rule engine run once, read-only.
+ *
+ * There is no fourth, unverifiable bucket like "needs your approval": that
+ * depends on what a run actually changes, which does not exist yet at
+ * diagnosis time. Claiming it here would be exactly the kind of promise
+ * this repo's "no fake data" rule exists to catch. `review` is honestly
+ * named instead — the rest of the backlog, for a person to read, not a
+ * verdict on any one issue.
+ */
+export type DiagnosticBucket = 'workable' | 'excluded' | 'review'
+
+export type DiagnosticIssue = {
+  number: number
+  title: string
+  bucket: DiagnosticBucket
+  /** Why it landed in `excluded` or `review`; null for `workable`. */
+  reason: string | null
+}
+
+export type Diagnostic = {
+  repoFullName: string
+  /** Open issues read, pull requests already excluded from this count. */
+  totalOpenIssues: number
+  workable: number
+  excluded: number
+  review: number
+  issues: DiagnosticIssue[]
+}
+
+/** Pure: turns a real `triageIssues` result into the three counts the
+ *  landing page shows. No network in this function — `diagnoseRepo`
+ *  (`lib/repo-diagnose-server.ts`) is what fetches the issues. */
+export function summarizeTriage(repoFullName: string, triage: Triage): Diagnostic {
+  const issues: DiagnosticIssue[] = []
+  for (const t of triage.taken) issues.push({ number: t.issue.number, title: t.issue.title, bucket: 'workable', reason: null })
+  let excluded = 0
+  let review = 0
+  for (const s of triage.skipped) {
+    if (s.issue.isPullRequest) continue // not part of "open issues" at all
+    const bucket: DiagnosticBucket = s.reason === 'label' || s.reason === 'title' ? 'excluded' : 'review'
+    if (bucket === 'excluded') excluded += 1
+    else review += 1
+    issues.push({ number: s.issue.number, title: s.issue.title, bucket, reason: s.detail })
+  }
+  return {
+    repoFullName,
+    totalOpenIssues: triage.taken.length + excluded + review,
+    workable: triage.taken.length,
+    excluded,
+    review,
+    issues,
+  }
+}
