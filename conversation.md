@@ -885,3 +885,17 @@ GitHub Discussions new URL 생성, 금지 문장·증거 없는 주장·잘못�
   `tests/billing.test.ts`의 "checkout 링크 뒤에 아무것도 없으면 안 됨" 테스트를
   새 컴포넌트 파일 쪽으로 옮기고, "가짜 티어·토글 없음"을 확인하는 테스트 추가.
   next dev로 렌더 확인함(에러 없음, 3티어 다 뜸, checkoutUrl 없을 때 메일 폴백 정상).
+
+- (18차) Repo Care 아침 리포트에 태스크별 서명 증거(work proof) 링크 노출 —
+  `issueTaskProof`가 settled internal 태스크마다 유료 마켓 잡과 **동일한** EIP-712
+  work proof를 이미 서명해서 `kind: 'proof'` artifact로 저장하고 있었는데,
+  `repoCareReport`는 `pr-`로 시작하는 artifact(PR 링크)만 찾고 이 proof artifact는
+  전혀 조회하지 않아서 **존재하는데 안 보이는** 상태였음. `lib/repo-care.ts`의
+  `TaskOutcomeLine`에 `proofUrl` 필드 추가, `morningReport`가 PR 줄 아래에
+  `signed proof: /api/proof/<id>` 한 줄을 붙이도록 수정. `lib/office-session-server.ts`의
+  `repoCareReport`에서 `a.taskId === t.id && a.kind === 'proof'`로 조회해서 채움.
+  테스트: tests/repo-care.test.ts에 새 테스트 1개(있을 때/없을 때 모두 확인) +
+  기존 2개 케이스에 필드 추가, tests/office-session-wiring.test.ts에 조회 코드
+  자체가 있는지 pin하는 assertion 2줄 추가. docs/repo-care.md에 설명 단락 추가.
+  `npm run gates` 전부 green(292 files / 4223 tests, 0 lint errors, build 성공).
+  커밋 4e5a037, main으로 fast-forward 후 둘 다 push 완료.
