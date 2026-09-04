@@ -782,3 +782,18 @@ GitHub Discussions new URL 생성, 금지 문장·증거 없는 주장·잘못�
   `/repo-care`를 만지는 세션은 `lib/public-routes.ts`와 `tests/public-shell.test.ts`를
   같이 확인할 것(이미 `pilot`→`repo-care`로 갱신됨). 영업 DM·계정 모집·아침 리포트 숫자
   화면(⑥)은 이번 라운드 스코프 밖 — 전자는 운영자가 손으로 하는 GTM, 후자는 다음 라운드로 미룸.
+
+- **(12차, 문서만) "AI Agency Delivery OS" 포지셔닝 재확인 — §8 결정을 바꾸지 않음.**
+  운영자가 외부 경쟁분석을 들고 왔고, 검증해보니 §8("an operations room, priced
+  monthly", 2026-09-03)과 사실상 같은 결론이었다. `docs/competitive-landscape.md`에
+  다섯 번째 패스 추가: RAILS·TessPay는 실제 제품이 아니라 **아직 안 나온 arXiv 논문**
+  (각 2606.08790, 2602.00213)이라 "이미 5/10 선점됨"이 아니라 "우리가 실제 정산까지
+  간 유일한 쪽"이 맞는 읽기임을 확인했고, 진짜 새로운 경쟁군은 Relevance AI·Lindy·
+  CrewAI·Zapier Agents 같은 "AI workforce" SaaS — 넷 다 독립 검증 없이 에이전트
+  용량만 판다는 점에서 §6b의 위협 랭킹은 그대로 유지. `docs/positioning.md`에 §9
+  추가(같은 날짜) — 카피 한 줄만 다듬었고 "operations room"이 정식 프레이밍으로 남고
+  "vendor-neutral accountability layer" 같은 대안 문구는 안 씀. 코드/UI 문자열 변경
+  없음. **`docs/pilot-candidates.md` 신설** — 영업 후보 원장(ICP, 근거 URL, 상태,
+  스코어보드). DM 발송은 여전히 사람 몫 — 원장은 절대 아무것도 보내지 않는다. 매주
+  자동으로 후보를 찾아 이 파일에 append하는 Routine을 설정했다(월요일 01:00 UTC).
+  이 파일을 만지는 세션은 상태값을 지우지 말고 in-place로만 바꿀 것.

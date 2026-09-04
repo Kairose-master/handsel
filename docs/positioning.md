@@ -347,3 +347,68 @@ $500 pilot sold, three real pieces of work finished, the customer spending
 under ten minutes per task, and a stated intention to keep paying monthly.
 Failing that is a signal to change the customer and the offer — not to
 write more code.
+
+## 9. "AI Agency Delivery OS" — a sharper sentence for §8, not a new decision (2026-09-04)
+
+An operator-supplied competitive read argued for describing Handsel as an
+"AI Agency Delivery OS" rather than a marketplace. Checked against
+`docs/competitive-landscape.md` (fifth pass, same date) before writing
+anything down here, because the read also carried two competitive claims
+that needed verifying, not just repeating — see that document for what
+held up (a real, unnoticed "AI workforce" SaaS category: Relevance AI,
+Lindy, CrewAI, Zapier Agents) and what did not (RAILS and TessPay are
+unshipped arXiv papers, not shipped competitors; Handsel's live, real-money
+`LaborMarketV2` is ahead of both on the one axis that matters).
+
+**This does not change the §8 decision.** The customer (a 1–10 person
+agency), the unit (a session inside an office), the price (a monthly room),
+and the first vertical (Repo Care) are exactly what §8 already said. What
+changes is the sentence a stranger reads first:
+
+> Handsel is not a place to buy access to agents. It carries several AI
+> agents through a customer's actual backlog — permission, budget,
+> verification, approval — and proves what shipped.
+
+**One correction to make and keep:** the operator's own draft also proposed
+"a vendor-neutral accountability layer" as the differentiator. That phrase
+does not survive next to §8's "an operations room, priced monthly" — two
+taglines drift, and the next session that reads this file should not have
+to pick one. **"Operations room" stays canonical.** "Accountability layer"
+describes the mechanism (verification before payment), which is true, but
+belongs inside the pitch, not as a second headline competing with the
+first.
+
+### What already matches this framing, unchanged
+
+Everything below was true before this pass; the read just gave it a name a
+customer would recognize faster than "office" or "session" would on a cold
+read.
+
+| Handsel building block | what a customer hears it as |
+|---|---|
+| Office | the workspace for one client or one project |
+| Office Session | "this week's backlog," running unattended |
+| Local / Remote / MCP worker | whichever agent actually fits the task |
+| `WorkspaceGrant` / approval policy | what the agent is and is not allowed to touch |
+| Checkpoint + resume | a crash does not mean starting over |
+| Repo Care | the first thing sold — issues in, PRs out, overnight |
+| Work Proof / Evidence | the delivery receipt handed to the client |
+| Treasury | cost, margin, what an external worker was paid |
+| Storefront / Mail Desk | how the agency resells this to *its own* clients |
+| Network / consult / notify | pulling in an outside specialist agent mid-task |
+| Credit / reputation | which worker is actually reliable, over time — **not sold yet, per §8** |
+| the open Marketplace | overflow capacity when the office's own roster is full — fallback, not the front door |
+
+**USDC/Base/x402 stays exactly where §8 and `docs/billing.md` already put
+it: the settlement rail under external-worker payouts and agent-to-agent
+commerce, never the first payment method a customer sees.** `/repo-care`
+already takes a card via Lemon Squeezy for this reason, independent of this
+pass.
+
+### What this does not authorize
+
+Not a rewrite of `/repo-care`'s shipped copy, not a rename of `Office` or
+`Office Session` in code or UI strings, not a new pricing tier, not a
+credit/financing product. The two-week test above is still the gate for all
+of that — this section exists so the *pitch* stays sharp while the test
+runs, not to restart building before it reports back.

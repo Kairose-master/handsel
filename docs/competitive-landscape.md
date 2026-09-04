@@ -799,3 +799,106 @@ AI-generated list until someone runs the command.
 3. **agent-economy goes on the build-service reading list** — pre-existing
    experimental evidence for pay-on-pass market mechanics, including the
    failure-penalty/reputation-weighted bidding math we have not designed yet.
+
+---
+
+# Fifth pass, 2026-09-04 — checking the "Agency Delivery OS" framing against two new categories
+
+*Prompted by an operator-supplied competitive read arguing Handsel should
+position as an "AI Agency Delivery OS" rather than a marketplace. That framing
+does not change anything decided in `docs/positioning.md` §8 (2026-09-03) —
+operations room, priced monthly, Repo Care first — it sharpens the same
+decision, so this pass exists to check its two new claims rather than to
+relitigate the decision. Method as always: every name is fetched before it is
+scored. Two categories were actually new to this document; two claimed
+protocols turned out not to be products at all.*
+
+## A. "Verify-then-pay" protocols — RAILS and TessPay are papers, not products
+
+The operator's table scored "증거를 확인한 뒤 지급" (pay after evidence) 5/10
+novelty against RAILS and TessPay specifically. Checked:
+
+- **RAILS** — "RAILS: Verification-Native Clearing For Agentic Commerce"
+  ([arXiv:2606.08790](https://arxiv.org/abs/2606.08790), June 2026). A
+  research paper proposing a reliability score + clearing function that
+  consumes tool traces (MCP) and subdelegation events (A2A) as evidence. No
+  deployment, no users, no chain address — a design, not a competitor.
+- **TessPay** — "TessPay: Verify-then-Pay Infrastructure for Trusted Agentic
+  Commerce" ([arXiv:2602.00213](https://arxiv.org/abs/2602.00213)), attributed
+  to Tesseris, described elsewhere as a proposed L1 "ecosystem for trusted
+  agentic commerce". Also a paper; no evidence of a live chain, a shipped
+  contract, or a settled transaction was found in this pass.
+
+**Correction to the operator's scoring: this is not "someone else already
+proposed pay-after-evidence at novelty 5/10" — it is "the idea has reached
+academic proposal stage and nobody has shipped it."** Handsel's
+`LaborMarketV2` on Base mainnet, independently graded, pay-only-on-pass, live
+since 2026-07-30, is *ahead* of both papers on the one axis that matters:
+it moved real USDC on a real verdict. The honest risk is the opposite of what
+the table implies — these papers are evidence the idea is about to get
+well-funded competition (see Nava Labs below), not evidence it is taken.
+
+Adjacent and worth tracking, found in the same sweep and NOT in the
+operator's list: **Nava Labs** ($8.3M seed, Polychain/EigenLayer-backed,
+"escrow-before-execution" AI agent verification layer — reported via
+BlockEden, not independently verified against a live product this pass) and
+**Agentry Escrow** (a marketed "independent payment rails for AI agents"
+product; not fetched this pass). Both are unverified beyond the article that
+named them — next pass should fetch them directly rather than carry the
+citation forward as fact.
+
+## B. "AI workforce" SaaS — the real adjacent category, and it is not a payments company
+
+The operator's "Agency Delivery OS" pitch competes for the same buyer as a
+different, very real, well-funded category this document had not covered:
+no-code platforms selling "an AI workforce" to a business's ops/GTM team.
+Verified this pass:
+
+| Product | Vital signs (2026) | What it actually sells | Difference from Handsel |
+|---|---|---|---|
+| **Relevance AI** | Founded 2020 (Sydney); Pro $19/mo, Team $234–349/mo, meters "Actions" + "Vendor Credits" since Sep 2025 | No-code AI agent builder, "AI workforce," 2,000+ integrations, strongest in sales/marketing/support GTM automation | Builds and runs agents *inside* the buyer's own tools (Slack, Salesforce, Sheets). No escrow, no independent grader, no per-task verdict — the buyer trusts the agent's output the same way they trust a spreadsheet macro |
+| **Lindy** | Repositioned Jan–Mar 2026 as a consumer AI executive assistant; Plus $49.99/Pro $99.99/Max $199.99/mo, no free tier | Personal/executive-assistant-shaped automation (inbox, calls, scheduling) | Consumer/individual framing, not a delivery pipeline for a repo or a client's backlog; no verification layer at all |
+| **CrewAI** | 47.8k+ GitHub stars, 27M+ downloads, 150+ enterprise customers, open-source framework + paid "AMP" enterprise platform ($25/mo Professional, $50–150k/yr Enterprise) | Role-based multi-agent orchestration — a framework a developer builds *with*, not a product an agency buys as a finished service | This is infrastructure a competitor could use to build something Handsel-shaped, not a finished competitor itself. Same relationship as LangGraph: a potential substitute for our own orchestration code, not for the product |
+| **Zapier Agents** | GA in 2026, 8,000+ pre-built integrations (incl. SAP/NetSuite/Workday), "AI Guardrails," bring-your-own-model | Goal-oriented agents wired into Zapier's existing automation graph | Same shape as Relevance AI — integration breadth is the moat, not verification. Neither ships escrow, independent grading, or a signed proof of what shipped |
+
+**What none of the four do, which is the actual gap the operator's table was
+reaching for:** none of them price, escrow, or independently verify a
+*specific deliverable* before paying for it — because none of them separate
+"the agent ran" from "the agent's output was checked by something other than
+the agent." They sell agent *capacity*; Handsel's Repo Care sells a **graded
+PR** — money moves only after independent verification. That is the same
+distinction §6b of this document already drew against GitHub Copilot's coding
+agent (a worker without a market); the addition this pass makes is that the
+"AI workforce" SaaS category is a worker **with** a subscription business
+model and no market either. Confirms rather than changes the existing
+threat ranking.
+
+**Cursor Cloud Agent** (formerly Background Agents) was also checked, since
+the operator's table cited it alongside Copilot: confirmed live, opens
+merge-ready PRs from a cloud VM, and — per the Cursor community forum,
+2026 — background agents spawned via the API still cannot post PR comments,
+reviews, or issue operations without extra plumbing. Functionally the same
+slot as Copilot's coding agent already covered in §6b: a well-resourced
+worker, still no market, still no independent grader, still nothing that
+transfers to the next job. Not re-scored as a separate threat.
+
+## What this pass changes
+
+1. **Nothing about the ranked threat list in "Honest threat ranking" above.**
+   Virtuals ACP, ERC-8004, a well-funded fintech, GitHub itself, and
+   UbiquityOS/Algora remain the five in that order — the AI-workforce SaaS
+   category and the verify-then-pay papers both land in a **different
+   fight**: they compete for how the *product is described and sold*
+   (§7–8 of `docs/positioning.md`), not for the *market mechanism* this
+   document tracks.
+2. **One correction the operator's own table should carry forward**: do not
+   describe RAILS/TessPay as prior art already "5/10 taken" — they are
+   unshipped research, and the honest read is that Handsel is ahead of
+   published academic proposals on the exact axis (real settled money) that
+   would make either of them a threat once someone builds one.
+3. **The "Agency Delivery OS" framing is now checked against its real
+   competitors** (Relevance AI, Lindy, CrewAI, Zapier Agents) rather than
+   only against agent-market and agent-payment projects. All four sell agent
+   capacity with no independent verification of a specific deliverable —
+   which is exactly the wedge §6b and the "Honest threat ranking" already
+   named, now confirmed from a different direction.
