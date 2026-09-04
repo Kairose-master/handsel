@@ -261,6 +261,14 @@ export type TaskOutcomeLine = {
   changedFiles: number
   prUrl: string | null
   needsYou: boolean
+  /**
+   * The repository's OWN CI (GitHub Actions or equivalent), read back from
+   * the opened pull request — distinct from `testsPassed`, which is the
+   * local verify command run before the PR existed. `null` means either
+   * there is no PR yet, or GitHub has not reported a check verdict back
+   * yet; never guessed from `testsPassed`.
+   */
+  ciPassed: boolean | null
 }
 
 /**
@@ -271,11 +279,17 @@ export type TaskOutcomeLine = {
  */
 export function morningReport(input: { repoFullName: string; lines: readonly TaskOutcomeLine[]; skipped: readonly Triage['skipped'][number][]; costUsd: number | null }): string {
   const needs = input.lines.filter((l) => l.needsYou)
-  const landed = input.lines.filter((l) => !l.needsYou && l.status === 'settled')
+  // A PR that opened and then failed the repository's own CI is not a
+  // success the report can bury under "Landed" — it is exactly the cost
+  // the product exists to remove, so it gets its own heading and counts
+  // separately from both "landed" and "failed" (a task-execution failure,
+  // caught before any PR opened, is a different kind of cost).
+  const ciFailed = input.lines.filter((l) => !l.needsYou && l.status === 'settled' && l.ciPassed === false)
+  const landed = input.lines.filter((l) => !l.needsYou && l.status === 'settled' && l.ciPassed !== false)
   const failed = input.lines.filter((l) => !l.needsYou && (l.status === 'failed' || l.status === 'skipped'))
   const out: string[] = [`# ${input.repoFullName} — overnight`, '']
   out.push(
-    `${landed.length} landed · ${needs.length} need you · ${failed.length} failed · ${input.skipped.length} left for a person` +
+    `${landed.length} landed · ${ciFailed.length} CI failed · ${needs.length} need you · ${failed.length} failed · ${input.skipped.length} left for a person` +
       `${input.costUsd !== null ? ` · $${input.costUsd.toFixed(2)} of model time` : ''}`,
     '',
   )
@@ -284,11 +298,16 @@ export function morningReport(input: { repoFullName: string; lines: readonly Tas
     out.push(`## ${heading}`, '')
     for (const l of lines) {
       const bits = [l.testsPassed === true ? 'tests passed' : l.testsPassed === false ? 'TESTS FAILED' : 'not verified', `${l.changedFiles} file(s)`]
+      // CI is only meaningful once a PR exists — before that there is
+      // nothing GitHub has graded yet, so the bit is omitted rather than
+      // guessed from the local verify command.
+      if (l.prUrl) bits.push(l.ciPassed === true ? 'CI passed' : l.ciPassed === false ? 'CI FAILED' : 'CI pending')
       out.push(`- **${l.title}** — ${bits.join(' · ')}${l.prUrl ? `\n  ${l.prUrl}` : ''}${l.statusReason ? `\n  ${l.statusReason}` : ''}`)
     }
     out.push('')
   }
   block('Waiting for your decision', needs)
+  block('CI failed on a landed PR', ciFailed)
   block('Landed', landed)
   block('Failed', failed)
   if (input.skipped.length > 0) {

@@ -352,4 +352,48 @@ describe('Repo Care, the first vertical', () => {
     expect(body).not.toContain('policy')
     expect(body).not.toContain('grant')
   })
+
+  it('CI is read back onto the task that opened the PR, not just recorded as a market job', () => {
+    const server = read('lib/office-session-server.ts')
+    expect(server).toContain('export async function findRepoCareTaskForPr(')
+    expect(server).toContain('office_session_repo_care')
+    // the reverse index matches on the SAME artifact name openTaskPr writes
+    expect(server).toContain("`pr-${prNumber}.md`")
+    expect(server).toContain('export async function recordPrCiVerdict(')
+    expect(server).toContain("type: 'PR_CI_REPORTED'")
+    // never touches settlement — this fills in the report on an already-terminal task
+    const start = server.indexOf('export async function recordPrCiVerdict(')
+    const body = server.slice(start, server.indexOf('\n}\n', start))
+    expect(body).not.toContain('TASK_SETTLED')
+    expect(body).not.toContain('autoApprovePassedJob')
+    // the report reads the SAME field the event writes, not a re-derivation
+    expect(server).toContain('ciPassed: t.outcome?.ciPassed ?? null')
+  })
+
+  it('the webhook checks Repo Care only when the PR is not a market job, and only for a real conclusion', () => {
+    const route = read('app/api/github/webhook/route.ts')
+    expect(route).toContain('async function maybeRecordRepoCareCi(')
+    // reached from inside the `if (!spec)` branch, before the market's own `continue`
+    const specBranch = route.slice(route.indexOf('if (!spec) {'), route.indexOf('gradedAHandselJob = true'))
+    expect(specBranch).toContain('maybeRecordRepoCareCi(')
+    const start = route.indexOf('async function maybeRecordRepoCareCi(')
+    const body = route.slice(start, route.indexOf('\n}\n', start))
+    expect(body).toContain("conclusion === 'success'")
+    expect(body).toContain("conclusion === 'failure'")
+    // neutral/skipped/action_required never write a verdict
+    expect(body).toContain('if (passed === null) return')
+    expect(body).toContain('findRepoCareTaskForPr(repoFullName, prNumber)')
+    expect(body).toContain('recordPrCiVerdict({')
+  })
+
+  it('the morning report gives a CI-failed landed PR its own heading, ahead of Landed', () => {
+    const repoCare = read('lib/repo-care.ts')
+    const start = repoCare.indexOf('export function morningReport(')
+    const body = repoCare.slice(start, repoCare.indexOf('\nexport ', start + 10))
+    const ciFailedIdx = body.indexOf("block('CI failed on a landed PR'")
+    const landedIdx = body.indexOf("block('Landed'")
+    expect(ciFailedIdx).toBeGreaterThan(-1)
+    expect(landedIdx).toBeGreaterThan(-1)
+    expect(ciFailedIdx).toBeLessThan(landedIdx)
+  })
 })

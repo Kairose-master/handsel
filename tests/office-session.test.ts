@@ -248,6 +248,46 @@ describe('the happy path', () => {
   })
 })
 
+describe('PR_CI_REPORTED — real CI read back onto an already-settled task', () => {
+  it('records the verdict without touching task or session status', () => {
+    const { state } = happyPath()
+    expect(state.tasks.t1.status).toBe('settled')
+    expect(state.tasks.t1.outcome?.ciPassed).toBeNull()
+    const next = run(state, ev('ses-h', 'PR_CI_REPORTED', { taskId: 't1', prNumber: 9, passed: true, conclusion: 'success', checkUrl: 'https://github.com/acme/api/pull/9/checks' }))
+    expect(next.tasks.t1.outcome?.ciPassed).toBe(true)
+    expect(next.tasks.t1.status).toBe('settled') // unchanged — the task was already terminal
+    expect(next.session.status).toBe('completed') // unchanged
+  })
+
+  it('a later report overwrites the earlier one — last verdict wins, it does not average', () => {
+    const { state } = happyPath()
+    let next = run(state, ev('ses-h', 'PR_CI_REPORTED', { taskId: 't1', prNumber: 9, passed: false, conclusion: 'failure', checkUrl: null }, undefined, 'k1'))
+    expect(next.tasks.t1.outcome?.ciPassed).toBe(false)
+    next = run(next, ev('ses-h', 'PR_CI_REPORTED', { taskId: 't1', prNumber: 9, passed: true, conclusion: 'success', checkUrl: null }, undefined, 'k2'))
+    expect(next.tasks.t1.outcome?.ciPassed).toBe(true)
+  })
+
+  it('never touches outcome.tests — that stays the local verify command result', () => {
+    const { state } = happyPath()
+    const next = run(state, ev('ses-h', 'PR_CI_REPORTED', { taskId: 't1', prNumber: 9, passed: false, conclusion: 'failure', checkUrl: null }))
+    expect(next.tasks.t1.outcome?.tests).toEqual(state.tasks.t1.outcome?.tests)
+  })
+
+  it('rejects a missing task or a non-boolean passed', () => {
+    const { state } = happyPath()
+    expect(() => applyEvent(state, ev('ses-h', 'PR_CI_REPORTED', { taskId: 'nope', prNumber: 9, passed: true }))).toThrow(InvalidEvent)
+    expect(() => applyEvent(state, ev('ses-h', 'PR_CI_REPORTED', { taskId: 't1', prNumber: 9 }))).toThrow(InvalidEvent)
+  })
+
+  it('is idempotent: a redelivered webhook with the same key changes nothing', () => {
+    const { state } = happyPath()
+    const e = ev('ses-h', 'PR_CI_REPORTED', { taskId: 't1', prNumber: 9, passed: true, conclusion: 'success', checkUrl: null }, undefined, 'dedupe-1')
+    const once = applyEvent(state, e)
+    const twice = applyEvent(once, e)
+    expect(twice).toBe(once)
+  })
+})
+
 describe('worker crash and resume', () => {
   it('a timed-out run moves the session to waiting_on_worker and keeps the checkpoint', () => {
     const id = 'ses-c'

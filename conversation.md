@@ -797,3 +797,20 @@ GitHub Discussions new URL 생성, 금지 문장·증거 없는 주장·잘못�
   스코어보드). DM 발송은 여전히 사람 몫 — 원장은 절대 아무것도 보내지 않는다. 매주
   자동으로 후보를 찾아 이 파일에 append하는 Routine을 설정했다(월요일 01:00 UTC).
   이 파일을 만지는 세션은 상태값을 지우지 말고 in-place로만 바꿀 것.
+
+- **(13차) Repo Care CI readback — `docs/repo-care.md`의 "CI is not read back" 갭을 닫음.**
+  운영자가 "핵심 기능에 몰빵" 요청 → CI readback을 1순위로 선택. 새 이벤트 타입
+  `PR_CI_REPORTED`(`lib/office-session.ts`) — task.status는 절대 안 건드리고
+  `task.outcome.ciPassed`만 갱신(이미 settled인 태스크에 나중에 도착하는 정보라서).
+  `lib/office-session-server.ts`에 `findRepoCareTaskForPr`(repo+PR번호 →
+  `office_session_repo_care` 스캔 → `pr-<n>.md` artifact로 taskId 역추적)와
+  `recordPrCiVerdict` 추가. **market 레포 잡의 웹훅(`app/api/github/webhook/route.ts`
+  `handleCheck`)을 재사용** — 새 리스너를 안 만들고, `specForPr`가 null일 때(=market
+  job이 아닐 때)만 `maybeRecordRepoCareCi`로 분기. `lib/repo-care.ts`의
+  `morningReport`에 "CI failed on a landed PR" 섹션 신설 — **"Landed" 바로 위,
+  CI 실패한 landed PR은 절대 Landed로 안 보임** (거짓 성공 방지, 이 파일 자체의
+  "product's honesty" 원칙). `TaskOutcomeLine`에 `ciPassed` 필드 추가돼서
+  `repoCareReport`(office-session-server.ts)와 테스트 쪽 리터럴들 다 갱신 필요했음 —
+  이 타입을 만지는 세션은 `ciPassed`도 같이 채울 것. 새 이벤트 타입이라
+  `SESSION_EVENT_TYPES`를 세는 테스트는 없지만(`.toContain`만 씀) 문서
+  카운트/전이표를 만지는 세션은 참고.

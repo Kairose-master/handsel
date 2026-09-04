@@ -735,6 +735,7 @@ export const SESSION_EVENT_TYPES = [
   'TASK_SUBMITTED',
   'VERIFICATION_STARTED',
   'TEST_REPORTED',
+  'PR_CI_REPORTED',
   'REVIEW_REQUESTED',
   'REVIEW_RECEIVED',
   'APPROVAL_REQUESTED',
@@ -1239,6 +1240,21 @@ export function applyEvent(prev: SessionState, event: SessionEvent): SessionStat
       if (!report || typeof report !== 'object') throw new InvalidEvent('TEST_REPORTED needs report')
       task.outcome = { ...(task.outcome ?? EMPTY_OUTCOME), tests: report }
       if (typeof p.ciPassed === 'boolean') task.outcome.ciPassed = p.ciPassed
+      task.updatedAt = at
+      break
+    }
+
+    // A settled task's own landed pull request finished the repository's
+    // REAL CI (GitHub Actions or equivalent), reported back by the webhook —
+    // distinct from TEST_REPORTED's local verify command, which runs before
+    // the PR exists. Never touches task.status: the task is already terminal
+    // by the time its PR has a CI verdict, so this only fills in what the
+    // owner reads afterward. Last report wins (a retried check overwrites,
+    // it does not average).
+    case 'PR_CI_REPORTED': {
+      const task = requireTask(state, p.taskId, event.type)
+      if (typeof p.passed !== 'boolean') throw new InvalidEvent('PR_CI_REPORTED needs passed')
+      task.outcome = { ...(task.outcome ?? EMPTY_OUTCOME), ciPassed: p.passed }
       task.updatedAt = at
       break
     }

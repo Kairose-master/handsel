@@ -134,24 +134,49 @@ describe('what the owner reads', () => {
     const report = morningReport({
       repoFullName: 'acme/api',
       lines: [
-        { taskId: 'a', title: '#1 Landed thing', status: 'settled', statusReason: null, testsPassed: true, changedFiles: 2, prUrl: 'https://github.com/acme/api/pull/9', needsYou: false },
-        { taskId: 'b', title: '#2 Needs a look', status: 'awaiting_approval', statusReason: 'production configuration is affected', testsPassed: true, changedFiles: 1, prUrl: null, needsYou: true },
-        { taskId: 'c', title: '#3 Broke', status: 'failed', statusReason: 'tests failed on every attempt', testsPassed: false, changedFiles: 4, prUrl: null, needsYou: false },
+        { taskId: 'a', title: '#1 Landed thing', status: 'settled', statusReason: null, testsPassed: true, changedFiles: 2, prUrl: 'https://github.com/acme/api/pull/9', needsYou: false, ciPassed: true },
+        { taskId: 'b', title: '#2 Needs a look', status: 'awaiting_approval', statusReason: 'production configuration is affected', testsPassed: true, changedFiles: 1, prUrl: null, needsYou: true, ciPassed: null },
+        { taskId: 'c', title: '#3 Broke', status: 'failed', statusReason: 'tests failed on every attempt', testsPassed: false, changedFiles: 4, prUrl: null, needsYou: false, ciPassed: null },
       ],
       skipped: [{ issue: issue({ number: 4, title: 'Rotate the API key' }), reason: 'title', detail: 'the title says "api key" — a person decides this one' }],
       costUsd: 0.42,
     })
     expect(report.indexOf('Waiting for your decision')).toBeLessThan(report.indexOf('## Landed'))
     expect(report.indexOf('## Landed')).toBeLessThan(report.indexOf('## Failed'))
-    expect(report).toContain('1 landed · 1 need you · 1 failed · 1 left for a person · $0.42 of model time')
+    expect(report).toContain('1 landed · 0 CI failed · 1 need you · 1 failed · 1 left for a person · $0.42 of model time')
     expect(report).toContain('https://github.com/acme/api/pull/9')
+    expect(report).toContain('CI passed')
     expect(report).toContain('TESTS FAILED')
     expect(report).toContain('#4 Rotate the API key — the title says "api key"')
   })
 
+  it('a PR that opened and then failed real CI gets its own heading, never buried under Landed', () => {
+    const report = morningReport({
+      repoFullName: 'acme/api',
+      lines: [
+        { taskId: 'a', title: '#1 Green PR', status: 'settled', statusReason: null, testsPassed: true, changedFiles: 2, prUrl: 'https://github.com/acme/api/pull/9', needsYou: false, ciPassed: true },
+        { taskId: 'b', title: '#2 Red PR', status: 'settled', statusReason: null, testsPassed: true, changedFiles: 3, prUrl: 'https://github.com/acme/api/pull/10', needsYou: false, ciPassed: false },
+        { taskId: 'c', title: '#3 Not reported yet', status: 'settled', statusReason: null, testsPassed: true, changedFiles: 1, prUrl: 'https://github.com/acme/api/pull/11', needsYou: false, ciPassed: null },
+      ],
+      skipped: [],
+      costUsd: null,
+    })
+    expect(report).toContain('2 landed · 1 CI failed · 0 need you · 0 failed · 0 left for a person')
+    expect(report.indexOf('## CI failed on a landed PR')).toBeLessThan(report.indexOf('## Landed'))
+    const ciFailedSection = report.slice(report.indexOf('## CI failed on a landed PR'), report.indexOf('## Landed'))
+    expect(ciFailedSection).toContain('#2 Red PR')
+    expect(ciFailedSection).toContain('CI FAILED')
+    const landedSection = report.slice(report.indexOf('## Landed'))
+    expect(landedSection).not.toContain('#2 Red PR')
+    expect(landedSection).toContain('#1 Green PR')
+    expect(landedSection).toContain('CI passed')
+    expect(landedSection).toContain('#3 Not reported yet')
+    expect(landedSection).toContain('CI pending')
+  })
+
   it('an empty night is a real report, not an error', () => {
     const report = morningReport({ repoFullName: 'acme/api', lines: [], skipped: [], costUsd: null })
-    expect(report).toContain('0 landed · 0 need you · 0 failed · 0 left for a person')
+    expect(report).toContain('0 landed · 0 CI failed · 0 need you · 0 failed · 0 left for a person')
     expect(report).not.toContain('$')
   })
 })

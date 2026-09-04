@@ -521,6 +521,7 @@ export async function repoCareReport(userId: string, sessionId: string): Promise
         changedFiles: t.outcome?.changedFiles.length ?? 0,
         prUrl: pr?.ref ?? null,
         needsYou: open,
+        ciPassed: t.outcome?.ciPassed ?? null,
       }
     })
   const triage = Object.values(state.artifacts).find((a) => a.taskId === null && a.name.startsWith('left-for-a-person'))
@@ -529,6 +530,62 @@ export async function repoCareReport(userId: string, sessionId: string): Promise
     morningReport({ repoFullName: care.repoFullName, lines, skipped: [], costUsd: cost || null }),
     ...(triage?.inline ? ['', '## Left for a person', '', triage.inline] : []),
   ].join('\n')
+}
+
+/**
+ * Given a repo + PR number, find the Repo Care session/task that opened
+ * it — the reverse index the CI-readback webhook needs to fold GitHub's
+ * own check verdict back onto the task that produced the PR. Scoped to
+ * sessions actually configured for this repo (`office_session_repo_care`);
+ * a repo with no Repo Care session, or a PR opened by something else
+ * entirely (a human, the market's repo-jobs lane, a different tool),
+ * returns null — "not ours, nothing to do."
+ */
+export async function findRepoCareTaskForPr(repoFullName: string, prNumber: number): Promise<{ sessionId: string; taskId: string } | null> {
+  await ensureTables()
+  const { rows } = await pool.query<{ session_id: string }>(`SELECT session_id FROM office_session_repo_care WHERE lower(repo_full_name) = lower($1)`, [repoFullName])
+  const prArtifactName = `pr-${prNumber}.md`
+  for (const row of rows) {
+    let state: SessionState
+    try {
+      state = await loadSessionState(row.session_id)
+    } catch {
+      continue // a session row can outlive a corrupt/unreplayable log; skip rather than throw
+    }
+    const artifact = Object.values(state.artifacts).find((a) => a.name === prArtifactName)
+    if (artifact?.taskId) return { sessionId: row.session_id, taskId: artifact.taskId }
+  }
+  return null
+}
+
+/**
+ * Fold a `check_suite`/`check_run` webhook's REAL verdict back onto the
+ * Repo Care task that opened this pull request — read by `repoCareReport`
+ * (the morning report), never settlement: a Repo Care task already settled
+ * `internal` before its PR existed (`docs/office-sessions.md`), so this only
+ * fills in what the owner reads afterward, on an already-terminal task.
+ * `dedupeKey` should be stable per GitHub check delivery (e.g. the check
+ * suite/run's own numeric id) so a webhook retry does not double-write.
+ */
+export async function recordPrCiVerdict(input: {
+  sessionId: string
+  taskId: string
+  prNumber: number
+  passed: boolean
+  conclusion: string
+  checkUrl: string | null
+  dedupeKey: string
+}): Promise<void> {
+  await appendEvents(input.sessionId, [
+    {
+      type: 'PR_CI_REPORTED',
+      occurredAt: Date.now(),
+      actorType: 'system',
+      actorId: null,
+      payload: { taskId: input.taskId, prNumber: input.prNumber, passed: input.passed, conclusion: input.conclusion, checkUrl: input.checkUrl },
+      idempotencyKey: eventKey(input.sessionId, 'PR_CI_REPORTED', input.dedupeKey),
+    },
+  ])
 }
 
 export type SessionListRow = Pick<OfficeSession, 'id' | 'kind' | 'goal' | 'status' | 'statusReason' | 'nextWakeAt' | 'budgetLimitUsd' | 'spentUsd' | 'createdAt' | 'wave' | 'officeSlot' | 'lastHeartbeatAt'> & {

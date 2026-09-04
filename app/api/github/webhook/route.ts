@@ -413,7 +413,17 @@ async function handleCheck(event: string, payload: any) {
   let handled = 0
   for (const pr of prs) {
     const spec = await specForPr(repoFullName, pr.number)
-    if (!spec) continue
+    if (!spec) {
+      // Not a market job — the other lane a PR on this repo can belong to
+      // is an office session's Repo Care (docs/repo-care.md), which posts
+      // no jobSpec (settlement is `internal`). Fold the same verdict into
+      // its task instead, so the morning report knows what GitHub actually
+      // decided rather than just that a PR opened.
+      await maybeRecordRepoCareCi(repoFullName, pr.number, event, node, conclusion).catch((e) =>
+        console.error('[github/webhook] repo-care CI readback failed (non-fatal):', e),
+      )
+      continue
+    }
     gradedAHandselJob = true
 
     if (conclusion === 'success') {
@@ -500,6 +510,29 @@ async function handleCheck(event: string, payload: any) {
       : { status: 'skipped', reason: 'not a check_run' }
 
   return Response.json({ status: 'ok', handled, originated })
+}
+
+/**
+ * The CI-readback bridge for Repo Care (`docs/repo-care.md`'s "CI is not
+ * read back" gap): a check_suite/check_run completion on a PR that is not
+ * a market job is checked against `office_session_repo_care` instead, and
+ * a real success/failure conclusion is folded onto the task that opened
+ * the PR. Neutral/skipped/action_required/stale carry no verdict, same as
+ * the market lane above.
+ */
+async function maybeRecordRepoCareCi(repoFullName: string, prNumber: number, event: string, node: any, conclusion: string): Promise<void> {
+  let passed: boolean | null = null
+  if (conclusion === 'success') passed = true
+  else if (conclusion === 'failure' || conclusion === 'timed_out' || conclusion === 'cancelled') passed = false
+  if (passed === null) return
+
+  const { findRepoCareTaskForPr, recordPrCiVerdict } = await import('@/lib/office-session-server')
+  const hit = await findRepoCareTaskForPr(repoFullName, prNumber)
+  if (!hit) return
+
+  const checkUrl: string | null = typeof node?.html_url === 'string' ? node.html_url : null
+  const dedupeKey = `${event}:${node?.id ?? `${conclusion}:${String(node?.head_sha ?? '')}`}`
+  await recordPrCiVerdict({ sessionId: hit.sessionId, taskId: hit.taskId, prNumber, passed, conclusion, checkUrl, dedupeKey })
 }
 
 /**

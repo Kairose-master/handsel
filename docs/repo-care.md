@@ -93,9 +93,18 @@ escrow is posted and nothing touches a chain.
   are unit-tested (`tests/repo-care.test.ts`, `tests/office-session-wiring.test.ts`),
   and every piece underneath has run live (`docs/office-sessions.md`), but
   no repository has been cared for end to end by a customer.
-- **CI is not read back.** A PR's checks are not folded into the session; a
-  human reads the PR. The machinery exists in the market's repo lane
-  (`lib/repo-jobs.ts`) and connecting it is the obvious next increment.
+- ~~CI is not read back.~~ **Landed 2026-09-04.** `check_suite`/`check_run`
+  webhooks fold the repository's own CI verdict onto the task that opened
+  the PR — `findRepoCareTaskForPr` + `recordPrCiVerdict`
+  (`lib/office-session-server.ts`), the new `PR_CI_REPORTED` event
+  (`lib/office-session.ts`), read by `morningReport` under its own heading,
+  **"CI failed on a landed PR"**, ahead of "Landed" so a red PR is never
+  reported as a success. This reuses the market repo lane's webhook
+  (`app/api/github/webhook/route.ts`'s `handleCheck`) rather than adding a
+  second listener: when a PR is not a market job, it is checked against
+  `office_session_repo_care` instead. Money never moves on either branch —
+  a Repo Care task already settled `internal` before its PR existed; this
+  only fills in what the owner reads afterward.
 - **One repository per session.** An agency looking after twelve client
   repositories runs twelve sessions today.
 - **Issue comments are not answered.** Repo Care reads the backlog; it does
