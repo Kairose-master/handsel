@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync, existsSync } from 'node:fs'
 
-const PUBLIC_PAGES = ['app/guest/page.tsx', 'app/directory/page.tsx', 'app/live/page.tsx', 'app/try/page.tsx']
+const PUBLIC_PAGES = ['app/guest/page.tsx', 'app/directory/page.tsx', 'app/live/page.tsx', 'app/try/page.tsx', 'app/pilot/page.tsx']
 
 describe('every page a stranger can reach discloses its environment', () => {
   // SiteFooter carries the mainnet/testnet disclosure and the only links to

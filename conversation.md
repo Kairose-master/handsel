@@ -751,3 +751,14 @@ GitHub Discussions new URL 생성, 금지 문장·증거 없는 주장·잘못�
   **`SessionArtifact.taskId`가 `string | null`이 됐다** — triage 목록처럼 태스크가 없는 세션 레벨
   아티팩트를 위해서다. 리듀서는 taskId가 null이 아닐 때만 태스크 존재를 요구한다.
 
+- **(10차) Repo Care 파일럿을 실제로 판매** — `docs/positioning.md` §8의 "카드 결제와 파일럿 흐름"을 닫았다.
+  Stripe 대신 **Lemon Squeezy**(merchant of record) — 한국은 Stripe 표준 계정 미지원국이라 미국 법인 없이
+  파는 유일한 실용 경로. `lib/billing.ts`(순수: `PILOT_OFFER` $500/14일, LS 웹훅 서명검증 — `X-Signature`는
+  GitHub과 달리 `sha256=` 접두어 없음, `order_created` 파싱), `lib/billing-server.ts`(`pilot_lead` 자가마이그레이션
+  테이블, `order_id`에 idempotent), `POST /api/webhooks/lemonsqueezy`(서명검증 후에만 파싱, 항상 200),
+  공개 페이지 `/pilot`(영어, `/start`처럼 — `LEMONSQUEEZY_PILOT_CHECKOUT_URL` 없으면 죽은 버튼 대신 메일 안내로
+  degrade), `/admin/pilots`(신규 `billing` 권한, `lib/admin.ts` PERMISSIONS에 추가).
+  **`/pilot`을 추가하는 세션은 두 곳을 같이 건드릴 것**: `lib/public-routes.ts`의 `PUBLIC_ROUTE_PREFIXES`
+  (안 넣으면 대시보드 다크 테마로 열림, `tests/deck-theme.test.ts`가 잡는다)와 `tests/public-shell.test.ts`의
+  `PUBLIC_PAGES`(환경 공시 강제). 구독/티어는 일부러 안 만들었다 — 파일럿 한 건도 안 팔린 상태에서 사다리부터
+  만드는 게 §8이 경고한 실수라서, `docs/billing.md`가 그 이유와 Lemon Squeezy 계정 세팅 런북을 갖고 있다.

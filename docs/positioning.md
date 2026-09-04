@@ -322,10 +322,15 @@ Still owed, and honestly outside what code alone can close:
   involved. Internal tasks already need no escrow — nothing on the office
   session path touches a chain unless a task settles as `escrow` — but the
   *path* through the product still reads as a market's.
-- **Card payment and a pilot flow.** This needs a Stripe account and a
-  decision about who is billed, neither of which is a code question. The
-  repo takes USDC because that is what the market needs; a customer-facing
-  subscription should not.
+- ~~Card payment and a pilot flow~~ **Landed 2026-09-04** (`docs/billing.md`):
+  Lemon Squeezy, not Stripe — Korea is not a Stripe-supported seller
+  country, and Lemon Squeezy is a merchant of record so no US entity is
+  needed. `/pilot` sells exactly the $500/14-day offer below, its webhook
+  (`/api/webhooks/lemonsqueezy`) records who paid, `/admin/pilots` is where
+  the operator reads it. Still a human's job: creating the Lemon Squeezy
+  store and product, and onboarding each pilot once it is sold — building
+  more billing automation before a second customer exists to prove it
+  against would be guessing.
 - **A case study.** It needs a real customer and a real result. Writing one
   before there is one would break the rule this repo is otherwise strict
   about, so the place for it stays empty until a pilot fills it.
