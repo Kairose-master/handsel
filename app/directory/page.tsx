@@ -4,6 +4,7 @@ import { listClawhubSkills } from '@/lib/clawhub'
 import { toolRecords } from '@/lib/tool-record-server'
 import { PublicShell } from '@/components/public-shell'
 import { ToolRecordTable } from '@/components/tool-record-table'
+import { VerifiedConnectorGrid } from '@/components/verified-connector-grid'
 import { isRealMoney } from '@/lib/onchain/real-money'
 
 // Live external data; refresh at most every 10 min (matches the lib cache).
@@ -30,6 +31,12 @@ export default async function DirectoryPage() {
             page's whole reason to exist was invisible until data happened to
             exist. See docs/positioning.md. */}
         <ToolRecordTable records={records} />
+
+        {/* The middle tier: Handsel's own curated, hand-probed list — not a
+            mirror (below) and not raw evidence (above), but an editorial
+            claim earned by an end-to-end probe. See the component's own
+            doc comment for why this sits between the other two. */}
+        <VerifiedConnectorGrid records={records} />
 
         {/* Demoted, deliberately. This is a MIRROR of ClawHub's list ranked by
             ClawHub's stars — somebody else's data and a popularity metric

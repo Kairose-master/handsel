@@ -35,6 +35,7 @@
  * every office template's `defaultConnector` into this catalog, so the three
  * places that name these servers cannot drift apart.
  */
+import { toolIdentityOf } from '@/lib/tool-identity'
 
 export type VerifiedConnector = {
   /** Stable id — also accepted by `connect_mcp_worker`'s `connector` arg. */
@@ -99,6 +100,20 @@ export const VERIFIED_CONNECTORS: readonly VerifiedConnector[] = [
 
 export function verifiedConnectorById(id: string): VerifiedConnector | null {
   return VERIFIED_CONNECTORS.find((c) => c.id === id) ?? null
+}
+
+/**
+ * The exact `ToolRecord.toolId` a probed connector would earn once it has
+ * graded work — `mcp:<publishable server url>#<tool name>`, computed the
+ * same way `lib/tool-record-server.ts` builds it from a real agent's wiring
+ * (`toolIdentityOf`), so a lookup against `toolRecords()` output matches by
+ * construction rather than by a second, driftable copy of the id format.
+ * Null only if the entry's own `serverUrl` somehow fails to parse — which
+ * would mean the catalog itself is broken, not that the connector lacks a
+ * record.
+ */
+export function verifiedConnectorToolId(c: VerifiedConnector): string | null {
+  return toolIdentityOf({ runtimeType: 'mcp', mcpServerUrl: c.serverUrl, mcpToolName: c.toolName })?.id ?? null
 }
 
 /**

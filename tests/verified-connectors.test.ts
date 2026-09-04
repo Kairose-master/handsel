@@ -18,8 +18,10 @@ import {
   VERIFIED_CONNECTORS,
   verifiedConnectorById,
   verifiedConnectorFor,
+  verifiedConnectorToolId,
 } from '@/lib/verified-connectors'
 import { OFFICE_TEMPLATES } from '@/lib/office-world-data'
+import { toolIdentityOf } from '@/lib/tool-identity'
 
 const DOC = readFileSync(join(process.cwd(), 'docs', 'office-connectors.md'), 'utf8')
 
@@ -77,5 +79,22 @@ describe('verifiedConnectorById / verifiedConnectorFor', () => {
     expect(verifiedConnectorFor(' https://mcp.exa.ai/mcp/ ', ' web_search_exa ')?.id).toBe('exa')
     expect(verifiedConnectorFor('https://mcp.exa.ai/mcp', 'some_other_tool')).toBeNull()
     expect(verifiedConnectorFor('https://elsewhere.example/mcp', 'web_search_exa')).toBeNull()
+  })
+})
+
+describe('verifiedConnectorToolId — the /directory bridge to real ToolRecords', () => {
+  it('computes the exact id a real graded job on this server/tool would carry', () => {
+    for (const c of VERIFIED_CONNECTORS) {
+      const id = verifiedConnectorToolId(c)
+      const fromRealAgent = toolIdentityOf({ runtimeType: 'mcp', mcpServerUrl: c.serverUrl, mcpToolName: c.toolName })
+      expect(id, `${c.id} produced no id`).not.toBeNull()
+      expect(id).toBe(fromRealAgent?.id)
+      expect(id).toBe(`mcp:${c.serverUrl}#${c.toolName}`)
+    }
+  })
+
+  it('is stable across two calls (pure)', () => {
+    const c = VERIFIED_CONNECTORS[0]
+    expect(verifiedConnectorToolId(c)).toBe(verifiedConnectorToolId(c))
   })
 })

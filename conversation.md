@@ -832,3 +832,16 @@ GitHub Discussions new URL 생성, 금지 문장·증거 없는 주장·잘못�
   쿼터를 방문자 한 명이 고갈시킬 수 있는 갭 발견(돈/데이터 위험 아님). surface-audit.md는
   2026-08-06 스냅샷이라 카운트가 밀렸음(35→57, ~70→92) — 전체 재감사는 안 하고 이번
   세션 신규 표면만(/repo-care, /office/repo-care, /admin/pilots, 웹훅) addendum으로 붙임.
+
+- (15차) skills-market(daydreamsai) 참고 → /directory에 "verified connectors" 중간 티어 신설.
+  운영자가 daydreamsai/skills-market("curated market of high-quality skills")을 참고해달라 함 —
+  ClawHub 미러 강화 쪽으로 결정. lib/verified-connectors.ts에 `verifiedConnectorToolId()` 추가
+  (toolIdentityOf 재사용, mcp:<server>#<tool> id를 실제 agent 배선과 동일하게 계산 —
+  tests/verified-connectors.test.ts가 둘이 같은 id를 내는지 핀). 새 컴포넌트
+  components/verified-connector-grid.tsx — /directory에서 ToolRecordTable(진짜 증거) 아래,
+  ClawHub 미러(수동적 서드파티 목록) 위에 위치. 순서를 tests/tool-record.test.ts가 문자열
+  위치로 핀 박음(page.tsx의 <ToolRecordTable/> < <VerifiedConnectorGrid/> < "What agents can do"
+  순서). 이 세 섹션 순서를 바꾸는 세션은 그 테스트도 같이 고칠 것. VERIFIED_CONNECTORS는
+  현재 4개뿐이라 카드도 4개 — 실제 tool_record가 없으면 그냥 카드만 뜨고 통계 줄은 안 뜸
+  (record: null이면 렌더 안 함, 가짜 0 안 보여줌). next dev로 실제 렌더 확인함(DB 없이도
+  200, 카드 4개 다 뜸, 에러 없음).

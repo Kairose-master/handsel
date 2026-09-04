@@ -251,6 +251,26 @@ describe('the record is reachable', () => {
     expect(page.indexOf('Graded on Handsel')).toBeLessThan(page.indexOf('What agents can do'))
   })
 
+  it('sits above the curated verified-connector tier, which sits above the ClawHub mirror', () => {
+    // Three tiers in order: real evidence (ToolRecordTable), Handsel's own
+    // editorial claim (VerifiedConnectorGrid, probed by hand), then the
+    // passive third-party mirror — never reordered, never merged into one.
+    const page = read('app/directory/page.tsx')
+    expect(page).toMatch(/<VerifiedConnectorGrid records=\{records\} \/>/)
+    const tableAt = page.indexOf('<ToolRecordTable records={records} />')
+    const gridAt = page.indexOf('<VerifiedConnectorGrid records={records} />')
+    const mirrorAt = page.indexOf('What agents can do')
+    expect(tableAt).toBeGreaterThan(-1)
+    expect(gridAt).toBeGreaterThan(tableAt)
+    expect(mirrorAt).toBeGreaterThan(gridAt)
+  })
+
+  it('the verified-connector grid computes its own id, never a hardcoded copy', () => {
+    const grid = read('components/verified-connector-grid.tsx')
+    expect(grid).toContain('verifiedConnectorToolId(c)')
+    expect(grid).not.toMatch(/mcp:https:\/\//) // no hand-written tool id string
+  })
+
   it('is answerable from inside Claude, where the buyer already is', () => {
     expect(read('lib/mcp/tools-manifest.ts')).toContain("name: 'tool_record'")
     expect(read('lib/mcp/handlers/jobs.ts')).toMatch(/case 'tool_record'/)
