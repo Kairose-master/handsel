@@ -814,3 +814,21 @@ GitHub Discussions new URL 생성, 금지 문장·증거 없는 주장·잘못�
   이 타입을 만지는 세션은 `ciPassed`도 같이 채울 것. 새 이벤트 타입이라
   `SESSION_EVENT_TYPES`를 세는 테스트는 없지만(`.toContain`만 씀) 문서
   카운트/전이표를 만지는 세션은 참고.
+
+- (14차, 문서만) 전체 문서 최신화 — 108개 doc을 4개 서브에이전트로 병렬 감사, 22개 파일 수정.
+  코드 변경 없음. 핵심 발견: ai-agent-credit-dashboard.vercel.app를 "이 레포의 테스트넷"으로
+  잘못 가리키는 패턴이 wiki 여러 곳(Home/Getting-Started/FAQ/MiniVault/Proofs-and-Trust)과
+  one-pager.md, work-proofs.md에 있었음 — 진짜 테스트넷은 handsel-nu.vercel.app(V2 rehearsal).
+  다만 MiniVault는 예외 — 실제로 GET /api/vault/onchain을 읽어보니 handsel-nu에는
+  deployed:false, V1 archive에만 진짜 배포돼 있었다. 처음엔 다른 것들과 똑같이 고쳤다가
+  확인 후 되돌리고 정확한 설명으로 바꿈. 이 파일들을 만지는 세션은 URL을 무조건
+  handsel-nu로 바꾸지 말고 실제 배포 여부를 먼저 확인할 것. 다른 발견: MCP 툴 카운트가
+  여러 문서에서 28/51/52로 박제(실제 67, lib/mcp/tools-manifest.ts 기준), 오피스 템플릿
+  8→9(securities-floor 누락). Base mainnet에서 jobs(3)을 직접 eth_call로 읽어 확인:
+  "break it" 챌린지(job #3, $100)는 status Refunded, resultHash 여전히 0 — 30일 창이
+  닫혔고 아무도 돈을 못 옮겼다. open-challenge.md/challenge-launch-post.md에 날짜 찍어
+  기록(다만 실제 Reddit/HN 포스팅 여부는 미확인으로 정직하게 남김). security-audit.md에
+  app/actions/repo-diagnose.ts 리뷰 추가 — 자체 rate limit 없어서 GitHub 익명 60회/시간
+  쿼터를 방문자 한 명이 고갈시킬 수 있는 갭 발견(돈/데이터 위험 아님). surface-audit.md는
+  2026-08-06 스냅샷이라 카운트가 밀렸음(35→57, ~70→92) — 전체 재감사는 안 하고 이번
+  세션 신규 표면만(/repo-care, /office/repo-care, /admin/pilots, 웹훅) addendum으로 붙임.

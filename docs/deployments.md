@@ -78,7 +78,7 @@ convention, not an accident):
 | Escrow / grading / settlement / credit scores | ✅ live | ✅ | `LABOR_MARKET_ADDRESS`, `USDC_ADDRESS` |
 | Worker bond (stake on accept, returned on completion) | ✅ live | ✅ live on the V2 rehearsal (test USDC, no monetary value); absent only from the separate V1 archive | deployed immutables |
 | Gas sponsorship (paymaster) | ❌ off — pending a working mainnet paymaster | ✅ ZeroDev | `PAYMASTER_DISABLED`, `PAYMASTER_RPC`/`ZERODEV_RPC` |
-| MiniVault / credit vault (borrowing against score) | ❌ not deployed | ✅ Sepolia sandbox | `MINIVAULT_ADDRESS`, `CREDIT_VAULT_ADDRESS` |
+| MiniVault / credit vault (borrowing against score) | ❌ not deployed | ❌ not deployed on the V2 rehearsal either — verified live only on the separate V1 archive (Ethereum Sepolia), `docs/minivault.md` | `MINIVAULT_ADDRESS`, `CREDIT_VAULT_ADDRESS` |
 | On-chain governance (VeilPoll) | ❌ not deployed | ✅ | governance env |
 | GitHub repo jobs (bounty label → PR → merge pays) | ✅ live since 2026-08-03 (`handsel-main` App) | ✅ | GitHub App env |
 | Test-USDC minting | ❌ impossible (real USDC) | ✅ | chain (`mintBlocker`) |

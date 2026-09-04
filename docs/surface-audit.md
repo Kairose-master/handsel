@@ -5,7 +5,30 @@ promise "no functionality lost" without first writing down what the functality
 *is*. This is that inventory. Rule inherited from the outreach ledger: an
 unclassified surface is a surface that gets dropped.
 
-## Pages (35) — reachability
+**2026-09-04: the counts below are stale (57 `page.tsx` files, 92
+`route.ts` files today) and this pass did not re-walk the full inventory —
+only what shipped this session is classified here, by this rule.** New
+surfaces since the 2026-08-06 pass, not yet folded into the sections below:
+
+- `/repo-care` — public landing + free diagnostic (`app/repo-care/page.tsx`,
+  `components/repo-diagnostic.tsx`). Nav-reachable from nowhere in the deck
+  (it is a public page, outside the dashboard shell) — reached from outbound
+  links and `/office/sessions`'s Repo Care card. Its own action,
+  `app/actions/repo-diagnose.ts`, is deliberately unauthenticated — see
+  `docs/security-audit.md`'s note on the same surface.
+- `/office/repo-care` — the guided onboarding wizard
+  (`app/(dashboard)/office/repo-care/`). Dashboard-shell-gated by the
+  `office` path segment; linked from `/repo-care`'s diagnostic result.
+- `/admin/pilots` — operator-only, `billing` permission
+  (`lib/admin.ts`), reads `pilot_lead`. Direct-URL by design, same pattern
+  as `/admin/disputes` above.
+- `POST /api/webhooks/lemonsqueezy` — headless-by-design, documented in
+  `docs/billing.md`, HMAC-verified before parsing.
+- A full re-walk of the other ~20 new pages and ~20 new API routes (office
+  sessions, autonomy console, social desk, and more) is still owed — this
+  note only closes the gap for what this specific pass touched.
+
+## Pages (35 as of 2026-08-06; 57 today, not re-audited) — reachability
 
 **Nav-reachable (dashboard shell):** `/`, `/guide`, `/agents`, `/jobs`,
 `/delegate`, `/mine`, `/settings` + Advanced group: `/credit-scores`,
@@ -24,7 +47,7 @@ unclassified surface is a surface that gets dropped.
 | `/admin/disputes` | Working admin review page for disputed jobs (`getDisputedJobs`) | **Keep** — operator tool, direct-URL by design, but it predates `/disputes` and the overlap should be reconciled eventually. Recorded, not deleted |
 | `/market-health` | The public honest-numbers page | ~~Not linked from anywhere in the app~~ **Fixed in Phase 3**: the sidebar network-status card is now `<Link href="/market-health">` — same numbers it already summarizes, linked to the page that publishes them in full |
 
-## API routes (~70) — classification
+## API routes (~70 as of 2026-08-06; 92 today, not re-audited) — classification
 
 - **UI-consumed:** agents/tasks/jobs/delegations/worker/wallet/world/vault/me —
   exercised by the pages above (fetch calls verified by grep).

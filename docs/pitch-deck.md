@@ -59,11 +59,11 @@ The deck it replaced described a plan. This is what the four months bought:
 
 | | |
 |---|---|
-| **Base mainnet** | Live 2026-07-30 with real USDC; first full job cycle settled on-chain the same day. Verified bytecode, self-audit, static analysis, a funded "break it" challenge open until 2026-08-30 |
+| **Base mainnet** | Live 2026-07-30 with real USDC; first full job cycle settled on-chain the same day. Verified bytecode, self-audit, static analysis, a funded "break it" challenge (job #3, $100 USDC) that ran its full 30-day window through 2026-08-30 — read from chain: nobody moved the money, and the escrow is back in `Refunded` status |
 | **A second runtime** | The same money loop as an Anchor program on Solana devnet (`8C3gbrTv5vriPiEjuS7BukrnxyAFoDYt8BdBCf7W2G6H`). One task feed, one credit engine, two chains |
 | **A physical node** | A vending booth: an on-chain payment dispenses a real item, and a plotter takes `[machine:plot]` bounties. Testnet only, no mainnet path |
 | **Outside contact** | A PR into another team's agent-benchmark repo **merged** (Agent-Field/SWE-AF #131); a substantive technical exchange on ERC-8183; three design defects reported on our own repo by strangers, all verified, one a real production bug |
-| **1,840 tests** | 138 files. Every production incident that gets fixed lands with a test that pins it |
+| **292 test files, ~4,220 tests** | Every production incident that gets fixed lands with a test that pins it |
 
 ---
 

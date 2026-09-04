@@ -1,5 +1,12 @@
 # Challenge launch post — READY TO PUBLISH
 
+**Outcome, verified 2026-09-04 by reading the chain directly:** `jobs(3)` on
+`LaborMarketV2` now reads `status: Refunded`, `resultHash` still zero — the
+30-day window (through 2026-08-30 08:13:41 UTC) closed with nobody moving
+the money. See `docs/open-challenge.md` for the same finding and the one
+thing this pass could not confirm: whether this post was ever actually
+published to r/ethdev or Hacker News.
+
 All blanks filled and every factual claim verified on 2026-07-31:
 
 | claim | checked |

@@ -147,18 +147,19 @@ faces, no eyes, no mouths, no weapons, no background scene, no glow, no neon.
 
 ---
 
-## E. Office template cards — run eight times
+## E. Office template cards — run nine times
 
-`list_office_templates` / `hire_office` offer eight desks, and the storefront
+`list_office_templates` / `hire_office` offer nine desks, and the storefront
 (`set_storefront`) sells them to outside clients with no picture at all. A shop
 with no sign.
 
-Same prompt eight times, **same seed**, swapping only the bracket. **3:2,
+Same prompt nine times, **same seed**, swapping only the bracket. **3:2,
 1200×800.**
 
 | run | swap in |
 |---|---|
 | Securities Office | a trading desk with three stacked monitors and a printed tape |
+| Securities Floor | a committee trading floor with several linked desks and a shared decision board |
 | Talent Agency | a casting desk with a pinboard of blank headshot cards |
 | Bootstrap Desk | a bare startup desk with one laptop and a cardboard box |
 | Research Desk | a research desk buried in open books and a reading lamp |
@@ -235,7 +236,7 @@ no perspective, no colour variation between icons, no frames around the icons.
 | B · office look, diorama | `docs/assets/ref-office-diorama.png`, and `public/art/theme-diorama.webp` — **the theme button's preview** |
 | C · agent sheet, tactical | `docs/assets/ref-agents-tactical.png` |
 | D · agent sheet, diorama | `docs/assets/ref-agents-diorama.png` |
-| E · desk cards | `public/office-cards/<template-id>.png` × 8 — **shipped**, rendered in the office template picker |
+| E · desk cards | `public/office-cards/<template-id>.png` × 9 — **shipped**, rendered in the office template picker |
 | F · hero | `docs/assets/hero.png` (README) and `public/art/hero.webp` — **the /guest hero image** |
 | G · department glyphs | `public/dept/<dept-id>.png` × 9 |
 
@@ -271,7 +272,7 @@ claim changes.
 
 ## Housekeeping found while writing this
 
-`public/` still carries v0 scaffolding that nothing imports:
+~~`public/` still carries v0 scaffolding that nothing imports:
 `placeholder-logo.png`, `placeholder-logo.svg`, `placeholder-user.jpg`,
-`placeholder.jpg`, `placeholder.svg`, and `agent-atlas.png`. Verified
-unreferenced across `.ts`/`.tsx`. Deleting them is a separate change.
+`placeholder.jpg`, `placeholder.svg`, and `agent-atlas.png`.~~ **Deleted** —
+all six files are gone from `public/` as of this pass.

@@ -62,6 +62,20 @@ none.
 
 ---
 
+**2026-09-04 addendum, one new surface reviewed:** `app/actions/repo-diagnose.ts`
+(`diagnoseRepoPublic`, behind the public `/repo-care` landing page, shipped
+this session) is deliberately unauthenticated — the whole point is a
+diagnostic a stranger can run before signing in. Reviewed against this
+scope: `normalizeRepoInput` regex-validates to `owner/repo` before it ever
+reaches a URL, so it can only ever call `https://api.github.com/repos/<that
+exact string>/issues` — no SSRF, no arbitrary host. It writes nothing
+(read-only GitHub REST call, no DB write, no auth token used or exposed).
+**One real gap, not a money or data risk but worth fixing:** there is no
+per-IP rate limit on Handsel's own side — a caller can burn through the
+shared anonymous-GitHub 60-requests/hour budget for every visitor hitting
+this deployment (the endpoint's own error message already names this
+failure mode, but nothing currently prevents triggering it on purpose).
+
 ## Scope
 
 | In scope | Out of scope |

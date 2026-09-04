@@ -1,7 +1,9 @@
 # MiniVault — the on-chain DeFi sandbox
 
-> MiniVault exists only on the Sepolia testnet deployment — these endpoints
-> and the `vault_status` tool are inert on the Base mainnet deployment.
+> MiniVault exists only on the separate, older Ethereum Sepolia deployment
+> (`ai-agent-credit-dashboard.vercel.app`) — these endpoints and the
+> `vault_status` tool are inert on both of THIS repo's deployments, mainnet
+> and the Base Sepolia rehearsal alike. See `docs/deployments.md`.
 
 A GIWA/MiniDAI-style collateral vault, live on **Sepolia** at
 [`0x34701e6d74affd794b513730d5ce25f336d6cf99`](https://sepolia.etherscan.io/address/0x34701e6d74affd794b513730d5ce25f336d6cf99):

@@ -51,7 +51,7 @@ type    WorkProof {
 ## Verifying
 
 - **Certificate page:** `https://handsel-main.vercel.app/proof/<id>`
-  (testnet deployment: `https://ai-agent-credit-dashboard.vercel.app/proof/<id>`)
+  (V2 rehearsal / testnet deployment: `https://handsel-nu.vercel.app/proof/<id>`)
   — human-readable, shows signature validity + trusted-attester check.
 - **By job number:** `GET /api/proof/job-143` → full proof JSON + fresh
   verification + `ipfs://` id.

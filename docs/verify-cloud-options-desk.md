@@ -166,8 +166,10 @@ This closes part of the list below; the rest is still open.
 
 **Verified:**
 
-- `list_office_templates` returns all six templates with the Cloud Options
-  Desk's four connectors attached, and the Due Diligence Desk's gate renders as
+- `list_office_templates` returns all six templates (nine as of 2026-09-04 —
+  `securities-floor` and others were added after this pass) with the Cloud
+  Options Desk's four connectors attached, and the Due Diligence Desk's gate
+  renders as
   *"REVIEWS partner — a REVISE goes back to that worker"*. The MCP tool surface
   works against the real deployment, not just in tests.
 - `test_mcp_connector` → AWS Knowledge answered: reachable, *"a job would

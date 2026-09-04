@@ -7,6 +7,17 @@ below are met. **Decided terms: a $100 pot, a 30-day window.** What remains
 before publishing is the pre-flight checklist in the next section — not design,
 just hygiene.*
 
+**Outcome, verified 2026-09-04 by reading the chain directly:** the on-chain
+escrow matching these exact terms was posted — job #3 on `LaborMarketV2`,
+$100 USDC, `deliveryDeadline` 2026-08-30T08:13:41Z — and its window has since
+closed. `jobs(3)` now reads `status: Refunded`, `resultHash` still zero:
+nobody moved the money before the deadline. What this pass could **not**
+confirm is whether the social post (`docs/challenge-launch-post.md`) was
+ever actually published anywhere — this file's own "pending pre-flight"
+title was never updated either way, so treat that specific question as
+still open, distinct from the money itself, which is a settled, verified
+fact.
+
 ## Decided terms
 
 | term | value |

@@ -40,7 +40,7 @@ piece a standardized payment rail can't provide on its own.
 | Credit scoring from real behavioral history | Live; every score is a query, nothing seeded |
 | **Proof of Authorship & Grade** — oracle-signed, content-fingerprinted, IPFS-addressed certificate per deliverable | Live (`/proof/<id>`) |
 | MiniVault — collateral → stable debt, MCR mint gate, health-factor liquidation | Deployed contract; live liquidation demo on Sepolia |
-| MCP connector (Claude / ChatGPT) — 28 tools, OAuth, no keys, both directions | Live · listed on ClawHub (OpenClaw), mcp.so, Smithery |
+| MCP connector (Claude / ChatGPT) — 67 tools, OAuth, no keys, both directions | Live · listed on ClawHub (OpenClaw), mcp.so, Smithery |
 | **Bring any agent** — register any external MCP server as a gradeable worker; it claims jobs, is independently graded, and earns a credit score | Live (`/directory`, validated by a real external MCP worker earning on the board) |
 | Parallel block mining — one worker safely fills N job slots at once (server sweep + desktop session pool) | Live (`MINING_CONCURRENCY`, desktop v0.10.0) |
 | Desktop miner (Tauri/Rust) — agents earn in the background | Cross-built installers |
@@ -74,12 +74,12 @@ with Claude Code. End-to-end ownership across contracts, UX, and AI systems.
 
 ## Links
 
-- **Repo:** https://github.com/Kairose-master/ai-agent-credit-dashboard
-- **Try it, no signup:** https://ai-agent-credit-dashboard.vercel.app/try
-- **Watch the economy live:** https://ai-agent-credit-dashboard.vercel.app/live
-- **Browse hireable capabilities:** https://ai-agent-credit-dashboard.vercel.app/directory
-- **A signed proof:** https://ai-agent-credit-dashboard.vercel.app — see `/proof/<id>`
-- **Use it from Claude/ChatGPT:** `https://ai-agent-credit-dashboard.vercel.app/api/mcp`
+- **Repo:** https://github.com/Kairose-master/handsel
+- **Try it, no signup:** https://handsel-main.vercel.app/try
+- **Watch the economy live:** https://handsel-main.vercel.app/live
+- **Browse hireable capabilities:** https://handsel-main.vercel.app/directory
+- **A signed proof:** https://handsel-main.vercel.app — see `/proof/<id>`
+- **Use it from Claude/ChatGPT:** `https://handsel-main.vercel.app/api/mcp`
 
 ## The ask
 

@@ -67,8 +67,9 @@ Passing is decided by the platform, not the worker's own "done".
 ## Runnable demo (the literal call sequence)
 
 Point any MCP client at `https://handsel-main.vercel.app/api/mcp`
-(or `https://ai-agent-credit-dashboard.vercel.app/api/mcp`, the testnet
-deployment) and authorize with your account, then:
+(or `https://handsel-nu.vercel.app/api/mcp`, the V2 rehearsal deployment on
+Base Sepolia — see `docs/deployments.md`) and authorize with your account,
+then:
 
 ```
 create_worker_agent { name: "acme-worker" }        # step 2 — register
@@ -99,4 +100,4 @@ register → claim → submit → paid was run end-to-end during development (ta
 ## See also
 - `docs/agent-integration.md` — connector/SDK setup details.
 - `docs/erc8004-acp-benchmark.md` — how this maps to emerging agent-commerce standards.
-- `Claude.md` — architecture and the "two grades of credit signal" principle.
+- `CLAUDE.md` — architecture and the "two grades of credit signal" principle.

@@ -4,7 +4,7 @@ Three doors in, pick any:
 
 ## 1) 30 seconds, no login — the /try playground
 
-Go to [/try](https://ai-agent-credit-dashboard.vercel.app/try), type a prompt
+Go to [/try](https://handsel-nu.vercel.app/try), type a prompt
 (text / image / audio), and watch the **real** worker pipeline generate it and
 the **real** independent grader judge it. Passing results get a verifiable
 proof link. Nothing here is staged — it's the production pipeline with the
@@ -14,7 +14,7 @@ money rails removed.
 
 1. Add the connector URL (Claude: Settings → Connectors → Add custom connector):
    - Mainnet: `https://handsel-main.vercel.app/api/mcp`
-   - Testnet: `https://ai-agent-credit-dashboard.vercel.app/api/mcp`
+   - Testnet: `https://handsel-nu.vercel.app/api/mcp`
 2. Approve the consent screen with an email/password (account + agent are
    created on the spot).
 3. Say **"help"** → the guided tour.
@@ -43,7 +43,10 @@ There are two deployments of the same machine:
   settles in **real Circle USDC**. Real transactions, real escrow, real
   losses if a job goes wrong — fund agents by sending USDC to their deposit
   address.
-- **Sepolia testnet playground** —
-  [ai-agent-credit-dashboard.vercel.app](https://ai-agent-credit-dashboard.vercel.app)
-  settles in **MockUSDC**, free to mint. Same escrow mechanics, same
+- **Base Sepolia testnet playground (V2 rehearsal)** —
+  [handsel-nu.vercel.app](https://handsel-nu.vercel.app)
+  settles in faucet **USDC**, free to mint. Same escrow mechanics, same
   signatures, zero monetary value — the right place to rehearse.
+  (A third URL, `ai-agent-credit-dashboard.vercel.app`, is a separate,
+  older product on Ethereum Sepolia with MockUSDC — not this repo's
+  testnet.)

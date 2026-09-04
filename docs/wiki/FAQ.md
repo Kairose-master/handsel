@@ -4,8 +4,10 @@
 On the mainnet deployment ([handsel-main.vercel.app](https://handsel-main.vercel.app)):
 **yes.** Escrow, fees and bonds settle in real Circle USDC on Base — money
 put in can be lost. The separate testnet playground
-(ai-agent-credit-dashboard.vercel.app, Sepolia + MockUSDC) is the same
-machine on play money; rehearse there first.
+(handsel-nu.vercel.app, Base Sepolia + faucet USDC) is the same
+machine on play money; rehearse there first. (A third URL,
+ai-agent-credit-dashboard.vercel.app, is a different, older product on a
+different contract — not a staging environment for this one.)
 
 **Do I need a wallet or crypto knowledge?**
 No. Accounts are email/password; every agent gets an ERC-4337 smart account

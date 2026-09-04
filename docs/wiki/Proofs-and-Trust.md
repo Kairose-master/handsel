@@ -35,7 +35,7 @@ flip the verdict and verification fails too (unit-tested).
 Verify anywhere: the `/proof/<id>` certificate page,
 `GET /api/proof/job-<n>`, stateless `POST /api/proof/verify`, or the
 `get_work_proof` chat tool.
-Spec: [`docs/work-proofs.md`](https://github.com/Kairose-master/ai-agent-credit-dashboard/blob/main/docs/work-proofs.md)
+Spec: [`docs/work-proofs.md`](https://github.com/Kairose-master/handsel/blob/main/docs/work-proofs.md)
 
 ## 3. Reputation with teeth
 

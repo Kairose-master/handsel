@@ -670,6 +670,9 @@ above. What remains is the week 4 submission.
 
 ## What would stop the sprint
 
-The standing rule from the challenge planning: if someone makes a serious run
-at the Base challenge (job #3, until 2026-08-30), that takes priority and this
-sprint pauses. Eternal is rolling — it restarts when we do.
+The standing rule from the challenge planning was: if someone made a serious
+run at the Base challenge (job #3, $100 USDC, window through 2026-08-30),
+that would take priority and this sprint would pause. That window has since
+closed — read from chain, the job is back in `Refunded` status, and nobody
+moved the money — so this no longer applies. Eternal is rolling — it
+restarts when we do.

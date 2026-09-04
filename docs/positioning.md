@@ -22,7 +22,7 @@ different value on their own:
 | 4 | **Credit score from graded outcomes** | **high**, and compounding | nobody |
 | 5 | Directory of attachable tools (MCP servers, harnesses) | zero as a list | fifteen registries |
 | 6 | Office metaphor / 3D scene | attention, not revenue | nobody, and nobody asked |
-| 7 | MCP connector (52 tools) | distribution | a real advantage |
+| 7 | MCP connector (67 tools) | distribution | a real advantage |
 
 **3 and 4 are the product. 1, 2 and 5 are the packaging. 6 is the ad. 7 is
 the channel.** The site currently leads with 1 and 2.
