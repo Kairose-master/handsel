@@ -269,6 +269,14 @@ export type TaskOutcomeLine = {
    * yet; never guessed from `testsPassed`.
    */
   ciPassed: boolean | null
+  /**
+   * The same signed EIP-712 work proof a paid market job gets
+   * (`issueTaskProof`, `lib/work-proof-store.ts`), verifiable by anyone
+   * without trusting us — `null` until the task settled and a proof was
+   * issued. This is the report's only link to it: the proof already
+   * existed for every landed task, it just was not shown here before.
+   */
+  proofUrl: string | null
 }
 
 /**
@@ -302,7 +310,9 @@ export function morningReport(input: { repoFullName: string; lines: readonly Tas
       // nothing GitHub has graded yet, so the bit is omitted rather than
       // guessed from the local verify command.
       if (l.prUrl) bits.push(l.ciPassed === true ? 'CI passed' : l.ciPassed === false ? 'CI FAILED' : 'CI pending')
-      out.push(`- **${l.title}** — ${bits.join(' · ')}${l.prUrl ? `\n  ${l.prUrl}` : ''}${l.statusReason ? `\n  ${l.statusReason}` : ''}`)
+      out.push(
+        `- **${l.title}** — ${bits.join(' · ')}${l.prUrl ? `\n  ${l.prUrl}` : ''}${l.proofUrl ? `\n  signed proof: ${l.proofUrl}` : ''}${l.statusReason ? `\n  ${l.statusReason}` : ''}`,
+      )
     }
     out.push('')
   }

@@ -74,6 +74,14 @@ The morning report leads with what costs the owner attention — decisions
 waiting, then landed, then failed, then left for a person — and is
 assembled per read, so it cannot go stale.
 
+**Every landed task already carried a signed proof; now the report says
+so.** `issueTaskProof` signs an EIP-712 work proof over each settled
+internal task (`lib/work-proof-store.ts`, `docs/verifying-proofs.md`) —
+the same proof a paid market job gets — and `repoCareReport` now looks it
+up per task (`a.kind === 'proof'`) and prints its `/api/proof/<id>` link
+under the PR, so an agency can hand a client one link that verifies
+independently rather than asking them to trust the report's prose.
+
 ## What it needs from the customer
 
 1. A **local worker with a working directory** (`/office/sessions` →

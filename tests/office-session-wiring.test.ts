@@ -338,6 +338,9 @@ describe('Repo Care, the first vertical', () => {
     // the morning report is assembled per read, so it cannot go stale
     expect(server).toContain('export async function repoCareReport(')
     expect(server).toContain('morningReport({')
+    // the report links each task's own signed proof, not just its PR
+    expect(server).toContain("a.taskId === t.id && a.kind === 'proof'")
+    expect(server).toContain('proofUrl: proof?.ref ?? null')
     expect(read('app/(dashboard)/office/sessions/[id]/page.tsx')).toContain('officeSessionReport(id)')
   })
 

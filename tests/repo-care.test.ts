@@ -134,9 +134,9 @@ describe('what the owner reads', () => {
     const report = morningReport({
       repoFullName: 'acme/api',
       lines: [
-        { taskId: 'a', title: '#1 Landed thing', status: 'settled', statusReason: null, testsPassed: true, changedFiles: 2, prUrl: 'https://github.com/acme/api/pull/9', needsYou: false, ciPassed: true },
-        { taskId: 'b', title: '#2 Needs a look', status: 'awaiting_approval', statusReason: 'production configuration is affected', testsPassed: true, changedFiles: 1, prUrl: null, needsYou: true, ciPassed: null },
-        { taskId: 'c', title: '#3 Broke', status: 'failed', statusReason: 'tests failed on every attempt', testsPassed: false, changedFiles: 4, prUrl: null, needsYou: false, ciPassed: null },
+        { taskId: 'a', title: '#1 Landed thing', status: 'settled', statusReason: null, testsPassed: true, changedFiles: 2, prUrl: 'https://github.com/acme/api/pull/9', needsYou: false, ciPassed: true, proofUrl: '/api/proof/abc123' },
+        { taskId: 'b', title: '#2 Needs a look', status: 'awaiting_approval', statusReason: 'production configuration is affected', testsPassed: true, changedFiles: 1, prUrl: null, needsYou: true, ciPassed: null, proofUrl: null },
+        { taskId: 'c', title: '#3 Broke', status: 'failed', statusReason: 'tests failed on every attempt', testsPassed: false, changedFiles: 4, prUrl: null, needsYou: false, ciPassed: null, proofUrl: null },
       ],
       skipped: [{ issue: issue({ number: 4, title: 'Rotate the API key' }), reason: 'title', detail: 'the title says "api key" — a person decides this one' }],
       costUsd: 0.42,
@@ -150,13 +150,30 @@ describe('what the owner reads', () => {
     expect(report).toContain('#4 Rotate the API key — the title says "api key"')
   })
 
+  it('a landed task carries its own signed proof link; a task with none shows none', () => {
+    const report = morningReport({
+      repoFullName: 'acme/api',
+      lines: [
+        { taskId: 'a', title: '#1 Proved', status: 'settled', statusReason: null, testsPassed: true, changedFiles: 1, prUrl: 'https://github.com/acme/api/pull/9', needsYou: false, ciPassed: true, proofUrl: '/api/proof/abc123' },
+        { taskId: 'b', title: '#2 No proof yet', status: 'settled', statusReason: null, testsPassed: true, changedFiles: 1, prUrl: 'https://github.com/acme/api/pull/10', needsYou: false, ciPassed: true, proofUrl: null },
+      ],
+      skipped: [],
+      costUsd: null,
+    })
+    const landed = report.slice(report.indexOf('## Landed'))
+    expect(landed).toContain('#1 Proved')
+    expect(landed).toContain('signed proof: /api/proof/abc123')
+    const noProofLine = landed.slice(landed.indexOf('#2 No proof yet'), landed.indexOf('#2 No proof yet') + 200)
+    expect(noProofLine).not.toContain('signed proof:')
+  })
+
   it('a PR that opened and then failed real CI gets its own heading, never buried under Landed', () => {
     const report = morningReport({
       repoFullName: 'acme/api',
       lines: [
-        { taskId: 'a', title: '#1 Green PR', status: 'settled', statusReason: null, testsPassed: true, changedFiles: 2, prUrl: 'https://github.com/acme/api/pull/9', needsYou: false, ciPassed: true },
-        { taskId: 'b', title: '#2 Red PR', status: 'settled', statusReason: null, testsPassed: true, changedFiles: 3, prUrl: 'https://github.com/acme/api/pull/10', needsYou: false, ciPassed: false },
-        { taskId: 'c', title: '#3 Not reported yet', status: 'settled', statusReason: null, testsPassed: true, changedFiles: 1, prUrl: 'https://github.com/acme/api/pull/11', needsYou: false, ciPassed: null },
+        { taskId: 'a', title: '#1 Green PR', status: 'settled', statusReason: null, testsPassed: true, changedFiles: 2, prUrl: 'https://github.com/acme/api/pull/9', needsYou: false, ciPassed: true, proofUrl: null },
+        { taskId: 'b', title: '#2 Red PR', status: 'settled', statusReason: null, testsPassed: true, changedFiles: 3, prUrl: 'https://github.com/acme/api/pull/10', needsYou: false, ciPassed: false, proofUrl: null },
+        { taskId: 'c', title: '#3 Not reported yet', status: 'settled', statusReason: null, testsPassed: true, changedFiles: 1, prUrl: 'https://github.com/acme/api/pull/11', needsYou: false, ciPassed: null, proofUrl: null },
       ],
       skipped: [],
       costUsd: null,

@@ -511,6 +511,7 @@ export async function repoCareReport(userId: string, sessionId: string): Promise
     .filter((t) => t.wave === wave)
     .map((t) => {
       const pr = Object.values(state.artifacts).find((a) => a.taskId === t.id && a.name.startsWith('pr-'))
+      const proof = Object.values(state.artifacts).find((a) => a.taskId === t.id && a.kind === 'proof')
       const open = Object.values(state.approvals).some((a) => a.taskId === t.id && a.decidedAt === null)
       return {
         taskId: t.id,
@@ -522,6 +523,7 @@ export async function repoCareReport(userId: string, sessionId: string): Promise
         prUrl: pr?.ref ?? null,
         needsYou: open,
         ciPassed: t.outcome?.ciPassed ?? null,
+        proofUrl: proof?.ref ?? null,
       }
     })
   const triage = Object.values(state.artifacts).find((a) => a.taskId === null && a.name.startsWith('left-for-a-person'))
