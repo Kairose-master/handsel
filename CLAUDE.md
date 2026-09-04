@@ -260,7 +260,7 @@ office, and the only lane a stranger's real money has moved through is the
   a red suite got pushed under a green read. Same defect as the `tee` in
   `solana-devnet.yml` and the `bump` nothing wrote: **a check that cannot fail
   is not a check.** Never pipe a gate.
-- `npm run test` — vitest (currently 287 files, ~4,100 tests). The pure logic
+- `npm run test` — vitest (currently 292 files, ~4,220 tests). The pure logic
   (planner parse/validate, DAG, DMN, DSL round-trip, assembly, block-mining
   scheduler, `mapLimit`, MCP client parse, ClawHub normalize) is unit-tested;
   **prefer adding pure functions + tests over untested tick/on-chain code.**
