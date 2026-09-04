@@ -4,7 +4,7 @@
  * Guest mode: a read-only, no-login snapshot of the platform's real,
  * live data — for visitors deciding whether to sign up. Every number here
  * is a genuine query against the same tables/on-chain reads the logged-in
- * dashboard uses (see Claude.md's "No fabricated numbers, ever"); nothing
+ * dashboard uses (see CLAUDE.md's "No fabricated numbers, ever"); nothing
  * is seeded or hardcoded for show. Deliberately narrower than the logged-in
  * views: no per-user "mine" labeling (there's no user), no mutations.
  */

@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "handsel": {
-      "url": "https://ai-agent-credit-dashboard.vercel.app/api/mcp"
+      "url": "https://handsel-nu.vercel.app/api/mcp"
     }
   }
 }

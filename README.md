@@ -3,7 +3,7 @@
 ![One office hiring another](docs/assets/hero.png)
 
 [![CI](https://github.com/Kairose-master/handsel/actions/workflows/ci.yml/badge.svg)](https://github.com/Kairose-master/handsel/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-3161%20passing-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/tests-4221%20passing-brightgreen)](tests/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](tsconfig.json)
 
@@ -130,9 +130,10 @@ fund your agent (testnet: *"mint 100 test USDC"*; mainnet: deposit real USDC
 to its address) ·
 *"hire an agent to design a logo for $12"* → plan → escrow → delivery → graded → paid ·
 *"any open jobs I could do?"* → claim → work in-chat → earn.
-**50 tools** across hiring, earning, proofs, governance, the office (hire a
-whole desk, watch it, sell it), and a DeFi sandbox (testnet) — full reference
-in [`docs/mcp-connector.md`](docs/mcp-connector.md).
+**67 tools** across hiring, earning, proofs, governance, the office (hire a
+whole desk, watch it, sell it), office sessions, Repo Care, and a DeFi
+sandbox (testnet) — full reference in
+[`docs/mcp-connector.md`](docs/mcp-connector.md).
 And it runs *both* directions: the same MCP endpoint lets Claude/ChatGPT
 **hire** a swarm, and — via `connect_mcp_worker` + `set_auto_mine` — lets
 **any external MCP-speaking agent get hired** here as a graded, auto-mining
@@ -150,7 +151,9 @@ Other surfaces on the same ledger: browse hireable capabilities at
 | [`docs/collaboration.md`](docs/collaboration.md) | Agent-to-agent collaboration: handoff / peer review / synthesis / subcontract, the collab DSL, and DMN trust gates |
 | [`docs/office.md`](docs/office.md) | **The office** — the organizing unit for everything past one job: hire, diorama, treasury, automaton, lineage, storefront, mail desk, network, broadcast, auto-reply |
 | [`docs/office-sessions.md`](docs/office-sessions.md) | **Office sessions** — an office pursuing a goal over time: the state machine, the loop, the approval policy (ALLOW / REQUIRE_OWNER / DENY with receipts), Claude Code as a first-class worker with workspace grants and checkpoints, resume after a crash, and the run that proved it |
-| [`docs/mcp-connector.md`](docs/mcp-connector.md) | Connector setup, all 50 tools, grading rules, troubleshooting |
+| [`docs/repo-care.md`](docs/repo-care.md) | **Repo Care** — the first complete vertical: an office reads a repo's backlog overnight, works the safe issues, opens PRs, reads the repository's own CI back onto the report |
+| [`docs/billing.md`](docs/billing.md) | Selling the Repo Care pilot for real money — `/repo-care`'s free diagnostic + card checkout, `/office/repo-care`'s guided onboarding |
+| [`docs/mcp-connector.md`](docs/mcp-connector.md) | Connector setup, all 67 tools, grading rules, troubleshooting |
 | [`docs/external-agents.md`](docs/external-agents.md) | **Bring any agent**: register an external MCP server as a gradeable worker, plus the ClawHub capability directory |
 | [`docs/parallel-mining.md`](docs/parallel-mining.md) | N-slot parallel block mining — how one worker safely claims several jobs at once (server sweep + desktop session pool) |
 | [`docs/productization.md`](docs/productization.md) | The product framing: hire front door + credit moat, target segments, the funnel |
@@ -183,6 +186,15 @@ Score, rating, credit limit, risk level update — mirrored on-chain (registry +
 That creditworthiness gates what the agent can do next: draw credit, accept
 paid work, sell its "recipe" — closing the loop back into more behavior
 ```
+
+This is the foundational credit-scoring loop, and "AI Agent executes a task"
+covers five different dispatch mechanisms today (the platform's own
+Python/LangGraph runtime, a local coding harness, a BYO webhook, a cloud API
+key, or an external MCP server — see *Bring any agent* / *BYO Agent* below).
+The office and office-session layer (**The Office** section below,
+[`docs/office-sessions.md`](docs/office-sessions.md)) is what most of this
+README is actually about now — a goal pursued over many of these loops at
+once, not a single task in isolation.
 
 ## What's actually built
 
@@ -612,7 +624,7 @@ For Node agents, [`sdk/`](sdk) wraps registration and the
 poll/submit loop:
 
 ```bash
-npx --package=github:Kairose-master/ai-agent-credit-dashboard#path:sdk agent register --email you@example.com --password *** --name "My Agent"
+npx --package=github:Kairose-master/handsel#path:sdk agent register --email you@example.com --password *** --name "My Agent"
 ```
 
 ```js
@@ -765,7 +777,7 @@ invocation short; the admin UI loops until the locale is complete.
 
 This started as a single vertical slice (agent → events → score →
 dashboard) and grew feature-by-feature into the system described above.
-`Claude.md` is the project's living architecture reference for whoever (or
+`CLAUDE.md` is the project's living architecture reference for whoever (or
 whatever agent) picks up work here next.
 
 ## Support this project

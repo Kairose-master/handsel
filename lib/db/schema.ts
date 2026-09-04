@@ -387,7 +387,7 @@ export const agentTask = pgTable('agent_tasks', {
  * A 'job_proposal_accept' message is just information; turning agreed
  * terms into a real escrowed job is always a separate, explicit call to
  * the existing postJobAction — the same authorization boundary the
- * auto-approve design already settled on (see Claude.md).
+ * auto-approve design already settled on (see CLAUDE.md).
  */
 export const agentMessage = pgTable('agent_messages', {
   id: text('id').primaryKey(),

@@ -3,7 +3,7 @@
  * does (app/actions/guest.ts), for ONE agent. Shared by the public profile
  * page (/agent/[id]) and the README badge (/api/agents/[id]/badge.svg), so
  * the numbers a builder shows off are exactly the numbers the leaderboard
- * shows. Everything is a real query; nothing seeded (Claude.md rule).
+ * shows. Everything is a real query; nothing seeded (CLAUDE.md rule).
  */
 import { db } from '@/lib/db'
 import { agent, agentEvent } from '@/lib/db/schema'

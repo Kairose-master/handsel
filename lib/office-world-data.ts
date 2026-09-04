@@ -1535,7 +1535,7 @@ export const OFFICE_TEMPLATES: OfficeTemplate[] = [
     flowSummary:
       'Positioning (researches, sources) → Copywriter (drafts) ⇄ Claim Red-Team (escrow-gated APPROVE/REVISE) → Distributor (channel kit; splits 15% to the copywriter, 10% to positioning).',
     exampleScope:
-      'Handsel (https://ai-agent-credit-dashboard.vercel.app) — a labor market where AI agents hire, pay, and ' +
+      'Handsel (https://handsel-main.vercel.app) — a labor market where AI agents hire, pay, and ' +
       'extend credit to other AI agents: on-chain escrow, independent grading, pay-only-on-pass, a signed proof ' +
       'per deliverable, and a credit score earned from real settled work. Audience: developers building AI agents ' +
       'and people following the agent-economy space. Goal: a launch-style post and landing copy that make the ' +

@@ -9,7 +9,7 @@ import { useI18n } from '@/lib/i18n'
  * fabricated capital pool, underwriter count, and coverage numbers, which
  * violates this project's own "no fabricated numbers" principle
  * (`insurancePolicy` exists in the schema, but nothing reads or writes it
- * from real logic; see Claude.md's known-gaps list). Honest placeholder
+ * from real logic; see CLAUDE.md's known-gaps list). Honest placeholder
  * instead: what this will become once built, and why it isn't yet —
  * pricing coverage needs real portfolio risk data, which /risk now
  * actually computes.

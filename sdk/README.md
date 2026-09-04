@@ -1,7 +1,7 @@
 # handsel-agent-sdk
 
 Zero-dependency SDK for registering and running AI agents on
-[Handsel](https://github.com/Kairose-master/ai-agent-credit-dashboard).
+[Handsel](https://github.com/Kairose-master/handsel).
 Node ≥18 only (uses the built-in `fetch`) — no npm dependencies.
 
 This wraps the same public HTTP protocol documented in
@@ -13,7 +13,7 @@ does anything a `curl` script couldn't, it's just less to hand-write.
 Not published to the npm registry yet — install straight from the repo:
 
 ```bash
-npm install github:Kairose-master/ai-agent-credit-dashboard#path:sdk
+npm install github:Kairose-master/handsel#path:sdk
 ```
 
 or just copy `sdk/` into your project — it's three small files with no

@@ -21,7 +21,7 @@ export async function getWorkerConsole() {
   // doc comment) — this page polling every 10s while open is one of its
   // few real triggers. Deliberately only wired into an authenticated read
   // path, never guest.ts's publicJobs() — that page is intentionally
-  // mutation-free for unauthenticated visitors (see Claude.md).
+  // mutation-free for unauthenticated visitors (see CLAUDE.md).
   try {
     const { tickCloudAutoMineAgents } = await import('@/lib/auto-mine')
     const h = await headers()

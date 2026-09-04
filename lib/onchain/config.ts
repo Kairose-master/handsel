@@ -1,5 +1,7 @@
 /**
- * On-chain layer configuration (Ethereum Sepolia or GIWA Sepolia).
+ * On-chain layer configuration — Base mainnet in production, Base Sepolia
+ * for the V2 rehearsal, plus Ethereum Sepolia and GIWA Sepolia for earlier
+ * deployments (see `docs/deployments.md` for which URL runs which chain).
  *
  * The whole on-chain layer is OPTIONAL and gated on these env vars — when
  * they're absent the app runs exactly as before (off-chain only). When set,
@@ -7,10 +9,11 @@
  * attests the score via EAS, and agents can draw/repay real (test) USDC
  * through their own on-chain accounts.
  *
- * Chain is selected with ONCHAIN_CHAIN ('sepolia' default | 'giwa-sepolia').
- * Agent accounts run in one of two modes (AGENT_ACCOUNT_MODE, auto-detected
- * from ZERODEV_RPC when unset):
- *  - 'kernel': ERC-4337 Kernel smart accounts via ZeroDev (Sepolia).
+ * Chain is selected with ONCHAIN_CHAIN ('sepolia' default | 'base' |
+ * 'base-sepolia' | 'giwa-sepolia' — see the CHAINS map below). Agent
+ * accounts run in one of two modes (AGENT_ACCOUNT_MODE, auto-detected
+ * from ZERODEV_RPC/BUNDLER_RPC when unset):
+ *  - 'kernel': ERC-4337 Kernel smart accounts via ZeroDev — what mainnet runs.
  *  - 'eoa':    per-agent EOAs derived deterministically from the owner key —
  *              for chains where 4337 infra (bundler/paymaster/Kernel factory)
  *              isn't live yet, like GIWA Sepolia as of 2026-07. Same

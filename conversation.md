@@ -845,3 +845,28 @@ GitHub Discussions new URL 생성, 금지 문장·증거 없는 주장·잘못�
   현재 4개뿐이라 카드도 4개 — 실제 tool_record가 없으면 그냥 카드만 뜨고 통계 줄은 안 뜸
   (record: null이면 렌더 안 함, 가짜 0 안 보여줌). next dev로 실제 렌더 확인함(DB 없이도
   200, 카드 4개 다 뜸, 에러 없음).
+
+- (16차) README부터 나머지 문서 최신화 — 지난 108-doc 감사가 안 훑었던 루트/서브디렉토리
+  문서들. **`Claude.md`(소문자, 루트) 발견** — CLAUDE.md와는 완전히 다른, 예전 세대
+  아키텍처 문서(Python/LangGraph 단일 러타임, Ethereum Sepolia — Base 얘기가 전혀 없음)였고,
+  코드 주석 6곳 + README.md가 여전히 "Claude.md"를 "the living reference"로 인용하고 있었다.
+  git history 확인해보니 agent-runtime/(Python FastAPI)도 같은 커밋(census 2026-09-01)으로
+  같이 들어왔는데, **이건 죽은 코드가 아니라 진짜 살아있음** — lib/agent-tasks.ts,
+  app/actions/verified.ts가 지금도 import해서 씀(runtimeType: 'platform' 경로). 그래서
+  Claude.md를 그냥 지우지 않고 **리다이렉트 스텁으로 교체**(git log로 원본 남아있음) +
+  6개 코드 주석 전부 CLAUDE.md로 정정.
+  README.md 자체도 여러 군데 스테일: CI 배지 테스트 카운트(3161→4221), "50 tools"×2→67,
+  sdk 설치 커맨드가 **틀린 저장소**(ai-agent-credit-dashboard, V1 archive)를 가리키고
+  있었음 — sdk/package.json 자체는 이미 Kairose-master/handsel이라고 돼 있는데 README와
+  sdk/README.md 둘 다 안 맞았다. **같은 "틀린 저장소" 패턴을 repo 전체에서 grep으로 훑음**
+  (docs/ 밖) — examples/README.md, examples/mcp-quickstart/{README,mcp.json}, examples/
+  clawhub-skill/handsel/SKILL.md 전부 testnet URL이 ai-agent-credit-dashboard였고 tool
+  카운트도 19/28로 박제. lib/office-world-data.ts의 growth-studio 템플릿
+  exampleScope(고객이 보는 예시 문구)도 잘못된 URL로 "Handsel"을 광고하고 있었음 — 전부
+  handsel-nu.vercel.app(테스트넷 예제) 또는 handsel-main.vercel.app(마케팅 예시)로 정정.
+  docs/security-audit.md의 "MCP tool authorization | 28 tools" 행도 손봄 — 39개 신규
+  툴(office/session/repo-care/storefront/lineage)이 그 리뷰 이후 추가됐는데 재검토 안 됨,
+  이번에 withdraw_agent_eth/fund_agent_usdc/set_storefront 3개만 실제 코드 읽어서
+  auth.userId 스코프 확인하고 addendum으로 붙임(나머지 ~36개는 미검토라고 정직하게 남김).
+  **desktop-v* 릴리스 링크는 안 건드림** — git ls-remote로 재확인, 여전히 이 레포엔
+  desktop-v* 태그가 없어서 V1 archive가 진짜 맞는 위치임(surface-audit.md 기존 기록과 일치).

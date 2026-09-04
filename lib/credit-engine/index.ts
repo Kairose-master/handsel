@@ -59,7 +59,7 @@ async function ownerFailureCarryover(agentId: string): Promise<CarryoverResult> 
  * the runtime produce non-empty output" — it has no idea whether that
  * output was actually CORRECT. For an auto-graded Labor Market job, the
  * platform's own acceptance-test run (JOB_TESTS_PASSED/FAILED) is the real
- * verdict on the SAME task, and it's a fact, not an opinion (see Claude.md
+ * verdict on the SAME task, and it's a fact, not an opinion (see CLAUDE.md
  * — "the two grades of credit signal"). Without this correction, a job
  * whose acceptance tests genuinely FAILED still counted as a "completed"
  * task toward Performance (40% weight) and Reputation (20%) — the runtime
