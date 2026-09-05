@@ -5,9 +5,14 @@
  * are personal data, and this is the one place they are ever read back.
  */
 import { requirePermission } from '@/lib/admin'
-import { listPilotLeads, type PilotLeadRow } from '@/lib/billing-server'
+import { listOfficeSubscriptions, listPilotLeads, type OfficeSubscriptionRow, type PilotLeadRow } from '@/lib/billing-server'
 
 export async function getPilotLeads(): Promise<PilotLeadRow[]> {
   await requirePermission('billing')
   return listPilotLeads()
+}
+
+export async function getOfficeSubscriptions(): Promise<OfficeSubscriptionRow[]> {
+  await requirePermission('billing')
+  return listOfficeSubscriptions()
 }

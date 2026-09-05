@@ -1,6 +1,7 @@
 /**
  * POST /api/webhooks/lemonsqueezy — Lemon Squeezy telling us a Repo Care
- * pilot was bought (`docs/billing.md` has the account-side setup).
+ * pilot was bought, or an office subscription moved (created, renewed,
+ * cancelled — `docs/billing.md` has the account-side setup).
  *
  * Same posture as `/api/webhooks/instagram` and `/api/github/webhook`:
  * verify the HMAC signature over the RAW body before parsing anything, then
@@ -14,7 +15,7 @@
  * what Lemon Squeezy pushes, it never calls back to Lemon Squeezy's API, so
  * a webhook signing secret is the only credential it needs.
  */
-import { parsePilotOrder, verifyLemonSqueezySignature } from '@/lib/billing'
+import { parsePilotOrder, parseSubscriptionEvent, verifyLemonSqueezySignature } from '@/lib/billing'
 
 export async function POST(request: Request) {
   const secret = process.env.LEMONSQUEEZY_WEBHOOK_SECRET
@@ -36,6 +37,11 @@ export async function POST(request: Request) {
     if (order) {
       const { recordPilotLead } = await import('@/lib/billing-server')
       await recordPilotLead(order)
+    }
+    const subscription = parseSubscriptionEvent(body)
+    if (subscription) {
+      const { recordSubscriptionEvent } = await import('@/lib/billing-server')
+      await recordSubscriptionEvent(subscription)
     }
   } catch (error) {
     // A lost lead here is not a lost sale — Lemon Squeezy's own receipt and

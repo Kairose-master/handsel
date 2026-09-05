@@ -1,16 +1,17 @@
 import { Check, Sparkles, ArrowRight } from 'lucide-react'
-import { PILOT_OFFER } from '@/lib/billing'
+import { OFFICE_SUBSCRIPTION_TIERS, PILOT_OFFER } from '@/lib/billing'
 
 /**
  * The `/repo-care` pricing section. Design pattern borrowed from Originkit's
  * "Pricing 02" (checkmark feature lists, a highlighted middle card, a
  * shine-hover CTA) — but hand-written against this repo's own tokens, not
- * the raw fetched module: that module was a generic SaaS monthly/yearly
- * template, minified, and `docs/positioning.md` §8 is explicit that this
- * product sells exactly one offer and never a subscription ladder before
- * the first rung has sold. So the three cards below are the real three
- * things on sale — a free diagnostic, one fixed-price pilot, ongoing care —
- * never a toggle between prices that don't exist yet.
+ * the raw fetched module: that module was minified and its monthly/yearly
+ * toggle sat across three invented tiers, neither of which fit here.
+ *
+ * The three cards are the three real rungs of the funnel — free diagnostic,
+ * one fixed-price pilot, recurring office subscription
+ * (`OFFICE_SUBSCRIPTION_TIERS`, `lib/billing.ts`) — never a toggle between
+ * prices nobody has actually priced.
  */
 
 const FREE_FEATURES = ['계정 없이, 지금 바로', '실제 triage 규칙으로 이슈 분류', '위험한 작업은 자동 제외']
@@ -20,7 +21,6 @@ const PILOT_FEATURES = [
   '검증 · Pull Request · 아침 보고서',
   '카드 결제, 지갑 불필요',
 ]
-const ONGOING_FEATURES = ['파일럿 결과를 본 뒤 결정', '저장소 수·야간 처리량 기준 산정', '지속적인 야간 케어']
 
 function FeatureList({ items }: { items: string[] }) {
   return (
@@ -35,7 +35,14 @@ function FeatureList({ items }: { items: string[] }) {
   )
 }
 
-export function RepoCarePricing({ checkoutUrl }: { checkoutUrl: string | null }) {
+export function RepoCarePricing({
+  checkoutUrl,
+  subscriptionCheckoutUrls,
+}: {
+  checkoutUrl: string | null
+  /** Keyed by `OfficeSubscriptionTier.id` ('starter' | 'growth' | 'studio'). */
+  subscriptionCheckoutUrls: Record<string, string | null>
+}) {
   return (
     <section className="space-y-4">
       <h2 className="text-lg font-medium">가격</h2>
@@ -86,11 +93,34 @@ export function RepoCarePricing({ checkoutUrl }: { checkoutUrl: string | null })
 
         <div className="flex flex-col rounded-xl border border-border p-5 transition-shadow hover:shadow-md">
           <div className="text-sm font-semibold">계속 사용</div>
-          <div className="mt-1 text-2xl font-bold">월 $299~</div>
-          <p className="mt-2 text-xs text-muted-foreground">
-            파일럿 결과를 본 뒤 결정하세요. 정확한 요금은 저장소 수와 야간 처리량에 따라 정합니다.
-          </p>
-          <FeatureList items={ONGOING_FEATURES} />
+          <div className="mt-1 text-2xl font-bold">월 ${OFFICE_SUBSCRIPTION_TIERS[0].priceUsdPerMonth}~</div>
+          <p className="mt-2 text-xs text-muted-foreground">파일럿 없이 바로 시작해도 됩니다 — 저장소 수·야간 처리량 기준 3단계.</p>
+          <ul className="mt-4 space-y-3">
+            {OFFICE_SUBSCRIPTION_TIERS.map((tier) => {
+              const url = subscriptionCheckoutUrls[tier.id] ?? null
+              return (
+                <li key={tier.id} className="border-t border-border pt-3 first:border-t-0 first:pt-0">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-sm font-semibold">{tier.name}</span>
+                    <span className="text-sm font-semibold">${tier.priceUsdPerMonth}/월</span>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">{tier.summary}</p>
+                  {url ? (
+                    <a href={url} className="mt-1.5 inline-block text-xs font-semibold text-primary underline underline-offset-4">
+                      {tier.name} 구독하기 →
+                    </a>
+                  ) : (
+                    <a
+                      href={`mailto:hello@handsel.dev?subject=Repo%20Care%20${tier.name}`}
+                      className="mt-1.5 inline-block text-xs font-semibold text-primary underline underline-offset-4"
+                    >
+                      {tier.name} 문의하기 →
+                    </a>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
         </div>
       </div>
       <p className="text-sm text-muted-foreground">

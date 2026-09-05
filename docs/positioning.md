@@ -331,6 +331,13 @@ Still owed, and honestly outside what code alone can close:
   store and product, and onboarding each pilot once it is sold — building
   more billing automation before a second customer exists to prove it
   against would be guessing.
+- ~~The monthly rung, held until the pilot sold once~~ **Overridden
+  2026-09-05.** The owner decided not to wait: `OFFICE_SUBSCRIPTION_TIERS`
+  (`lib/billing.ts`) — Starter/Growth/Studio, real Lemon Squeezy checkout
+  links on `/repo-care` — is built now. The prices are an anchor, not
+  evidence; what is still genuinely missing, not merely deferred, is any
+  link from a paying email to the account whose repo limit it should raise
+  (`repoCareWithinTierLimits` is pure and unwired for exactly that reason).
 - **A case study.** It needs a real customer and a real result. Writing one
   before there is one would break the rule this repo is otherwise strict
   about, so the place for it stays empty until a pilot fills it.

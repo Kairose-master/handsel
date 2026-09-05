@@ -7,7 +7,15 @@
 import { readFileSync } from 'node:fs'
 import { createHmac } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
-import { PILOT_OFFER, parsePilotOrder, verifyLemonSqueezySignature } from '@/lib/billing'
+import {
+  OFFICE_SUBSCRIPTION_TIERS,
+  PILOT_OFFER,
+  parsePilotOrder,
+  parseSubscriptionEvent,
+  repoCareWithinTierLimits,
+  tierIdForVariantName,
+  verifyLemonSqueezySignature,
+} from '@/lib/billing'
 
 const read = (p: string) => readFileSync(p, 'utf8')
 
@@ -15,6 +23,82 @@ describe('the offer', () => {
   it('is the one docs/positioning.md and docs/billing.md both describe', () => {
     expect(PILOT_OFFER.priceUsd).toBe(500)
     expect(PILOT_OFFER.days).toBe(14)
+  })
+})
+
+describe('OFFICE_SUBSCRIPTION_TIERS', () => {
+  it('is three ordered, distinct plans that scale repo limit with price', () => {
+    expect(OFFICE_SUBSCRIPTION_TIERS.map((t) => t.id)).toEqual(['starter', 'growth', 'studio'])
+    for (let i = 1; i < OFFICE_SUBSCRIPTION_TIERS.length; i++) {
+      expect(OFFICE_SUBSCRIPTION_TIERS[i].priceUsdPerMonth).toBeGreaterThan(OFFICE_SUBSCRIPTION_TIERS[i - 1].priceUsdPerMonth)
+      expect(OFFICE_SUBSCRIPTION_TIERS[i].repoLimit).toBeGreaterThan(OFFICE_SUBSCRIPTION_TIERS[i - 1].repoLimit)
+    }
+  })
+})
+
+describe('tierIdForVariantName', () => {
+  it('matches a Lemon Squeezy variant name to a tier id, case-insensitively', () => {
+    expect(tierIdForVariantName('Starter')).toBe('starter')
+    expect(tierIdForVariantName('growth')).toBe('growth')
+    expect(tierIdForVariantName('  Studio  ')).toBe('studio')
+  })
+
+  it('is null for anything unmatched or absent', () => {
+    expect(tierIdForVariantName(null)).toBeNull()
+    expect(tierIdForVariantName('Enterprise')).toBeNull()
+    expect(tierIdForVariantName('')).toBeNull()
+  })
+})
+
+describe('repoCareWithinTierLimits', () => {
+  const starter = OFFICE_SUBSCRIPTION_TIERS[0]
+  it('allows a repo under the cap with a wave within the plan ceiling', () => {
+    expect(repoCareWithinTierLimits(starter, 0, 3)).toBe(true)
+  })
+  it('refuses at or over the repo cap, or a wave above the plan ceiling', () => {
+    expect(repoCareWithinTierLimits(starter, 1, 3)).toBe(false)
+    expect(repoCareWithinTierLimits(starter, 0, 4)).toBe(false)
+  })
+})
+
+describe('parseSubscriptionEvent', () => {
+  const evt = (over: Record<string, unknown> = {}) => ({
+    meta: { event_name: 'subscription_created' },
+    data: { id: 'sub_1', attributes: { user_email: 'Buyer@Example.com', status: 'active', variant_name: 'Growth', renews_at: '2026-10-05T00:00:00Z', test_mode: false, ...over } },
+  })
+
+  it('reads a real subscription event', () => {
+    expect(parseSubscriptionEvent(evt())).toEqual({
+      subscriptionId: 'sub_1',
+      email: 'buyer@example.com',
+      status: 'active',
+      variantName: 'Growth',
+      renewsAt: '2026-10-05T00:00:00Z',
+      endsAt: null,
+      testMode: false,
+      eventName: 'subscription_created',
+    })
+  })
+
+  it('accepts every subscription lifecycle event name', () => {
+    for (const name of ['subscription_updated', 'subscription_cancelled', 'subscription_expired', 'subscription_paused', 'subscription_payment_success']) {
+      const e = evt()
+      ;(e.meta as { event_name: string }).event_name = name
+      expect(parseSubscriptionEvent(e)?.eventName).toBe(name)
+    }
+  })
+
+  it('falls back to active for an unrecognised status rather than throwing', () => {
+    expect(parseSubscriptionEvent(evt({ status: 'weird' }))?.status).toBe('active')
+  })
+
+  it('is null for anything that is not a usable subscription event', () => {
+    expect(parseSubscriptionEvent(null)).toBeNull()
+    expect(parseSubscriptionEvent('a string')).toBeNull()
+    expect(parseSubscriptionEvent({})).toBeNull()
+    expect(parseSubscriptionEvent({ meta: { event_name: 'order_created' }, data: { id: '1', attributes: { user_email: 'a@b.com' } } })).toBeNull()
+    expect(parseSubscriptionEvent({ meta: { event_name: 'subscription_created' }, data: { attributes: { user_email: 'a@b.com' } } })).toBeNull() // no id
+    expect(parseSubscriptionEvent({ meta: { event_name: 'subscription_created' }, data: { id: '1', attributes: {} } })).toBeNull() // no email
   })
 })
 
@@ -99,24 +183,49 @@ describe('wiring: signature before parsing, and no dead button', () => {
     expect(read('lib/billing-server.ts')).toContain('ON CONFLICT (order_id) DO NOTHING')
   })
 
+  it('a subscription event updates the row in place — its status is a lifecycle, not a one-shot fact', () => {
+    const server = read('lib/billing-server.ts')
+    expect(server).toContain('CREATE TABLE IF NOT EXISTS office_subscription')
+    expect(server).toContain('ON CONFLICT (subscription_id) DO UPDATE SET')
+  })
+
+  it('the webhook route also records subscription lifecycle events', () => {
+    const route = read('app/api/webhooks/lemonsqueezy/route.ts')
+    expect(route).toContain('parseSubscriptionEvent(body)')
+    expect(route).toContain('recordSubscriptionEvent(subscription)')
+  })
+
+  it('/admin/pilots also shows office subscriptions, gated the same way', () => {
+    expect(read('app/actions/pilots.ts')).toContain('export async function getOfficeSubscriptions')
+    expect(read('app/(dashboard)/admin/pilots/page.tsx')).toContain('getOfficeSubscriptions')
+  })
+
   it('/repo-care never renders a checkout link with nothing behind it', () => {
     const page = read('app/repo-care/page.tsx')
     expect(page).toContain('LEMONSQUEEZY_PILOT_CHECKOUT_URL')
     expect(page).toContain('<PublicShell')
-    expect(page).toContain('<RepoCarePricing checkoutUrl={checkoutUrl} />')
+    expect(page).toContain('<RepoCarePricing checkoutUrl={checkoutUrl} subscriptionCheckoutUrls={subscriptionCheckoutUrls} />')
     const pricing = read('components/repo-care-pricing.tsx')
     expect(pricing).toMatch(/checkoutUrl \?/)
     expect(pricing).toContain('mailto:')
   })
 
-  it('the pricing section sells exactly the real offer — no fake tiers, no billing toggle', () => {
-    // docs/positioning.md §8: no subscription ladder before the first rung
-    // has sold once. A monthly/yearly toggle or an invented fourth tier
-    // would be exactly that ladder, dressed up as a UI component.
+  it('the pricing section sells the real pilot and the real subscription tiers — no invented toggle', () => {
+    // The owner explicitly overrode the earlier "no subscription ladder"
+    // rule (lib/billing.ts, 2026-09-05) — OFFICE_SUBSCRIPTION_TIERS are real,
+    // anchored prices with real checkout links, not a fourth invented tier.
+    // What is still refused: a monthly/yearly toggle dressed up as a plan.
     const pricing = read('components/repo-care-pricing.tsx')
     expect(pricing).toContain('PILOT_OFFER.priceUsd')
     expect(pricing).toContain('PILOT_OFFER.days')
+    expect(pricing).toContain('OFFICE_SUBSCRIPTION_TIERS')
     expect(pricing).not.toMatch(/useState.*billing|billingCycle|toggle.*yearly/i)
+  })
+
+  it('every subscription checkout link falls back to a mailto, never a dead link', () => {
+    const pricing = read('components/repo-care-pricing.tsx')
+    const subs = pricing.slice(pricing.indexOf('subscriptionCheckoutUrls'))
+    expect(subs).toContain('mailto:hello@handsel.dev')
   })
 
   it('/admin/pilots is gated on the billing permission, not just a session', () => {

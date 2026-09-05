@@ -3,7 +3,7 @@ import { PublicShell } from '@/components/public-shell'
 import { RepoDiagnostic } from '@/components/repo-diagnostic'
 import { RepoCarePricing } from '@/components/repo-care-pricing'
 import { isRealMoney } from '@/lib/onchain/real-money'
-import { PILOT_OFFER } from '@/lib/billing'
+import { OFFICE_SUBSCRIPTION_TIERS, PILOT_OFFER } from '@/lib/billing'
 
 /**
  * /repo-care — the front door of the sales package (docs/billing.md,
@@ -24,6 +24,9 @@ export const metadata: Metadata = {
 export default function RepoCarePage() {
   const real = isRealMoney()
   const checkoutUrl = process.env.LEMONSQUEEZY_PILOT_CHECKOUT_URL || null
+  const subscriptionCheckoutUrls = Object.fromEntries(
+    OFFICE_SUBSCRIPTION_TIERS.map((tier) => [tier.id, process.env[`LEMONSQUEEZY_SUB_${tier.id.toUpperCase()}_CHECKOUT_URL`] || null]),
+  )
   return (
     <PublicShell current="/repo-care" eyebrow="Repo Care" width="prose" realMoney={real}>
       <div id="content" className="space-y-12 py-10">
@@ -97,7 +100,7 @@ export default function RepoCarePage() {
         </section>
 
         {/* ── Pricing ───────────────────────────────────────────── */}
-        <RepoCarePricing checkoutUrl={checkoutUrl} />
+        <RepoCarePricing checkoutUrl={checkoutUrl} subscriptionCheckoutUrls={subscriptionCheckoutUrls} />
 
         <p className="text-xs text-muted-foreground">
           결제는 저희의 merchant of record인 Lemon Squeezy가 처리합니다 — Handsel은 카드 정보를 보거나 저장하지
