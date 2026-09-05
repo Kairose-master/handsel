@@ -1181,6 +1181,14 @@ sandbox, and the receipt still looks fine.
 reader should do* — not in a footer, not inferable from a hostname, not implied
 by a brand name, but in the sentence making the claim.
 
+**Follow-up (issue #2).** After removing the v1 App and installing the
+mainnet App, the same `bounty:$1` label on
+https://github.com/Kairose-master/handsel/issues/2 produced the
+discriminating receipt: *"💰 $1 in real USDC escrowed…"* from
+`handsel-main[bot]`. The wording fix from this section did its job — the
+pass condition is now readable on first sight, and the job created by that
+smoke test is the one workers claim on the mainnet board.
+
 ---
 
 ## 24. We told workers refusal was free, then charged them for it
