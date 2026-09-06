@@ -3698,3 +3698,55 @@ worker rather than on us. When a dispatch cannot start, that is not the
 worker's verdict — §69's distinction (who is being judged) applied to the
 dispatch path.
 
+## 73. "Send USDC" on /profile showed a digest instead of the cap that stopped it (2026-09-06)
+
+**Seen.** An owner sending USDC from an agent's Treasury card on `/profile`
+to an external wallet got Next.js's production paragraph — "An error occurred
+in the Server Components render. The specific message is omitted in
+production builds…" — and nothing else. Vercel's error clusters for
+`handsel-main` had the actual sentence, six times in two minutes from one
+user on `/profile`:
+
+    Error: Per-transfer cap is $100 (requested $180) — raise it in Worker
+    Console payout settings   { digest: '2027731785' }
+
+The transfer was refused correctly. What failed was telling the owner why.
+
+**Cause.** `sendFromTreasury` called `enforceSpendingPolicy`, which throws
+on a cap breach, and let the throw escape; its on-chain branch did
+`throw asActionError(...)`. Next.js replaces every error thrown from a
+server action in production with the generic paragraph plus a digest —
+"controlled" or not — so the client's `catch (e) { setTreasuryMsg(e.message) }`
+rendered the paragraph. §39's page-load digest and the earlier
+withdraw-payout digest (`tests/server-action-preconditions.test.ts`) were
+the same mechanism; `withdrawAgentEarnings` and `withdrawAllEarnings` had
+already been converted to return their refusal, and this path was missed.
+`lib/action-error.ts`'s own doc comment claimed the rethrown sentence
+"reaches the client", which is true only in development — the claim was
+corrected, because it is what made the throw look safe.
+
+**Fix.** Two parts, the same two as the withdraw case.
+
+1. `sendFromTreasury` returns `{ error }` for every refusal — unprovisioned
+   agent, bad address, either cap, and the on-chain failure (still through
+   `asActionError`, whose sentence is now returned instead of thrown). The
+   client renders `r.error` before it reads `r.txHash`.
+2. The caps are already on the page (`getTreasury` returns `maxPerTx`,
+   `dailyCap`, `spent24h`), so the Send button is disabled the moment the
+   typed amount exceeds the per-transfer cap or the remaining 24h window,
+   with a line saying which cap and a link to the Worker Console payout
+   settings where it is raised. The precondition is checked where it is
+   knowable, so the refused click does not happen.
+
+Pinned by `tests/server-action-preconditions.test.ts`: the action contains no
+`throw` between its signature and the next export, the policy call is wrapped
+in a `catch` that returns, and the client gates on both caps in the order the
+policy checks them.
+
+**Lesson.** A server action that `throw`s to tell a user something they can
+fix is broken in production and works in development, which is the worst
+distribution of symptoms a bug can have. The twenty-odd remaining
+`throw asActionError(...)` sites (`postJobAction`, `acceptJobAction`, …)
+have the same shape — the Vercel log for `postJobAction` shows a digest
+next to a perfectly good "kernel account holds 0 wei" sentence. Convert
+them the same way when touched; do not add new ones.

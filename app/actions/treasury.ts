@@ -100,21 +100,46 @@ export async function getTreasury(agentId: string) {
 }
 
 
+export type SendFromTreasuryResult =
+  | { txHash: string; error?: never }
+  /** Why nothing was sent, in a sentence the owner can act on. RETURNED, never
+   *  thrown — see the note inside. */
+  | { txHash?: never; error: string }
+
 /** Owner-initiated withdrawal/payment to any external address. Same policy
  *  and same ledger as agent-initiated transfers. */
-export async function sendFromTreasury(agentId: string, to: string, amountUsd: number, memo?: string) {
+export async function sendFromTreasury(
+  agentId: string,
+  to: string,
+  amountUsd: number,
+  memo?: string,
+): Promise<SendFromTreasuryResult> {
   const ag = await requireOwnedAgent(agentId)
-  if (!ag.smartAccountAddress) throw new Error('Provision the smart account first')
-  if (!isValidAddress(to)) throw new Error('Invalid recipient address')
+  if (!ag.smartAccountAddress) return { error: 'Provision the smart account first' }
+  if (!isValidAddress(to)) return { error: 'Invalid recipient address' }
 
-  await enforceSpendingPolicy(agentId, amountUsd)
+  // Every refusal below is RETURNED. This action used to `throw` the policy
+  // error ("Per-transfer cap is $100 (requested $180) — raise it in Worker
+  // Console payout settings"), and in production Next.js replaces a thrown
+  // server-action error with "An error occurred in the Server Components
+  // render" plus a digest — so an owner sending $180 from /profile saw that
+  // paragraph six times in two minutes and never the one sentence that would
+  // have fixed it (docs/failure-modes.md §73). withdrawAgentEarnings learned
+  // the same lesson earlier; this is the same fix on the direct-send path.
+  try {
+    await enforceSpendingPolicy(agentId, amountUsd)
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) }
+  }
 
   try {
     const txHash = await doTransfer(agentId, ag.smartAccountAddress, to, amountUsd, memo ?? '')
     revalidatePath('/profile')
     return { txHash }
   } catch (error) {
-    throw asActionError(error, 'sendFromTreasury')
+    // asActionError logs the full error server-side and reduces it to one
+    // safe sentence; that sentence still only reaches the browser as a value.
+    return { error: asActionError(error, 'sendFromTreasury').message }
   }
 }
 

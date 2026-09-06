@@ -899,3 +899,15 @@ GitHub Discussions new URL 생성, 금지 문장·증거 없는 주장·잘못�
   자체가 있는지 pin하는 assertion 2줄 추가. docs/repo-care.md에 설명 단락 추가.
   `npm run gates` 전부 green(292 files / 4223 tests, 0 lint errors, build 성공).
   커밋 4e5a037, main으로 fast-forward 후 둘 다 push 완료.
+
+- (19차) /profile "USDC 전송"이 프로덕션에서 "An error occurred in the Server Components
+  render" 다이제스트만 보여주던 문제 — Vercel 에러 클러스터에서 실제 문장 확인: 한 사용자가
+  $170~$180 전송을 6번 시도했고 1회 전송 한도 $100에 걸려 `enforceSpendingPolicy`가 throw,
+  Next.js가 프로덕션에서 서버 액션의 throw를 전부 다이제스트로 가림. `sendFromTreasury`를
+  모든 거부(미프로비저닝/주소/한도/온체인)를 `{ error }`로 **반환**하도록 바꿈(이전
+  withdrawAgentEarnings와 같은 수정), 프로필 페이지는 getTreasury가 이미 주는 maxPerTx/
+  dailyCap/spent24h로 Send 버튼을 클릭 전에 막고 어느 한도인지 + /mine 링크 표시.
+  `lib/action-error.ts` 주석("메시지가 클라이언트에 도달")이 틀려서 정정 — 남은 ~24개
+  `throw asActionError` 호출부는 같은 결함이나 이번 범위 밖(§73에 기록). i18n en/ko/zh 3키
+  추가. 테스트: tests/server-action-preconditions.test.ts에 describe 1개 추가.
+  docs/failure-modes.md §73. 브랜치 claude/server-components-render-error-xoc07x.

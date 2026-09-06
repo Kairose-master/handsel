@@ -28,6 +28,7 @@ import { describe, expect, it } from 'vitest'
  */
 
 const mine = readFileSync('app/(dashboard)/mine/page.tsx', 'utf8')
+const profile = readFileSync('app/(dashboard)/profile/page.tsx', 'utf8')
 const treasury = readFileSync('app/actions/treasury.ts', 'utf8')
 
 /** Source with comments removed — a rule that matches its own explanation is
@@ -100,5 +101,59 @@ describe('the payout precondition is returned, not thrown', () => {
     expect(noEarningsAt).toBeGreaterThan(-1)
     // Order matters: "no earnings" must not be shown for a call that never ran.
     expect(errorAt).toBeLessThan(noEarningsAt)
+  })
+})
+
+/**
+ * The same defect, found a second time on the direct-send path (§73): an owner
+ * sending $180 from /profile hit the $100 per-transfer cap, and
+ * `sendFromTreasury` THREW the policy error — six digests in two minutes, the
+ * sentence that would have fixed it never shown. Same two-part fix as above:
+ * the cap is knowable on the page (getTreasury returns it), so the click is
+ * gated with a reason; and every refusal the server still makes is returned.
+ */
+describe('the direct send from /profile returns its refusals and gates on the caps', () => {
+  const action = code(treasury)
+  const sendAction = action.slice(action.indexOf('export async function sendFromTreasury'), action.indexOf('export async function getPayoutAddress'))
+
+  it('never throws a precondition or a policy error from sendFromTreasury', () => {
+    expect(sendAction).not.toMatch(/throw new Error\(/)
+    // asActionError builds the safe sentence; it must be RETURNED, not rethrown.
+    expect(sendAction).not.toMatch(/throw asActionError/)
+    expect(sendAction).toMatch(/return \{ error: asActionError\(error, 'sendFromTreasury'\)\.message \}/)
+  })
+
+  it('returns the spending-policy refusal as a value', () => {
+    // enforceSpendingPolicy itself throws (it is shared with agent-initiated
+    // transfers, whose caller is a tool loop, not a browser); the action is
+    // where that has to become a value.
+    expect(sendAction).toMatch(/await enforceSpendingPolicy\(agentId, amountUsd\)\s*\}\s*catch \(error\) \{\s*return \{ error:/)
+  })
+
+  it('has the client render the returned error, not just the thrown one', () => {
+    const src = code(profile)
+    const handleSend = src.slice(src.indexOf('const handleSend = async'))
+    expect(handleSend).toMatch(/const r = await sendFromTreasury\(/)
+    expect(handleSend.indexOf('if (r.error !== undefined)')).toBeGreaterThan(-1)
+    expect(handleSend.indexOf('if (r.error !== undefined)')).toBeLessThan(handleSend.indexOf("t('profile.treasury.sentMsg'"))
+  })
+
+  it('gates the Send button on the caps the page already knows', () => {
+    const src = code(profile)
+    expect(src).toMatch(/disabled=\{treasuryBusy \|\| !sendTo\.trim\(\) \|\| !sendAmount \|\| sendCapIssue !== null\}/)
+    // Per-transfer first, then the 24h window — the order enforceSpendingPolicy uses.
+    expect(src).toMatch(/sendAmountNum > treasury\.maxPerTx/)
+    expect(src).toMatch(/treasury\.spent24h \+ sendAmountNum > treasury\.dailyCap/)
+  })
+
+  it('says which cap is in the way and where to raise it', () => {
+    for (const key of ['profile.treasury.overTxCap', 'profile.treasury.overDailyCap', 'profile.treasury.raiseCaps']) {
+      expect(code(profile)).toContain(key)
+    }
+    const dict = readFileSync('lib/i18n-dict.ts', 'utf8')
+    for (const key of ['profile.treasury.overTxCap', 'profile.treasury.overDailyCap', 'profile.treasury.raiseCaps']) {
+      const occurrences = dict.split(`'${key}':`).length - 1
+      expect(occurrences, `${key} should appear in en, ko and zh`).toBe(3)
+    }
   })
 })

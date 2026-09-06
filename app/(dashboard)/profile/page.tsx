@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Wallet,
@@ -464,8 +465,14 @@ export default function ProfilePage() {
     setTreasuryBusy(true)
     setTreasuryMsg(null)
     try {
-      const { txHash } = await sendFromTreasury(agentId, sendTo.trim(), parseFloat(sendAmount))
-      setTreasuryMsg(t('profile.treasury.sentMsg', { tx: txHash.slice(0, 14) }))
+      const r = await sendFromTreasury(agentId, sendTo.trim(), parseFloat(sendAmount))
+      // A refusal (cap, bad address, on-chain failure) comes back as a value —
+      // a thrown one would reach this catch as the redacted production digest.
+      if (r.error !== undefined) {
+        setTreasuryMsg(r.error)
+        return
+      }
+      setTreasuryMsg(t('profile.treasury.sentMsg', { tx: r.txHash.slice(0, 14) }))
       setSendTo('')
       setSendAmount('')
       await refresh(agentId)
@@ -477,6 +484,20 @@ export default function ProfilePage() {
   }
 
   const [copied, setCopied] = useState(false)
+
+  // The caps are already on this page (getTreasury returns them), so an amount
+  // the server would refuse is knowable BEFORE the click — same principle as
+  // the withdraw-all gate on /mine: check the precondition where it is
+  // knowable, and say which one is unmet instead of just disabling.
+  const sendAmountNum = parseFloat(sendAmount)
+  const sendCapIssue: 'tx' | 'daily' | null =
+    treasury && Number.isFinite(sendAmountNum) && sendAmountNum > 0
+      ? sendAmountNum > treasury.maxPerTx
+        ? 'tx'
+        : treasury.spent24h + sendAmountNum > treasury.dailyCap
+          ? 'daily'
+          : null
+      : null
 
 
   const onchainReady = Boolean(onchain?.agentConfigured && onchain?.smartAccountAddress)
@@ -1233,13 +1254,27 @@ export default function ProfilePage() {
                   />
                   <button
                     onClick={handleSend}
-                    disabled={treasuryBusy || !sendTo.trim() || !sendAmount}
+                    disabled={treasuryBusy || !sendTo.trim() || !sendAmount || sendCapIssue !== null}
                     className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border px-3.5 py-2 text-sm font-medium transition hover:bg-secondary disabled:opacity-50"
                   >
                     {treasuryBusy ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
                     {t('profile.treasury.send')}
                   </button>
                 </div>
+                {sendCapIssue && (
+                  <p className="text-xs text-warning">
+                    {sendCapIssue === 'tx'
+                      ? t('profile.treasury.overTxCap', { cap: treasury.maxPerTx, amount: sendAmountNum })
+                      : t('profile.treasury.overDailyCap', {
+                          cap: treasury.dailyCap,
+                          spent: treasury.spent24h.toFixed(2),
+                          amount: sendAmountNum,
+                        })}{' '}
+                    <Link href="/mine" className="underline underline-offset-2">
+                      {t('profile.treasury.raiseCaps')}
+                    </Link>
+                  </p>
+                )}
               </div>
             </div>
           </div>
