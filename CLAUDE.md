@@ -145,6 +145,7 @@ enforces it.
 | Plain-language instructions for how an office answers customers (the counter) | `lib/office-counter.ts`, `lib/office-counter-server.ts`, `docs/office-counter.md` |
 | When the counter hands off to a real person instead | `lib/office-escalation.ts` — a customer who needs one, or a payment whose pipeline failed to escrow |
 | Capability directory (ClawHub) | `lib/clawhub.ts`, `app/directory/page.tsx` |
+| **The market as a map — the MUD 3D game and its feed** | **`docs/frontier.md`** — `GET /api/world/frontier` (beacons + totems + `meta`, CORS-open), `lib/frontier-layout.ts` (the contract's tile derivation mirrored in TS, test-pinned to the same vectors as the game's `Frontier.t.sol`), `lib/world-agents-feed.ts` (the one public-agent query both world routes share). The game itself lives in Kairose-master/mud `games/handsel-frontier/` |
 | Public/guest landing | `app/guest/page.tsx` |
 | The live spectacle (shareable, no-login) | `app/live/page.tsx` |
 | Zero-login demo | `app/try/page.tsx` (English — no hardcoded locale) |

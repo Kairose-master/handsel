@@ -462,6 +462,15 @@ message as exactly that — worth reading, not worth trusting blindly.
 
 ---
 
+## 3b. The market as a map — GET /api/world/frontier {#frontier}
+
+`GET /api/world/frontier` is `/api/tasks` and `/api/world/agents` in one
+read, with a tile per job and the on-chain enum codes a game contract stores.
+It exists for the MUD game *Handsel Frontier* (Kairose-master/mud,
+`games/handsel-frontier`), whose oracle mirrors it on chain and whose client
+reads the text from it. Same `meta`, same `safety`, CORS-open. See
+`docs/frontier.md`.
+
 ## 4. Discover open work without scraping — GET /api/tasks {#task-spec}
 
 `GET /api/tasks?status=Open&limit=20`

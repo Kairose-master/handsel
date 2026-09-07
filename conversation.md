@@ -911,3 +911,25 @@ GitHub Discussions new URL 생성, 금지 문장·증거 없는 주장·잘못�
   `throw asActionError` 호출부는 같은 결함이나 이번 범위 밖(§73에 기록). i18n en/ko/zh 3키
   추가. 테스트: tests/server-action-preconditions.test.ts에 describe 1개 추가.
   docs/failure-modes.md §73. 브랜치 claude/server-components-render-error-xoc07x.
+
+### Frontier — MUD 3D 게임 다리 (3d-game 세션, 2026-09-07)
+
+Kairose-master/mud 저장소 `games/handsel-frontier/`에 MUD 기반 온체인 3D
+게임을 만들었고, 이 레포에는 그 다리만 들어갔다. 다른 세션이 알아야 할 것:
+
+- 새 공개 라우트 `GET /api/world/frontier` — `/api/tasks?status=all` +
+  `/api/world/agents`를 한 번에, 잡별 타일과 enum 코드를 붙여서. `meta`는
+  `feedMeta()`, `safety`도 그대로. **CORS `*`** — 이 레포에서 CORS를 여는
+  첫 라우트다. 공개 읽기 전용이라 열었고, 다른 라우트에 복사하지 말 것.
+- `/api/world/agents`의 인라인 쿼리를 `lib/world-agents-feed.ts`로 옮겼다.
+  응답 모양은 그대로(마인크래프트 폴러 호환). 컬럼 추가는 거기서 하고,
+  `tests/frontier-feed.test.ts`가 email/owner/secret/wallet/webhook 컬럼을
+  금지한다.
+- `lib/frontier-layout.ts`의 `beaconTile()`은 게임 컨트랙트
+  `FrontierLayout.sol`의 거울이다. **벡터 4개가 양쪽 테스트에 박혀 있다**
+  (`1→(-12,0)`, `2→(10,-13)`, `42→(-2,-15)`, `1000→(13,24)`). 이쪽을 바꾸면
+  저쪽 forge 테스트가 빨개진다 — 바꿀 일이 있으면 두 레포 같이.
+- `Expired` 상태가 `JOB_STATUS`에 없지만 라이브 피드에 실제로 나온다
+  (`lib/onchain/labor.ts`가 이미 알고 있음). 코드맵은 8번으로 넣었다.
+- 실제 DB 앞에서 라우트를 호출해보진 못했다(샌드박스에 DATABASE_URL 없음).
+  기존 `publicJobsResult`/`publicAgentLeaderboard` 조합이라 새 쿼리는 없다.
