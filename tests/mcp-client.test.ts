@@ -4,6 +4,7 @@ import {
   findRpcResponse,
   extractToolText,
   pickToolArgumentKey,
+  initializeFailureMessage,
 } from '@/lib/mcp-client'
 
 describe('parseRpcBody', () => {
@@ -98,5 +99,57 @@ describe('pickToolArgumentKey', () => {
   it('defaults to "task" when the schema has no usable properties', () => {
     expect(pickToolArgumentKey({})).toBe('task')
     expect(pickToolArgumentKey(undefined)).toBe('task')
+  })
+})
+
+describe('initializeFailureMessage', () => {
+  const pointer = 'Bearer resource_metadata="https://handsel-main.vercel.app/.well-known/oauth-protected-resource"'
+
+  it('names an OAuth-protected server as such instead of a bare 401', () => {
+    // The exact answer handsel-main gives an unauthenticated initialize. It
+    // was read once as "no OAuth discovery at all" — the header IS the discovery.
+    const msg = initializeFailureMessage({
+      status: 401,
+      wwwAuthenticate: pointer,
+      raw: '{"error":"invalid_token"}',
+      hasAuthHeader: false,
+    })
+    expect(msg).toContain('OAuth-protected')
+    expect(msg).toContain('https://handsel-main.vercel.app/.well-known/oauth-protected-resource')
+    expect(msg).toContain('auth_header')
+    expect(msg).toContain('/api/oauth/personal-token')
+    expect(msg).not.toMatch(/^MCP initialize failed/)
+  })
+
+  it('does not advertise the Handsel personal-token route for someone else\'s server', () => {
+    const msg = initializeFailureMessage({
+      status: 401,
+      wwwAuthenticate: 'Bearer resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource"',
+      raw: '',
+      hasAuthHeader: false,
+    })
+    expect(msg).toContain('auth_header')
+    expect(msg).not.toContain('personal-token')
+  })
+
+  it('says the supplied token was rejected when one was sent', () => {
+    const msg = initializeFailureMessage({ status: 401, wwwAuthenticate: pointer, raw: '', hasAuthHeader: true })
+    expect(msg).toContain('rejected')
+    expect(msg).not.toContain('Pass auth_header')
+  })
+
+  it('handles a 401 with no discovery pointer', () => {
+    const msg = initializeFailureMessage({ status: 401, wwwAuthenticate: null, raw: 'nope', hasAuthHeader: false })
+    expect(msg).toContain('authentication-protected')
+    expect(msg).not.toContain('discovery at')
+  })
+
+  it('keeps the raw status + body for every other failure', () => {
+    expect(
+      initializeFailureMessage({ status: 500, raw: '<html>boom</html>', hasAuthHeader: false }),
+    ).toBe('MCP initialize failed (500): <html>boom</html>')
+    expect(
+      initializeFailureMessage({ status: 200, raw: '', rpcErrorMessage: 'Unsupported protocol', hasAuthHeader: false }),
+    ).toBe('MCP initialize failed (200): Unsupported protocol')
   })
 })

@@ -167,7 +167,7 @@ async function rpcPost(
   headers: Record<string, string>,
   message: object,
   timeoutMs: number,
-): Promise<{ messages: RpcMessage[]; sessionId: string | null; status: number; raw: string }> {
+): Promise<{ messages: RpcMessage[]; sessionId: string | null; status: number; raw: string; wwwAuthenticate: string | null }> {
   const res = await fetch(url, {
     method: 'POST',
     headers: {
@@ -180,7 +180,45 @@ async function rpcPost(
   })
   const raw = await res.text()
   const messages = parseRpcBody(raw, res.headers.get('content-type'))
-  return { messages, sessionId: res.headers.get('mcp-session-id'), status: res.status, raw }
+  return {
+    messages,
+    sessionId: res.headers.get('mcp-session-id'),
+    status: res.status,
+    raw,
+    wwwAuthenticate: res.headers.get('www-authenticate'),
+  }
+}
+
+/**
+ * The one line a failed `initialize` reports. A 401 carrying an RFC 9728
+ * `resource_metadata` pointer is not an unreachable server — it is an
+ * OAuth-protected one telling a browser client where to log in. This
+ * client never runs that browser flow (it is a headless worker), so the
+ * honest message is "bring a token", not the raw status — a raw
+ * `401 {"error":"invalid_token"}` has already been read once as "the
+ * server has no OAuth discovery at all" when the discovery was exactly
+ * what the header was pointing at.
+ */
+export function initializeFailureMessage(input: {
+  status: number
+  wwwAuthenticate?: string | null
+  raw: string
+  rpcErrorMessage?: string | null
+  hasAuthHeader: boolean
+}): string {
+  const detail = input.rpcErrorMessage ?? input.raw.slice(0, 200)
+  const metadata = input.wwwAuthenticate?.match(/resource_metadata="([^"]+)"/i)?.[1]
+  if (input.status === 401 || input.status === 403) {
+    const who = metadata ? `OAuth-protected (discovery at ${metadata})` : 'authentication-protected'
+    const remedy = input.hasAuthHeader
+      ? 'The auth_header you supplied was rejected — mint a fresh token and try again.'
+      : 'Pass auth_header ("Bearer <token>") when connecting it; a headless worker cannot run the browser login itself.' +
+        (metadata && /\/\.well-known\/oauth-protected-resource$/.test(metadata) && /handsel/i.test(metadata)
+          ? ' For a Handsel deployment, POST /api/oauth/personal-token with your email and password returns one.'
+          : '')
+    return `MCP server is ${who}; initialize was refused (${input.status}). ${remedy}`
+  }
+  return `MCP initialize failed (${input.status}): ${detail}`
 }
 
 export interface McpToolInfo {
@@ -218,7 +256,15 @@ export async function probeMcpTool(input: {
   )
   const initResp = findRpcResponse(init.messages, 1)
   if (!initResp || initResp.error) {
-    throw new Error(`MCP initialize failed (${init.status}): ${initResp?.error?.message ?? init.raw.slice(0, 200)}`)
+    throw new Error(
+      initializeFailureMessage({
+        status: init.status,
+        wwwAuthenticate: init.wwwAuthenticate,
+        raw: init.raw,
+        rpcErrorMessage: initResp?.error?.message ?? null,
+        hasAuthHeader: Boolean(input.authHeader),
+      }),
+    )
   }
   const sessionHeaders: Record<string, string> = { ...auth, 'MCP-Protocol-Version': PROTOCOL_VERSION }
   if (init.sessionId) sessionHeaders['Mcp-Session-Id'] = init.sessionId
@@ -272,7 +318,15 @@ export async function callMcpTool(input: McpCallInput): Promise<string> {
   )
   const initResp = findRpcResponse(init.messages, 1)
   if (!initResp || initResp.error) {
-    throw new Error(`MCP initialize failed (${init.status}): ${initResp?.error?.message ?? init.raw.slice(0, 200)}`)
+    throw new Error(
+      initializeFailureMessage({
+        status: init.status,
+        wwwAuthenticate: init.wwwAuthenticate,
+        raw: init.raw,
+        rpcErrorMessage: initResp?.error?.message ?? null,
+        hasAuthHeader: Boolean(input.authHeader),
+      }),
+    )
   }
   const sessionHeaders: Record<string, string> = {
     ...auth,

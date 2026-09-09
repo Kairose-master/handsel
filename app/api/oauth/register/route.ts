@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { oauthClient } from '@/lib/db/schema'
 import { nanoid } from 'nanoid'
+import { isAllowedRedirectUri } from '@/lib/oauth'
 
 /**
  * Dynamic Client Registration (RFC 7591) — Claude/ChatGPT connectors call
@@ -13,10 +14,10 @@ import { nanoid } from 'nanoid'
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null)
   const redirectUris = Array.isArray(body?.redirect_uris)
-    ? body.redirect_uris.map((u: unknown) => String(u)).filter((u: string) => /^https:\/\//.test(u) || u.startsWith('http://localhost'))
+    ? body.redirect_uris.map((u: unknown) => String(u)).filter(isAllowedRedirectUri)
     : []
   if (redirectUris.length === 0) {
-    return Response.json({ error: 'invalid_client_metadata', error_description: 'redirect_uris (https) required' }, { status: 400 })
+    return Response.json({ error: 'invalid_client_metadata', error_description: 'redirect_uris (https, or http on a loopback address) required' }, { status: 400 })
   }
   const name = String(body?.client_name ?? 'MCP client').slice(0, 100)
 

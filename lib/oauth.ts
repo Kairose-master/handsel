@@ -36,6 +36,26 @@ export async function resolveMcpAuth(request: Request): Promise<McpAuth | null> 
   }
 }
 
+/**
+ * Which redirect_uri a dynamically-registering MCP client may name. HTTPS
+ * anywhere, or plain HTTP on a loopback interface (RFC 8252 §7.3: native
+ * apps listen on an ephemeral port for the browser's callback). Claude Code
+ * registers `http://localhost:<port>/callback`; other native clients use
+ * `127.0.0.1` or `[::1]` for the same thing — rejecting those turned the
+ * connector's "Authenticate" button into a registration error.
+ */
+export function isAllowedRedirectUri(uri: string): boolean {
+  let u: URL
+  try {
+    u = new URL(uri)
+  } catch {
+    return false
+  }
+  if (u.protocol === 'https:') return true
+  if (u.protocol !== 'http:') return false
+  return u.hostname === 'localhost' || u.hostname === '127.0.0.1' || u.hostname === '[::1]'
+}
+
 export function unauthorizedMcp(origin: string): Response {
   return new Response(JSON.stringify({ error: 'invalid_token' }), {
     status: 401,
