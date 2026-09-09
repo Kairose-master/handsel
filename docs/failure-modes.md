@@ -3750,3 +3750,51 @@ distribution of symptoms a bug can have. The twenty-odd remaining
 have the same shape — the Vercel log for `postJobAction` shows a digest
 next to a perfectly good "kernel account holds 0 wei" sentence. Convert
 them the same way when touched; do not add new ones.
+
+## 74. Codex could not connect to the MCP server: dynamic registration rejected its loopback callback (2026-09-09)
+
+**Symptom.** In the ChatGPT desktop app's Plugins → MCP page, the `handsel`
+server (Streamable HTTP, `https://handsel-main.vercel.app/api/mcp`) sat in
+"Starting…" and then showed "handsel에 연결할 수 없습니다. 다시 시도하세요."
+The Authenticate button never opened a login page. The same server worked
+from Claude (claude.ai connectors and Claude Code).
+
+**Misdiagnosis first.** Handsel's own `test_mcp_connector` was pointed at
+handsel-main and answered "Could not reach it: MCP initialize failed (401):
+{"error":"invalid_token"}", which was read as "the server returns a raw 401
+with no OAuth discovery". It does not: that 401 carries
+`WWW-Authenticate: Bearer resource_metadata="…/.well-known/oauth-protected-resource"`,
+and both well-known documents, registration, and the consent page were all
+live — walked end to end with curl and a script that mirrors the MCP TS SDK.
+The worker client is headless and never runs the browser flow, so *every*
+OAuth-protected server looks like that to it. Its message now says so
+(`initializeFailureMessage` in `lib/mcp-client.ts`).
+
+**Root cause.** Reproduced with `codex mcp login handsel` (codex-cli
+0.153.4):
+
+```
+Error: Registration failed: Dynamic registration failed: Registration failed:
+HTTP 400 Bad Request: {"error":"invalid_client_metadata","error_description":"redirect_uris (https) required"}
+```
+
+`POST /api/oauth/register` accepted `https://…` and `http://localhost…` and
+nothing else. Claude Code registers `http://localhost:<port>/callback`;
+Codex registers `http://127.0.0.1:<port>/callback/<nonce>`. RFC 8252 §7.3
+names both (and `[::1]`) as the loopback redirect a native app may use.
+The desktop app collapsed the 400 into "cannot connect".
+
+**Fix.** `isAllowedRedirectUri` in `lib/oauth.ts`: https anywhere, plain
+http only when the hostname is `localhost`, `127.0.0.1` or `[::1]`
+(parsed with `URL`, so `localhost.evil.com` stays out). After deploy, the
+same `codex mcp login` passes registration and prints an authorize URL whose
+consent page renders. Pinned by `tests/mcp-oauth-discovery.test.ts`, which
+also pins every link of the discovery chain — the 401 pointer, the
+protected-resource document, the authorization-server document — so the
+chain cannot be "diagnosed absent" again without a test going red.
+
+**Lesson.** When a connector says "cannot connect", find the client's own
+error before touching the server: the CLI behind the desktop app (`codex mcp
+login`, `claude --debug`) prints the exact HTTP step that failed, and the
+desktop UI does not. And a 401 from a headless client is not evidence about
+discovery — the header on that response is the discovery.
