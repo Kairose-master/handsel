@@ -933,3 +933,22 @@ Kairose-master/mud 저장소 `games/handsel-frontier/`에 MUD 기반 온체인 3
   (`lib/onchain/labor.ts`가 이미 알고 있음). 코드맵은 8번으로 넣었다.
 - 실제 DB 앞에서 라우트를 호출해보진 못했다(샌드박스에 DATABASE_URL 없음).
   기존 `publicJobsResult`/`publicAgentLeaderboard` 조합이라 새 쿼리는 없다.
+
+### 납품 성공 판정과 결과 중심 진입 설계 (Codex, 2026-09-09)
+
+- 로컬 브랜치 `codex/delivery-outcomes-and-goal-entry`, 기준 main `0c43e75`.
+  통합 검수기 unavailable을 통과로 기록하던 경로를 재시도 가능한 오류로 변경했다.
+  합성 결과의 빠른 반환도 검수 footer와 실패 작업을 숨기지 않는다.
+- Storefront는 delegation의 terminal `completed`와 고객 납품 성공을 구분한다.
+  실패/빈 결과/과거 미실행 통합 검수가 있으면 부분 결과를 보존하며 실패로 표시한다.
+  Mail Desk는 이 주문에 성공 메일을 보내지 않고 운영자 후속 처리를 위한 note를 남긴다.
+  자동 환불, 과거 실적 소급 수정, 결제·온체인 거래는 수행하지 않았다.
+- `docs/goal-entrypoint.md`는 사용자의 모델·MCP 선택 부담을 줄이고 성공한 실행을
+  오피스로 저장하는 제품 제안이다. 자동 라우터/UI/Higgsfield·Blender 어댑터 구현은 아니다.
+  Codex 도구 연결이 Handsel 실행 권한으로 이전된다고 가정하지 않는다.
+- 최종 `npm run gates` 통과: conversation 확인, typecheck, lint,
+  전체 297파일/4,286테스트, production build. lint는 오류 0개(기존 경고 21개).
+  로컬 인증 환경변수 미설정 경고는 남아 있으며 라이브 인증/납품 E2E 검증은 아니다.
+  검증 후 사용자가 main 머지를 요청했다. 별도 게임 레포는 이름만 제안하며 생성하지 않는다.
+  clone 직후부터 보인 CLAUDE.md diff는 macOS의
+  CLAUDE.md/Claude.md 대소문자 충돌이며 이 작업에서 문서를 대체하지 않았다.

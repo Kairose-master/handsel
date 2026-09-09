@@ -78,4 +78,32 @@ describe('assembleFinalOutput integration footer', () => {
     expect(out).toContain('⚠️ Integration check: FAILED')
     expect(out).toContain("pieces don't fit")
   })
+
+  it('never labels an unavailable legacy integration result as passed', () => {
+    const out = assembleFinalOutput('build', [
+      st({ title: 'Parser', output: 'code' }),
+      st({ title: 'Integration', isIntegration: true, output: 'Integration check could not run (grader unavailable): timeout' }),
+    ])
+    expect(out).toContain('NOT VERIFIED')
+    expect(out).not.toContain('✅')
+  })
+
+  it('keeps the integration verdict when a synthesis supplies the final document', () => {
+    const out = assembleFinalOutput('build', [
+      st({ title: 'Parser', output: 'code' }),
+      st({ title: 'Summary', output: 'final document', synthesizes: ['Parser'] }),
+      st({ title: 'Integration', isIntegration: true, failed: true, failReason: 'incompatible pieces' }),
+    ])
+    expect(out).toContain('final document')
+    expect(out).toContain('Integration check: FAILED')
+  })
+
+  it('does not let a synthesis hide missing work', () => {
+    const out = assembleFinalOutput('build', [
+      st({ title: 'Parser', failed: true, failReason: 'timeout' }),
+      st({ title: 'Summary', output: 'partial document', synthesizes: ['Parser'] }),
+    ])
+    expect(out).toContain('Incomplete parts')
+    expect(out).toContain('timeout')
+  })
 })

@@ -35,6 +35,7 @@ import { agent, delegation } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { commissionPricing, MAX_COMMISSIONS_PER_DAY } from '@/lib/storefront-pricing'
+import { commissionOutcome } from '@/lib/delegation-outcome'
 
 let tableReady: Promise<void> | null = null
 function ensureTables(): Promise<void> {
@@ -249,7 +250,7 @@ export type CommissionStatus = {
   status: 'failed' | 'running' | 'completed'
   note: string | null
   subtasks: Array<{ title: string; status: string }>
-  /** The assembled deliverable — present only when the pipeline completed. */
+  /** May contain partial output on failure; status decides whether delivery succeeded. */
   finalOutput: string | null
 }
 
@@ -311,13 +312,14 @@ export async function commissionStatus(token: string): Promise<CommissionStatus 
 
   const [fresh] = await db.select().from(delegation).where(eq(delegation.id, row.delegation_id))
   const views = await subtaskViews(fresh ?? dlg)
+  const status = commissionOutcome((fresh ?? dlg).status, views)
 
   return {
     token: row.id,
     templateId: row.template_id,
     createdAt: row.created_at.toISOString(),
-    status: (fresh ?? dlg).status === 'completed' ? 'completed' : 'running',
-    note: row.note,
+    status,
+    note: row.note ?? (status === 'failed' ? 'The pipeline did not complete all required work and checks. Any output below is partial; contact the operator with this receipt.' : (fresh ?? dlg).error ?? null),
     // The client-facing status per step: the on-chain job status when the
     // job exists, a terminal marker when it failed, 'Queued' while a
     // dependency wave holds it back. Never the internal spec hash or worker

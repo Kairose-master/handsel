@@ -817,6 +817,15 @@ export async function tickMailOrders(): Promise<string | Record<string, unknown>
     try {
       const { commissionStatus } = await import('@/lib/office-storefront')
       const status = await commissionStatus(w.commission_token)
+      if (status?.status === 'failed') {
+        // Preserve the paid order for operator follow-up, without calling
+        // partial output a delivered order or sending a success email.
+        await pgPool.query(`UPDATE mail_order SET note = $2, updated_at = now() WHERE id = $1 AND status = 'commissioned' AND note IS DISTINCT FROM $2`, [
+          w.id,
+          `DELIVERY FAILED: ${status.note ?? 'The pipeline did not complete all required work and checks.'}`,
+        ])
+        continue
+      }
       if (status?.status === 'completed' && status.finalOutput) {
         await pgPool.query(`UPDATE mail_order SET status = 'delivered', updated_at = now() WHERE id = $1 AND status = 'commissioned'`, [w.id])
         const { sendEmail } = await import('@/lib/email')
@@ -837,7 +846,7 @@ export async function tickMailOrders(): Promise<string | Record<string, unknown>
           title: `Done: ${w.template_id} office run`,
           bodyLines: [
             ...(note ? [note] : []),
-            'Every step below passed independent grading before its escrow released.',
+            'The office pipeline completed. The per-step record is available at the link below.',
             excerpt,
           ],
           ctaLabel: 'Full deliverable + per-step record',

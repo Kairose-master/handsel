@@ -35,6 +35,7 @@ import {
 } from '@/lib/brief-excerpt'
 import { sealForInsert } from '@/lib/spec-hash'
 import type { SplitSpec } from '@/lib/settlement-split'
+import { integrationGradeUpdate, integrationOutcome } from '@/lib/delegation-outcome'
 
 export const MAX_SUBTASKS = 5
 export const MIN_SUBTASK_BOUNTY_USD = 1
@@ -1359,6 +1360,14 @@ function resolvePlaceholderTarget(text: string, selfIdx: number, subtasks: Deleg
  * document, no Part headers at all. Exported for unit tests.
  */
 export function assembleFinalOutput(task: string, subtasks: DelegationSubtask[]): string {
+  const integration = subtasks.find((s) => s.isIntegration)
+  const integrationNote = integration
+    ? integrationOutcome(integration) === 'failed'
+      ? `\n\n---\n\n### ⚠️ Integration check: FAILED\n${integration.failReason ?? 'the pieces did not integrate'}`
+      : integrationOutcome(integration) === 'passed'
+        ? `\n\n---\n\n### ✅ Integration check: passed\n${integration.output}`
+        : `\n\n---\n\n### ⚠️ Integration check: NOT VERIFIED\n${integration.output ?? 'No passing integration result recorded.'}`
+    : ''
   // If a single FINAL synthesis worker integrated the pieces, its deliverable
   // IS the result — real assembly beats mechanical concatenation. A synthesis
   // whose pieces are ALL its own subcontract children is a mid-level assembly
@@ -1371,7 +1380,9 @@ export function assembleFinalOutput(task: string, subtasks: DelegationSubtask[])
   const finalSyntheses = subtasks.filter(
     (s) => s.synthesizes?.length && !s.parentTitle && !s.failed && s.output && !isSubcontractParent(s),
   )
-  if (finalSyntheses.length === 1) return finalSyntheses[0].output as string
+  if (finalSyntheses.length === 1 && !subtasks.some((s) => !s.isIntegration && s.failed)) {
+    return (finalSyntheses[0].output as string) + integrationNote
+  }
 
   const originals = subtasks.map((st) => (st.failed ? null : (st.output ?? null)))
   const consumed = new Set<number>()
@@ -1400,15 +1411,6 @@ export function assembleFinalOutput(task: string, subtasks: DelegationSubtask[])
 
   // The integration subtask is a verification result, not content — it
   // renders as a footer, never a section.
-  const integration = subtasks.find((s) => s.isIntegration)
-  const integrationNote = integration
-    ? integration.failed
-      ? `\n\n---\n\n### ⚠️ Integration check: FAILED\n${integration.failReason ?? 'the pieces did not integrate'}`
-      : integration.output
-        ? `\n\n---\n\n### ✅ Integration check: passed\n${integration.output}`
-        : ''
-    : ''
-
   const sections: string[] = []
   const failures: string[] = []
   subtasks.forEach((st, i) => {
@@ -2357,15 +2359,9 @@ async function tickDelegationLocked(
         const { extractPythonCode, gradeSubmission } = await import('@/lib/code-grading')
         const assembledCode = workSubtasks.map((s) => extractPythonCode(s.output ?? '') ?? '').filter(Boolean).join('\n\n')
         const grade = await gradeSubmission(assembledCode, integration.testCode!)
-        if (grade.passed === true) {
-          integration.output = `Integration tests PASSED.\n${grade.output.slice(0, 500)}`
-        } else if (grade.passed === false) {
-          integration.failed = true
-          integration.failReason = `integration tests FAILED — the pieces don't work together:\n${grade.output.slice(0, 500)}`
-        } else {
-          // Grader unavailable — don't block completion forever; record and pass through.
-          integration.output = `Integration check could not run (grader unavailable): ${grade.output.slice(0, 200)}`
-        }
+        // Unknown throws before mutating the check or logging a pass.
+        // The outer tick records the error so another tick can retry.
+        Object.assign(integration, integrationGradeUpdate(grade))
         changed = true
         await logPlatformEvent(
           integration.failed ? 'JOB_TESTS_FAILED' : 'JOB_TESTS_PASSED',
@@ -2373,6 +2369,12 @@ async function tickDelegationLocked(
         )
       } catch (error) {
         console.error('[delegation] integration check failed to run:', error)
+        // Work may have finished earlier in this tick. Keep those outputs
+        // while leaving the integration check pending for the next attempt.
+        if (changed) {
+          await db.update(delegation).set({ subtasks, updatedAt: new Date() }).where(eq(delegation.id, row.id))
+        }
+        throw error
       }
     }
   }
@@ -2392,7 +2394,7 @@ async function tickDelegationLocked(
     const integFailed = integration?.failed ? ' (integration check FAILED)' : ''
     const delivered = workSubtasks.filter((s) => !s.failed).length
     await logPlatformEvent('DELEGATION_COMPLETED', `Delegated task finished — ${delivered}/${workSubtasks.length} parts delivered${integFailed}`)
-    await recordOrchestrationOutcome(row, delivered, workSubtasks.length, Boolean(integration?.failed))
+    await recordOrchestrationOutcome(row, delivered, workSubtasks.length, Boolean(integration && integrationOutcome(integration) !== 'passed'))
   } else if (changed) {
     await db.update(delegation).set({ subtasks, error: null, updatedAt: new Date() }).where(eq(delegation.id, row.id))
   } else if (row.error) {

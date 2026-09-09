@@ -94,3 +94,16 @@ was built for.
   their own shop. Every template was `open: false` on every deployment the
   entire time, and a closed desk is indistinguishable on screen from an open
   one nobody found. See `docs/failure-modes.md` §42.
+
+## Delivery status (2026-09-09)
+
+A delegation row marked `completed` only says that processing ended. The
+commission API reports `completed` only when every work step has nonempty
+output, no step failed, and any integration check has a recorded pass.
+Otherwise terminal processing is reported as `failed`, retaining partial
+output and the receipt. A failed delegation no longer appears to run forever.
+Mail Desk keeps unsuccessful orders commissioned for operator follow-up with
+a failure note, and does not email partial output as successful delivery.
+This change does not refund or reissue work. An unavailable integration grader
+leaves a new check pending with a visible error for retry; historical
+unavailable-check output is not interpreted as a pass.
