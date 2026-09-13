@@ -116,7 +116,7 @@ function decodeJob(id: number, raw: readonly unknown[]): V2Job {
 }
 
 /** Every job, decoded. Same shape of read as V1's `readJobs`. */
-export async function readJobsV2(): Promise<V2Job[]> {
+export async function readJobsV2(opts?: { blockNumber?: bigint; requireComplete?: boolean }): Promise<V2Job[]> {
   const address = onchainEnv.laborMarketAddress
   if (!address) return []
   const client = publicClient()
@@ -124,9 +124,12 @@ export async function readJobsV2(): Promise<V2Job[]> {
     address: address as Address,
     abi: LABOR_MARKET_V2_ABI,
     functionName: 'jobCount',
+    blockNumber: opts?.blockNumber,
   })
   const ids = Array.from({ length: Number(count) }, (_, i) => i + 1)
+  if (count === 0n) return []
   const results = await client.multicall({
+    blockNumber: opts?.blockNumber,
     contracts: ids.map((id) => ({
       address: address as Address,
       abi: LABOR_MARKET_V2_ABI,
@@ -136,7 +139,10 @@ export async function readJobsV2(): Promise<V2Job[]> {
   })
   const jobs: V2Job[] = []
   results.forEach((r, i) => {
-    if (r.status !== 'success') return
+    if (r.status !== 'success') {
+      if (opts?.requireComplete) throw new Error(`Incomplete market snapshot: job ${ids[i]} unreadable`)
+      return
+    }
     jobs.push(decodeJob(ids[i], r.result as readonly unknown[]))
   })
   return jobs

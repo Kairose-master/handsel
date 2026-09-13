@@ -382,3 +382,16 @@ repository behind the issue (fork, stars, age — `RepoMeta` in
 $25) waits for AIPOU's move, as the thread's own rule says. Real pilot targets
 for A remain the owner's network — an AI startup's dev team, an indie hacker
 — which no instrument here can list.
+
+## 2026-09-13 — Handsel issue #10 (inbound metrics report)
+
+The operator posted [the maintainer response](https://github.com/Kairose-master/handsel/issues/10#issuecomment-5649618437):
+initial metric correction is internal, paid reconciliation is on hold, and no
+proposal/payment address is accepted. The original proposer is
+`zekfer38-netizen`; `Ivansky1` is a separate commenter, not the same payee.
+
+The code change on `codex/issue-10-market-metrics` separates contract snapshots
+from database event observations and documents legacy-field migration in
+[market-metrics.md](market-metrics.md). Historical per-job reconciliation remains
+open; this is not a clean bill of health or a claim that the discrepancy is fully
+resolved. No additional external comment was posted by this coding session.

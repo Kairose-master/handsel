@@ -198,10 +198,11 @@ export async function resolveDispute(jobId: number, releaseToWorker: boolean): P
 //      chain. Per-warm-lambda, which is exactly where the polling
 //      hot-path concentrates.
 const READ_JOBS_TTL_MS = 4000
-let jobsCache: { at: number; jobs: OnchainJob[] } | null = null
-let jobsInFlight: Promise<OnchainJob[]> | null = null
+export type JobsSnapshot = { jobs: OnchainJob[]; blockNumber: string; observedAt: string }
+let jobsCache: { at: number; snapshot: JobsSnapshot } | null = null
+let jobsInFlight: Promise<JobsSnapshot> | null = null
 
-async function fetchJobsUncached(): Promise<OnchainJob[]> {
+async function fetchJobsUncached(blockNumber: bigint): Promise<OnchainJob[]> {
   // V2's `jobs` getter returns FOURTEEN fields and its status enum has eight
   // entries. Decoding that with the seven-field tuple below does not throw —
   // viem hands back the first seven and the reader gets numbers. Worse, the
@@ -210,7 +211,7 @@ async function fetchJobsUncached(): Promise<OnchainJob[]> {
   const { isV2Market, readJobsV2 } = await import('./labor-v2')
   const nowSec = Math.floor(Date.now() / 1000)
   if (await isV2Market()) {
-    const v2 = await readJobsV2()
+    const v2 = await readJobsV2({ blockNumber, requireComplete: true })
     return v2
       .map((j) => ({
         id: j.id,
@@ -237,13 +238,14 @@ async function fetchJobsUncached(): Promise<OnchainJob[]> {
   const client = publicClient()
   const market = { address: onchainEnv.laborMarketAddress as Address, abi: LABOR_MARKET_ABI } as const
 
-  const count = (await client.readContract({ ...market, functionName: 'jobCount' })) as bigint
+  const count = (await client.readContract({ ...market, functionName: 'jobCount', blockNumber })) as bigint
   if (count === 0n) return []
 
   const ids = Array.from({ length: Number(count) }, (_, i) => BigInt(i + 1))
   const results = (await client.multicall({
     contracts: ids.map((id) => ({ ...market, functionName: 'jobs', args: [id] })),
     allowFailure: false,
+    blockNumber,
   })) as unknown as readonly (readonly [Address, Address, bigint, bigint, number, Hex, Hex])[]
 
   const jobs = results.map((j, idx) => ({
@@ -276,18 +278,28 @@ async function fetchJobsUncached(): Promise<OnchainJob[]> {
  *  writers (approve/accept) tolerate the default staleness: acting on a
  *  stale status makes the tx revert harmlessly, it never double-moves. */
 export async function readJobs(opts?: { maxAgeMs?: number }): Promise<OnchainJob[]> {
+  return (await readJobsSnapshot(opts)).jobs
+}
+
+/** Count and every job getter are pinned to one block, including multicall chunks.
+ * Metadata travels with the cached rows, never stamped with a newer request time. */
+export async function readJobsSnapshot(opts?: { maxAgeMs?: number }): Promise<JobsSnapshot> {
   const maxAge = opts?.maxAgeMs ?? READ_JOBS_TTL_MS
   const now = Date.now()
-  if (jobsCache && now - jobsCache.at < maxAge) return jobsCache.jobs
+  if (jobsCache && now - jobsCache.at < maxAge) return jobsCache.snapshot
   if (jobsInFlight && maxAge > 0) return jobsInFlight
 
-  jobsInFlight = fetchJobsUncached()
-    .then((jobs) => {
-      jobsCache = { at: Date.now(), jobs }
-      return jobs
-    })
-    .finally(() => {
-      jobsInFlight = null
-    })
-  return jobsInFlight
+  const pending = (async () => {
+    const blockNumber = await publicClient().getBlockNumber({ cacheTime: 0 })
+    const jobs = await fetchJobsUncached(blockNumber)
+    const snapshot = { jobs, blockNumber: blockNumber.toString(), observedAt: new Date().toISOString() }
+    jobsCache = { at: Date.now(), snapshot }
+    return snapshot
+  })()
+  jobsInFlight = pending
+  try {
+    return await pending
+  } finally {
+    if (jobsInFlight === pending) jobsInFlight = null
+  }
 }

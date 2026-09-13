@@ -11,10 +11,13 @@
 import { db } from '@/lib/db'
 import { agentEvent, creditTransaction } from '@/lib/db/schema'
 import { inArray, eq } from 'drizzle-orm'
+import { readMarketSnapshot } from '@/lib/market-snapshot'
 
 export type MarketHealth = {
   generatedAt: string
-  jobs: { byStatus: Record<string, number>; total: number; escrowedUsd: number; settlementRate: number | null }
+  snapshot: Awaited<ReturnType<typeof readMarketSnapshot>>['snapshot']
+  metricSemantics: { settlementRate: string; jobs: string }
+  jobs: { byStatus: Record<string, number>; total: number | null; escrowedUsd: number | null; settlementRate: number | null }
   grading: { total: number; passed: number; failed: number; passRate: number | null }
   loans: { byStatus: Record<string, number>; defaultRate: number | null }
   /**
@@ -26,7 +29,7 @@ export type MarketHealth = {
    * `empty`: it means workers exist who could do the work and a field on our own
    * form locked them out. See lib/market-reach.ts.
    */
-  reach: { openJobs: number; unreachable: number; gated: number; empty: number }
+  reach: { openJobs: number; unreachable: number; gated: number; empty: number } | null
 }
 
 /**
@@ -73,19 +76,10 @@ export function summariseJobs(all: readonly { status: string; bounty: number }[]
 }
 
 export async function computeMarketHealth(): Promise<MarketHealth> {
-  let jobs: MarketHealth['jobs'] = { byStatus: {}, total: 0, escrowedUsd: 0, settlementRate: null }
-  // Held for computeReach: `minScore` is a CONTRACT field, not a column. Reading
-  // it from the chain is also the only version that can be trusted — the row is
-  // a copy, and a reach estimate computed from a stale copy would report a gate
-  // the market is not actually applying.
-  let onchainJobs: Awaited<ReturnType<typeof import('@/lib/onchain/labor').readJobs>> = []
-  try {
-    const { readJobs } = await import('@/lib/onchain/labor')
-    onchainJobs = await readJobs()
-    jobs = summariseJobs(onchainJobs)
-  } catch {
-    // On-chain unreadable (no env / RPC down): report the absence honestly.
-  }
+  const { jobs: onchainJobs, snapshot } = await readMarketSnapshot()
+  const jobs: MarketHealth['jobs'] = onchainJobs === null
+    ? { byStatus: {}, total: null, escrowedUsd: null, settlementRate: null }
+    : summariseJobs(onchainJobs)
 
   const graded = await db
     .select({ eventType: agentEvent.eventType })
@@ -108,6 +102,11 @@ export async function computeMarketHealth(): Promise<MarketHealth> {
 
   return {
     generatedAt: new Date().toISOString(),
+    snapshot,
+    metricSemantics: {
+      settlementRate: 'Percent: Completed / (Completed + Cancelled + Refunded + Expired). Not Completed / all jobs.',
+      jobs: 'All configured-contract jobs at snapshot.blockNumber; unavailable totals are null, not zero. Escrow is held bounty, not withdrawn funds.',
+    },
     jobs,
     grading: {
       total: gradedTotal,
@@ -119,7 +118,7 @@ export async function computeMarketHealth(): Promise<MarketHealth> {
       byStatus: loanCounts,
       defaultRate: loanTerminal > 0 ? Math.round(((loanCounts.defaulted ?? 0) / loanTerminal) * 1000) / 10 : null,
     },
-    reach: await computeReach(onchainJobs),
+    reach: onchainJobs === null ? null : await computeReach(onchainJobs),
   }
 }
 
@@ -129,8 +128,7 @@ export async function computeMarketHealth(): Promise<MarketHealth> {
  *
  * Best-effort by construction: this is a diagnostic, and a diagnostic that can
  * take down the page it diagnoses is worse than a missing number. Any failure
- * reports zeroes rather than throwing — the caller already treats an unreadable
- * chain as absence.
+ * returns null rather than a fabricated zero.
  */
 async function computeReach(
   onchainJobs: { specHash: string; status: string; minScore: number }[],
@@ -178,6 +176,6 @@ async function computeReach(
     return { openJobs: openJobs.length, unreachable: gated + empty, gated, empty }
   } catch (error) {
     console.error('[market-health] reach unavailable:', error)
-    return { openJobs: 0, unreachable: 0, gated: 0, empty: 0 }
+    return null
   }
 }

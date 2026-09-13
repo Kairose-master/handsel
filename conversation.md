@@ -952,3 +952,20 @@ Kairose-master/mud 저장소 `games/handsel-frontier/`에 MUD 기반 온체인 3
   검증 후 사용자가 main 머지를 요청했다. 별도 게임 레포는 이름만 제안하며 생성하지 않는다.
   clone 직후부터 보인 CLAUDE.md diff는 macOS의
   CLAUDE.md/Claude.md 대소문자 충돌이며 이 작업에서 문서를 대체하지 않았다.
+
+### Issue #10 public metric definitions (Codex, 2026-09-13)
+
+- Branch `codex/issue-10-market-metrics`: public completion metrics now use
+  `readMarketSnapshot` → `readJobsSnapshot`, with count/getters pinned to one
+  block and provenance retained through the four-second cache. V2 partial reads
+  are rejected for this path. `readJobs` still returns an array to existing callers.
+- Index `quality.completedJobs` is the canonical contract completion count.
+  Deprecated `completedJobsLifetime` and `totalPaidOutUsd` retain the original
+  DB-event values (compatibility); new recorded-event fields give them honest
+  names. `verifiedPayoutUsd` is null, not a claim of zero payouts.
+- Health/demand totals now permit null on chain failure; health `reach` can also
+  be null. The health page handles unavailable versus empty. Tasks expose EVM
+  snapshot metadata and explicitly describe filtering/optional Solana coverage.
+- No settlement, transfer, historical event backfill or paid commission occurs.
+  Issue #10 remains open for the historical reconciliation described in
+  docs/market-metrics.md. Do not interpret this change as a funds audit.

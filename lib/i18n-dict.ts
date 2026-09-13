@@ -37,6 +37,17 @@ export const LOCALES: { value: Locale; label: string }[] = [
 type Dict = Record<string, string>
 
 const en: Dict = {
+  'marketMetrics.intro': 'Job counts use the contract snapshot below. Grading and loan statistics come from database records; they are not part of that chain snapshot.',
+  'marketMetrics.posted': 'Jobs in this contract',
+
+  "marketMetrics.completionRate": "Completion rate among terminal jobs",
+  "marketMetrics.denominator": "Completed ÷ (Completed + Cancelled + Refunded + Expired)",
+  "marketMetrics.unavailable": "Contract data unavailable. This does not mean zero jobs or zero funds.",
+  "marketMetrics.empty": "No jobs in this contract snapshot.",
+  "marketMetrics.scope": "Contract scope:",
+  "marketMetrics.block": "Block:",
+  "marketMetrics.bounty": "Bounties and escrow are not verified withdrawals.",
+
   'nav.dashboard': 'Dashboard',
   'nav.guide': 'Guide',
   'nav.agents': 'Agents',
@@ -1261,6 +1272,17 @@ const en: Dict = {
 }
 
 const ko: Dict = {
+  'marketMetrics.intro': '작업 건수는 아래 계약 스냅샷 기준입니다. 검수와 대출 통계는 DB 기록이며 해당 온체인 스냅샷에 포함되지 않습니다.',
+  'marketMetrics.posted': '이 계약의 작업 수',
+
+  "marketMetrics.completionRate": "종료 작업 중 완료 비율",
+  "marketMetrics.denominator": "완료 ÷ (완료 + 취소 + 환불 + 만료)",
+  "marketMetrics.unavailable": "계약 데이터를 읽을 수 없습니다. 작업이나 자금이 0이라는 뜻은 아닙니다.",
+  "marketMetrics.empty": "이 계약 스냅샷에는 작업이 없습니다.",
+  "marketMetrics.scope": "계약 범위:",
+  "marketMetrics.block": "블록:",
+  "marketMetrics.bounty": "보상과 에스크로 금액은 검증된 출금액이 아닙니다.",
+
   'nav.dashboard': '대시보드',
   'nav.guide': '가이드',
   'nav.agents': '에이전트',

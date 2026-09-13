@@ -1,9 +1,10 @@
+import { MarketMetricNote } from '@/components/market-metric-note'
 import { computeMarketHealth } from '@/lib/market-health'
 
 export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Market health — Handsel' }
 
-function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function Stat({ label, value, sub }: { label: React.ReactNode; value: string; sub?: React.ReactNode }) {
   return (
     <div className="glass-card rounded-lg border border-border p-4">
       <p className="text-xs text-muted-foreground">{label}</p>
@@ -28,20 +29,28 @@ export default async function MarketHealthPage() {
     <main className="mx-auto max-w-4xl px-4 py-10">
       <h1 className="text-2xl font-semibold tracking-tight">Market health</h1>
       <p className="text-muted-foreground mt-1 mb-6 text-sm">
-        Every number below is computed live from the chain and the ledger at page load — including
-        the unflattering ones. A marketplace that publishes its dispute and default rates doesn&apos;t
-        ask to be taken on faith.
+        <MarketMetricNote name="intro" />
         {(await import('@/lib/onchain/real-money')).isRealMoney()
           ? ' Mainnet — real USDC.'
           : ' Testnet throughout; no real money.'}
       </p>
 
+      <p className="text-xs text-muted-foreground mb-4">
+        <MarketMetricNote name="scope" /> {h.snapshot.chainName} · {h.snapshot.contractAddress ?? '—'}
+        {' · '}<MarketMetricNote name="block" /> {h.snapshot.blockNumber ?? '—'}
+        {' · '}{h.snapshot.observedAt ?? '—'}
+        {' · '}<MarketMetricNote name="bounty" />
+      </p>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="Jobs posted (all time)" value={String(h.jobs.total)} sub={`$${h.jobs.escrowedUsd} currently escrowed`} />
         <Stat
-          label="Settlement rate"
+          label={<MarketMetricNote name="posted" />}
+          value={h.jobs.total === null ? '—' : String(h.jobs.total)}
+          sub={h.jobs.escrowedUsd === null ? <MarketMetricNote name="unavailable" /> : `${h.jobs.escrowedUsd} ${h.snapshot.currency} currently escrowed`}
+        />
+        <Stat
+          label={<MarketMetricNote name="completionRate" />}
           value={pct(h.jobs.settlementRate)}
-          sub="completed ÷ all terminal outcomes"
+          sub={<MarketMetricNote name="denominator" />}
         />
         <Stat
           label="Independent-grading pass rate"
@@ -59,7 +68,7 @@ export default async function MarketHealthPage() {
 
       <h2 className="text-lg font-medium mt-8 mb-2">Escrow outcomes</h2>
       {statuses.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Chain unreadable or no jobs yet — shown as the absence it is.</p>
+        <p className="text-sm text-muted-foreground"><MarketMetricNote name={h.snapshot.state === 'ok' ? 'empty' : 'unavailable'} /></p>
       ) : (
         <ul className="grid gap-2 sm:grid-cols-3">
           {statuses.map(([status, count]) => (

@@ -37,7 +37,7 @@ export async function GET(request: Request) {
   // afterward doesn't starve the result — publicJobs() slices by recency
   // before we ever see the rows, so asking for exactly `limit` here could
   // return fewer than `limit` Open jobs even when more exist further back.
-  const { state, jobs } = await publicJobsResult(Math.max(limit * 3, 60))
+  const { state, jobs, snapshot } = await publicJobsResult(Math.max(limit * 3, 60))
   const tasks: TaskSpec[] = jobs
     .filter((j) => statusFilter === 'all' || j.status === statusFilter)
     .slice(0, limit)
@@ -103,6 +103,7 @@ export async function GET(request: Request) {
         // Which chain, even here. A reader that cannot get the jobs can still
         // need to know whether this deployment is the one holding real money.
         meta: feedMeta(),
+        snapshot,
         safety: TASK_FEED_SAFETY,
         untrustedFields: TASK_FEED_UNTRUSTED_FIELDS,
         tasks: [],
@@ -125,6 +126,14 @@ export async function GET(request: Request) {
     // §27. A program's only other way to tell mainnet from testnet is the
     // hostname it happened to be handed.
     meta: feedMeta(),
+    snapshot,
+    coverage: {
+      countMeaning: 'Returned tasks only, not lifetime jobs. EVM office-scoped jobs are excluded; recency and status filters apply.',
+      evmCandidateLimit: Math.max(limit * 3, 60),
+      limitPerChain: limit,
+      statusFilter,
+      solana: 'Optional additive feed, read separately; not covered by the EVM snapshot.',
+    },
     // Who wrote the text below, and what it is never allowed to make you do.
     // The claim path has carried this since the worker-injection work
     // (lib/untrusted-input.ts); the feed did not — which left the DISCOVERY

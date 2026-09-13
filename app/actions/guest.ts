@@ -76,21 +76,13 @@ async function readPublicJobs(limit: number) {
   // in schema.ts but missing in the database breaks EVERY reader of the table.
   await (await import('@/lib/db/ensure-columns')).ensureJobSpecColumns()
 
-  const { isLaborMarketConfigured } = await import('@/lib/onchain/config')
-  if (!isLaborMarketConfigured()) return { state: 'unconfigured' as const, jobs: [] }
-
-  const { readJobs } = await import('@/lib/onchain/labor')
+  const { readMarketSnapshot } = await import('@/lib/market-snapshot')
+  const { jobs: allJobs, snapshot } = await readMarketSnapshot()
+  const state = snapshot.state
+  if (allJobs === null) return { state, jobs: [], snapshot }
+  const onchainJobs = allJobs
   const { reapStuckTasks } = await import('@/lib/agent-tasks')
   await reapStuckTasks()
-
-  let state: MarketReadState = 'ok'
-  const onchainJobs = await readJobs().catch(() => {
-    // An unreachable RPC is not an empty market either. Same collapse, one
-    // layer down, and the one that will actually happen in production — an RPC
-    // provider rate-limiting is far likelier than a missing env var.
-    state = 'unreachable'
-    return []
-  })
 
   // Slice FIRST, then fetch only what the visible cards need. This used to
   // read every job_specs row and — worse — every agent_tasks row, because the
@@ -178,7 +170,7 @@ async function readPublicJobs(limit: number) {
       }
     })
 
-  return { state, jobs }
+  return { state, jobs, snapshot }
 }
 
 /** Public leaderboard: top-earning worker agents, ranked by real payouts

@@ -1,21 +1,9 @@
-/**
- * The Labor Index — a real, honest, platform-wide snapshot of the AI
- * agent labor market: supply (agent count, aggregate credit, rating mix),
- * demand (open jobs, bounty value waiting), and quality (independent-
- * grading pass rate, lifetime payout). Every number is a live aggregate
- * over the exact same tables the dashboard and credit-scoring engine use
- * — nothing seeded, nothing invented to look impressive to whoever pays
- * to read it (see /api/market/index, the paid endpoint this feeds).
- *
- * This module is deliberately kept free of anything token/derivative-
- * specific — it only ever answers "what is true about the market right
- * now." That's the whole point: this is the data layer other things get
- * built on top of later (a cash-settled contract referencing this index,
- * a third-party protocol using it as an oracle), not the product itself.
- */
+/** Public labor metrics. Contract job state and database event observations
+ * are separate populations; neither bounty sum proves a withdrawal. */
 import { db } from '@/lib/db'
 import { agent, agentEvent } from '@/lib/db/schema'
 import { eq, inArray, sql } from 'drizzle-orm'
+import { readMarketSnapshot } from '@/lib/market-snapshot'
 
 const RATING_BANDS = ['AAA', 'AA', 'A', 'BBB', 'BB', 'B', 'C', 'D', 'unrated']
 const GRADED_PASS = new Set(['JOB_TESTS_PASSED', 'VERIFIED_TASK_COMPLETED'])
@@ -49,30 +37,32 @@ export async function computeLaborIndex() {
     .select({ detail: agentEvent.detail })
     .from(agentEvent)
     .where(eq(agentEvent.eventType, 'JOB_COMPLETED'))
-  const totalPaidOutUsd = completedEvents.reduce((sum, e) => {
+  const recordedCompletionBountyUsd = completedEvents.reduce((sum, e) => {
     const bounty = (e.detail as { bounty?: number } | null)?.bounty
     return sum + (typeof bounty === 'number' ? bounty : 0)
   }, 0)
 
-  // Open demand currently sitting on the market — best-effort: an
-  // unreadable chain reports zero rather than a stale/guessed number.
-  let openJobs = 0
-  let openBountyUsd = 0
-  try {
-    const { isLaborMarketConfigured } = await import('@/lib/onchain/config')
-    if (isLaborMarketConfigured()) {
-      const { readJobs } = await import('@/lib/onchain/labor')
-      const jobs = await readJobs()
-      const open = jobs.filter((j) => j.status === 'Open')
-      openJobs = open.length
-      openBountyUsd = open.reduce((s, j) => s + j.bounty, 0)
-    }
-  } catch {
-    /* market unreadable right now */
-  }
+  const { jobs, snapshot } = await readMarketSnapshot()
+  const open = jobs?.filter((j) => j.status === 'Open')
+  const completed = jobs?.filter((j) => j.status === 'Completed')
+  const openJobs = open?.length ?? null
+  const openBountyUsd = open ? open.reduce((sum, j) => sum + j.bounty, 0) : null
 
   return {
     generatedAt: new Date().toISOString(),
+    snapshot,
+    metricSemantics: {
+      version: 2,
+      completedJobs: 'Unique Completed jobs in snapshot.chainId and snapshot.contractAddress at snapshot.blockNumber.',
+      completedBountyUsd: 'Gross bounty of Completed contract jobs, not settlement credits or withdrawals.',
+      databaseScope: 'Supply, grading and event observations come from the database, not the block-pinned contract snapshot.',
+      databaseEvents: 'All stored JOB_COMPLETED rows; not deduplicated or chain/contract scoped. Missing numeric bounty contributes zero.',
+      verifiedPayoutUsd: 'Not reconciled; null does not mean zero. Credits, withdrawals and transfers require separate evidence.',
+      deprecated: {
+        completedJobsLifetime: { replacement: 'quality.completedJobs', legacyMeaning: 'Database JOB_COMPLETED row count', removal: 'Next major API version, after migration notice; no removal scheduled.' },
+        totalPaidOutUsd: { replacement: 'quality.recordedCompletionBountyUsd', legacyMeaning: 'Sum of stored numeric completion-event bounties; not verified payouts', removal: 'Next major API version, after migration notice; no removal scheduled.' },
+      },
+    },
     supply: {
       agentCount: Number(portfolioStats?.agentCount ?? 0),
       avgCreditScore: portfolioStats?.avgScore ? Math.round(Number(portfolioStats.avgScore)) : null,
@@ -88,8 +78,14 @@ export async function computeLaborIndex() {
       openBountyUsd,
     },
     quality: {
+      completedJobs: completed?.length ?? null,
+      completedBountyUsd: completed ? completed.reduce((sum, j) => sum + j.bounty, 0) : null,
+      recordedCompletionEvents: completedEvents.length,
+      recordedCompletionBountyUsd,
+      verifiedPayoutUsd: null,
+      // Deprecated aliases retain their original values until a major API migration.
       completedJobsLifetime: completedEvents.length,
-      totalPaidOutUsd,
+      totalPaidOutUsd: recordedCompletionBountyUsd,
       // Share of independently-graded outcomes (acceptance tests +
       // verified tasks) that came back a pass — the closest thing this
       // market has to a real "default rate" proxy: null, not 0, when
