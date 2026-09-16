@@ -2,6 +2,28 @@
 name: parallel-repo-coordination
 description: "Conflict prevention when several agents or people work one git repository at the same time with no shared memory. A note file in the repo (conversation.md) plus a gate that refuses to commit or push until this working copy has read what changed. Use whenever you start work in a repo that may have other sessions active, before rewiring anything another session may be running, before landing a change that touches shared files, and when a merge conflict or a stranger's commit shows up in your pull. Triggers: conversation.md, another session, parallel work, merge conflict, live round, do not touch, who else is working here, coordination note, ack."
 license: MIT
+version: "1.0.0"
+metadata:
+  repository: Kairose-master/handsel
+# OWASP Agentic Skills Top 10 universal-manifest fields. The script appends
+# to the note file and writes its acknowledgement and an optional pre-push
+# hook under .git/. It never writes outside the repository and never touches
+# the network. SECURITY.md maps each risk to the control in place.
+permissions:
+  files:
+    read: [./conversation.md, ./.git/]
+    write: [./conversation.md, ./.git/]
+    deny_write: [SOUL.md, MEMORY.md, AGENTS.md]
+  network:
+    allow: []
+    deny: "*"
+  shell:
+    - node
+    - git
+  tools: []
+risk_tier: L1
+requires:
+  binaries: [node, git]
 ---
 
 # Parallel work in one repository

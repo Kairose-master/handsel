@@ -17,6 +17,7 @@ import { describe, expect, it } from 'vitest'
 
 const SKILL_DIR = join(process.cwd(), 'skill/handsel')
 const SKILL_MD = join(SKILL_DIR, 'skills/handsel/SKILL.md')
+const SECURITY_MD = join(SKILL_DIR, 'skills/handsel/SECURITY.md')
 const REFERENCE_DIR = join(SKILL_DIR, 'skills/handsel/reference')
 const PUBLIC_DIR = join(process.cwd(), 'public/skill')
 
@@ -159,6 +160,12 @@ describe('the served copy matches the source', () => {
   it('has every source file, byte for byte', () => {
     const stale: string[] = []
     if (readFileSync(SKILL_MD, 'utf8') !== readFileSync(join(PUBLIC_DIR, 'SKILL.md'), 'utf8')) stale.push('SKILL.md')
+    // The security posture travels with the skill (tests/skill-manifests.test.ts
+    // says why); a stale served copy would describe controls the skill no
+    // longer has.
+    if (!existsSync(join(PUBLIC_DIR, 'SECURITY.md')) || readFileSync(SECURITY_MD, 'utf8') !== readFileSync(join(PUBLIC_DIR, 'SECURITY.md'), 'utf8')) {
+      stale.push('SECURITY.md')
+    }
     for (const f of readdirSync(REFERENCE_DIR)) {
       const served = join(PUBLIC_DIR, 'reference', f)
       if (!existsSync(served) || readFileSync(join(REFERENCE_DIR, f), 'utf8') !== readFileSync(served, 'utf8')) {
@@ -184,7 +191,7 @@ describe('the served copy matches the source', () => {
 
   it('the file list the installer reads names exactly the source files', () => {
     const listed = readFileSync(join(PUBLIC_DIR, 'files.txt'), 'utf8').trim().split('\n')
-    const expected = ['SKILL.md', ...readdirSync(REFERENCE_DIR).sort().map((f) => `reference/${f}`)]
+    const expected = ['SKILL.md', 'SECURITY.md', ...readdirSync(REFERENCE_DIR).sort().map((f) => `reference/${f}`)]
     expect(listed).toEqual(expected)
   })
 

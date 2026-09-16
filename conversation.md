@@ -969,3 +969,20 @@ Kairose-master/mud 저장소 `games/handsel-frontier/`에 MUD 기반 온체인 3
 - No settlement, transfer, historical event backfill or paid commission occurs.
   Issue #10 remains open for the historical reconciliation described in
   docs/market-metrics.md. Do not interpret this change as a funds audit.
+
+## 2026-09-16 06:59 · agent (claude/aomi-labs-review-cik9kb)
+
+aomi-labs 리뷰 → 스킬 보안 매니페스트 도입. 브랜치 `claude/aomi-labs-review-cik9kb`.
+
+- 저작 스킬 4개(`.claude/skills/{handsel-agent-contract,parallel-repo-coordination,instagram-publisher}`,
+  공개 패키지 `skill/handsel/skills/handsel`) 프론트매터에 OWASP Agentic Skills Top 10
+  `permissions:` 블록 + `risk_tier` + `version` 추가, 각 디렉터리에 `SECURITY.md`(AST01–AST10).
+  벤더 스킬(ORIGIN.md 있는 것)은 건드리지 않았다 — 핀이 깨진다.
+- **새 스킬을 추가하면 `tests/skill-manifests.test.ts`가 요구한다**: 매니페스트 4면(files/network/shell/tools),
+  경로에 글롭 금지, allow 호스트는 스킬 본문에 등장해야 하고 `scripts/`의 리터럴 호스트는 allow에 있어야 함,
+  SECURITY.md의 tier가 프론트매터와 일치.
+- `scripts/sync-skill-public.mjs`가 이제 `SECURITY.md`도 `public/skill/`로 복사하고 `files.txt`에 넣는다.
+  `skill/` 아래를 건드리면 `npm run skill:sync` 잊지 말 것(기존 규칙, 파일 하나 늘었을 뿐).
+- 문서: `docs/competitive-landscape.md` 여섯째 패스(Aomi — 무엇을 가져왔고 무엇을 안 가져왔는지),
+  `docs/security-audit.md` "Skills as an attack surface", CLAUDE.md 스킬 섹션.
+- 온체인/머니 경로는 손대지 않았다. 사전 시뮬레이션·확인 바인딩은 검토 후 "이미 동등" 판정 — 근거는 랜드스케이프 문서.

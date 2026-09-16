@@ -2,6 +2,27 @@
 name: instagram-publisher
 description: "Publish content to the official Handsel Instagram through the official Graph API: single-image posts, carousels, Reels, Stories, plus publish status, quota and media insights. Dry-run by default; a live publish needs the human's explicit go-ahead in the conversation. Use when asked to post/publish/schedule something to Instagram, turn screenshots into a carousel, put a release on the Story, check why a publish failed, or read post performance. Triggers: instagram, post to instagram, publish reel, story, carousel, schedule launch content, instagram quota, media insights, social desk."
 license: MIT
+version: "1.0.0"
+metadata:
+  repository: Kairose-master/handsel
+# OWASP Agentic Skills Top 10 universal-manifest fields. The script talks to
+# the official Graph API only, reads credentials from env, and publishes to a
+# real public account when --live is passed — which is what makes it L2.
+# SECURITY.md maps each risk to the control in place.
+permissions:
+  files:
+    read: []
+    write: []
+    deny_write: [SOUL.md, MEMORY.md, AGENTS.md]
+  network:
+    allow: [graph.instagram.com, graph.facebook.com]
+    deny: "*"
+  shell:
+    - node
+  tools: []
+risk_tier: L2
+requires:
+  binaries: [node]
 ---
 
 # instagram-publisher

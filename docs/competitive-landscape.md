@@ -902,3 +902,130 @@ transfers to the next job. Not re-scored as a separate threat.
    capacity with no independent verification of a specific deliverable —
    which is exactly the wedge §6b and the "Honest threat ranking" already
    named, now confirmed from a different direction.
+
+---
+
+# Sixth pass, 2026-09-16 — Aomi Labs: the execution-harness category, and what was taken from it
+
+*Prompted by an operator pointing at [github.com/aomi-labs](https://github.com/aomi-labs)
+and asking what, if anything, applies. Method as always: every claim below was
+fetched (org page, READMEs of `aomi`, `skills`, `docs`, `aomi-sdk`,
+`liqsteward`, `eliza-plugin-aomi`, and the raw `aomi-transact` SKILL.md and
+SECURITY.md) rather than carried from memory. Nothing here was run.*
+
+## What Aomi is
+
+Aomi Labs describes itself as "the best blockchain harness for agentic AI —
+on-chain execution with runtime, skills, and component library." Concretely,
+across ~32 public repos, the product is:
+
+- **A chat → transaction runtime** (`aomi`, TypeScript monorepo): a headless
+  React runtime and widget, a TypeScript client and `aomi` CLI, and a backend
+  that turns a prompt ("swap 1 ETH for USDC", "bet $100 on Polymarket") into a
+  *queued wallet request* the user signs. Account-abstraction-first (EIP-7702
+  on Ethereum, ERC-4337 with Alchemy/Pimlico on L2s), with **batch fork
+  simulation before signing** (`aomi tx simulate tx-1 tx-2`) and "drain-vector"
+  annotations that block, for example, a recipient that is not `msg.sender`.
+- **A plugin runtime** (`aomi-sdk`, Rust): third-party APIs wrapped as
+  "intent-shaped tools" (`search_*`, `get_*`, `build_*`) compiled to native
+  `.so`/`.dylib` plugins that the backend **hot-loads via `dlopen`**, polling
+  a release tarball whose `manifest.json` carries per-plugin SHA-256s.
+  Official apps: DeFi, Polymarket, Kalshi, Para, social.
+- **Agent Skills** (`skills`): `aomi-transact` (drive the CLI) and
+  `aomi-build` (scaffold a plugin from an OpenAPI spec), installable with
+  `npx skills add aomi-labs/skills` into Claude Code, Cursor, Codex, Gemini.
+- **Two governance-shaped deployments**: `liqsteward`, which plans vault
+  mitigations and emits *unsigned* Safe transaction JSON ("neither LiqSteward
+  nor Aomi is the curator, signer, custodian, or broadcaster"), and
+  `eliza-plugin-aomi`, whose "wallet-backed confirmation" stops every write
+  at an exact preview, requires a separate confirmation turn **from the same
+  user who initiated**, and ignores any LLM-supplied confirmation flag.
+
+Vital signs are small: 13 stars on the main repo, 7 on `skills`, active daily
+commits through 2026-09-16, MIT throughout.
+
+## Where it sits relative to Handsel
+
+**Not a competitor for the market mechanism.** Aomi has no escrow, no
+independent grader, no verdict, no credit score, no market — it is the layer
+*below* an agent's wallet: how an agent's intent becomes a signed transaction
+safely. In this document's taxonomy it is closest to §3 (payment rails,
+complementary) and to the "worker without a market" slot of §6b: a very good
+way for an agent to *act* on-chain, with nothing that says whether the action
+was the right one or pays anyone for it.
+
+**Adjacent in one specific way that matters to us.** Handsel already holds an
+ERC-4337 Kernel account per agent and sends UserOps on its behalf
+(`lib/onchain/account.ts`). Aomi is what a *self-custodial* agent would use to
+do the same thing from its own wallet. If Handsel ever lets an agent bring its
+own account to the market instead of using the platform-held one, Aomi's CLI
+is one of the obvious things that agent would be holding. That is a future
+integration surface, not a present overlap.
+
+## What was taken
+
+**The skill security manifest — adopted.** `aomi-labs/skills` is the first
+skill repo this document has seen that ships, per skill, an OWASP Agentic
+Skills Top 10 `permissions:` block (`files` / `network` / `shell` / `tools`,
+explicit paths, `deny_write` on `SOUL.md`/`MEMORY.md`/`AGENTS.md`), a
+`risk_tier` (L0–L3), and a `SECURITY.md` walking AST01–AST10 with the control
+for each and the ones still open, plus captured third-party scanner reports.
+Handsel ships four authored skills, one of them a public package strangers
+install to earn and spend real USDC, and none of them said what it was
+allowed to touch. All four now do; `tests/skill-manifests.test.ts` keeps the
+manifest and the skill from drifting apart (an allow-listed host the skill
+never names, a literal host in `scripts/` the manifest omits, a tier the two
+halves disagree on). Details in `docs/security-audit.md`, "Skills as an
+attack surface". We did not adopt the scanner reports — running them is a
+real step, not a paragraph, and is listed as open.
+
+## What was considered and not taken, and why
+
+1. **Fork simulation before every send.** Aomi simulates a batch on a forked
+   chain before signing and refuses on any failure. Handsel's UserOps already
+   pass through the bundler's `eth_estimateUserOperationGas`, which in practice rejects a
+   reverting `callData` before anything is broadcast, and `lib/onchain/
+   custom-errors.ts` decodes the contract's own error out of that rejection.
+   More to the point, Aomi's drain-vector guards protect against **free-form
+   calldata composed from third-party data** (a swap route from an
+   aggregator). Handsel composes no such calldata: every write is a fixed
+   `LaborMarketV2` method whose recipient is the contract's own rule
+   (escrow to the market, release to the worker, bond back to the worker).
+   There is no recipient field for a hostile brief to steer. A pre-send
+   `eth_call` would add a second simulation of the same thing, not a new
+   guard.
+2. **Confirmation bound to the initiator, LLM flags ignored.** Handsel's
+   money step is already a *separate tool call* (`confirm_delegation` after
+   `plan_delegation`; `release_job`; `decide_session_approval`), and
+   `confirmDelegationJobs` checks the delegation belongs to the calling
+   account before it posts anything. No tool takes a "the user said yes"
+   boolean. What Handsel cannot do — and neither can Aomi's MCP-shaped
+   surfaces — is see whether the human between the LLM and the tool actually
+   approved; the Eliza plugin can, because it owns the chat turn. Same
+   posture, different substrate; nothing to port.
+3. **Hot-loaded native plugins.** This is the one thing Aomi does that
+   Handsel has explicitly decided not to: hosting and executing other
+   people's code. `docs/coordination-layer.md` and `docs/external-grading.md`
+   both refuse it for the same reason — it inverts "we don't run your code",
+   and a `dlopen`'d `.so` from a 5-minute poll is the strongest form of that
+   inversion. Aomi's SHA-256-per-plugin manifest is the right control *if*
+   you have chosen to run the code; we have not.
+4. **`npx skills add`-style distribution.** Aomi installs from a GitHub repo
+   via a community CLI. Handsel already has three install paths for the
+   public package (marketplace layout, `install-skill.sh`, direct download),
+   and the `.claude/skills/*/SKILL.md` layout is what that CLI discovers, so
+   `npx skills add Kairose-master/handsel` should already work. Not verified
+   this pass — the environment refuses arbitrary npm execution — so it is
+   not claimed.
+
+## What this pass changes
+
+1. **Nothing in the threat ranking.** Aomi is infrastructure an agent brings
+   to a market, not a market.
+2. **One control adopted, repo-wide**, on a surface (skills) this document's
+   companion `security-audit.md` had never listed. That is the useful kind of
+   landscape finding: not "they are ahead" but "they did the obvious thing
+   and we had not."
+3. **A named future integration surface**: an agent bringing its own
+   Aomi-signed account to Handsel instead of the platform-held Kernel. Filed,
+   not planned.

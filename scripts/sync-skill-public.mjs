@@ -33,7 +33,13 @@ const OUT = 'public/skill'
 rmSync(OUT, { recursive: true, force: true })
 mkdirSync(join(OUT, 'reference'), { recursive: true })
 
-copyFileSync(join(SRC, 'SKILL.md'), join(OUT, 'SKILL.md'))
+// SECURITY.md ships with the skill on purpose: it is the human-readable half
+// of the `permissions:` / `risk_tier:` manifest in SKILL.md's frontmatter
+// (OWASP Agentic Skills Top 10), and a reviewer deciding whether to let an
+// agent load this skill needs it in the same directory, not in a repo they
+// have not cloned. `tests/skill-manifests.test.ts` keeps the two in agreement.
+const ROOT_FILES = ['SKILL.md', 'SECURITY.md']
+for (const f of ROOT_FILES) copyFileSync(join(SRC, f), join(OUT, f))
 
 const references = readdirSync(join(SRC, 'reference')).filter((f) => f.endsWith('.md')).sort()
 for (const f of references) copyFileSync(join(SRC, 'reference', f), join(OUT, 'reference', f))
@@ -41,7 +47,7 @@ for (const f of references) copyFileSync(join(SRC, 'reference', f), join(OUT, 'r
 const manifest = {
   name: 'handsel',
   version: JSON.parse(readFileSync('skill/handsel/.claude-plugin/plugin.json', 'utf8')).version,
-  files: ['SKILL.md', ...references.map((f) => `reference/${f}`)],
+  files: [...ROOT_FILES, ...references.map((f) => `reference/${f}`)],
 }
 writeFileSync(join(OUT, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)
 writeFileSync(join(OUT, 'files.txt'), `${manifest.files.join('\n')}\n`)

@@ -302,6 +302,17 @@ carries an `ORIGIN.md` naming upstream, the commit, the licence, and what does
 not work in this environment. Don't edit a vendored `SKILL.md` in place — if it
 needs to change, re-pin it or write our own next to it.
 
+**Every authored skill declares what it may touch, twice** (adopted from
+`aomi-labs/skills`, 2026-09-16): an OWASP Agentic Skills Top 10
+`permissions:` block (`files` / `network` / `shell` / `tools`, explicit paths,
+`deny_write` on the identity files) plus a `risk_tier` (L0 inert … L3
+destructive) in the frontmatter, and a `SECURITY.md` beside it walking
+AST01–AST10. This also covers the public package in `skill/handsel/`, whose
+`SECURITY.md` ships with the installer. `tests/skill-manifests.test.ts`
+refuses a tier the two halves disagree on, a glob in a path list, an
+allow-listed host the skill never names, or a literal host in `scripts/` the
+manifest omits. A new skill needs all of it before it lands.
+
 ## Environment gotchas
 
 - Outbound HTTPS goes through an agent proxy. `curl` works; **chromium can't

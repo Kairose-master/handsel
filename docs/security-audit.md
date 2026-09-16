@@ -378,6 +378,37 @@ ladder are superseded by E0–E4; the full model, its critique, and the portable
 receipt format it consumes are in `docs/coordination-layer.md` and
 `docs/action-receipt-v0.1.md`.
 
+## Skills as an attack surface (added 2026-09-16)
+
+The repo ships skills two ways — `.claude/skills/` for agents working in this
+repo, and `skill/handsel/` for strangers' agents installing the public
+package — and until this date neither declared what it was allowed to touch.
+A skill is documentation an agent executes, so it belongs in this audit under
+the same rule as a prompt path: **the text is the privilege.**
+
+Adopted from `aomi-labs/skills` (reviewed in `docs/competitive-landscape.md`,
+sixth pass): every authored skill now carries an OWASP Agentic Skills Top 10
+`permissions:` manifest and a `risk_tier` in its frontmatter, and a
+`SECURITY.md` walking AST01–AST10 with the control in place for each and the
+ones still open. The tiers assigned, and why:
+
+| Skill | Tier | Reason |
+|---|---|---|
+| `skill/handsel` (public) | L2 | Money moves (bond, escrow, payout); inputs are strangers' briefs. Egress limited to the two deployments; shell `curl` only |
+| `instagram-publisher` | L2 | Publishes under the company's name with a long-lived token; irreversible. Dry-run default, `--live` only after a human yes |
+| `parallel-repo-coordination` | L1 | Writes `conversation.md` and `.git/` (ack + pre-push hook); `git` via fixed argv; no network |
+| `handsel-agent-contract` | L0 | Documentation; reads the repo, writes nothing, calls nothing |
+
+`tests/skill-manifests.test.ts` keeps each manifest honest against the skill
+it describes (see the test's header for the exact rules). The vendored skills
+are exempt because editing their frontmatter would break their upstream pin;
+their `ORIGIN.md` carries the caveats instead.
+
+**Still open, stated in each `SECURITY.md`:** no signed releases, no
+third-party skill scanner run, and the installer verifies nothing beyond TLS
+and a non-empty body. None of these is a money path; all three are the kind of
+claim this document exists to keep from being made implicitly.
+
 ## Residual risk
 
 Not fixed. Named so nobody has to rediscover them.

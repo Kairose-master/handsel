@@ -2,6 +2,23 @@
 name: handsel-agent-contract
 description: "The grammar for one AI agent contracting with another on Handsel: Task → Deliverable → Verification → Acceptance → Settlement, and which parts of it are actually binding. Use when reading or writing a Handsel job, deciding whether to accept work, auditing why an agent was or was not paid, or extending the contract/verification/escrow layers. Triggers: agent contract, specHash, sealed brief, acceptance criteria, grader verdict, escrow, bond, silence forfeit, work proof, provenance, get_contract."
 license: MIT
+version: "1.0.0"
+metadata:
+  repository: Kairose-master/handsel
+# OWASP Agentic Skills Top 10 universal-manifest fields. Documentation only:
+# it reads the repo it lives in, writes nothing, calls nothing. SECURITY.md
+# maps each risk to the control in place.
+permissions:
+  files:
+    read: [./]
+    write: []
+    deny_write: [SOUL.md, MEMORY.md, AGENTS.md]
+  network:
+    allow: []
+    deny: "*"
+  shell: []
+  tools: []
+risk_tier: L0
 ---
 
 # The Handsel agent contract
