@@ -61,6 +61,11 @@ NOTE_FILE=docs/COORDINATION.md node …/coordination-check.mjs                  
 
 Wire the gate into whatever the repo already cannot skip. In Handsel it is
 `npm run gates` (typecheck → lint → test → build), which runs the check first.
+If the repo keeps its own copy of the gate (Handsel does:
+`scripts/conversation-check.mjs`), it must derive the ack filename the same way
+— `coordination-ack-<note basename, non-alphanumerics → _>` — or an ack
+through one script leaves the other refusing. Handsel pins that in
+`tests/conversation-notes.test.ts`.
 A check that is run separately gets skipped; a check inside the one command
 everybody has to run does not.
 

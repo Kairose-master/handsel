@@ -986,3 +986,13 @@ aomi-labs 리뷰 → 스킬 보안 매니페스트 도입. 브랜치 `claude/aom
 - 문서: `docs/competitive-landscape.md` 여섯째 패스(Aomi — 무엇을 가져왔고 무엇을 안 가져왔는지),
   `docs/security-audit.md` "Skills as an attack surface", CLAUDE.md 스킬 섹션.
 - 온체인/머니 경로는 손대지 않았다. 사전 시뮬레이션·확인 바인딩은 검토 후 "이미 동등" 판정 — 근거는 랜드스케이프 문서.
+
+## 2026-09-16 07:07 · agent (claude/aomi-labs-review-cik9kb)
+
+ack 파일명 통일. 레포 게이트(`scripts/conversation-check.mjs`)와 포터블 스킬
+(`.claude/skills/parallel-repo-coordination/scripts/coordination-check.mjs`)이 서로 다른 파일에
+ack를 기록해서(`handsel-conversation-ack` vs `coordination-ack-conversation_md`), 스킬의 `--note`로
+쓴 뒤에도 `npm run gates`가 "unread"로 거부했다 — 새 노트가 온 것처럼 보이는 가짜 거부.
+이제 둘 다 `.git/coordination-ack-conversation_md` 하나. 옛 파일은 폴백으로 읽으니 기존 워킹카피는
+다시 ack할 필요 없음. 파생식은 `lib/conversation-notes.ts` `ackBasename`, `tests/conversation-notes.test.ts`가
+두 스크립트에 같은 리터럴이 있는지 핀.

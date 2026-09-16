@@ -31,7 +31,26 @@
  * Pure here; the file and git plumbing live in scripts/conversation-check.mjs.
  */
 
-export const ACK_BASENAME = 'handsel-conversation-ack'
+/**
+ * Where the acknowledgement lives under `.git/`, derived from the note's
+ * filename the same way the portable skill does it
+ * (`.claude/skills/parallel-repo-coordination/scripts/coordination-check.mjs`).
+ *
+ * The two used to disagree: the repo gate wrote `handsel-conversation-ack`,
+ * the skill wrote `coordination-ack-conversation_md`, so acknowledging through
+ * one (the skill's `--note`, which acks as a side effect of writing) left the
+ * other still refusing — a spurious "unread" that looked exactly like a new
+ * note from another session. One derivation, mirrored in both scripts and
+ * pinned by tests/conversation-notes.test.ts. The legacy filename is still
+ * read as a fallback so no existing working copy is re-gated by the rename.
+ */
+export const ACK_PREFIX = 'coordination-ack-'
+export const LEGACY_ACK_BASENAME = 'handsel-conversation-ack'
+export function ackBasename(noteFile: string): string {
+  const base = noteFile.split('/').pop() ?? noteFile
+  return `${ACK_PREFIX}${base.replace(/[^a-z0-9]/gi, '_')}`
+}
+export const ACK_BASENAME = ackBasename('conversation.md')
 
 /**
  * Two notes are the same note when their meaningful text is the same.

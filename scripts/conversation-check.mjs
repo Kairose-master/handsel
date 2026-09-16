@@ -53,9 +53,18 @@ const dir = gitDir()
 if (!dir) process.exit(0)
 if (!existsSync(NOTE)) process.exit(0)
 
-const ackPath = path.join(dir, 'handsel-conversation-ack')
+/* Same derivation as the portable skill's coordination-check.mjs, so an ack
+ * recorded through either script satisfies both (lib/conversation-notes.ts
+ * `ackBasename` explains the disagreement this replaced). The legacy filename
+ * is read when the new one is absent so the rename re-gates nobody. */
+const ackPath = path.join(dir, `coordination-ack-${path.basename(NOTE).replace(/[^a-z0-9]/gi, '_')}`)
+const legacyAckPath = path.join(dir, 'handsel-conversation-ack')
 const note = await readFile(NOTE, 'utf8')
-const acked = existsSync(ackPath) ? await readFile(ackPath, 'utf8') : null
+const acked = existsSync(ackPath)
+  ? await readFile(ackPath, 'utf8')
+  : existsSync(legacyAckPath)
+    ? await readFile(legacyAckPath, 'utf8')
+    : null
 
 if (process.argv.includes('--ack')) {
   await mkdir(path.dirname(ackPath), { recursive: true })

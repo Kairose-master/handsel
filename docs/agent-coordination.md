@@ -43,7 +43,12 @@ The fix, therefore, is not a better note or a firmer rule. It is to stop asking:
 and prints the new lines (`scripts/conversation-check.mjs`,
 `lib/conversation-notes.ts`). The acknowledgement lives in `.git/`, so it is
 per working copy — a fresh clone is a fresh agent — and is never committed, so
-no one can acknowledge on another session's behalf.
+no one can acknowledge on another session's behalf. It is the same file
+(`.git/coordination-ack-conversation_md`) whether recorded by the repo gate or
+by the portable skill's `coordination-check.mjs --ack` / `--note`; for two weeks
+the two used different names, and an ack through the skill left the gate
+refusing with a message indistinguishable from a new note (fixed 2026-09-16,
+`ackBasename` in `lib/conversation-notes.ts`).
 
 That design has an obvious risk and it is the interesting one: a gate that
 fires often becomes wallpaper, and wallpaper is the defect it was built to fix

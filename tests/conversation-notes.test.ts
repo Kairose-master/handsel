@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, it, expect } from 'vitest'
-import { needsAcknowledgement, noteStatus, normalizeNote, renderNotice } from '@/lib/conversation-notes'
+import { ACK_BASENAME, LEGACY_ACK_BASENAME, ackBasename, needsAcknowledgement, noteStatus, normalizeNote, renderNotice } from '@/lib/conversation-notes'
 
 const NOTE = `# notes
 
@@ -84,8 +84,28 @@ describe('the script and the tested module agree', () => {
     // In .git/, deliberately: per working copy so a fresh clone reads it once,
     // and never committed so nobody can acknowledge on another agent's behalf
     // — or hit a merge conflict in the acknowledgement itself.
-    expect(script).toContain("path.join(dir, 'handsel-conversation-ack')")
+    expect(script).toContain('coordination-ack-')
     expect(script).toContain("execFileSync('git', ['rev-parse', '--git-dir']")
+  })
+
+  it('derives the acknowledgement filename the way the portable skill does', () => {
+    // Two gates over one note file must agree on where the ack lives, or an
+    // ack through one (the skill's --note acks as a side effect of writing)
+    // leaves the other refusing with a message that reads like a new note.
+    // Both scripts mirror lib/conversation-notes.ts `ackBasename`.
+    const skill = readFileSync('.claude/skills/parallel-repo-coordination/scripts/coordination-check.mjs', 'utf8')
+    const derivation = "`coordination-ack-${path.basename(NOTE).replace(/[^a-z0-9]/gi, '_')}`"
+    expect(script).toContain(derivation)
+    expect(skill).toContain(derivation)
+    expect(ackBasename('conversation.md')).toBe('coordination-ack-conversation_md')
+    expect(ackBasename('docs/COORDINATION.md')).toBe('coordination-ack-COORDINATION_md')
+    expect(ACK_BASENAME).toBe(ackBasename('conversation.md'))
+  })
+
+  it('still reads the pre-rename acknowledgement', () => {
+    // A working copy that acknowledged under the old name must not be asked
+    // again for a rename it did not cause.
+    expect(script).toContain(`'${LEGACY_ACK_BASENAME}'`)
   })
 
   it('normalizes the same way the tested module does', () => {
