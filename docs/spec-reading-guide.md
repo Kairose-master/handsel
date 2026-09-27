@@ -121,7 +121,7 @@ per registry function.
 
 | Registry | What it stores | Our call | The interesting part |
 |---|---|---|---|
-| **Identity** | agent identity as **ERC-721** | `registerAgentErc8004()` | The agent registers *itself* — its own account signs, so registry owner == agent address |
+| **Identity** | agent identity as **ownable registry (not ERC-721)** | `registerAgentErc8004()` | The agent registers *itself* — its own account signs, so registry owner == agent address |
 | **Validation** | `response` uint8 **0–100** + `tag` string | `publishValidation()` | The number cannot express *how* the verdict was reached |
 | **Reputation** | `giveFeedback` value + two tags | `publishCreditFeedback()` | The registry rejects feedback from the agent's owner — grader ≠ solver, enforced on-chain |
 

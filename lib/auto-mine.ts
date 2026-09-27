@@ -428,9 +428,20 @@ export async function autoMineTick(
     const openBondsUsd = jobs
       .filter((j) => j.status === 'Accepted' && j.worker.toLowerCase() === myAddress)
       .reduce((sum, j) => sum + bondForBounty(j.bounty, bondSchedule), 0)
+    // The spend envelope (lib/spend-envelope.ts) is the owner's ceiling on
+    // what this wallet may put at stake unattended, graded per bond and
+    // summed into the same 24h ledger the funding tools use. Bankroll asks
+    // "is this a sane bet"; the envelope asks "did the owner allow bets this
+    // size at all". An unattended worker cannot answer an ESCALATE, so over
+    // the auto-approve line is a skip, not a prompt.
+    const { checkSpend } = await import('@/lib/spend-envelope-server')
     let plannedUsd = 0
-    withinBankroll = selected.filter((c) => {
-      if (isMineByAssignment(c.job.id)) return true
+    const kept: typeof selected = []
+    for (const c of selected) {
+      if (isMineByAssignment(c.job.id)) {
+        kept.push(c)
+        continue
+      }
       const bondUsd = bondForBounty(c.job.bounty, bondSchedule)
       const verdict = mayStakeBond({
         heldUsd,
@@ -440,15 +451,22 @@ export async function autoMineTick(
         delivered: fitCtx.delivered,
         lost: fitCtx.lostClaims,
       })
-      if (verdict.ok) {
-        plannedUsd += bondUsd
-        return true
+      if (!verdict.ok) {
+        console.info(
+          `[auto-mine] ${agent.name} bankroll: passing on job ${c.job.id} — $${verdict.exposureUsd.toFixed(2)} at stake would exceed the $${verdict.capUsd.toFixed(2)} cap (delivery edge ${Math.round(verdict.edge * 100)}%)`,
+        )
+        continue
       }
-      console.info(
-        `[auto-mine] ${agent.name} bankroll: passing on job ${c.job.id} — $${verdict.exposureUsd.toFixed(2)} at stake would exceed the $${verdict.capUsd.toFixed(2)} cap (delivery edge ${Math.round(verdict.edge * 100)}%)`,
-      )
-      return false
-    })
+      const envelope = await checkSpend({ agentId: agent.id, kind: 'bond', amountUsd: bondUsd, ref: `bond:${c.job.id}` }).catch(() => null)
+      if (envelope && envelope.grade.verdict !== 'ALLOW') {
+        const why = envelope.grade.verdict === 'DENY' ? `${envelope.grade.code}: ${envelope.grade.detail}` : 'over the auto-approve line and nobody is here to approve it'
+        console.info(`[auto-mine] ${agent.name} spend envelope: passing on job ${c.job.id} — ${why}`)
+        continue
+      }
+      plannedUsd += bondUsd
+      kept.push(c)
+    }
+    withinBankroll = kept
   }
 
   // Serial within the agent (shared account nonce). The off-chain claim
@@ -456,6 +474,11 @@ export async function autoMineTick(
   for (const { job, spec } of withinBankroll) {
     try {
       await acceptAndDispatchJob(agent, job.id, callbackUrl, { autonomous: true })
+      if (bondSchedule) {
+        const { bondForBounty } = await import('@/lib/agent-bond')
+        const { recordSpend } = await import('@/lib/spend-envelope-server')
+        await recordSpend({ agentId: agent.id, kind: 'bond', amountUsd: bondForBounty(job.bounty, bondSchedule), ref: `bond:${job.id}`, verdict: 'ALLOW' }).catch(() => undefined)
+      }
       await logPlatformEvent(
         'JOB_AUTO_ACCEPTED',
         `${agent.name} auto-claimed job #${job.id} "${spec.title}" (auto-mine)`,

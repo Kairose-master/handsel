@@ -77,7 +77,7 @@ export function suggestedFloatFor(
 
 export type UsdcFundingResult =
   | { ok: true; txHash: string; amountUsd: number; from: string; to: string }
-  | { ok: false; error: string }
+  | { ok: false; error: string; needsApproval?: boolean }
 
 /**
  * Send USDC from one of the caller's agents to another of them.
@@ -89,7 +89,7 @@ export async function fundAgentUsdc(
   userId: string,
   fromAgentId: string,
   toAgentId: string,
-  opts: { amountUsd: number; drain?: boolean },
+  opts: { amountUsd: number; drain?: boolean; approveOverLimit?: boolean },
 ): Promise<UsdcFundingResult> {
   if (fromAgentId === toAgentId) return { ok: false, error: 'Source and destination are the same agent.' }
 
@@ -136,8 +136,33 @@ export async function fundAgentUsdc(
     return { ok: false, error: 'That is below the dust floor — the transfer would cost more than it moves.' }
   }
 
+  // The spend envelope (lib/spend-envelope.ts) is graded immediately before
+  // the transfer is signed: the plan above says what CAN be sent, this says
+  // what MAY be.
+  const { checkSpend, recordSpend, refusalText } = await import('@/lib/spend-envelope-server')
+  const check = await checkSpend({
+    agentId: fromAgentId,
+    kind: 'fund_usdc',
+    amountUsd: plan.amountUsd,
+    destination: to.smartAccountAddress,
+    ownerApproved: opts.approveOverLimit === true,
+    ref: `fund:${to.id}`,
+  })
+  if (check.grade.verdict !== 'ALLOW') {
+    return { ok: false, error: refusalText(check, from.name), needsApproval: check.grade.verdict === 'ESCALATE' }
+  }
+
   try {
     const txHash = await transferUsdc(fromAgentId, to.smartAccountAddress as `0x${string}`, plan.amountUsd)
+    await recordSpend({
+      agentId: fromAgentId,
+      kind: 'fund_usdc',
+      amountUsd: plan.amountUsd,
+      destination: to.smartAccountAddress,
+      ownerApproved: opts.approveOverLimit === true,
+      ref: txHash,
+      verdict: 'ALLOW',
+    }).catch(() => undefined)
     return { ok: true, txHash, amountUsd: plan.amountUsd, from: from.name, to: to.name }
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) }
