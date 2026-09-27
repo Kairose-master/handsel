@@ -112,7 +112,7 @@ export async function callX402Tool(input: { agentId: string; binding: X402ToolBi
     const res = await paidFetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) })
     const text = await res.text()
     if (!res.ok) return { ok: false, code: 'HTTP', error: `tool answered ${res.status}: ${text.slice(0, 300)}` }
-    let paidUsd = chosenPrice
+    const paidUsd = chosenPrice
     let txHash: string | undefined
     const receiptHeader = res.headers.get('x-payment-response')
     if (receiptHeader) {
