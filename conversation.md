@@ -996,3 +996,32 @@ ack를 기록해서(`handsel-conversation-ack` vs `coordination-ack-conversation
 이제 둘 다 `.git/coordination-ack-conversation_md` 하나. 옛 파일은 폴백으로 읽으니 기존 워킹카피는
 다시 ack할 필요 없음. 파생식은 `lib/conversation-notes.ts` `ackBasename`, `tests/conversation-notes.test.ts`가
 두 스크립트에 같은 리터럴이 있는지 핀.
+
+## 2026-09-27 02:40 · agent (claude/trend-hardening)
+
+2026-09 브리핑(x402 정산 실측, wdk-policy-guard, process-validation, Flight Recorder, A2A 이름 충돌,
+Bazaar) 기준으로 7개를 한 브랜치에 올렸다. 온체인 컨트랙트(LaborMarketV2) 자체는 건드리지 않았다.
+
+- **spend envelope** — `fund_agent_usdc/eth`, `withdraw_agent_eth`, auto-mine 본드, x402 툴 호출 앞에서
+  ALLOW/ESCALATE/DENY. 새 테이블 `agent_spend_event`, `agent_spend_envelope`(자가 생성). ESCALATE는
+  `approve_over_limit: true`로 통과, DENY는 코드 닫힌 목록. MCP `set_spend_envelope`. **기본값이 실돈에서
+  건당 $5 / 일 $20 / 자동 $1** — 오피스가 더 쓰면 envelope를 올려야 한다(env `SPEND_*`).
+- **action log** — `submit_work.action_log` → `ACTION_LOG` 이벤트 + `work_proofs.action_log_hash` + v2
+  evidence bundle 필드(없으면 생략이라 기존 evidenceHash 불변).
+- **proof anchoring** — `contracts/ProofAnchor.sol`(아티팩트 커밋됨), ops step `proofAnchors`,
+  `GET /api/proof/<id>/anchor`. `PROOF_ANCHOR_ADDRESS` 없으면 idle. 배포는 `scripts/deploy-proof-anchor.mjs`
+  (anchorer = 오라클 주소).
+- **identity** — `resolveOwnedAgent` 하나로 owner-scoped 이름 해석 통일(모호하면 후보 반환),
+  `message_agent` exact 매치가 substring limit에 밀려나던 버그 수정, `uniqueAgentName` 대소문자 무시,
+  `create_worker_agent`/`provisionAgentAccount`에서 ERC-8004 등록(best-effort).
+- **funding** — 델리게이션 루트 웨이브를 payer당 UserOp 1개로(`postJobsV2Batch`). `postOneSubtask`를
+  prepare/after로 쪼갰고 `tests/delegation-plan.test.ts`의 소스 셰이프 테스트를 그에 맞게 고쳤다.
+  deposit 채널(컨트랙트 변경)은 `docs/funding-channel.md`에 설계만.
+- **x402 tool 워커** — runtime `x402`, `connect_x402_tool`, `X402_BUYER_PRIVATE_KEY`(EOA 플로트). 402 챌린지
+  핀(네트워크/자산/가격/payTo). 프리셋은 우리 `/api/market/index` 하나뿐 — 외부 유료 툴은 아직 검증 안 함.
+- **Bazaar** — 가격표가 `lib/x402-catalog.ts`로 이동(스키마 + discoverable). `CDP_API_KEY_ID/SECRET` 있으면
+  CDP facilitator로 정산(`lib/cdp-facilitator.ts`, jose로 JWT — 새 직접 의존성 `jose`, lockfile 갱신됨).
+  `/.well-known/x402.json`. 절차는 `docs/bazaar-listing.md`. **미검증**: 실제 CDP 정산은 키가 없어 못 돌렸다.
+- **seed** — `data/seed-needs/needs.json` + `scripts/seed-needs.mjs`(유료 문으로만 포스팅).
+- 게이트: tsc 0, lint 0 errors, vitest 308/4398 통과. `next build`는 이 샌드박스에서 Google Fonts fetch가
+  막혀 확인 못 함(내 변경과 무관). `npm run gates`의 ack는 이 워킹카피에서 안 찍었다.

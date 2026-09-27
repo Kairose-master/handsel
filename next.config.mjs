@@ -25,6 +25,9 @@ const nextConfig = {
       { source: '/.well-known/oauth-authorization-server', destination: '/api/oauth/metadata' },
       { source: '/.well-known/oauth-protected-resource/:path*', destination: '/api/oauth/protected-resource' },
       { source: '/.well-known/oauth-protected-resource', destination: '/api/oauth/protected-resource' },
+      // What this deployment sells over x402 (lib/x402-catalog.ts), readable
+      // without triggering a 402 — for crawlers that look for a well-known.
+      { source: '/.well-known/x402.json', destination: '/api/x402/catalog' },
     ]
   },
 }

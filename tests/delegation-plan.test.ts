@@ -347,18 +347,23 @@ describe('a wave posts only what its payer can afford — checked at posting tim
   // wave surfaced as an opaque on-chain revert retry loop that consumed the
   // whole delegation tick. The pre-check turns that into the same
   // actionable row error the confirm path already produces.
-  it('postOneSubtask reads the payer balance before the post — as ADVICE, never the gate', () => {
+  it('the payer balance is read in prepareSubtaskPost, which every post path awaits before its chain call — as ADVICE, never the gate', () => {
     const { readFileSync } = require('node:fs') as typeof import('node:fs')
     const src = readFileSync('lib/delegation.ts', 'utf8')
-    const body = src.slice(src.indexOf('async function postOneSubtask'), src.indexOf('export async function postDelegationJobs'))
-    const checkAt = body.indexOf('usdcBalanceOf')
-    expect(checkAt).toBeGreaterThan(-1)
-    expect(checkAt).toBeLessThan(body.indexOf('await postJob('))
+    // Since the wave batch (2026-09-27) the pre-chain work lives in
+    // prepareSubtaskPost; both the per-job path and the batched path call
+    // it before postJob / postJobsV2Batch.
+    const prepare = src.slice(src.indexOf('async function prepareSubtaskPost'), src.indexOf('async function afterSubtaskPost'))
+    expect(prepare).toContain('usdcBalanceOf')
     // The gating version held a fully-funded wave hostage to a provider
     // serving five-minute-old state. A short read logs and posts anyway.
-    expect(body).toContain('posting anyway; the chain decides')
-    expect(body).not.toContain('mint test USDC on that agent')
-    expect(body).toContain('posting balance pre-check failed (continuing)')
+    expect(prepare).toContain('posting anyway; the chain decides')
+    expect(prepare).not.toContain('mint test USDC on that agent')
+    expect(prepare).toContain('posting balance pre-check failed (continuing)')
+    const single = src.slice(src.indexOf('async function postOneSubtask'), src.indexOf('async function postSubtaskWave'))
+    expect(single.indexOf('await prepareSubtaskPost(')).toBeLessThan(single.indexOf('await postJob('))
+    const wave = src.slice(src.indexOf('async function postSubtaskWave'), src.indexOf('async function prepareSubtaskPost'))
+    expect(wave.indexOf('await prepareSubtaskPost(')).toBeLessThan(wave.indexOf('await postJobsV2Batch('))
   })
 })
 

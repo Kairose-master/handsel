@@ -148,6 +148,46 @@ export async function handleWorker(
           'It can now claim jobs with claim_job; bounties it earns land in that wallet.',
       )
     }
+    case 'connect_x402_tool': {
+      const agents = await db.select().from(agent).where(eq(agent.userId, auth.userId))
+      const wantedId = args.agent_id ? String(args.agent_id) : null
+      const wanted = args.agent_name ? String(args.agent_name) : null
+      const resolved = resolveOwnedAgent(agents, { id: wantedId, name: wanted }, () => agents.find((a) => a.smartAccountAddress) ?? agents[0])
+      if (resolved.ambiguous) return toolText(id, ambiguousAgentText(wanted, resolved.ambiguous), true)
+      const target = resolved.found
+      if (!target) return toolText(id, wantedId ? `No agent with id "${wantedId}".` : wanted ? `No agent named "${wanted}".` : 'No agents yet — create one with create_worker_agent first.', true)
+
+      const { parseX402ToolBinding, X402_TOOL_PRESETS } = await import('@/lib/x402-tool')
+      const { setX402ToolFor, x402BuyerConfigured } = await import('@/lib/x402-tool-server')
+      const preset = args.preset ? X402_TOOL_PRESETS.find((p) => p.id === String(args.preset)) : undefined
+      if (args.preset && !preset) return toolText(id, `Unknown preset "${String(args.preset)}". Known: ${X402_TOOL_PRESETS.map((p) => p.id).join(', ')}.`, true)
+      const parsed = parseX402ToolBinding({
+        url: args.url ?? preset?.binding.url,
+        method: args.method ?? preset?.binding.method,
+        priceCapUsd: args.price_cap_usd ?? preset?.binding.priceCapUsd,
+        bodyKey: args.body_key ?? preset?.binding.bodyKey,
+        payTo: args.pay_to ?? preset?.binding.payTo,
+      })
+      if (!parsed.ok) return toolText(id, `Binding rejected: ${parsed.reason}`, true)
+
+      await setX402ToolFor(target.id, parsed.binding)
+      const { setMcpMode } = await import('@/lib/mcp-mode')
+      await setMcpMode(target.id, args.mode === 'proxy' ? 'proxy' : 'assisted')
+      await db.update(agent).set({ runtimeType: 'x402', updatedAt: new Date() }).where(eq(agent.id, target.id))
+
+      const { envelopeFor } = await import('@/lib/spend-envelope-server')
+      const env = await envelopeFor(target.id)
+      return toolText(
+        id,
+        `${target.name} now buys its tool: ${parsed.binding.method} ${parsed.binding.url} at up to $${parsed.binding.priceCapUsd} per call ` +
+          `(${args.mode === 'proxy' ? 'proxy' : 'assisted'} mode).\n` +
+          `Spend envelope: $${env.perTxMaxUsd} per transfer, $${env.dailyMaxUsd} per 24h, auto-approve $${env.autoApproveMaxUsd} — ` +
+          `a call is graded against it before the request goes out.\n` +
+          (x402BuyerConfigured()
+            ? 'The deployment has an x402 buyer key, so the next job this agent claims will pay for its call.'
+            : 'WARNING: X402_BUYER_PRIVATE_KEY is not set on this deployment — jobs will fail with BUYER_UNCONFIGURED until it is.'),
+      )
+    }
     case 'connect_mcp_worker': {
       let serverUrl = String(args.server_url ?? '').trim()
       let toolName = String(args.tool_name ?? '').trim()

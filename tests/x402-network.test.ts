@@ -59,11 +59,16 @@ describe('the middleware actually uses it', () => {
   const mw = readFileSync('middleware.ts', 'utf8')
 
   it('has no hardcoded network left', () => {
-    // The whole defect was four copies of a literal. A fifth added later would
-    // reintroduce it on exactly one route, which is the hardest kind to spot.
-    const inMap = mw.split('\n').filter((l) => l.includes('network:'))
-    expect(inMap.length).toBeGreaterThan(0)
-    for (const line of inMap) expect(line).toContain('X402_NETWORK')
+    // The whole defect was four copies of a literal. Since 2026-09-27 the
+    // price map is generated in lib/x402-catalog.ts from ONE network value
+    // the middleware passes in, so the check is: the middleware derives it
+    // once and hands it over, and neither file names a network literal.
+    expect(mw).toContain('x402RoutesConfig(X402_NETWORK)')
+    const catalog = readFileSync('lib/x402-catalog.ts', 'utf8')
+    for (const src of [mw, catalog]) {
+      const lines = src.split('\n').filter((l) => l.includes('network:') && !l.trim().startsWith('//') && !l.trim().startsWith('*'))
+      for (const line of lines) expect(line, line).not.toMatch(/'base(-sepolia)?'/)
+    }
   })
 
   it('derives it from ONCHAIN_CHAIN', () => {

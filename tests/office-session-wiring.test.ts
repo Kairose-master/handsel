@@ -169,9 +169,9 @@ describe('dispatching outside a request scope', () => {
     await new Promise((r) => setTimeout(r, 0))
   })
 
-  it('both deferred dispatch sites go through it', () => {
+  it('every deferred dispatch site (cloud, mcp, x402) goes through it', () => {
     const src = read('lib/agent-tasks.ts')
-    expect(src.match(/deferDispatch\(async \(\) => \{/g)).toHaveLength(2)
+    expect(src.match(/deferDispatch\(async \(\) => \{/g)).toHaveLength(3)
     // no bare after() left on a dispatch path
     expect(src).not.toMatch(/\n {6}after\(async/)
   })
