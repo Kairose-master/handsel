@@ -27,13 +27,14 @@ describe('runAgentTask hands cloud/mcp dispatch to its own invocation', () => {
   it('both branches try the handoff and keep the inline path as fallback', () => {
     // Two call sites (cloud, mcp) — each guarded so a refused handoff still
     // dispatches inline rather than dropping the task.
-    // Three: the cloud and mcp branches of runAgentTask, and the retry
+    // Four: the cloud, mcp and x402 branches of runAgentTask, and the retry
     // follow-up (§68), which hands the next attempt to its own invocation
     // exactly like the first one.
     const handoffs = src.split('await handoffDispatchExecution(').length - 1
-    expect(handoffs).toBe(3)
+    expect(handoffs).toBe(4)
     expect(src).toContain('dispatchToCloudApi(agent, taskId, effectiveTask, callbackUrl)')
     expect(src).toContain('dispatchToMcpWorker(agent, taskId, effectiveTask, callbackUrl)')
+    expect(src).toContain('dispatchToX402Tool(agent, taskId, effectiveTask, callbackUrl)')
   })
 
   it('a handoff timeout counts as handed off — never a second, parallel execution', () => {
@@ -92,8 +93,8 @@ describe('a platform-run dispatch acts on a retry verdict — the local worker w
   // 30-minute reap; every "attempt" cost a reap cycle. docs/failure-modes.md §68.
   const src = code('lib/agent-tasks.ts')
 
-  it('both dispatchers post through one helper and read the reply', () => {
-    expect(src.split('await postDispatchCallback(').length - 1).toBe(2)
+  it('all three dispatchers post through one helper and read the reply', () => {
+    expect(src.split('await postDispatchCallback(').length - 1).toBe(3)
     expect(src).toContain('return await res.json()')
   })
 
