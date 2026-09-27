@@ -79,7 +79,7 @@ export function parseEthAmount(input: string): bigint | null {
 
 export type EthWithdrawResult =
   | { ok: true; txHash: string; amountWei: string; to: Address }
-  | { ok: false; error: string }
+  | { ok: false; error: string; needsApproval?: boolean }
 
 /**
  * Send an agent's ETH to the account's saved payout address.
@@ -90,7 +90,7 @@ export type EthWithdrawResult =
 export async function withdrawAgentEth(
   userId: string,
   agentId: string,
-  opts: { requestedWei?: bigint; drain?: boolean } = {},
+  opts: { requestedWei?: bigint; drain?: boolean; approveOverLimit?: boolean } = {},
 ): Promise<EthWithdrawResult> {
   const { db } = await import('@/lib/db')
   const { agent, user } = await import('@/lib/db/schema')
@@ -125,8 +125,25 @@ export async function withdrawAgentEth(
     return { ok: false, error: `That is below the dust floor — the transfer would cost more than it moves.` }
   }
 
+  const { checkSpend, recordSpend, refusalText, weiToUsdForEnvelope } = await import('@/lib/spend-envelope-server')
+  const amountUsd = weiToUsdForEnvelope(plan.amountWei)
+  const check = await checkSpend({
+    agentId,
+    kind: 'withdraw_eth',
+    amountUsd,
+    destination: to,
+    ownerApproved: opts.approveOverLimit === true,
+    ref: 'withdraw',
+  })
+  if (check.grade.verdict !== 'ALLOW') {
+    return { ok: false, error: refusalText(check, owned.name), needsApproval: check.grade.verdict === 'ESCALATE' }
+  }
+
   try {
     const txHash = await transferEth(agentId, to as Address, plan.amountWei)
+    await recordSpend({ agentId, kind: 'withdraw_eth', amountUsd, destination: to, ownerApproved: opts.approveOverLimit === true, ref: txHash, verdict: 'ALLOW' }).catch(
+      () => undefined,
+    )
     return { ok: true, txHash, amountWei: plan.amountWei.toString(), to: to as Address }
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) }
