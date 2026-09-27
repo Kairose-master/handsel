@@ -62,25 +62,15 @@ export default async function middleware(request: NextRequest) {
     return NextResponse.rewrite(url)
   }
 
-  // A stranger's first click lands on '/', which is the signed-in deck: its
-  // client layout fetches /api/me, gets a 401, and only then routes to
-  // /guest — so the promo link's first paint was the word "Loading…". Cookie
-  // presence is not a session check (the deck layout still verifies), but no
-  // session cookie at all means there is nothing to verify: send them
-  // straight to the public landing, server-side.
-  //
-  // `auth_session` is the cookie /api/signin actually sets and
-  // lib/get-session.ts actually reads. The first version of this check
-  // looked for better-auth's default cookie name instead — which this app's
-  // custom signin route never sets — so every LOGGED-IN user was bounced
-  // from '/' back to /guest and sign-in appeared to do nothing at all.
-  // The better-auth name stays accepted for any session issued that way.
+  // The public homepage is the product landing page. Keep the previous
+  // signed-in root destination at /dashboard so sign-in flows still land in
+  // the authenticated app.
   const hasSession = request.cookies.getAll().some(
     (c) => c.name === 'auth_session' || c.name.endsWith('better-auth.session_token'),
   )
-  if (pathname === '/' && !hasSession) {
+  if (pathname === '/' && hasSession) {
     const url = request.nextUrl.clone()
-    url.pathname = '/guest'
+    url.pathname = '/dashboard'
     return NextResponse.redirect(url)
   }
 

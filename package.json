@@ -4,6 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "example:seedance": "tsx index.ts",
+    "media:generate-intro": "tsx scripts/generate-handsel-intro.ts",
+    "media:generate-explainer": "tsx scripts/generate-handsel-explainer.ts",
+    "media:assemble-explainer": "node scripts/assemble-handsel-explainer.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
@@ -24,6 +28,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.111.0",
     "@base-ui/react": "^1.5.0",
+    "@higgsfield/client": "^0.2.6",
     "@radix-ui/react-label": "^2.1.11",
     "@react-three/drei": "^10.7.8",
     "@react-three/fiber": "^9.7.0",
@@ -39,6 +44,7 @@
     "bpmn-js": "^18.21.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "dotenv": "^18.0.4",
     "drizzle-orm": "^0.45.2",
     "jose": "^6.2.3",
     "lucide-react": "^1.16.0",
@@ -78,10 +84,12 @@
     "eslint": "^9.39.5",
     "eslint-plugin-jsx-a11y": "^6.10.2",
     "eslint-plugin-react-hooks": "^5.2.0",
+    "ffmpeg-static": "^5.3.0",
     "globals": "^15.15.0",
     "postcss": "^8.5",
     "solc": "0.8.24",
     "tailwindcss": "^4.2.0",
+    "tsx": "^4.23.15",
     "typescript": "5.7.3",
     "typescript-eslint": "^8.65.0",
     "vitest": "^4.1.10"
@@ -89,6 +97,9 @@
   "pnpm": {
     "overrides": {
       "hono": "4.12.25"
-    }
+    },
+    "onlyBuiltDependencies": [
+      "ffmpeg-static"
+    ]
   }
 }

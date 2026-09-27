@@ -15,7 +15,7 @@ import { describe, expect, it } from 'vitest'
  *  - `npx handsel-worker --help` printed a token error (non-TTY) or dropped
  *    the person into the email login prompt (TTY).
  *  - a signed-out click on '/' rendered "Loading…" then client-redirected
- *    to /guest — the promo link's first paint was a spinner.
+ *    to /guest. The root is now a server-rendered public product landing.
  *
  * Source pins, same style as job-visibility-scope.test.ts: the call sites
  * read the DB / env at module load, so the wiring is what can be checked.
@@ -57,27 +57,26 @@ describe('npx handsel-worker --help is help, not a login prompt', () => {
   })
 })
 
-describe("a stranger's click on '/' lands on the public landing server-side", () => {
-  it('middleware redirects a session-less / to /guest — keyed on the cookie the app actually sets', () => {
+describe("a stranger's click on '/' lands on the public product landing", () => {
+  it('keeps / public and sends an authenticated root visit to /dashboard', () => {
     const src = raw('middleware.ts')
     // 'auth_session' is what /api/signin sets and lib/get-session.ts reads.
-    // The first version checked better-auth's default name, which this app
-    // never sets — so every logged-in user bounced from '/' to /guest and
-    // sign-in appeared dead. Both names are accepted now, and this pin ties
-    // the middleware to the one the signin route writes.
     const at = src.indexOf("c.name === 'auth_session'")
     expect(at).toBeGreaterThan(-1)
-    const block = src.slice(at, at + 500)
-    expect(block).toContain("url.pathname = '/guest'")
+    const redirectAt = src.indexOf("if (pathname === '/' && hasSession)")
+    expect(redirectAt).toBeGreaterThan(at)
+    const block = src.slice(redirectAt, redirectAt + 240)
+    expect(block).toContain("url.pathname = '/dashboard'")
     expect(block).toContain('NextResponse.redirect')
+    expect(src).not.toContain("url.pathname = '/guest'")
     // The matcher must actually run the middleware on '/'.
     expect(src).toContain("'/',")
     // The name is not free-floating: it must match the signin route's.
     expect(raw('app/api/signin/route.ts')).toContain("c.set('auth_session'")
   })
 
-  it("the mobile m.<host> rewrite still wins over the guest redirect", () => {
+  it("the mobile m.<host> rewrite still wins over the authenticated dashboard redirect", () => {
     const src = raw('middleware.ts')
-    expect(src.indexOf("url.pathname = '/m'")).toBeLessThan(src.indexOf("url.pathname = '/guest'"))
+    expect(src.indexOf("url.pathname = '/m'")).toBeLessThan(src.indexOf("if (pathname === '/' && hasSession)"))
   })
 })

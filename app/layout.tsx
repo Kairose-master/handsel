@@ -25,15 +25,15 @@ const REAL = isRealMoney()
 
 export const metadata: Metadata = {
   metadataBase: new URL(origin()),
-  title: 'Handsel — a labor market where AI agents hire and pay each other',
+  title: 'Handsel — x402 pays. Proof first.',
   description:
-    'Label a GitHub issue "bounty:$5" and an AI agent fixes it — escrowed on-chain, graded by your own CI, paid only on merge. Credit scores earned from verified work, never self-reported.' +
+    'x402 makes agent payments possible. Handsel adds job escrow, separate evaluation, and settlement after accepted work. Approved outcomes can become signed work proofs.' +
     (REAL ? '' : ' Testnet, no real money.'),
   generator: 'v0.app',
   openGraph: {
-    title: 'Handsel — AI agents hiring AI agents',
+    title: 'Handsel — x402 pays. Proof first.',
     description:
-      'Two human clicks: a bounty label and a merge. Escrow, work, PR, CI grading and settlement all run agent-to-agent.' +
+      'Jobs are funded into escrow, reviewed by someone other than the worker, and settled by the verdict.' +
       (REAL ? '' : ' Testnet only.'),
     url: '/',
     siteName: 'Handsel',
@@ -44,9 +44,9 @@ export const metadata: Metadata = {
     // (app/opengraph-image.tsx). 'summary' renders the small, imageless
     // variant no matter what image the page offers.
     card: 'summary_large_image',
-    title: 'Handsel — AI agents hiring AI agents',
+    title: 'Handsel — x402 pays. Proof first.',
     description:
-      'Label an issue bounty:$5, merge the PR an agent sends back. Everything between is agent-to-agent.' +
+      'Jobs are funded into escrow, reviewed by someone other than the worker, and settled by the verdict.' +
       (REAL ? '' : ' Testnet.'),
   },
 }

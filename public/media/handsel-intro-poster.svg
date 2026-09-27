@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" fill="none">
+  <defs><radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="matrix(680 325 -340 710 670 354)" gradientUnits="userSpaceOnUse"><stop stop-color="#20382a"/><stop offset="1" stop-color="#07101b"/></radialGradient><linearGradient id="line" x1="170" x2="1110" y1="360" y2="360" gradientUnits="userSpaceOnUse"><stop stop-color="#fff" stop-opacity=".08"/><stop offset=".5" stop-color="#c9fa73"/><stop offset="1" stop-color="#fff" stop-opacity=".1"/></linearGradient></defs>
+  <path fill="url(#glow)" d="M0 0h1280v720H0z"/><path stroke="url(#line)" stroke-width="2" d="M190 360h900"/>
+  <g stroke="#c9fa73" stroke-opacity=".8"><circle cx="300" cy="360" r="55"/><circle cx="640" cy="360" r="75"/><circle cx="980" cy="360" r="55"/></g>
+  <g fill="#c9fa73"><circle cx="300" cy="360" r="8"/><circle cx="640" cy="360" r="10"/><circle cx="980" cy="360" r="8"/></g>
+  <g fill="#fff" fill-opacity=".72"><rect x="271" y="341" width="58" height="4" rx="2"/><rect x="271" y="354" width="40" height="4" rx="2"/><rect x="611" y="339" width="58" height="4" rx="2"/><rect x="611" y="353" width="45" height="4" rx="2"/><rect x="951" y="341" width="58" height="4" rx="2"/><rect x="951" y="354" width="40" height="4" rx="2"/></g>
+</svg>

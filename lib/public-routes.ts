@@ -22,6 +22,7 @@ export const PUBLIC_ROUTE_PREFIXES = [
   'directory',
   'disputes',
   'examples',
+  'explore',
   'guest',
   'fleet', // the big picture: run a fleet of paying agents from Notion (docs/fleet-landing-design.md)
   'live',
@@ -46,6 +47,7 @@ export const PUBLIC_ROUTE_PREFIXES = [
  * check that bounces a stranger to `/guest` anyway.
  */
 export function isPublicPath(pathname: string): boolean {
+  if (pathname === '/') return true
   const first = pathname.split('/')[1] ?? ''
   return (PUBLIC_ROUTE_PREFIXES as readonly string[]).includes(first)
 }

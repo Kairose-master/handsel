@@ -2,6 +2,17 @@
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
 
+.landing .hero-copy { animation: landing-rise 700ms cubic-bezier(.2,.75,.2,1) both; }
+.landing .video-frame { animation: landing-rise 900ms 120ms cubic-bezier(.2,.75,.2,1) both; }
+.landing .step-card { transition: border-color 220ms ease, transform 220ms ease, background-color 220ms ease; }
+.landing .step-card:hover { border-color: rgb(201 250 115 / 28%); transform: translateY(-3px); background-color: #0d1a26; }
+@keyframes landing-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) {
+  .landing .hero-copy, .landing .video-frame { animation: none; }
+  .landing .step-card, .landing a { transition: none; }
+  .landing .step-card:hover { transform: none; }
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {

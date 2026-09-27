@@ -13,6 +13,8 @@ __v0_jsx-dev-runtime.ts
 # Common ignores
 node_modules
 .next/
+.cache/handsel-generated-media/
+var/higgsfield/
 .DS_Store
 # Build artifacts
 tsconfig.tsbuildinfo

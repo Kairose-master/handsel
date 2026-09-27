@@ -122,7 +122,7 @@ describe('public routes stay classified', () => {
     expect(isPublicPath('/directory')).toBe(true)
     expect(isPublicPath('/proof/abc123')).toBe(true)
     expect(isPublicPath('/office')).toBe(false)
-    expect(isPublicPath('/')).toBe(false)
+    expect(isPublicPath('/')).toBe(true)
     expect(isPublicPath('/jobs')).toBe(false)
   })
 })
