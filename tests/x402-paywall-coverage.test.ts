@@ -23,6 +23,7 @@ import { readFileSync } from 'fs'
 import { describe, expect, it } from 'vitest'
 
 import { STOREFRONT_COMMISSIONS } from '@/lib/storefront-pricing'
+import { X402_RESOURCES } from '@/lib/x402-catalog'
 import { anyMatcherCovers, matcherCovers } from '@/lib/x402-matcher'
 
 const src = readFileSync('middleware.ts', 'utf8')
@@ -39,9 +40,12 @@ function matcherPatterns(): string[] {
  *  read from source; the storefront ones are generated from the same
  *  constant middleware.ts generates them from. */
 function pricedPaths(): string[] {
-  const fromSource = [...src.matchAll(/'(?:GET|POST) (\/api\/[^']+)':/g)].map((m) => m[1])
+  // Since 2026-09-27 the price map is lib/x402-catalog.ts (one place for the
+  // price, the Bazaar schemas and `discoverable`), so the priced routes are
+  // read from that constant rather than from middleware source.
+  const fromCatalog = X402_RESOURCES.map((r) => r.route.split(' ')[1].replace('*', 'x'))
   const storefront = STOREFRONT_COMMISSIONS.map((c) => `/api/storefront/${c.templateId}/commission`)
-  return [...new Set([...fromSource, ...storefront])]
+  return [...new Set([...fromCatalog, ...storefront])]
 }
 
 describe('every priced x402 route is actually covered by the matcher', () => {
