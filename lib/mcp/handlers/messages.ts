@@ -65,11 +65,19 @@ async function resolveAnyAgent(ref: { id?: string | null; name?: string | null }
   }
   const name = ref.name?.trim()
   if (!name) return { found: null, why: 'none' } as const
-  const rows = await db
-    .select({ id: agent.id, name: agent.name })
-    .from(agent)
-    .where(ilike(agent.name, `%${name.replace(/[%_\\]/g, '\\$&')}%`))
-    .limit(10)
+  const escaped = name.replace(/[%_\\]/g, '\\$&')
+  // Exact matches are fetched on their own, BEFORE the substring query is
+  // capped: with more than ten substring hits the one agent actually named
+  // this could fall outside the limit and the caller would be told "no such
+  // agent" while messaging it by exact name. Names are not unique across
+  // accounts, so an exact query can still return several — resolveAgentRef
+  // then answers "ambiguous" with the candidates rather than picking one.
+  const [exact, partial] = await Promise.all([
+    db.select({ id: agent.id, name: agent.name }).from(agent).where(ilike(agent.name, escaped)).limit(10),
+    db.select({ id: agent.id, name: agent.name }).from(agent).where(ilike(agent.name, `%${escaped}%`)).limit(10),
+  ])
+  const seen = new Set<string>()
+  const rows = [...exact, ...partial].filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true)))
   return resolveAgentRef(rows, ref)
 }
 

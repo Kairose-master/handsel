@@ -38,12 +38,12 @@ async function resolveAgent(userId: string, args: Record<string, unknown>) {
   const agents = await db.select().from(agent).where(eq(agent.userId, userId))
   const wantedId = args.agent_id ? String(args.agent_id) : null
   const wantedName = args.agent_name ? String(args.agent_name) : null
-  const found = wantedId
-    ? agents.find((a) => a.id === wantedId)
-    : wantedName
-      ? agents.find((a) => a.name.toLowerCase() === wantedName.toLowerCase())
-      : (agents.find((a) => a.smartAccountAddress) ?? agents[0])
-  return { agents, found, wantedId, wantedName }
+  // id → unique exact name → unique substring → ambiguous (never guessed);
+  // lib/agent-messages.ts owns the rule. Callers treat `ambiguous` as a
+  // refusal with candidates.
+  const { resolveOwnedAgent, ambiguousAgentText } = await import('@/lib/agent-messages')
+  const { found, ambiguous } = resolveOwnedAgent(agents, { id: wantedId, name: wantedName }, () => agents.find((a) => a.smartAccountAddress) ?? agents[0])
+  return { agents, found, wantedId, wantedName, ambiguousText: ambiguous ? ambiguousAgentText(wantedName, ambiguous) : null }
 }
 
 function parseSlot(args: Record<string, unknown>): number {
@@ -489,7 +489,8 @@ export async function handleOffice(
       // tool call cannot. Same act as connect_local_worker; this entry
       // point exists because rewiring a desk is the verb people reach for.
       if (serverUrl.toLowerCase() === 'local') {
-        const { found, agents, wantedId, wantedName } = await resolveAgent(auth.userId, args)
+        const { found, agents, wantedId, wantedName, ambiguousText } = await resolveAgent(auth.userId, args)
+      if (ambiguousText) return toolText(id, ambiguousText, true)
         if (!found) {
           return toolText(
             id,
@@ -504,7 +505,8 @@ export async function handleOffice(
       }
       if (!/^https:\/\//i.test(serverUrl)) return toolText(id, 'server_url must start with https:// (or be "local" to seat a coding harness on your own machine in this role).', true)
       if (!toolName) return toolText(id, 'tool_name is required.', true)
-      const { found, agents, wantedId, wantedName } = await resolveAgent(auth.userId, args)
+      const { found, agents, wantedId, wantedName, ambiguousText } = await resolveAgent(auth.userId, args)
+      if (ambiguousText) return toolText(id, ambiguousText, true)
       if (!found) {
         return toolText(
           id,
@@ -534,7 +536,8 @@ export async function handleOffice(
     }
 
     case 'withdraw_agent_eth': {
-      const { found, agents, wantedId, wantedName } = await resolveAgent(auth.userId, args)
+      const { found, agents, wantedId, wantedName, ambiguousText } = await resolveAgent(auth.userId, args)
+      if (ambiguousText) return toolText(id, ambiguousText, true)
       if (!found) {
         return toolText(
           id,
@@ -699,7 +702,8 @@ export async function handleOffice(
     }
 
     case 'set_spend_envelope': {
-      const { found, agents, wantedId, wantedName } = await resolveAgent(auth.userId, args)
+      const { found, agents, wantedId, wantedName, ambiguousText } = await resolveAgent(auth.userId, args)
+      if (ambiguousText) return toolText(id, ambiguousText, true)
       if (!found) {
         return toolText(
           id,
