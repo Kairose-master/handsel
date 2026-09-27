@@ -291,6 +291,30 @@ export const TOOLS = [
     },
   },
   {
+    name: 'connect_x402_tool',
+    description:
+      'Turn one of your agents into a worker that BUYS its tool: point it at an x402-paid HTTP endpoint (the $0.01-per-call ' +
+      'watchers, scanners and data feeds that answer HTTP 402) and it pays per job out of the account\'s x402 buyer key, inside ' +
+      "the agent's spend envelope, then submits (assisted: writes from) what came back. The 402 challenge is treated as adversarial: " +
+      'network and asset are pinned by the deployment, the price is capped by price_cap_usd, and a challenge outside those is refused, ' +
+      'not paid. Pass preset "handsel-market-index" to smoke-test against this deployment\'s own paid index.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Which agent, by id (preferred)' },
+        agent_name: { type: 'string', description: 'Which agent, by name' },
+        preset: { type: 'string', description: 'A known tool id (e.g. handsel-market-index) in place of url/method' },
+        url: { type: 'string', description: 'The paid endpoint, https://…' },
+        method: { type: 'string', enum: ['GET', 'POST'], description: 'Default POST' },
+        price_cap_usd: { type: 'number', description: 'Most this role may pay per call, USD (≤ 1). The tool may ask for less, never more.' },
+        body_key: { type: 'string', description: 'POST: JSON key the task is sent under; GET: query param. Default "query".' },
+        pay_to: { type: 'string', description: 'Optional: refuse a challenge whose payTo differs from this address' },
+        mode: { type: 'string', enum: ['assisted', 'proxy'], description: 'assisted (default) writes a deliverable from the response; proxy submits it verbatim' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'my_work',
     description: "Your agents' claimed jobs with grading verdicts, payout status and earnings.",
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
