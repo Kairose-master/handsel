@@ -40,6 +40,8 @@
  */
 import { createHash } from 'node:crypto'
 import {
+  ANCHORED_TRUST_LENDING_FLOOR,
+  ANCHORED_TRUST_SCORE_FLOOR,
   COLLATERAL_MULTIPLE,
   CREDIBILITY_FLOOR,
   DEFAULT_RATING_RULES,
@@ -55,6 +57,12 @@ import {
   NEGATIVE_HALF_LIFE_DAYS,
   REPUTATION_HALF_LIFE_DAYS,
 } from './scoring'
+import {
+  TRUST_DAMPING,
+  TRUST_MAX_ITERATIONS,
+  TRUST_REFERENCE_QUANTILE,
+  TRUST_TOLERANCE,
+} from './trust-rank'
 
 /**
  * A human label for the era, carried alongside the hash.
@@ -64,7 +72,7 @@ import {
  * changelog nobody can join to a row is not a changelog. Bump this when the
  * change is worth a name; the hash moves on its own regardless.
  */
-export const SCORING_EPOCH = '2026-08-dampen-anchored'
+export const SCORING_EPOCH = '2026-09-anchored-trust'
 
 /**
  * Every tunable that can move an output. Values only — this is hashed, not
@@ -92,6 +100,12 @@ export function scoringTunables(): Record<string, unknown> {
     reputationHalfLifeDays: REPUTATION_HALF_LIFE_DAYS,
     negativeHalfLifeDays: NEGATIVE_HALF_LIFE_DAYS,
     collateralMultiple: COLLATERAL_MULTIPLE,
+    anchoredTrustScoreFloor: ANCHORED_TRUST_SCORE_FLOOR,
+    anchoredTrustLendingFloor: ANCHORED_TRUST_LENDING_FLOOR,
+    trustDamping: TRUST_DAMPING,
+    trustTolerance: TRUST_TOLERANCE,
+    trustMaxIterations: TRUST_MAX_ITERATIONS,
+    trustReferenceQuantile: TRUST_REFERENCE_QUANTILE,
   }
 }
 
