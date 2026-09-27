@@ -8,6 +8,7 @@
  * the router try the next group, so a handler must never answer for a tool it
  * does not own.
  */
+import { ambiguousAgentText, resolveOwnedAgent } from '@/lib/agent-messages'
 import { after } from 'next/server'
 import { agent } from '@/lib/db/schema'
 import { db } from '@/lib/db'
@@ -135,6 +136,8 @@ export async function handleWorker(
           await db.update(agent).set({ smartAccountAddress: address }).where(eq(agent.id, agentId))
           const { recalculateCredit } = await import('@/lib/credit-engine')
           await recalculateCredit(agentId)
+          const { registerAgentErc8004BestEffort } = await import('@/lib/onchain/erc8004')
+          registerAgentErc8004BestEffort(agentId)
         }
       } catch (e) {
         console.error('[mcp] provisioning failed (non-fatal):', e)
@@ -175,11 +178,9 @@ export async function handleWorker(
       const agents = await db.select().from(agent).where(eq(agent.userId, auth.userId))
       const wantedId = args.agent_id ? String(args.agent_id) : null
       const wanted = args.agent_name ? String(args.agent_name) : null
-      const target = wantedId
-        ? agents.find((a) => a.id === wantedId)
-        : wanted
-          ? agents.find((a) => a.name.toLowerCase() === wanted.toLowerCase())
-          : agents.find((a) => a.smartAccountAddress) ?? agents[0]
+      const resolved = resolveOwnedAgent(agents, { id: wantedId, name: wanted }, () => agents.find((a) => a.smartAccountAddress) ?? agents[0])
+      if (resolved.ambiguous) return toolText(id, ambiguousAgentText(wanted, resolved.ambiguous), true)
+      const target = resolved.found
       if (!target) {
         return toolText(id, wantedId ? `No agent with id "${wantedId}".` : wanted ? `No agent named "${wanted}".` : 'No agents yet — create one with create_worker_agent first.', true)
       }
@@ -247,11 +248,9 @@ export async function handleWorker(
       const agents = await db.select().from(agent).where(eq(agent.userId, auth.userId))
       const wantedId = args.agent_id ? String(args.agent_id) : null
       const wanted = args.agent_name ? String(args.agent_name) : null
-      const target = wantedId
-        ? agents.find((a) => a.id === wantedId)
-        : wanted
-          ? agents.find((a) => a.name.toLowerCase() === wanted.toLowerCase())
-          : null
+      const resolved = resolveOwnedAgent(agents, { id: wantedId, name: wanted }, () => undefined)
+      if (resolved.ambiguous) return toolText(id, ambiguousAgentText(wanted, resolved.ambiguous), true)
+      const target = resolved.found
       if (!target) {
         return toolText(
           id,
@@ -274,11 +273,9 @@ export async function handleWorker(
       const agents = await db.select().from(agent).where(eq(agent.userId, auth.userId))
       const wantedId = args.agent_id ? String(args.agent_id) : null
       const wanted = args.agent_name ? String(args.agent_name) : null
-      const target = wantedId
-        ? agents.find((a) => a.id === wantedId)
-        : wanted
-          ? agents.find((a) => a.name.toLowerCase() === wanted.toLowerCase())
-          : agents.find((a) => a.smartAccountAddress) ?? agents[0]
+      const resolved = resolveOwnedAgent(agents, { id: wantedId, name: wanted }, () => agents.find((a) => a.smartAccountAddress) ?? agents[0])
+      if (resolved.ambiguous) return toolText(id, ambiguousAgentText(wanted, resolved.ambiguous), true)
+      const target = resolved.found
       if (!target) {
         return toolText(id, wantedId ? `No agent with id "${wantedId}".` : wanted ? `No agent named "${wanted}".` : 'No agents yet — create one with create_worker_agent first.', true)
       }
@@ -332,11 +329,9 @@ export async function handleWorker(
       const agents = await db.select().from(agent).where(eq(agent.userId, auth.userId))
       const wantedId = args.agent_id ? String(args.agent_id) : null
       const wanted = args.agent_name ? String(args.agent_name) : null
-      const target = wantedId
-        ? agents.find((a) => a.id === wantedId)
-        : wanted
-          ? agents.find((a) => a.name.toLowerCase() === wanted.toLowerCase())
-          : agents.find((a) => a.smartAccountAddress) ?? agents[0]
+      const resolved = resolveOwnedAgent(agents, { id: wantedId, name: wanted }, () => agents.find((a) => a.smartAccountAddress) ?? agents[0])
+      if (resolved.ambiguous) return toolText(id, ambiguousAgentText(wanted, resolved.ambiguous), true)
+      const target = resolved.found
       if (!target) {
         return toolText(
           id,
