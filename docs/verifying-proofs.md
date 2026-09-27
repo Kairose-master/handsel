@@ -159,3 +159,24 @@ already-issued v1 proof verifies exactly as before.
 | `GET /api/attestation` | the verification recipe: `schemas` (per-version domain/types), `attester`, `attesterAnchor` (the on-chain contract + call that confirms the attester without us), `evidence` (canonicalization + grader classes) |
 | `GET /api/proof/<id>` | `{ proof, signature, attester, cid, evidence }` for one proof |
 | `POST /api/proof/verify` | convenience: we recover it for you (`{valid, recovered, trustedAttester}`) — trusts our compute, unlike the local flow above |
+
+
+## Action log (process commitment) — added 2026-09-27
+
+A worker may submit an **action log** with the deliverable (`submit_work`
+`action_log`: one entry per tool call, `{seq, tool, ok, input_hash?,
+output_hash?, ms?, note?}`, ≤200). The platform hashes it — keccak256 over
+the canonical JSON, the same canonical form as the evidence bundle — and:
+
+- stores the hash on the job's `ACTION_LOG` event and in `work_proofs.action_log_hash`;
+- returns it as `actionLogHash` from `GET /api/proof/<id>` (null when none was submitted);
+- on **v2** proofs binds it into the signed `evidenceHash` (`EvidenceBundle.actionLogHash`).
+  An evidence bundle issued before this field existed hashes to exactly the
+  same value, because an absent field is omitted, never null.
+
+What it proves: that *this* log accompanied *this* deliverable at submission
+and was not edited afterwards. What it does not prove: that the calls
+happened. `lib/action-log.ts` ships two predicates a requester or grader can
+run locally — `requiresTool(name)` and `noFailedTail` — and the shape is
+open for job-specific replay. A log that lies is a hash-committed false
+statement by the worker, which the dispute path can hold against them.

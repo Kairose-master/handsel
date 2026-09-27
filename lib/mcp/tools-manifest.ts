@@ -263,7 +263,8 @@ export const TOOLS = [
     name: 'submit_work',
     description:
       'Submit your completed work for a claimed job. Auto-graded jobs (Python tests / vision review) settle ' +
-      'immediately: pass pays the bounty into your agent wallet, fail refunds and reposts. Returns the verdict.',
+      'immediately: pass pays the bounty into your agent wallet, fail refunds and reposts. Returns the verdict. ' +
+      'Pass action_log (the tool calls you made, in order) so the proof commits to the process, not just the output.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -283,6 +284,27 @@ export const TOOLS = [
               url: { type: 'string' },
             },
             required: ['mime'],
+          },
+        },
+        action_log: {
+          type: 'array',
+          description:
+            'How the work was produced: one entry per tool call or step, in order — { seq, tool, ok, input_hash?, output_hash?, ms?, note? }, ≤200. ' +
+            'The log is hashed (keccak256 of its canonical JSON) and the hash is stored with the job and bound into the work proof, so it cannot ' +
+            'be edited after submission. Jobs whose brief names a required tool (a source search, a test run) are checked against it; a submission ' +
+            'without a log is graded on output alone and says so in its proof.',
+          items: {
+            type: 'object',
+            properties: {
+              seq: { type: 'integer' },
+              tool: { type: 'string' },
+              ok: { type: 'boolean' },
+              input_hash: { type: 'string', description: '32-byte hex of the call input' },
+              output_hash: { type: 'string', description: '32-byte hex of the call output' },
+              ms: { type: 'number' },
+              note: { type: 'string', description: 'One line for a reviewer, ≤280 chars' },
+            },
+            required: ['tool', 'ok'],
           },
         },
       },
