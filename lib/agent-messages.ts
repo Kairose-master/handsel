@@ -146,6 +146,28 @@ export function resolveAgentRef(
   return { found: null, why: 'none' }
 }
 
+/**
+ * Owner-scoped addressing for every MCP tool that names one of the caller's
+ * agents: id → unique exact name → unique substring → ambiguous → default.
+ * One rule for all of them, so an assistant that learned it on one tool has
+ * learned it everywhere, and so a name shared by two agents is a question
+ * back to the caller rather than whichever `find` returned first.
+ */
+export function resolveOwnedAgent<T extends AgentRefCandidate>(
+  agents: readonly T[],
+  ref: { id?: string | null; name?: string | null },
+  fallback: () => T | undefined = () => undefined,
+): { found: T | undefined; ambiguous: AgentRefCandidate[] | null } {
+  if (!ref.id && !ref.name) return { found: fallback(), ambiguous: null }
+  const r = resolveAgentRef(agents, ref)
+  if (r.found) return { found: agents.find((a) => a.id === r.found!.id), ambiguous: null }
+  return { found: undefined, ambiguous: r.why === 'ambiguous' ? r.matches : null }
+}
+
+export function ambiguousAgentText(name: string | null | undefined, matches: readonly AgentRefCandidate[]): string {
+  return `"${name ?? ''}" matches more than one of your agents — pass agent_id:\n${matches.map((m) => `  · ${m.name} [${m.id}]`).join('\n')}`
+}
+
 /** Every message either sent or received by this agent, newest first —
  *  used to derive both the per-counterpart conversation list and an inbox. */
 export async function listAgentMessages(agentId: string) {

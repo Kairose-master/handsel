@@ -123,6 +123,27 @@ export async function registerAgentErc8004(agentId: string, cardUrl: string): Pr
   return erc8004Id
 }
 
+/**
+ * Register on every provisioning path, not just the profile page. Until
+ * 2026-09-27 only the UI's `provisionSmartAccount` called
+ * `registerAgentErc8004`, so agents created over MCP or by `hire_office`
+ * never got an ERC-8004 id — and `publishCreditFeedback` below no-ops
+ * without one, which meant the credit score of every connector-made agent
+ * stayed off the portable registry. Best-effort and fire-and-forget: a
+ * registration failure must never fail a provision.
+ */
+export function registerAgentErc8004BestEffort(agentId: string): void {
+  if (!isErc8004Configured()) return
+  void (async () => {
+    try {
+      const { absoluteUrl } = await import('@/lib/origin')
+      await registerAgentErc8004(agentId, absoluteUrl(`/api/agents/${agentId}/card`))
+    } catch (error) {
+      console.error('[erc8004] registration failed (non-blocking):', error)
+    }
+  })()
+}
+
 /** Oracle publishes a credit recalculation into the Reputation Registry.
  *  Best-effort mirror — never throws to the caller. */
 export async function publishCreditFeedback(agentId: string, score: number, rating: string): Promise<void> {
