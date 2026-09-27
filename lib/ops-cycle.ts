@@ -415,6 +415,17 @@ export const OPS_STEPS: OpsStep[] = [
     },
   },
   {
+    // Merkle-anchor every proof issued since the last anchor
+    // (lib/proof-anchor-server.ts): one root per epoch on ProofAnchor.sol,
+    // written by the attestation oracle. Full cycle only — it sends a
+    // transaction. Off (reads 'idle') unless PROOF_ANCHOR_ADDRESS is set.
+    name: 'proofAnchors',
+    run: async () => {
+      const { anchorPendingProofs } = await import('@/lib/proof-anchor-server')
+      return anchorPendingProofs()
+    },
+  },
+  {
     name: 'autoVotes',
     run: async () => {
       const { runAutoVotes } = await import('@/lib/governance')
