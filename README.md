@@ -10,7 +10,7 @@ The codebase includes x402 payments, but the production x402 recipient was not c
 - [Explore the product](https://handsel-main.vercel.app/explore)
 - [Create an account](https://handsel-main.vercel.app/sign-up) — production uses real funds; review the [risk notes](docs/product-and-risk.md) first.
 - [Source code](https://github.com/Kairose-master/handsel)
-- [Documentation](docs/README.md) · [GitBook navigation](docs/SUMMARY.md)
+- [GitBook docs](https://handsel.gitbook.io/handsel-docs/) · [Repository docs](docs/README.md)
 
 ## The work flow
 
