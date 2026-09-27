@@ -656,6 +656,11 @@ export const TOOLS = [
         agent_name: { type: 'string', description: 'Which agent, by name' },
         amount_eth: { type: 'string', description: 'A plain decimal like "0.001". Omit to send everything above the reserve.' },
         drain: { type: 'boolean', description: 'Take the reserve too. The agent cannot transact afterwards.' },
+        approve_over_limit: {
+          type: 'boolean',
+          description:
+            'Owner confirmation for a transfer over the spend envelope\'s auto-approve line. The envelope (per-transfer, per-day ceilings) is graded right before signing; an ESCALATE reply asks for this flag, a DENY cannot be overridden here — use set_spend_envelope.',
+        },
       },
       additionalProperties: false,
     },
@@ -676,6 +681,11 @@ export const TOOLS = [
         to_agent_name: { type: 'string', description: 'The agent being funded, by name' },
         amount_usdc: { type: 'string', description: 'A plain decimal like "0.25". Omit to send the bond float this agent needs for the jobs currently open to it.' },
         drain: { type: 'boolean', description: "Send past the funding agent's reserve." },
+        approve_over_limit: {
+          type: 'boolean',
+          description:
+            'Owner confirmation for a transfer over the spend envelope\'s auto-approve line. The envelope (per-transfer, per-day ceilings) is graded right before signing; an ESCALATE reply asks for this flag, a DENY cannot be overridden here — use set_spend_envelope.',
+        },
       },
       additionalProperties: false,
     },
@@ -699,6 +709,37 @@ export const TOOLS = [
           description: 'A plain decimal like "0.0002". Omit to send exactly what the destination is short of a working balance.',
         },
         drain: { type: 'boolean', description: "Send past the funding agent's reserve. It cannot transact afterwards." },
+        approve_over_limit: {
+          type: 'boolean',
+          description:
+            'Owner confirmation for a transfer over the spend envelope\'s auto-approve line. The envelope (per-transfer, per-day ceilings) is graded right before signing; an ESCALATE reply asks for this flag, a DENY cannot be overridden here — use set_spend_envelope.',
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'set_spend_envelope',
+    description:
+      "Read or set an agent's SPEND ENVELOPE — the policy graded immediately before any transfer out of its wallet " +
+      '(fund_agent_usdc, fund_agent_eth, withdraw_agent_eth, the bond auto-mine stakes, paid x402 tool calls). ' +
+      'Three numbers: per_tx_max_usd (largest single transfer), daily_max_usd (rolling 24h total) and ' +
+      'auto_approve_max_usd (at or under this the transfer just happens; over it the tool asks you to confirm with ' +
+      'approve_over_limit). Verdicts are ALLOW / ESCALATE / DENY with a closed list of denial codes. Call with only ' +
+      'the agent to read the current envelope and what it spent today.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string', description: 'Which agent, by id (preferred)' },
+        agent_name: { type: 'string', description: 'Which agent, by name' },
+        per_tx_max_usd: { type: 'number', description: 'Largest single transfer, USD' },
+        daily_max_usd: { type: 'number', description: 'Rolling 24h ceiling, USD' },
+        auto_approve_max_usd: { type: 'number', description: 'At or under this, no confirmation is asked' },
+        kinds: {
+          type: 'array',
+          items: { type: 'string', enum: ['fund_usdc', 'fund_eth', 'withdraw_eth', 'bond', 'x402_tool'] },
+          description: 'Restrict which kinds of spend this agent may make. Omit for all.',
+        },
       },
       additionalProperties: false,
     },

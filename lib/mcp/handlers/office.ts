@@ -552,6 +552,7 @@ export async function handleOffice(
       const res = await withdrawAgentEth(auth.userId, found.id, {
         requestedWei,
         drain: args.drain === true,
+        approveOverLimit: args.approve_over_limit === true,
       })
       if (!res.ok) return toolText(id, res.error, true)
       const sent = Number(res.amountWei) / 1e18
@@ -616,7 +617,11 @@ export async function handleOffice(
         amountUsd = suggestedFloatFor(openBounties, schedule)
       }
 
-      const res = await fundAgentUsdc(auth.userId, from.id, to.id, { amountUsd, drain: args.drain === true })
+      const res = await fundAgentUsdc(auth.userId, from.id, to.id, {
+        amountUsd,
+        drain: args.drain === true,
+        approveOverLimit: args.approve_over_limit === true,
+      })
       if (!res.ok) return toolText(id, res.error, true)
       return toolText(
         id,
@@ -676,7 +681,11 @@ export async function handleOffice(
         requestedWei = parsed
       }
 
-      const res = await fundAgentEth(auth.userId, from.id, to.id, { requestedWei, drain: args.drain === true })
+      const res = await fundAgentEth(auth.userId, from.id, to.id, {
+        requestedWei,
+        drain: args.drain === true,
+        approveOverLimit: args.approve_over_limit === true,
+      })
       if (!res.ok) return toolText(id, res.error, true)
       const sent = formatEther(BigInt(res.amountWei))
       return toolText(
@@ -686,6 +695,46 @@ export async function handleOffice(
           (args.drain === true
             ? `\n\nDrained: ${res.from} kept nothing and cannot transact again until it is funded.`
             : `\n\n${formatEther(ETH_FUNDING_RESERVE_WEI)} ETH stayed with ${res.from} so it can still work.`),
+      )
+    }
+
+    case 'set_spend_envelope': {
+      const { found, agents, wantedId, wantedName } = await resolveAgent(auth.userId, args)
+      if (!found) {
+        return toolText(
+          id,
+          agents.length === 0 ? 'No agents on this account yet.' : wantedId ? `No agent with id "${wantedId}".` : `No agent named "${wantedName}".`,
+          true,
+        )
+      }
+      const { envelopeFor, setEnvelopeFor, spentTodayUsd } = await import('@/lib/spend-envelope-server')
+      const { parseEnvelope } = await import('@/lib/spend-envelope')
+      const wantsWrite =
+        args.per_tx_max_usd !== undefined || args.daily_max_usd !== undefined || args.auto_approve_max_usd !== undefined || args.kinds !== undefined
+      const current = await envelopeFor(found.id)
+      if (wantsWrite) {
+        const next = parseEnvelope({
+          perTxMaxUsd: args.per_tx_max_usd ?? current.perTxMaxUsd,
+          dailyMaxUsd: args.daily_max_usd ?? current.dailyMaxUsd,
+          autoApproveMaxUsd: args.auto_approve_max_usd ?? current.autoApproveMaxUsd,
+          kinds: args.kinds ?? current.kinds,
+          destinations: current.destinations,
+        })
+        if (!next) {
+          return toolText(id, 'Envelope rejected: all three numbers must be ≥ 0 and auto_approve_max_usd ≤ per_tx_max_usd ≤ daily_max_usd.', true)
+        }
+        await setEnvelopeFor(found.id, next)
+      }
+      const env = wantsWrite ? await envelopeFor(found.id) : current
+      const spent = await spentTodayUsd(found.id).catch(() => 0)
+      return toolText(
+        id,
+        `${found.name} spend envelope${wantsWrite ? ' (updated)' : ''}:\n` +
+          `  per transfer  $${env.perTxMaxUsd}\n` +
+          `  per 24h       $${env.dailyMaxUsd}  (spent so far: $${spent.toFixed(2)})\n` +
+          `  auto-approve  $${env.autoApproveMaxUsd}\n` +
+          `  kinds         ${env.kinds && env.kinds.length ? env.kinds.join(', ') : 'all'}\n\n` +
+          'Over the auto-approve line a transfer comes back ESCALATE and needs approve_over_limit; over a ceiling it is DENY.',
       )
     }
 

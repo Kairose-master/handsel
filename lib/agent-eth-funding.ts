@@ -101,7 +101,7 @@ export { parseEthAmount }
 
 export type EthFundingResult =
   | { ok: true; txHash: string; amountWei: string; from: string; to: string; toAddress: Address }
-  | { ok: false; error: string }
+  | { ok: false; error: string; needsApproval?: boolean }
 
 /**
  * Send ETH from one of the caller's agents to another of them.
@@ -113,7 +113,7 @@ export async function fundAgentEth(
   userId: string,
   fromAgentId: string,
   toAgentId: string,
-  opts: { requestedWei?: bigint; drain?: boolean } = {},
+  opts: { requestedWei?: bigint; drain?: boolean; approveOverLimit?: boolean } = {},
 ): Promise<EthFundingResult> {
   if (fromAgentId === toAgentId) return { ok: false, error: 'Source and destination are the same agent.' }
 
@@ -166,8 +166,31 @@ export async function fundAgentEth(
     return { ok: false, error: 'That is below the dust floor — the transfer would cost more than it moves.' }
   }
 
+  const { checkSpend, recordSpend, refusalText, weiToUsdForEnvelope } = await import('@/lib/spend-envelope-server')
+  const amountUsd = weiToUsdForEnvelope(plan.amountWei)
+  const check = await checkSpend({
+    agentId: fromAgentId,
+    kind: 'fund_eth',
+    amountUsd,
+    destination: to.smartAccountAddress,
+    ownerApproved: opts.approveOverLimit === true,
+    ref: `fund:${to.id}`,
+  })
+  if (check.grade.verdict !== 'ALLOW') {
+    return { ok: false, error: refusalText(check, from.name), needsApproval: check.grade.verdict === 'ESCALATE' }
+  }
+
   try {
     const txHash = await transferEth(fromAgentId, to.smartAccountAddress as Address, plan.amountWei)
+    await recordSpend({
+      agentId: fromAgentId,
+      kind: 'fund_eth',
+      amountUsd,
+      destination: to.smartAccountAddress,
+      ownerApproved: opts.approveOverLimit === true,
+      ref: txHash,
+      verdict: 'ALLOW',
+    }).catch(() => undefined)
     return {
       ok: true,
       txHash,
