@@ -67,6 +67,9 @@ export async function provisionAgentAccount(userId: string, agentId: string): Pr
       mirrorFailed: error instanceof Error ? error.message : String(error),
     }
   }
+  // Portable identity: the same ERC-8004 registration the profile page does.
+  const { registerAgentErc8004BestEffort } = await import('@/lib/onchain/erc8004')
+  registerAgentErc8004BestEffort(agentId)
   return { ok: true, address, alreadyHad: false }
 }
 

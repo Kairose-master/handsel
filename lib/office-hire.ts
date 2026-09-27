@@ -34,10 +34,13 @@ import {
 
 async function uniqueAgentName(userId: string, base: string): Promise<string> {
   const existing = await db.select({ name: agent.name }).from(agent).where(eq(agent.userId, userId))
-  const taken = new Set(existing.map((r) => r.name))
-  if (!taken.has(base)) return base
+  // Case-insensitive, because every lookup by name is (create_worker_agent,
+  // resolveAgentRef) — a "Researcher" and a "researcher" on one account are
+  // two agents that every tool addresses as one.
+  const taken = new Set(existing.map((r) => r.name.toLowerCase()))
+  if (!taken.has(base.toLowerCase())) return base
   let n = 2
-  while (taken.has(`${base} ${n}`)) n++
+  while (taken.has(`${base} ${n}`.toLowerCase())) n++
   return `${base} ${n}`
 }
 

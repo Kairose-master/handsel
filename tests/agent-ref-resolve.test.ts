@@ -6,7 +6,7 @@
  * a follow-up question.
  */
 import { describe, expect, it } from 'vitest'
-import { resolveAgentRef } from '@/lib/agent-messages'
+import { resolveAgentRef, resolveOwnedAgent, ambiguousAgentText } from '@/lib/agent-messages'
 
 const agents = [
   { id: 'a1', name: 'Copywriter' },
@@ -54,5 +54,30 @@ describe('resolveAgentRef', () => {
   it('no name and no id is none', () => {
     expect(resolveAgentRef(agents, { name: '  ' })).toEqual({ found: null, why: 'none' })
     expect(resolveAgentRef(agents, {})).toEqual({ found: null, why: 'none' })
+  })
+})
+
+describe('resolveOwnedAgent — one addressing rule for every owner-scoped tool (2026-09-27)', () => {
+  const agents = [
+    { id: 'a1', name: 'Researcher' },
+    { id: 'a2', name: 'researcher' },
+    { id: 'a3', name: 'Editor' },
+  ]
+  it('falls back only when nothing was asked for', () => {
+    expect(resolveOwnedAgent(agents, {}, () => agents[2]).found?.id).toBe('a3')
+    expect(resolveOwnedAgent(agents, { name: 'nobody' }, () => agents[2]).found).toBeUndefined()
+  })
+  it('id wins, and an unknown id is not a name search', () => {
+    expect(resolveOwnedAgent(agents, { id: 'a2', name: 'Editor' }).found?.id).toBe('a2')
+    expect(resolveOwnedAgent(agents, { id: 'zz' }).found).toBeUndefined()
+  })
+  it('a name shared by two agents (case aside) is a question, never the first hit', () => {
+    const r = resolveOwnedAgent(agents, { name: 'researcher' })
+    expect(r.found).toBeUndefined()
+    expect(r.ambiguous?.map((m) => m.id)).toEqual(['a1', 'a2'])
+    expect(ambiguousAgentText('researcher', r.ambiguous!)).toContain('[a1]')
+  })
+  it('a unique substring still resolves', () => {
+    expect(resolveOwnedAgent(agents, { name: 'edit' }).found?.id).toBe('a3')
   })
 })
