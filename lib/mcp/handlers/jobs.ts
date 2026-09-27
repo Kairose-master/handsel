@@ -279,6 +279,41 @@ export async function handleJobs(
       if (!task || task.userId !== auth.userId) return toolText(id, 'Task not found on this account.', true)
       if (task.status !== 'running') return toolText(id, `Task is already ${task.status}.`, true)
 
+      // The action log (lib/action-log.ts) rides along as events: one
+      // TOOL_EXECUTED per entry so the credit engine sees the behaviour, plus
+      // one ACTION_LOG event carrying the hash the work proof commits to. A
+      // malformed log is refused here rather than silently dropped — a
+      // worker that tried to attach process evidence and lost it would be
+      // graded as if it had submitted nothing.
+      const { parseActionLog, actionLogHash, actionLogSummary, ACTION_LOG_EVENT_TYPE } = await import('@/lib/action-log')
+      const events: Record<string, unknown>[] = []
+      let logLine = ''
+      if (args.action_log !== undefined) {
+        const parsed = parseActionLog(args.action_log)
+        if (!parsed.ok) return toolText(id, `action_log rejected: ${parsed.reason}`, true)
+        const hash = actionLogHash(parsed.log)
+        const summary = actionLogSummary(parsed.log)
+        for (const e of parsed.log.entries) {
+          events.push({
+            event_type: 'TOOL_EXECUTED',
+            success: e.ok,
+            execution_time: Math.round((e.ms ?? 0) / 1000),
+            token_cost: 0,
+            quality_score: null,
+            detail: { seq: e.seq, tool: e.tool, inputHash: e.inputHash, outputHash: e.outputHash, note: e.note, source: 'action_log' },
+          })
+        }
+        events.push({
+          event_type: ACTION_LOG_EVENT_TYPE,
+          success: summary.failed === 0,
+          execution_time: Math.round(summary.totalMs / 1000),
+          token_cost: 0,
+          quality_score: null,
+          detail: { schema: parsed.log.schema, hash, ...summary, log: parsed.log },
+        })
+        logLine = `\nAction log committed: ${summary.entries} steps across ${summary.tools.join(', ')} — hash ${hash.slice(0, 18)}…`
+      }
+
       // Route through the real callback endpoint — grading, credit events
       // and settlement stay on the single battle-tested path.
       const { resolveCallbackAuth } = await import('@/lib/webhook')
@@ -297,7 +332,7 @@ export async function handleJobs(
           quality_score: null,
           execution_time: 0,
           token_cost: 0,
-          events: [],
+          events,
         }),
       })
       if (!res.ok) {
@@ -324,7 +359,7 @@ export async function handleJobs(
           : job?.status === 'Refunded'
             ? 'Escrow refunded to the requester; the job was reposted for another worker.'
             : `Job status: ${job?.status ?? 'unknown'}.`
-      return toolText(id, `Submitted. ${verdict}\n${settle}`)
+      return toolText(id, `Submitted. ${verdict}\n${settle}${logLine}`)
     }
     case 'my_work': {
       const agents = await db.select().from(agent).where(eq(agent.userId, auth.userId))

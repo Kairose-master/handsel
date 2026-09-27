@@ -57,6 +57,11 @@ export interface EvidenceBundle {
   deliverable: { text?: string | null; base64?: string | null }
   grader: string
   graderClass: 'reproducible' | 'mechanical' | 'model'
+  /** keccak256 of the worker's canonical action log (lib/action-log.ts),
+   *  when one was submitted. Optional and omitted — not null — when absent,
+   *  so every v2 evidence hash issued before this field existed is unchanged
+   *  (canonicalJson drops undefined). */
+  actionLogHash?: Hex
 }
 
 /** EIP-712 domain and types, exported so `/api/attestation` publishes the exact
