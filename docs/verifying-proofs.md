@@ -180,3 +180,26 @@ happened. `lib/action-log.ts` ships two predicates a requester or grader can
 run locally — `requiresTool(name)` and `noFailedTail` — and the shape is
 open for job-specific replay. A log that lies is a hash-committed false
 statement by the worker, which the dispute path can hold against them.
+
+
+## On-chain anchoring (Merkle root per epoch) — added 2026-09-27
+
+A proof's signature says who issued it, not when, and our database says
+nothing about what was deleted. Anchoring closes both. Each ops cycle, every
+proof issued since the last anchor is batched (`lib/proof-merkle.ts`: leaf =
+keccak256 of the canonical JSON `{id, contentHash, signature}`, sorted-pair
+keccak tree, OpenZeppelin-compatible) and the root is written to
+`ProofAnchor.sol` by the attestation oracle — one transaction per epoch,
+whatever the batch size. Epochs are strictly increasing and write-once.
+
+To verify without us:
+
+1. `GET /api/proof/<id>` → the signed record (recover the signer as above);
+   its `anchor` field, or `GET /api/proof/<id>/anchor`, gives `{epoch, leaf,
+   path, root, contract, chainId, txHash}`.
+2. Recompute `leaf` from `{id, proof.contentHash, signature}` yourself.
+3. Call `ProofAnchor(contract).verify(epoch, leaf, path)` over any RPC, or
+   fold the path with the sorted-pair rule and compare to `roots(epoch)`.
+
+Off unless `PROOF_ANCHOR_ADDRESS` is set (`scripts/deploy-proof-anchor.mjs`);
+an unanchored proof answers 404 on `/anchor` and `anchor: null` on the record.

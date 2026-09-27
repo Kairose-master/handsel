@@ -112,6 +112,8 @@ describe('the tunable list is complete', () => {
             'REPUTATION_HALF_LIFE_DAYS',
             'NEGATIVE_HALF_LIFE_DAYS',
             'COLLATERAL_MULTIPLE',
+            'ANCHORED_TRUST_SCORE_FLOOR',
+            'ANCHORED_TRUST_LENDING_FLOOR',
           ]
         : [],
     )
@@ -122,6 +124,21 @@ describe('the tunable list is complete', () => {
       `scoring.ts exports ${unaccounted.join(', ')} — add to scoringTunables() if it can move a score, ` +
         'or to NOT_TUNABLES with a reason if it cannot',
     ).toEqual([])
+  })
+
+  it('every exported numeric constant in trust-rank.ts is accounted for', () => {
+    // Anchored trust moves the reputation factor and the lending cap, so its
+    // propagation constants are engine tunables exactly like the weights in
+    // scoring.ts. Same guard, second file.
+    const src = readFileSync(join(process.cwd(), 'lib/credit-engine/trust-rank.ts'), 'utf8')
+    const exported = [...src.matchAll(/^export const ([A-Z][A-Z0-9_]+)(?::[^=]+)? =/gm)].map((m) => m[1])
+    const covered = new Set(['TRUST_DAMPING', 'TRUST_TOLERANCE', 'TRUST_MAX_ITERATIONS', 'TRUST_REFERENCE_QUANTILE'])
+    expect(exported.length).toBeGreaterThan(0)
+    expect(exported.filter((name) => !covered.has(name))).toEqual([])
+    const tunables = scoringTunables()
+    for (const key of ['trustDamping', 'trustTolerance', 'trustMaxIterations', 'trustReferenceQuantile']) {
+      expect(tunables).toHaveProperty(key)
+    }
   })
 
   it('the write path stamps it', () => {

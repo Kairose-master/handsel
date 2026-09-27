@@ -702,7 +702,8 @@ export async function handleOffice(
     }
 
     case 'set_spend_envelope': {
-      const { found, agents, wantedId, wantedName } = await resolveAgent(auth.userId, args)
+      const { found, agents, wantedId, wantedName, ambiguousText } = await resolveAgent(auth.userId, args)
+      if (ambiguousText) return toolText(id, ambiguousText, true)
       if (!found) {
         return toolText(
           id,

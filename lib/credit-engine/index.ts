@@ -20,6 +20,7 @@ import {
   type CreditAssessment,
 } from './scoring'
 import { otherPartnersByCounterparty } from './counterparty-graph'
+import { anchoredTrustFor } from './trust-rank-server'
 import { accountCarryover, applyCarryover, type CarryoverResult } from './account-history'
 
 import { getEffectiveCreditRules } from '@/lib/credit-rules'
@@ -173,6 +174,11 @@ export async function recalculateCredit(
   const otherPartners = await otherPartnersByCounterparty(agentId, counterpartyIds)
   const partnersOf = (requester: string | null) => (requester === null ? null : (otherPartners.get(requester) ?? 0))
 
+  // Does any of the money that paid this agent trace back outside its own
+  // neighbourhood? The global answer to the ring the local weights above
+  // cannot see (trust-rank.ts). Null = no discount.
+  const anchoredTrust = await anchoredTrustFor(agentId)
+
   const rules = await getEffectiveCreditRules()
   const assessment = assessCredit(
     events.map((e) => {
@@ -196,6 +202,8 @@ export async function recalculateCredit(
       }
     }),
     { rating: rules.rating, risk: rules.risk },
+    new Date(),
+    { anchoredTrust },
   )
 
   // Lending is where the platform can actually lose money, so the limit the
@@ -216,7 +224,7 @@ export async function recalculateCredit(
         createdAt: e.createdAt,
       }
     })
-  assessment.creditLimit = collateralizedCreditLimit(assessment.creditLimit, settledTrades)
+  assessment.creditLimit = collateralizedCreditLimit(assessment.creditLimit, settledTrades, anchoredTrust)
 
   // Failures follow the account (audit R2). Without this, an operator whose
   // agent accumulates failures mints a fresh one at score 0 and sheds the
@@ -231,7 +239,11 @@ export async function recalculateCredit(
     // Re-derive the limit from the reduced score and re-apply the collateral
     // cap. Skipping this would leave a ceiling that a lower score no longer
     // justifies — the score would fall and the borrowing power would not.
-    assessment.creditLimit = collateralizedCreditLimit(creditLimitForScore(assessment.score), settledTrades)
+    assessment.creditLimit = collateralizedCreditLimit(
+      creditLimitForScore(assessment.score),
+      settledTrades,
+      anchoredTrust,
+    )
   }
 
   // Before the READ, not just before the write. `select()` expands to every

@@ -72,6 +72,10 @@ export type CreditAssessment = {
     failedTasks: number
     successRate: number // 0–1
     avgQuality: number // 0–1
+    /** Anchored trust in [0, 1] (`trust-rank.ts`), or null when the payment
+     *  graph had nothing to say and no discount was applied. Optional so
+     *  breakdowns stored before it existed still type-check. */
+    anchoredTrust?: number | null
   }
 }
 
@@ -130,7 +134,13 @@ export function assessCredit(
   events: AgentEventInput[],
   rules?: { rating?: ScoreRule<Rating>[]; risk?: ScoreRule<RiskLevel>[] },
   now: Date = new Date(),
+  opts?: {
+    /** This agent's anchored trust from the payment graph (`trust-rank.ts`).
+     *  Null or absent applies no discount — see anchoredTrustWeight. */
+    anchoredTrust?: number | null
+  },
 ): CreditAssessment {
+  const anchoredTrust = opts?.anchoredTrust ?? null
   // Terminal task events are the unit of behavioral history. Two grades of
   // signal: self-evaluated (TASK_*, the runtime grading its own output) and
   // ground-truth verified (VERIFIED_TASK_*, graded server-side against a
@@ -252,7 +262,14 @@ export function assessCredit(
   // Completed paid jobs on the labor market — real economic activity, the
   // strongest reputation signal an agent can accumulate. Weighted, not
   // counted: see collusionWeight/graderWeight below.
-  const jobsCompleted = weightedMarketSignal(events, 'JOB_COMPLETED', now)
+  //
+  // Both market signals are then scaled by anchored trust: the local weights
+  // cannot tell a ring from a healthy neighbourhood, the payment graph can.
+  // Only these two terms — they are the ones a ring farms. Task success,
+  // quality and repayment are about the agent's own conduct, not about who
+  // paid it, and stay as they are.
+  const trustScale = anchoredTrustWeight(anchoredTrust, ANCHORED_TRUST_SCORE_FLOOR)
+  const jobsCompleted = weightedMarketSignal(events, 'JOB_COMPLETED', now) * trustScale
 
   // ── Reputation (20%) ─────────────────────────────────────────────
   // Verified achievements are explicit third-party attestations; the rest
@@ -263,7 +280,7 @@ export function assessCredit(
   // Acceptance tests on code jobs, run by the platform runtime (grader ≠
   // solver) — a fact, same trust class as VERIFIED_TASK_*. Supplementary to
   // the run's own terminal event, so they don't join TERMINAL above.
-  const testsPassed = weightedMarketSignal(events, 'JOB_TESTS_PASSED', now)
+  const testsPassed = weightedMarketSignal(events, 'JOB_TESTS_PASSED', now) * trustScale
   // Negative facts decay too — on the slower half-life. A failed grading
   // from two years ago should not weigh like yesterday's, but it should
   // outlast the equivalent success.
@@ -316,6 +333,7 @@ export function assessCredit(
       failedTasks: failed.length,
       successRate: Math.round(successRate * 1000) / 1000,
       avgQuality: Math.round(avgQuality * 1000) / 1000,
+      anchoredTrust: anchoredTrust === null ? null : Math.round(anchoredTrust * 1000) / 1000,
     },
   }
 }
@@ -371,9 +389,10 @@ export function collusionWeight(priorWithSameCounterparty: number): number {
  * distinct partners and earn their own buckets again. The star becomes
  * convergent; the ring stays linear. What the ring now costs is real: every
  * edge is a posted job paying the 2% fee, so N accomplices need ~2N funded
- * bounties instead of N. Pricing is not prevention, and the honest next step
- * is anchored trust propagation over the whole trade graph, not another local
- * weight. `docs/self-sybil-attack.md` carries this limitation.
+ * bounties instead of N. Pricing is not prevention, so the ring is handled by
+ * anchored trust propagation over the whole trade graph rather than another
+ * local weight — `trust-rank.ts`, applied through anchoredTrustWeight below.
+ * `docs/self-sybil-attack.md` carries what that does and does not stop.
  */
 export const INDEPENDENCE_MIN_PARTNERS = 2
 
@@ -544,10 +563,53 @@ export const COLLATERAL_MULTIPLE = 2
 
 /** The lending ceiling: the score curve sets ambition, the collateralized
  *  volume sets reality, and the lower one wins. An agent with a great score
- *  and no diverse settled history can borrow ~nothing — by design. */
-export function collateralizedCreditLimit(scoreLimit: number, trades: SettledTrade[]): number {
-  const cap = COLLATERAL_MULTIPLE * collateralizedVolume(trades)
+ *  and no diverse settled history can borrow ~nothing — by design.
+ *
+ *  Collateral is then scaled by anchored trust with NO floor: a ring's
+ *  settled volume, however diverse it looks locally, collateralizes nothing,
+ *  because none of that money traces back to anyone outside the ring. */
+export function collateralizedCreditLimit(
+  scoreLimit: number,
+  trades: SettledTrade[],
+  anchoredTrust: number | null = null,
+): number {
+  const cap =
+    COLLATERAL_MULTIPLE *
+    collateralizedVolume(trades) *
+    anchoredTrustWeight(anchoredTrust, ANCHORED_TRUST_LENDING_FLOOR)
   return Math.min(scoreLimit, Math.round(cap * 100) / 100)
+}
+
+/**
+ * Anchored trust — the global weight, applied after the local ones.
+ *
+ * `trust-rank.ts` answers the question the local weights cannot: does any of
+ * the money that paid this agent trace back to someone outside its own
+ * neighbourhood? A ring answers no, however many members it mints.
+ *
+ * Two floors, because the two consumers can afford different mistakes:
+ *
+ * - **Score, floor 0.5.** An honest agent whose clients have never touched
+ *   the anchored graph reads trust 0 — the known price of anchored trust. On
+ *   the score, which describes behaviour, that costs at most half of the two
+ *   market terms in the 20% reputation factor. A ring loses the same half,
+ *   so on the score this prices the ring rather than preventing it.
+ * - **Lending, floor 0.** Lending is where the platform loses money, and the
+ *   ring's terminal move is pump → draw → default. Collateral that traces to
+ *   no one outside the ring is worth nothing, so the ring borrows nothing at
+ *   any size — that part is prevention.
+ *
+ * Null (no anchors configured, no mass left them, or the lookup failed) is
+ * weight 1: the same no-retroactive-penalty convention every weight in this
+ * file follows. It is also the direction an attacker prefers, which is why the
+ * server logs the failure case loudly.
+ */
+export const ANCHORED_TRUST_SCORE_FLOOR = 0.5
+export const ANCHORED_TRUST_LENDING_FLOOR = 0
+
+export function anchoredTrustWeight(trust: number | null | undefined, floor: number): number {
+  if (trust === null || trust === undefined || !Number.isFinite(trust)) return 1
+  return floor + (1 - floor) * Math.min(1, Math.max(0, trust))
 }
 
 /** Weighted count of a market signal: each event discounted by counterparty
@@ -644,5 +706,6 @@ export function buildCalculationReason(
     `avg output quality ${(b.avgQuality * 100).toFixed(0)}%`,
     `factors — performance ${b.performance}, reliability ${b.reliability}, reputation ${b.reputation}, risk ${b.risk}`,
   ]
+  if (typeof b.anchoredTrust === 'number') parts.push(`anchored trust ${(b.anchoredTrust * 100).toFixed(0)}%`)
   return parts.join('; ')
 }
