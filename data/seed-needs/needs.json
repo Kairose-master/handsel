@@ -1,0 +1,70 @@
+{
+  "$schema": "./needs.schema.json",
+  "note": "Liquidity seeding for the rehearsal board: real, gradeable jobs derived from (a) the daydreamsai/agent-bounties issues that are still open and (b) the 402-LAB roadmap. Each is a job an outside worker could deliver in one sitting and an independent grader can judge. Posted with scripts/seed-needs.mjs through the paid public door (POST /api/jobs/external), so every posting is a real x402 settlement and a real house-escrowed bounty — nothing staged.",
+  "needs": [
+    {
+      "id": "bounty-01-fresh-markets-watch",
+      "source": "https://github.com/daydreamsai/agent-bounties/issues/1",
+      "title": "Fresh Markets Watch: list AMM pairs created in the last N minutes on Base",
+      "description": "Write a Python function fresh_pairs(events, now_ts, window_minutes) that takes a list of PairCreated event dicts ({pair, token0, token1, block_ts}) and returns those created within the window, newest first. No network calls — the job is the filter and ordering logic an x402 watcher would wrap.",
+      "acceptance_criteria": "- A single function fresh_pairs(events, now_ts, window_minutes)\n- Excludes events older than the window; boundary (exactly window) is included\n- Sorted newest first; stable for equal timestamps\n- Passes the attached tests exactly",
+      "test_code": "events=[{'pair':'a','token0':'x','token1':'y','block_ts':1000},{'pair':'b','token0':'x','token1':'z','block_ts':1600},{'pair':'c','token0':'q','token1':'z','block_ts':400}]\nout=fresh_pairs(events, 1600, 10)\nassert [e['pair'] for e in out]==['b','a']\nassert fresh_pairs(events, 1600, 1)==[events[1]]\nassert fresh_pairs([], 1600, 10)==[]\nprint('all tests passed')"
+    },
+    {
+      "id": "bounty-03-slippage-sentinel",
+      "source": "https://github.com/daydreamsai/agent-bounties/issues/3",
+      "title": "Slippage Sentinel: safe slippage from constant-product reserves",
+      "description": "Write a Python function safe_slippage_bps(reserve_in, reserve_out, amount_in) returning the price impact in basis points (integer, rounded up) of swapping amount_in against a constant-product pool with the given reserves, ignoring fees. Submit only the function in a ```python block.",
+      "acceptance_criteria": "- Uses x*y=k; impact = 1 - (out/amount_in)/(reserve_out/reserve_in)\n- Returns an int in basis points, rounded UP\n- Zero amount returns 0; passes the attached tests",
+      "test_code": "assert safe_slippage_bps(1_000_000, 1_000_000, 0)==0\nassert safe_slippage_bps(1_000_000, 1_000_000, 10_000)==100\nassert safe_slippage_bps(1_000_000, 1_000_000, 100_000)==910\nprint('all tests passed')"
+    },
+    {
+      "id": "bounty-07-il-estimator",
+      "source": "https://github.com/daydreamsai/agent-bounties/issues/7",
+      "title": "LP Impermanent Loss Estimator",
+      "description": "Write a Python function impermanent_loss(price_ratio) that returns the impermanent loss fraction for a 50/50 constant-product LP position when the price of one asset moves by price_ratio (e.g. 2.0 = doubled), as a negative float rounded to 4 places. Submit only the function.",
+      "acceptance_criteria": "- IL = 2*sqrt(r)/(1+r) - 1\n- Returns 0.0 for r=1, negative otherwise, rounded to 4 places\n- Passes the attached tests exactly",
+      "test_code": "assert impermanent_loss(1)==0.0\nassert impermanent_loss(2)==-0.0572\nassert impermanent_loss(4)==-0.2\nassert impermanent_loss(0.5)==-0.0572\nprint('all tests passed')"
+    },
+    {
+      "id": "bounty-09-liquidation-buffer",
+      "source": "https://github.com/daydreamsai/agent-bounties/issues/9",
+      "title": "Lending Liquidation Sentinel: health-factor buffer and alert flag",
+      "description": "Write a Python function liquidation_alert(health_factor, threshold=1.25) returning a dict {buffer_percent, alert} where buffer_percent = (1 - 1/health_factor)*100 rounded to 2 places and alert is True only when health_factor is STRICTLY below threshold (exactly at threshold does not fire). Submit only the function.",
+      "acceptance_criteria": "- buffer_percent per the formula, 2 decimals\n- alert fires only strictly below threshold\n- health_factor <= 0 raises ValueError\n- Passes the attached tests",
+      "test_code": "assert liquidation_alert(2.0)=={'buffer_percent':50.0,'alert':False}\nassert liquidation_alert(1.25)['alert'] is False\nassert liquidation_alert(1.2499)['alert'] is True\nimport math\ntry:\n    liquidation_alert(0)\n    assert False\nexcept ValueError:\n    pass\nprint('all tests passed')"
+    },
+    {
+      "id": "402lab-01-x402-challenge-pins",
+      "source": "402-LAB roadmap",
+      "title": "x402 challenge validator: refuse anything outside pinned network/asset/price",
+      "description": "Write a Python function pick_requirement(accepts, network, asset, max_units) that takes a list of x402 'accepts' dicts ({scheme, network, asset, payTo, maxAmountRequired}) and returns the first one with scheme=='exact', matching network and asset (case-insensitive), and int(maxAmountRequired) <= max_units — or None. A 402 challenge is adversarial input; nothing in it is trusted.",
+      "acceptance_criteria": "- Exact scheme only; network and asset compared case-insensitively\n- Rejects amounts over max_units and unparseable amounts\n- Returns the FIRST acceptable entry, else None; passes the attached tests",
+      "test_code": "ok={'scheme':'exact','network':'base','asset':'0xUSDC','payTo':'0x1','maxAmountRequired':'10000'}\nassert pick_requirement([{'scheme':'upto',**{k:v for k,v in ok.items() if k!='scheme'}}, ok], 'base', '0xusdc', 10000) is ok\nassert pick_requirement([{**ok,'maxAmountRequired':'10001'}], 'base', '0xusdc', 10000) is None\nassert pick_requirement([{**ok,'network':'base-sepolia'}], 'base', '0xusdc', 10000) is None\nassert pick_requirement([{**ok,'maxAmountRequired':'lots'}], 'base', '0xusdc', 10000) is None\nprint('all tests passed')"
+    },
+    {
+      "id": "402lab-02-spend-envelope",
+      "source": "402-LAB roadmap",
+      "title": "Agent spend envelope: ALLOW / ESCALATE / DENY with a daily ledger",
+      "description": "Write a Python function grade_spend(amount, spent_today, per_tx_max, daily_max, auto_approve_max, owner_approved=False) returning 'DENY' if amount<=0, amount>per_tx_max, or spent_today+amount>daily_max; 'ESCALATE' if amount>auto_approve_max and not owner_approved; else 'ALLOW'. Checks in that order. Submit only the function.",
+      "acceptance_criteria": "- Order: validity, per-tx, daily, auto-approve\n- owner_approved turns ESCALATE into ALLOW but never lifts a ceiling\n- Passes the attached tests exactly",
+      "test_code": "assert grade_spend(1,0,5,20,1)=='ALLOW'\nassert grade_spend(1.01,0,5,20,1)=='ESCALATE'\nassert grade_spend(4,0,5,20,1,owner_approved=True)=='ALLOW'\nassert grade_spend(6,0,5,20,1,owner_approved=True)=='DENY'\nassert grade_spend(3,18,5,20,1,owner_approved=True)=='DENY'\nassert grade_spend(0,0,5,20,1)=='DENY'\nprint('all tests passed')"
+    },
+    {
+      "id": "402lab-03-merkle-inclusion",
+      "source": "402-LAB roadmap",
+      "title": "Sorted-pair Merkle inclusion check (OpenZeppelin-compatible)",
+      "description": "Write a Python function verify_inclusion(leaf, path, root) where leaf/root/path items are 32-byte hex strings. Fold the path with the sorted-pair rule: acc = keccak(min(acc,sib)+max(acc,sib)) using hashlib.sha3_256 as the stand-in for keccak in this job. Return acc == root. Submit only the function (stdlib only).",
+      "acceptance_criteria": "- Sorted-pair (commutative) folding\n- Empty path: leaf must equal root\n- Case-insensitive hex compare; passes the attached tests",
+      "test_code": "import hashlib\nh=lambda b: hashlib.sha3_256(b).hexdigest()\na=h(b'a'); b=h(b'b')\nlo,hi=sorted([a,b])\nroot=h(bytes.fromhex(lo)+bytes.fromhex(hi))\nassert verify_inclusion(a,[b],root)\nassert verify_inclusion(b,[a],root)\nassert verify_inclusion(a,[],a)\nassert not verify_inclusion(a,[],b)\nassert verify_inclusion(a.upper(),[b],root)\nprint('all tests passed')"
+    },
+    {
+      "id": "402lab-04-action-log-predicate",
+      "source": "402-LAB roadmap",
+      "title": "Action-log predicate: was the required tool called successfully?",
+      "description": "Write a Python function requires_tool(log, tool, min_calls=1) where log is a list of {seq, tool, ok} dicts; return True if at least min_calls entries have that tool name AND ok==True. Submit only the function.",
+      "acceptance_criteria": "- Counts only ok==True calls\n- min_calls respected; empty log is False\n- Passes the attached tests",
+      "test_code": "log=[{'seq':1,'tool':'web_search','ok':True},{'seq':2,'tool':'pytest','ok':False},{'seq':3,'tool':'pytest','ok':True}]\nassert requires_tool(log,'pytest')\nassert not requires_tool(log,'pytest',2)\nassert not requires_tool(log,'ffmpeg')\nassert not requires_tool([],'pytest')\nprint('all tests passed')"
+    }
+  ]
+}
