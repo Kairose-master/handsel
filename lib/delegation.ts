@@ -22,6 +22,7 @@ import { origin } from '@/lib/origin'
 import { agent, delegation, jobSpec, agentTask } from '@/lib/db/schema'
 import { eq, inArray, or } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
+import type { Hex } from 'viem'
 import Anthropic from '@anthropic-ai/sdk'
 import { getUserByok } from '@/lib/user-keys'
 import { logPlatformEvent } from '@/lib/platform-feed'
@@ -989,7 +990,54 @@ async function postOneSubtask(
   spaceOut: boolean,
   planDsl?: string,
 ): Promise<void> {
-  const { postJob, readJobs } = await import('@/lib/onchain/labor')
+  const { postJob } = await import('@/lib/onchain/labor')
+  const specHash = await prepareSubtaskPost(payerAgentId, payerName, ownerId, st, autoVerify, planDsl)
+  // Bundler rate-limits back-to-back userops (free tier) — space them.
+  if (spaceOut) await new Promise((r) => setTimeout(r, 2000))
+  await postJob(payerAgentId, st.bountyUsd, 0, specHash)
+  await afterSubtaskPost(payerName, st, specHash)
+}
+
+/**
+ * A wave of root subtasks that share a payer, posted as ONE UserOp
+ * (lib/onchain/labor-v2.ts postJobsV2Batch): one approval, N postJob calls.
+ * Falls back to the per-job path on a V1 market, where there is no batch
+ * entry point. Ids are resolved by specHash for all of them afterwards.
+ */
+async function postSubtaskWave(
+  payerAgentId: string,
+  payerName: string,
+  ownerId: string,
+  wave: DelegationSubtask[],
+  autoVerify: boolean,
+  planDsl?: string,
+): Promise<void> {
+  const { isV2Market, postJobsV2Batch } = await import('@/lib/onchain/labor-v2')
+  if (wave.length < 2 || !(await isV2Market())) {
+    let n = 0
+    for (const st of wave) await postOneSubtask(payerAgentId, payerName, ownerId, st, autoVerify, n++ > 0, planDsl)
+    return
+  }
+  const hashes: Hex[] = []
+  for (const st of wave) hashes.push(await prepareSubtaskPost(payerAgentId, payerName, ownerId, st, autoVerify, planDsl))
+  await postJobsV2Batch(
+    payerAgentId,
+    wave.map((st, i) => ({ bountyUsd: st.bountyUsd, minScore: 0, specHash: hashes[i] })),
+  )
+  for (let i = 0; i < wave.length; i++) await afterSubtaskPost(payerName, wave[i], hashes[i])
+}
+
+/** Everything a subtask needs written BEFORE it exists on-chain: the sealed
+ *  spec row, its lane, the advisory balance read. Returns the specHash the
+ *  chain call must carry. */
+async function prepareSubtaskPost(
+  payerAgentId: string,
+  payerName: string,
+  ownerId: string,
+  st: DelegationSubtask,
+  autoVerify: boolean,
+  planDsl?: string,
+): Promise<Hex> {
   // Give the worker situational context: the whole collaboration as a readable
   // program, and which line is theirs — so it delivers a piece that fits the
   // plan, not an isolated guess. JSON is still the wire format; this DSL rides
@@ -1074,9 +1122,13 @@ async function postOneSubtask(
   } catch (error) {
     console.error('[delegation] posting balance pre-check failed (continuing):', error)
   }
-  // Bundler rate-limits back-to-back userops (free tier) — space them.
-  if (spaceOut) await new Promise((r) => setTimeout(r, 2000))
-  await postJob(payerAgentId, st.bountyUsd, 0, specHash)
+  return specHash
+}
+
+/** After the chain has the job: resolve its id by specHash, reserve it for
+ *  an assigned worker, log it. */
+async function afterSubtaskPost(payerName: string, st: DelegationSubtask, specHash: Hex): Promise<void> {
+  const { readJobs } = await import('@/lib/onchain/labor')
   // postJob doesn't return the id — resolve via specHash. maxAgeMs 0: we JUST
   // wrote this job; a cached read from before the tx would miss it.
   st.specHash = specHash
@@ -1160,14 +1212,17 @@ export async function postDelegationJobs(
   // dependencies. A subtask that declares dependsOn is held back and posted
   // by tickDelegation once its upstream output is actually in hand, so its
   // worker builds on real deliverables instead of a guessed spec.
-  let postedCount = 0
-  for (const st of subtasks) {
-    if (st.isIntegration) continue // platform-verified after work completes — never posted/escrowed
-    if (st.onchainJobId !== undefined) continue // already posted (confirm retried)
-    if (st.dependsOn?.length) continue // waits on upstream — the wave scheduler posts it later
-    const payer = payers.get(payerIdFor(st, primeAgentId))!
-    await postOneSubtask(payer.id, payer.name, prime.userId, st, autoVerify, postedCount > 0, planDsl)
-    postedCount++
+  // Grouped by payer and posted one UserOp per payer (lib/funding-plan.ts):
+  // a five-step desk that used to cost five bundler round trips and five
+  // approvals now costs one of each per paying wallet.
+  const { groupWaveByPayer } = await import('@/lib/funding-plan')
+  const roots = subtasks.filter((st) => !st.isIntegration && st.onchainJobId === undefined && !st.dependsOn?.length)
+  const waves = groupWaveByPayer(roots, (st) => payerIdFor(st, primeAgentId))
+  let waveIndex = 0
+  for (const [payerId, wave] of waves) {
+    const payer = payers.get(payerId)!
+    if (waveIndex++ > 0) await new Promise((r) => setTimeout(r, 2000)) // bundler spacing between payers
+    await postSubtaskWave(payer.id, payer.name, prime.userId, wave, autoVerify, planDsl)
   }
   return subtasks
 }

@@ -289,6 +289,57 @@ export async function postJobV2(
   )
 }
 
+export type BatchPostInput = { bountyUsd: number; minScore: number; specHash: Hex; deliveryWindowSec?: number }
+
+/**
+ * Post SEVERAL jobs from one requester in ONE UserOp: a single `approve` for
+ * the sum of every `postCost`, then one `postJob` per job.
+ *
+ * This is the funding-side cost fix the per-job path cannot make. On
+ * ERC-4337 every UserOp carries its own validation + bundler overhead, and
+ * with cent-scale bounties that overhead is the largest line in a job's
+ * cost (docs/v2-plan.md §"gas per job"; the Sep-2026 x402 settlement
+ * measurements found the same — opening escrow, not verifying, is the
+ * dominant cost, and batching the opens is what saves ~80%). A delegation
+ * wave of N root subtasks used to be N UserOps and N approvals; it is now
+ * one of each. Everything on-chain is unchanged: same `postJob`, same
+ * per-job escrow, same ids — a wave that fails mid-batch reverts whole,
+ * which is also better than N-1 posted and one stranded.
+ *
+ * Costs are read from the contract per job, never recomputed (the same rule
+ * as postJobV2). Returns the UserOp hash; job ids are resolved by specHash
+ * as before, because postJob's return value is not readable from a batch.
+ */
+export async function postJobsV2Batch(requesterAgentId: string, jobs: readonly BatchPostInput[]): Promise<Hex> {
+  if (jobs.length === 0) throw new Error('postJobsV2Batch: nothing to post')
+  const client = publicClient()
+  const prepared = await Promise.all(
+    jobs.map(async (j) => {
+      const bounty = toUnits(j.bountyUsd)
+      const cost = (await client.readContract({ ...market(), functionName: 'postCost', args: [bounty] })) as bigint
+      const window = await clampDeliveryWindow(j.deliveryWindowSec)
+      return { bounty, cost, window, minScore: BigInt(j.minScore), specHash: j.specHash }
+    }),
+  )
+  const totalCost = prepared.reduce((s, p) => s + p.cost, 0n)
+  return sendAgentCalls(
+    requesterAgentId,
+    [
+      {
+        to: onchainEnv.usdcAddress as Address,
+        value: 0n,
+        data: encodeFunctionData({ abi: USDC_ABI, functionName: 'approve', args: [onchainEnv.laborMarketAddress as Address, totalCost] }),
+      },
+      ...prepared.map((p) => ({
+        to: onchainEnv.laborMarketAddress as Address,
+        value: 0n,
+        data: encodeFunctionData({ abi: LABOR_MARKET_V2_ABI, functionName: 'postJob', args: [p.bounty, p.minScore, p.specHash, p.window] }),
+      })),
+    ],
+    { label: `postJob×${jobs.length}` },
+  )
+}
+
 /**
  * Accept a job on V2: approve `bondFor(bounty)` and `acceptJob`, in one UserOp.
  *
