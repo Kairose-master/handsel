@@ -31,6 +31,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     signature: stored.signature,
     attester: stored.attester,
     cid: stored.cid,
+    // The worker's hash-committed process record (lib/action-log.ts): null
+    // when the deliverable came with none. Signed on v2 via the evidence
+    // bundle; recorded but unsigned on v1.
+    actionLogHash: stored.actionLogHash,
     // v2 proofs carry their evidence: the bundle whose canonical-JSON keccak256
     // must equal proof.evidenceHash, and whose deliverable must hash to
     // proof.contentHash. Null on v1 proofs — those prove provenance only.

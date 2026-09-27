@@ -11,6 +11,7 @@ import {
   type WorkProof,
 } from '@/lib/attestation'
 import { cidOfJson, pinBytes } from '@/lib/ipfs'
+import type { Hex } from 'viem'
 
 /**
  * Persistence + issuance for Proof of Authorship & Grade. Self-migrating: the
@@ -31,6 +32,10 @@ export interface StoredProof {
   /** v2 only: the bundle whose hash the signature commits to (spec +
    *  deliverable + grader class). Null on v1 proofs — provenance only. */
   evidence: EvidenceBundle | null
+  /** keccak256 of the worker's submitted action log, or null when the
+   *  deliverable came with no process record. Signed on v2 (inside the
+   *  evidence bundle); recorded but unsigned on v1. */
+  actionLogHash: Hex | null
 }
 
 async function ensureTable(): Promise<void> {
@@ -50,6 +55,11 @@ async function ensureTable(): Promise<void> {
   // Additive migration for tables created before the cid column existed.
   await pool.query(`ALTER TABLE work_proofs ADD COLUMN IF NOT EXISTS cid text`)
   await pool.query(`ALTER TABLE work_proofs ADD COLUMN IF NOT EXISTS evidence jsonb`)
+  // The worker's process commitment. Stored beside the proof on every schema
+  // (v1 included, where the signature cannot carry it) so a reader always
+  // sees whether a log accompanied the deliverable; bound into the signed
+  // evidence hash on v2.
+  await pool.query(`ALTER TABLE work_proofs ADD COLUMN IF NOT EXISTS action_log_hash text`)
 }
 
 /**
@@ -69,6 +79,8 @@ export async function issueWorkProof(input: {
    *  bound into the signature — the caller is choosing to make spec +
    *  deliverable PUBLIC so third parties can re-derive the verdict. */
   evidence?: { spec: string; graderClass: EvidenceBundle['graderClass'] }
+  /** From the ACTION_LOG event the worker submitted with the deliverable. */
+  actionLogHash?: Hex | null
 }): Promise<StoredProof | null> {
   try {
     // The evidence bundle stores the deliverable as it will be re-hashed by a
@@ -87,6 +99,7 @@ export async function issueWorkProof(input: {
         deliverable,
         grader: input.grader,
         graderClass: input.evidence.graderClass,
+        ...(input.actionLogHash ? { actionLogHash: input.actionLogHash } : {}),
       }
     }
 
@@ -113,13 +126,14 @@ export async function issueWorkProof(input: {
 
     const id = crypto.randomUUID()
     await ensureTable()
+    const actionLogHash = input.actionLogHash ?? null
     await pool.query(
-      `INSERT INTO work_proofs (id, job_ref, content_hash, attester, signature, proof, cid, evidence)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      `INSERT INTO work_proofs (id, job_ref, content_hash, attester, signature, proof, cid, evidence, action_log_hash)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [id, proof.jobRef, proof.contentHash, signed.attester, signed.signature, JSON.stringify(proof), cid,
-       evidence ? JSON.stringify(evidence) : null],
+       evidence ? JSON.stringify(evidence) : null, actionLogHash],
     )
-    return { id, proof, signature: signed.signature, attester: signed.attester, cid, evidence }
+    return { id, proof, signature: signed.signature, attester: signed.attester, cid, evidence, actionLogHash }
   } catch {
     return null
   }
@@ -170,7 +184,29 @@ export async function issueProofForJobSpec(spec: {
       requester: spec.requesterAgentId,
       grader,
       deliverable,
+      actionLogHash: await actionLogHashForTask(spec.agentTaskId),
     })
+  } catch {
+    return null
+  }
+}
+
+/** The hash the worker committed to at submission, read back from the
+ *  ACTION_LOG event the callback stored. Null when no log was submitted. */
+export async function actionLogHashForTask(taskId: string): Promise<Hex | null> {
+  try {
+    const { db } = await import('@/lib/db')
+    const { agentEvent } = await import('@/lib/db/schema')
+    const { and, eq, desc } = await import('drizzle-orm')
+    const { ACTION_LOG_EVENT_TYPE } = await import('@/lib/action-log')
+    const [row] = await db
+      .select({ detail: agentEvent.detail })
+      .from(agentEvent)
+      .where(and(eq(agentEvent.taskId, taskId), eq(agentEvent.eventType, ACTION_LOG_EVENT_TYPE)))
+      .orderBy(desc(agentEvent.createdAt))
+      .limit(1)
+    const hash = (row?.detail as { hash?: unknown } | null)?.hash
+    return typeof hash === 'string' && /^0x[0-9a-f]{64}$/.test(hash) ? (hash as Hex) : null
   } catch {
     return null
   }
@@ -179,12 +215,12 @@ export async function issueProofForJobSpec(spec: {
 export async function getWorkProof(id: string): Promise<StoredProof | null> {
   try {
     await ensureTable()
-    const { rows } = await pool.query<{ id: string; proof: WorkProof; signature: string; attester: string; cid: string | null; evidence: EvidenceBundle | null }>(
-      `SELECT id, proof, signature, attester, cid, evidence FROM work_proofs WHERE id = $1`,
+    const { rows } = await pool.query<{ id: string; proof: WorkProof; signature: string; attester: string; cid: string | null; evidence: EvidenceBundle | null; action_log_hash: Hex | null }>(
+      `SELECT id, proof, signature, attester, cid, evidence, action_log_hash FROM work_proofs WHERE id = $1`,
       [id],
     )
     if (!rows[0]) return null
-    return { id: rows[0].id, proof: rows[0].proof, signature: rows[0].signature, attester: rows[0].attester, cid: rows[0].cid ?? null, evidence: rows[0].evidence ?? null }
+    return { id: rows[0].id, proof: rows[0].proof, signature: rows[0].signature, attester: rows[0].attester, cid: rows[0].cid ?? null, evidence: rows[0].evidence ?? null, actionLogHash: rows[0].action_log_hash ?? null }
   } catch {
     return null
   }
@@ -194,12 +230,12 @@ export async function getWorkProof(id: string): Promise<StoredProof | null> {
 export async function getLatestProofForJob(jobRef: string): Promise<StoredProof | null> {
   try {
     await ensureTable()
-    const { rows } = await pool.query<{ id: string; proof: WorkProof; signature: string; attester: string; cid: string | null; evidence: EvidenceBundle | null }>(
-      `SELECT id, proof, signature, attester, cid, evidence FROM work_proofs WHERE job_ref = $1 ORDER BY created_at DESC LIMIT 1`,
+    const { rows } = await pool.query<{ id: string; proof: WorkProof; signature: string; attester: string; cid: string | null; evidence: EvidenceBundle | null; action_log_hash: Hex | null }>(
+      `SELECT id, proof, signature, attester, cid, evidence, action_log_hash FROM work_proofs WHERE job_ref = $1 ORDER BY created_at DESC LIMIT 1`,
       [jobRef],
     )
     if (!rows[0]) return null
-    return { id: rows[0].id, proof: rows[0].proof, signature: rows[0].signature, attester: rows[0].attester, cid: rows[0].cid ?? null, evidence: rows[0].evidence ?? null }
+    return { id: rows[0].id, proof: rows[0].proof, signature: rows[0].signature, attester: rows[0].attester, cid: rows[0].cid ?? null, evidence: rows[0].evidence ?? null, actionLogHash: rows[0].action_log_hash ?? null }
   } catch {
     return null
   }
