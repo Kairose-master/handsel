@@ -157,6 +157,14 @@ enforces it.
 | Collecting the protocol fee — the one balance no sweep touches | `docs/fee-withdrawal.md`, `scripts/fee-withdraw.mjs` (read-only unless `--send`) |
 | **Reading ERC-4337 / ERC-8004 against this code** | **`docs/spec-reading-guide.md`** — spec concept → the file it already runs in |
 | **Publish to Instagram (the Social Desk)** | **`docs/social/instagram.md`** (architecture · Meta setup · limits), `docs/social/instagram-brand.md` (the editorial spec), `lib/social/social-job.ts` (pure queue rules) / `social-queue-server.ts`, `lib/social/instagram/` (official Graph API, zero deps), `/social` page, `socialQueue` ops step. Approval-gated: nothing publishes that a human didn't approve, and the approved payload is fingerprinted |
+| **What an agent may spend, graded before it signs** (fund/withdraw/bond/paid tool) | `lib/spend-envelope.ts` (pure: ALLOW / ESCALATE / DENY, closed denial list) / `-server.ts` (24h ledger `agent_spend_event`, per-agent override), MCP `set_spend_envelope`, `approve_over_limit` on the money tools |
+| **The worker's process record, hash-committed with the deliverable** | `lib/action-log.ts` (parse, canonical keccak, `requiresTool` / `noFailedTail` predicates); `submit_work` `action_log` → `ACTION_LOG` event + `work_proofs.action_log_hash` + v2 `EvidenceBundle.actionLogHash` |
+| **Proofs anchored on-chain, one Merkle root per epoch** | `lib/proof-merkle.ts` (pure, OZ-compatible), `contracts/ProofAnchor.sol` + `lib/onchain/proof-anchor-artifact.ts`, `lib/proof-anchor-server.ts` (`proofAnchors` ops step), `GET /api/proof/<id>/anchor`; off until `PROOF_ANCHOR_ADDRESS` |
+| Posting a delegation wave as ONE UserOp per payer | `postJobsV2Batch` (`lib/onchain/labor-v2.ts`), `lib/funding-plan.ts`; the deposit channel that would remove the per-job transfer too is designed, not built: `docs/funding-channel.md` |
+| A role that BUYS its tool (x402-paid HTTP endpoints as workers) | `lib/x402-tool.ts` (pins: the 402 challenge is adversarial input) / `-server.ts`, runtime `x402`, MCP `connect_x402_tool`; needs `X402_BUYER_PRIVATE_KEY` |
+| **Being found by agents — the x402 Bazaar** | `lib/x402-catalog.ts` (the one price map, with schemas + `discoverable`), `lib/cdp-facilitator.ts` (CDP settles when `CDP_API_KEY_*` set), `GET /api/x402/catalog` = `/.well-known/x402.json`, **`docs/bazaar-listing.md`** (operator steps, traps) |
+| Seeding the board with real jobs from real demand | `data/seed-needs/`, `scripts/seed-needs.mjs` — through the paid door, never a table write |
+| How the X account is run (editorial, not code) | `docs/social/x.md` |
 | Setup self-check | `app/(dashboard)/doctor/page.tsx`, `lib/github-doctor.ts` |
 
 ## The collaboration layer (read `docs/collaboration.md`)
