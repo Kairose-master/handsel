@@ -188,6 +188,14 @@ export async function runAgentTask(input: {
           await dispatchToMcpWorker(agent, taskId, effectiveTask, callbackUrl)
         }
       })
+    } else if (agent.runtimeType === 'x402') {
+      // A paid HTTP tool does the work (lib/x402-tool.ts): the role buys one
+      // call inside its spend envelope and submits what came back.
+      deferDispatch(async () => {
+        if (!(await handoffDispatchExecution(taskId, callbackUrl))) {
+          await dispatchToX402Tool(agent, taskId, effectiveTask, callbackUrl)
+        }
+      })
     } else {
       const { resolveUserAnthropicKey } = await import('@/lib/user-keys')
       const apiKey = await resolveUserAnthropicKey(agent.userId)
@@ -456,6 +464,87 @@ async function dispatchToMcpWorker(agentRow: AgentRow, taskId: string, task: str
  *  it said. The reply matters: a failed grade comes back as a retry verdict
  *  with the grader's reasons, and a dispatcher that drops it strands the
  *  task (§68). Null when the post failed or the body was not JSON. */
+/**
+ * Runs the task by BUYING one call on an x402-paid HTTP tool
+ * (lib/x402-tool-server.ts). Same trust model as the MCP worker: the tool's
+ * output is submitted as the agent's work and our graders decide what it is
+ * worth. Two things are different from a free tool: the spend envelope is
+ * graded before the request, and the amount actually paid is written to the
+ * task's events so the requester can see what the deliverable cost.
+ */
+async function dispatchToX402Tool(agentRow: AgentRow, taskId: string, task: string, callbackUrl: string) {
+  const startedAt = Date.now()
+  let output = ''
+  let success = true
+  let error: string | undefined
+  let paidUsd = 0
+  let txHash: string | undefined
+
+  try {
+    const { x402ToolFor, callX402Tool } = await import('@/lib/x402-tool-server')
+    const binding = await x402ToolFor(agentRow.id)
+    if (!binding) throw new Error('this agent has no x402 tool binding — connect_x402_tool first')
+    const call = await callX402Tool({ agentId: agentRow.id, binding, task, timeoutMs: CLOUD_CALL_TIMEOUT_MS })
+    if (!call.ok) throw new Error(`${call.code}: ${call.error}`)
+    output = call.output
+    paidUsd = call.paidUsd
+    txHash = call.txHash
+    if (!output.trim()) {
+      success = false
+      error = 'paid tool returned empty output'
+    } else {
+      // 'assisted' (the default for a paid tool — every one so far returns
+      // JSON, not a deliverable): the role writes from what it bought.
+      const { getMcpMode } = await import('@/lib/mcp-mode')
+      if ((await getMcpMode(agentRow.id)) === 'assisted') {
+        const { assistedWorkerPrompt } = await import('@/lib/mcp-assist')
+        const { untrustedNonce } = await import('@/lib/untrusted-input')
+        const { resolveLlm } = await import('@/lib/delegation')
+        const nonce = untrustedNonce()
+        const { system, user } = assistedWorkerPrompt({
+          agentName: agentRow.name,
+          customInstructions: agentRow.customInstructions,
+          brief: task,
+          toolName: `x402 ${binding.method} ${binding.url}`,
+          serverUrl: binding.url,
+          toolOutput: output,
+          nonce,
+        })
+        const complete = await resolveLlm(agentRow.userId)
+        const written = await complete(system, user, 8000)
+        if (!written.trim()) {
+          success = false
+          error = 'assisted x402 worker bought the data but the model returned nothing'
+        } else {
+          output = written
+        }
+      }
+    }
+  } catch (e) {
+    success = false
+    error = e instanceof Error ? e.message : String(e)
+  }
+
+  const executionTime = Math.round((Date.now() - startedAt) / 1000)
+  const events = [
+    cloudEvent(agentRow.id, taskId, 'TASK_STARTED', true, 0, { task: task.slice(0, 200) }),
+    ...(paidUsd > 0 ? [cloudEvent(agentRow.id, taskId, 'TOOL_EXECUTED', true, 0, { runtime: 'x402-tool', paidUsd, ...(txHash ? { txHash } : {}) })] : []),
+    cloudEvent(agentRow.id, taskId, success ? 'TASK_COMPLETED' : 'TASK_FAILED', success, executionTime, {
+      runtime: 'x402-tool',
+      paidUsd,
+      ...(error ? { error: error.slice(0, 300) } : {}),
+    }),
+  ]
+
+  const reply = await postDispatchCallback(agentRow, taskId, callbackUrl, {
+    success,
+    output: success ? output : `x402 tool error: ${error}`,
+    execution_time: executionTime,
+    events,
+  })
+  await followUpOnRetry(agentRow, taskId, task, callbackUrl, reply, (next) => dispatchToX402Tool(agentRow, taskId, next, callbackUrl))
+}
+
 async function postDispatchCallback(
   agentRow: AgentRow,
   taskId: string,
@@ -655,5 +744,9 @@ export async function executeDispatch(
     await dispatchToMcpWorker(agentRow, taskId, effectiveTask, callbackUrl)
     return { ok: true }
   }
-  return { ok: false, why: `runtime '${agentRow.runtimeType}' does not execute here — only cloud/mcp dispatches do` }
+  if (agentRow.runtimeType === 'x402') {
+    await dispatchToX402Tool(agentRow, taskId, effectiveTask, callbackUrl)
+    return { ok: true }
+  }
+  return { ok: false, why: `runtime '${agentRow.runtimeType}' does not execute here — only cloud/mcp/x402 dispatches do` }
 }

@@ -139,3 +139,32 @@ the whole set, the throwaway script used here did exactly what
 `lib/mcp-client.ts` does — `probeMcpTool` is the same handshake and is already
 exported, so the fastest honest re-check is the Test button on each row of a
 hired Cloud Options Desk.
+
+
+## Paid (x402) HTTP tools — added 2026-09-27
+
+The connectors above are free MCP servers. A second kind of tool now exists
+on the supply side: plain HTTP endpoints that answer **402** and take
+$0.01–$0.10 in USDC per call (yield watchers, liquidation sentinels,
+contract scanners, order-flow feeds — most of them Cloudflare Workers behind
+`x402-hono`). `connect_x402_tool` wires a role to one; the runtime is
+`lib/x402-tool-server.ts`, the pins are `lib/x402-tool.ts`.
+
+What is different from an MCP connector:
+
+- **The role pays.** Out of the deployment's `X402_BUYER_PRIVATE_KEY` (an EOA
+  float on the deployment's x402 network), graded against the agent's spend
+  envelope (`kind: 'x402_tool'`) BEFORE the request, and the amount actually
+  paid is read from the settlement receipt into the 24h ledger.
+- **The challenge is not trusted.** Network and asset are pinned by
+  `x402NetworkFor(CHAIN)`; the price is capped by the binding; payTo may be
+  pinned. `pickRequirement` refuses everything else — a server cannot talk a
+  role onto another chain, another token, or a bigger number.
+- **Assisted by default.** Every paid tool so far returns JSON, not a
+  deliverable; the role writes from it (lib/mcp-assist.ts), same as a search
+  connector.
+
+Verified: `handsel-market-index` (this deployment's own `GET /api/market/index`
+at $0.01) is the smoke-test preset. Third-party paid tools get a row here the
+way MCP connectors did — probed end to end, then recorded with the date.
+None is recorded yet.
