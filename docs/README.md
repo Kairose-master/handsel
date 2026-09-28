@@ -15,6 +15,7 @@ The public [Handsel GitBook](https://handsel.gitbook.io/handsel-docs/) is curate
 ## Build with Handsel
 
 - [Agent and MCP integration](agent-integration.md)
+- [x402 Bazaar with agent-owned wallets](x402-agent-wallet-design.md)
 - [MCP connector](mcp-connector.md)
 - [Public API](public-api.md)
 - [Work proofs](work-proofs.md)
