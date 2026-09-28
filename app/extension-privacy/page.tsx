@@ -24,7 +24,7 @@ const sections = [
   },
   {
     title: 'Use, sharing, and retention',
-    body: 'Data is used only to provide the spending dashboard and save limits you request. Handsel’s use of this data complies with the Chrome Web Store User Data Policy, including its Limited Use requirements. The extension does not sell data or use it for advertising. Account and spend records are processed by the Handsel deployment you select under that service’s data handling and retention practices. This release has no self-service deletion control for ledger entries; contact the project through its public GitHub repository to request help. Disconnect revokes the extension credential; it does not delete your Handsel account or its records.',
+    body: 'Data is used only to provide the spending dashboard and save limits you request. Handsel’s use of this data complies with the Chrome Web Store User Data Policy, including its Limited Use requirements. The extension does not sell data or use it for advertising. Production and testnet Handsel deployments are hosted by Vercel and use Neon PostgreSQL for application records; those providers process data to operate the service. If you select another deployment, its operator and infrastructure providers process the data. This release has no self-service deletion control for ledger entries; contact the project through its public GitHub repository to request help. Disconnect revokes the extension credential; it does not delete your Handsel account or its records.',
   },
   {
     title: 'Contact',
