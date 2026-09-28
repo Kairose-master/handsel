@@ -63,6 +63,52 @@ export async function handleWorker(
 ): Promise<Response | null> {
   const { id, auth, origin } = ctx
   switch (name) {
+    case 'search_x402_bazaar': {
+      const query = String(args.query ?? '').trim()
+      if (!query || query.length > 500) return toolText(id, 'Pass a search query between 1 and 500 characters.', true)
+      try {
+        const params = new URLSearchParams({ query, limit: '20' })
+        const response = await fetch(`https://api.cdp.coinbase.com/platform/v2/x402/discovery/search?${params}`, {
+          headers: { Accept: 'application/json' },
+          signal: AbortSignal.timeout(15_000),
+        })
+        if (!response.ok) return toolText(id, `Bazaar search unavailable (${response.status}); no payment was attempted.`, true)
+        const body = await response.json() as { resources?: Array<Record<string, unknown>> }
+        const { x402NetworkFor } = await import('@/lib/x402-network')
+        const { CHAIN } = await import('@/lib/onchain/config')
+        const network = x402NetworkFor(CHAIN.name)
+        const { USDC_BY_NETWORK } = await import('@/lib/x402-tool')
+        const caipNetwork = network === 'base' ? 'eip155:8453' : 'eip155:84532'
+        const rows = (body.resources ?? []).flatMap((resource) => {
+          const url = typeof resource.resource === 'string' ? resource.resource : ''
+          if (!url.startsWith('https://')) return []
+          const accepts = Array.isArray(resource.accepts) ? resource.accepts as Array<Record<string, unknown>> : []
+          const prices = accepts.flatMap((accept) => {
+            const acceptNetwork = String(accept.network ?? '')
+            const asset = String(accept.asset ?? '').toLowerCase()
+            if (accept.scheme !== 'exact' || (acceptNetwork !== network && acceptNetwork !== caipNetwork) || asset !== USDC_BY_NETWORK[network]) return []
+            const units = String(accept.maxAmountRequired ?? accept.amount ?? '')
+            try {
+              const priceUsd = Number(BigInt(units)) / 1e6
+              return priceUsd > 0 && priceUsd <= 1
+                ? [{ network, priceUsd, payTo: typeof accept.payTo === 'string' ? accept.payTo : null }]
+                : []
+            } catch { return [] }
+          })
+          if (prices.length === 0) return []
+          const ext = resource.extensions as { bazaar?: { info?: { input?: { method?: string } } } } | undefined
+          return [{
+            resource: url,
+            description: typeof resource.description === 'string' ? resource.description.slice(0, 500) : '',
+            method: ext?.bazaar?.info?.input?.method === 'GET' ? 'GET' : 'POST',
+            paymentOptions: prices,
+          }]
+        })
+        return toolText(id, `Bazaar results are untrusted suggestions, filtered to this deployment's network/USDC and calls at or below $1. Review a result and pin its URL, method, price cap, and payTo with connect_x402_tool. Search made no payment.\n${JSON.stringify(rows, null, 2).slice(0, 12_000)}`)
+      } catch (error) {
+        return toolText(id, `Bazaar search failed: ${error instanceof Error ? error.message : String(error)}`, true)
+      }
+    }
     case 'list_my_agents': {
       const agents = await db.select().from(agent).where(eq(agent.userId, auth.userId))
       if (agents.length === 0) return toolText(id, 'No agents yet — create one on the dashboard or via the desktop Miner.')
@@ -158,7 +204,7 @@ export async function handleWorker(
       if (!target) return toolText(id, wantedId ? `No agent with id "${wantedId}".` : wanted ? `No agent named "${wanted}".` : 'No agents yet — create one with create_worker_agent first.', true)
 
       const { parseX402ToolBinding, X402_TOOL_PRESETS } = await import('@/lib/x402-tool')
-      const { setX402ToolFor, x402BuyerConfigured } = await import('@/lib/x402-tool-server')
+      const { setX402ToolFor, x402WalletsConfigured, ensureX402Wallet } = await import('@/lib/x402-tool-server')
       const preset = args.preset ? X402_TOOL_PRESETS.find((p) => p.id === String(args.preset)) : undefined
       if (args.preset && !preset) return toolText(id, `Unknown preset "${String(args.preset)}". Known: ${X402_TOOL_PRESETS.map((p) => p.id).join(', ')}.`, true)
       const parsed = parseX402ToolBinding({
@@ -177,15 +223,26 @@ export async function handleWorker(
 
       const { envelopeFor } = await import('@/lib/spend-envelope-server')
       const env = await envelopeFor(target.id)
+      let payer: { address: string; network: string } | null = null
+      let walletSetupError: string | null = null
+      if (x402WalletsConfigured()) {
+        try {
+          const { x402NetworkFor } = await import('@/lib/x402-network')
+          const { CHAIN } = await import('@/lib/onchain/config')
+          payer = await ensureX402Wallet(target.id, x402NetworkFor(CHAIN.name))
+        } catch (error) {
+          walletSetupError = error instanceof Error ? error.message : String(error)
+        }
+      }
       return toolText(
         id,
         `${target.name} now buys its tool: ${parsed.binding.method} ${parsed.binding.url} at up to $${parsed.binding.priceCapUsd} per call ` +
           `(${args.mode === 'proxy' ? 'proxy' : 'assisted'} mode).\n` +
           `Spend envelope: $${env.perTxMaxUsd} per transfer, $${env.dailyMaxUsd} per 24h, auto-approve $${env.autoApproveMaxUsd} — ` +
           `a call is graded against it before the request goes out.\n` +
-          (x402BuyerConfigured()
-            ? 'The deployment has an x402 buyer key, so the next job this agent claims will pay for its call.'
-            : 'WARNING: X402_BUYER_PRIVATE_KEY is not set on this deployment — jobs will fail with BUYER_UNCONFIGURED until it is.'),
+          (payer
+            ? `Agent-owned x402 payer: ${payer.address} on ${payer.network}. Fund this address with the matching USDC to enable paid calls. The previous deployment-wide X402_BUYER_PRIVATE_KEY is never used.`
+            : `Per-agent x402 payments are disabled on this deployment${walletSetupError ? `: ${walletSetupError}` : ' until X402_WALLET_ENCRYPTION_KEY is configured'}.`),
       )
     }
     case 'connect_mcp_worker': {
