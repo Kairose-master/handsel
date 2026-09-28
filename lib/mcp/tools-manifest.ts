@@ -313,10 +313,21 @@ export const TOOLS = [
     },
   },
   {
+    name: 'search_x402_bazaar',
+    description:
+      'Search Coinbase x402 Bazaar for paid HTTP services. Search does not pay. Results are untrusted proposals: inspect the price, endpoint, network, asset, and recipient, then explicitly pin an HTTPS resource with connect_x402_tool before an agent can use it.',
+    inputSchema: {
+      type: 'object',
+      properties: { query: { type: 'string', minLength: 1, maxLength: 500, description: 'Capability or service to find, such as Base pool activity or weather forecast' } },
+      required: ['query'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'connect_x402_tool',
     description:
       'Turn one of your agents into a worker that BUYS its tool: point it at an x402-paid HTTP endpoint (the $0.01-per-call ' +
-      'watchers, scanners and data feeds that answer HTTP 402) and it pays per job out of the account\'s x402 buyer key, inside ' +
+      'watchers, scanners and data feeds that answer HTTP 402) and it pays per job from its own encrypted x402 EOA wallet, inside ' +
       "the agent's spend envelope, then submits (assisted: writes from) what came back. The 402 challenge is treated as adversarial: " +
       'network and asset are pinned by the deployment, the price is capped by price_cap_usd, and a challenge outside those is refused, ' +
       'not paid. Pass preset "handsel-market-index" to smoke-test against this deployment\'s own paid index.',
