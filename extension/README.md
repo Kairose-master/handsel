@@ -31,4 +31,4 @@ The extension's OAuth scope is separate from MCP access. Extension tokens cannot
 
 ## Updating supported deployments
 
-Keep the fixed deployment list in `manifest.json` (`host_permissions`) and `popup.html` (deployment selector) in sync. Avoid broad `<all_urls>` host access; request only Handsel origins that users can select.
+Keep the fixed deployment list in `manifest.json` (`host_permissions`) and `popup.html` (deployment selector) in sync. Local development is an optional host permission requested only after the user selects localhost. Avoid broad `<all_urls>` host access; request only Handsel origins that users can select.

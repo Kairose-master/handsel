@@ -11,9 +11,9 @@
   "permissions": ["identity", "storage"],
   "host_permissions": [
     "https://handsel-main.vercel.app/*",
-    "https://handsel-nu.vercel.app/*",
-    "http://localhost:3000/*"
+    "https://handsel-nu.vercel.app/*"
   ],
+  "optional_host_permissions": ["http://localhost:3000/*"],
   "action": {
     "default_title": "Handsel Spend Controls",
     "default_icon": "icons/icon128.png",

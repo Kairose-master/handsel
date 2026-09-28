@@ -196,6 +196,10 @@ async function connect() {
   state.baseUrl = safeBase($('deployment').value)
   setStatus('Opening secure Handsel sign-in…')
   try {
+    if (state.baseUrl === 'http://localhost:3000') {
+      const granted = await chrome.permissions.request({ origins: ['http://localhost:3000/*'] })
+      if (!granted) throw new Error('Allow local development access in Chrome to connect to localhost.')
+    }
     await authorize()
     await loadDashboard()
   } catch (error) {
