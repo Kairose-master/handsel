@@ -16,7 +16,7 @@ The public data-handling notice for a store listing is at `https://handsel-main.
 
 ## Access granted
 
-The extension requests only the `extension:read extension:write` OAuth scope. It can read the signed-in account's agent names, spending envelopes, and recent spend ledger entries, and update an owned agent's envelope. Envelope changes affect all supported outgoing spend paths for that agent. The access token is stored in `chrome.storage.local`; it expires after 90 days. **Disconnect** revokes that token on the server and removes the local copy.
+The extension requests only the `extension:read extension:write` OAuth scope. It can read the signed-in account's agent names, spending envelopes, and recent spend ledger entries, and update an owned agent's envelope. Envelope changes affect all supported outgoing spend paths for that agent. The access token is held in `chrome.storage.session` memory and expires on the server after 90 days; Chrome clears it when the browser restarts or the extension reloads or updates. The selected deployment and public OAuth client ID are stored in `chrome.storage.local`. **Disconnect** revokes the token on the server.
 
 It does not read the active tab, intercept page traffic, hold wallet keys, or initiate payments. Payment execution and signing remain server-side.
 

@@ -91,7 +91,8 @@ async function authorize() {
   const tokenBody = await tokenResponse.json()
   if (!tokenResponse.ok || !tokenBody.access_token) throw new Error(tokenBody.error_description || 'Could not finish sign-in.')
   const stored = { baseUrl: state.baseUrl, token: tokenBody.access_token, expiresAt: Date.now() + tokenBody.expires_in * 1000 }
-  await chrome.storage.local.set({ connected: stored })
+  await chrome.storage.session.set({ connected: stored })
+  await chrome.storage.local.set({ deployment: state.baseUrl })
   state.token = stored.token
 }
 
@@ -200,12 +201,12 @@ async function connect() {
   } catch (error) {
     setStatus(error.message, true)
   } finally {
-    button.disabled = false
+    button.disabled = !$('data-consent').checked
   }
 }
 
 async function disconnect() {
-  const stored = (await chrome.storage.local.get('connected')).connected
+  const stored = (await chrome.storage.session.get('connected')).connected
   if (stored?.token && stored?.baseUrl) {
     try {
       await fetch(`${safeBase(stored.baseUrl)}/api/extension/dashboard`, {
@@ -217,7 +218,7 @@ async function disconnect() {
     }
     await chrome.storage.local.remove(`oauth:${stored.baseUrl}`)
   }
-  await chrome.storage.local.remove('connected')
+  await chrome.storage.session.remove('connected')
   state.token = null
   $('dashboard').hidden = true
   $('connection').hidden = false
@@ -225,9 +226,15 @@ async function disconnect() {
 }
 
 async function init() {
-  const stored = (await chrome.storage.local.get('connected')).connected
-  state.baseUrl = safeBase(stored?.baseUrl)
+  const [local, sessionData] = await Promise.all([
+    chrome.storage.local.get('deployment'),
+    chrome.storage.session.get('connected'),
+  ])
+  const stored = sessionData.connected
+  state.baseUrl = safeBase(stored?.baseUrl || local.deployment)
   $('deployment').value = state.baseUrl
+  $('connect').disabled = true
+  $('data-consent').addEventListener('change', () => { $('connect').disabled = !$('data-consent').checked })
   $('connect').addEventListener('click', connect)
   $('disconnect').addEventListener('click', disconnect)
   $('refresh').addEventListener('click', async () => {
@@ -236,6 +243,7 @@ async function init() {
   })
   $('deployment').addEventListener('change', async () => {
     state.baseUrl = safeBase($('deployment').value)
+    await chrome.storage.local.set({ deployment: state.baseUrl })
     if (stored?.baseUrl !== state.baseUrl) {
       state.token = null
       $('dashboard').hidden = true

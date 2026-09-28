@@ -16,7 +16,7 @@ const sections = [
   },
   {
     title: 'Local storage and authentication',
-    body: 'The extension stores its OAuth access token and selected deployment in Chrome extension local storage so it can stay connected between popup sessions. The token is scoped to the extension dashboard API, expires after 90 days, and is revoked server-side when you choose Disconnect. To revoke it immediately, choose Disconnect before uninstalling the extension.',
+    body: 'The extension keeps its OAuth access token in Chrome session storage, in memory rather than persisted to disk. The token is scoped to the extension dashboard API and expires after 90 days. Chrome clears session storage when the browser restarts and when the extension is reloaded, disabled, or updated, so you may need to connect again. The selected deployment and non-secret OAuth client identifier are saved in local extension storage. Choose Disconnect to revoke the current access token immediately.',
   },
   {
     title: 'Data not collected',
@@ -24,7 +24,7 @@ const sections = [
   },
   {
     title: 'Use, sharing, and retention',
-    body: 'Data is used only to provide the spending dashboard and save limits you request. The extension does not sell data or use it for advertising. Account and spend records are processed by the Handsel deployment you select under that service’s data handling and retention practices. Disconnect revokes the extension credential; it does not delete your Handsel account or its records.',
+    body: 'Data is used only to provide the spending dashboard and save limits you request. Handsel’s use of this data complies with the Chrome Web Store User Data Policy, including its Limited Use requirements. The extension does not sell data or use it for advertising. Account and spend records are processed by the Handsel deployment you select under that service’s data handling and retention practices. This release has no self-service deletion control for ledger entries; contact the project through its public GitHub repository to request help. Disconnect revokes the extension credential; it does not delete your Handsel account or its records.',
   },
   {
     title: 'Contact',
