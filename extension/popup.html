@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Handsel Spend Controls</title>
+    <link rel="stylesheet" href="popup.css">
+    <script src="popup.js" defer></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand-mark">H</div>
+      <div>
+        <p class="eyebrow">AGENT SPENDING</p>
+        <h1>Handsel</h1>
+      </div>
+      <button id="refresh" class="icon-button" type="button" title="Refresh" aria-label="Refresh">↻</button>
+    </header>
+
+    <main>
+      <section id="connection" class="connection-card">
+        <p class="section-label">Connect your account</p>
+        <p class="muted">Review agent spending and set limits from your browser.</p>
+        <label for="deployment">Handsel deployment</label>
+        <select id="deployment">
+          <option value="https://handsel-main.vercel.app">Production · Base</option>
+          <option value="https://handsel-nu.vercel.app">Testnet · Base Sepolia</option>
+          <option value="http://localhost:3000">Local development</option>
+        </select>
+        <button id="connect" class="primary-button" type="button">Connect Handsel</button>
+      </section>
+
+      <section id="dashboard" hidden>
+        <div class="account-row">
+          <div><p class="section-label">SIGNED IN AS</p><p id="email" class="account-email"></p></div>
+          <button id="disconnect" class="text-button" type="button">Disconnect</button>
+        </div>
+        <div class="notice"><span class="notice-dot"></span><span>Limits apply to all supported outgoing spend paths for that agent.</span></div>
+        <div class="section-heading"><h2>Your agents</h2><span id="agent-count" class="count-pill">0</span></div>
+        <div id="agents" class="agent-list"></div>
+        <div class="section-heading recent-heading"><h2>Recent spending</h2></div>
+        <div id="recent" class="recent-list"></div>
+        <a id="open-dashboard" class="dashboard-link" href="https://handsel-main.vercel.app/autonomy" target="_blank" rel="noreferrer">Open Handsel dashboard ↗</a>
+      </section>
+
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+    </main>
+    <footer>Payments stay on Handsel. This extension never stores wallet keys.</footer>
+  </body>
+</html>
