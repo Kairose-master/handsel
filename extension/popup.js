@@ -1,3 +1,5 @@
+/* global chrome */
+
 const PROD = 'https://handsel-main.vercel.app'
 const SCOPE = 'extension:read extension:write'
 const $ = (id) => document.getElementById(id)
