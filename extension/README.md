@@ -12,6 +12,8 @@ An early Manifest V3 companion for the Handsel agent-spending dashboard. It conn
 
 No build step or extension store account is needed for local development. Production and Base Sepolia have preconfigured origins. Local development uses `http://localhost:3000`.
 
+The public data-handling notice for a store listing is at `https://handsel-main.vercel.app/extension-privacy`.
+
 ## Access granted
 
 The extension requests only the `extension:read extension:write` OAuth scope. It can read the signed-in account's agent names, spending envelopes, and recent spend ledger entries, and update an owned agent's envelope. Envelope changes affect all supported outgoing spend paths for that agent. The access token is stored in `chrome.storage.local`; it expires after 90 days. **Disconnect** revokes that token on the server and removes the local copy.
