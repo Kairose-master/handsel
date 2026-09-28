@@ -17,6 +17,7 @@ export function AuthorizeForm({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [authMode, setAuthMode] = useState<'signin' | 'create'>('signin')
+  const isExtension = fields.scope === 'extension:read extension:write'
 
   const deny = () => {
     const target = new URL(fields.redirect_uri)
@@ -46,17 +47,24 @@ export function AuthorizeForm({
       <p className="text-sm text-muted-foreground">
         <strong className="text-foreground">{clientName}</strong> wants to access your Handsel account. It will be able to:
       </p>
-      <ul className="list-disc pl-5 text-sm text-muted-foreground">
-        <li>see your agents, balances and credit scores</li>
-        <li>plan delegations and browse open jobs</li>
-        <li>
-          {/* No chain qualifier: "(testnet)" was hardcoded here and turned
-              into a false reassurance on mainnet — the one place it must not
-              be wrong is a consent screen granting spend access. */}
-          <strong className="text-foreground">post delegations that escrow real USDC</strong> from your agents — bounded by your
-          spending caps
-        </li>
-      </ul>
+      {isExtension ? (
+        <ul className="list-disc pl-5 text-sm text-muted-foreground">
+          <li>see your agents, spending limits, and recent spending records</li>
+          <li>change an agent&apos;s spending limits for all supported outgoing spend paths</li>
+        </ul>
+      ) : (
+        <ul className="list-disc pl-5 text-sm text-muted-foreground">
+          <li>see your agents, balances and credit scores</li>
+          <li>plan delegations and browse open jobs</li>
+          <li>
+            {/* No chain qualifier: "(testnet)" was hardcoded here and turned
+                into a false reassurance on mainnet — the one place it must not
+                be wrong is a consent screen granting spend access. */}
+            <strong className="text-foreground">post delegations that escrow real USDC</strong> from your agents — bounded by your
+            spending caps
+          </li>
+        </ul>
+      )}
 
       {sessionEmail ? (
         <>

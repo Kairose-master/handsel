@@ -22,6 +22,7 @@ export const PUBLIC_ROUTE_PREFIXES = [
   'directory',
   'disputes',
   'examples',
+  'extension-privacy',
   'explore',
   'guest',
   'fleet', // the big picture: run a fleet of paying agents from Notion (docs/fleet-landing-design.md)

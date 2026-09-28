@@ -38,6 +38,7 @@ export async function approveConnector(formData: FormData): Promise<{ error: str
   const state = String(formData.get('state') ?? '')
   const codeChallenge = String(formData.get('code_challenge') ?? '')
   const scope = String(formData.get('scope') ?? 'mcp') || 'mcp'
+  if (scope !== 'mcp' && scope !== 'extension:read extension:write') return { error: 'Unsupported access scope' }
   const mode = String(formData.get('mode') ?? 'signin')
 
   const [client] = await db.select().from(oauthClient).where(eq(oauthClient.id, clientId))

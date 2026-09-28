@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "minimum_chrome_version": "102",
+  "name": "Handsel Spend Controls",
+  "description": "See and manage spending limits for your Handsel agents.",
+  "version": "0.1.0",
+  "homepage_url": "https://handsel-main.vercel.app/extension-privacy",
+  "icons": {
+    "128": "icons/icon128.png"
+  },
+  "permissions": ["identity", "storage"],
+  "host_permissions": [
+    "https://handsel-main.vercel.app/*",
+    "https://handsel-nu.vercel.app/*"
+  ],
+  "optional_host_permissions": ["http://localhost:3000/*"],
+  "action": {
+    "default_title": "Handsel Spend Controls",
+    "default_icon": "icons/icon128.png",
+    "default_popup": "popup.html"
+  }
+}

@@ -20,7 +20,8 @@ export default async function AuthorizePage({
 
   const clientId = q('client_id')
   const redirectUri = q('redirect_uri')
-  const problem = await validate(clientId, redirectUri, q('response_type'), q('code_challenge_method'))
+  const scope = q('scope') || 'mcp'
+  const problem = await validate(clientId, redirectUri, q('response_type'), q('code_challenge_method'), scope)
 
   const session = await getSession()
   const clientName = problem ? '' : (await db.select().from(oauthClient).where(eq(oauthClient.id, clientId)))[0]?.name ?? ''
@@ -39,7 +40,7 @@ export default async function AuthorizePage({
             redirect_uri: redirectUri,
             state: q('state'),
             code_challenge: q('code_challenge'),
-            scope: q('scope') || 'mcp',
+            scope,
           }}
         />
       )}
@@ -47,10 +48,11 @@ export default async function AuthorizePage({
   )
 }
 
-async function validate(clientId: string, redirectUri: string, responseType: string, challengeMethod: string) {
+async function validate(clientId: string, redirectUri: string, responseType: string, challengeMethod: string, scope: string) {
   if (!clientId || !redirectUri) return 'Malformed authorization request (client_id / redirect_uri missing).'
   if (responseType !== 'code') return 'Only response_type=code is supported.'
   if (challengeMethod && challengeMethod !== 'S256') return 'Only PKCE S256 is supported.'
+  if (scope !== 'mcp' && scope !== 'extension:read extension:write') return 'Unsupported access scope.'
   const [client] = await db.select().from(oauthClient).where(eq(oauthClient.id, clientId))
   if (!client) return 'Unknown connector — it must register first (dynamic client registration).'
   if (!client.redirectUris.includes(redirectUri)) return 'redirect_uri is not registered for this connector.'
