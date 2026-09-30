@@ -37,19 +37,38 @@ export function qualify(lead, minimum = 35) {
   return { ...lead, qualified: lead.score >= minimum }
 }
 
-export function makeDraft(lead, handselUrl = 'https://handsel.ai') {
+export function makeDraft(lead, handselUrl = 'https://handsel-main.vercel.app') {
   const capabilities = [...new Set([...(lead.topics || []), lead.description || '', lead.readme || ''].join(' ').match(/MCP|LangGraph|LangChain|OpenAI Agents|CrewAI|Claude|Codex|browser|coding|research|automation/gi) || [])]
   const why = capabilities.length
-    ? `Your ${lead.repo} project already works with ${capabilities.slice(0, 3).join(', ')}. That makes it a plausible worker for scoped research, coding, or tool-use jobs on Handsel: your existing agent can claim a task, submit its result for independent verification, and earn when it passes.`
-    : `Your ${lead.repo} project describes an executable agent/tool workflow. That could fit Handsel's paid jobs: your existing agent can claim a scoped task, submit its result for independent verification, and earn when it passes.`
-  return `Hi ${lead.owner || 'there'} — I found ${lead.repo} (${lead.sourceUrl}). ${why}\n\nHandsel's existing worker API and Node SDK are documented here: ${handselUrl}/docs/agent-integration. Would you be open to trying one small task together? I can help adapt your current agent; no rewrite is needed.\n\nIf this is not relevant, tell me and I will not follow up.`
+    ? `Your ${lead.repo} project metadata mentions ${capabilities.slice(0, 3).join(', ')}. I have not tested it yet, but it may be a plausible worker for scoped research, coding, or tool-use jobs on Handsel: your existing agent can claim a task, submit its result for independent verification, and earn when it passes.`
+    : `Your ${lead.repo} project appeared in my agent-project research. I have not verified its capabilities yet; it might fit Handsel's paid jobs: your existing agent can claim a scoped task, submit its result for independent verification, and earn when it passes.`
+  return `Hi ${lead.owner || 'there'} — I found ${lead.repo} (${lead.sourceUrl}). ${why}\n\nHandsel's existing worker API and Node SDK are documented here: https://github.com/Kairose-master/handsel/blob/main/docs/agent-integration.md (platform: ${handselUrl}). Would you be open to trying one small task together? I can help check the integration requirements. Paid work depends on job availability, funding and verification; earnings are not guaranteed.\n\nIf this is not relevant, tell me and I will not follow up.`
+}
+
+// An opt-out follows the person/contact, not just one repository record.
+// Resolve legacy leadId-only suppressions against the retained lead as well.
+const normalized = value => String(value ?? '').trim().toLowerCase().replace(/\/+$/, '').replace(/\.git$/, '')
+export function isSuppressed(state, lead) {
+  return state.suppressions.some(entry => {
+    const original = state.leads.find(item => item.id === entry.leadId)
+    return entry.leadId === lead.id || ['sourceUrl', 'owner', 'contact'].some(key => {
+      const blocked = normalized(entry[key] || original?.[key])
+      return blocked !== '' && blocked === normalized(lead[key])
+    })
+  })
+}
+
+export function approvedDrafts(state) {
+  if (state.settings.approval_required !== true) throw new Error('approval_required must remain true')
+  return state.leads.filter(lead => lead.status === 'approved_ready' && !isSuppressed(state, lead))
 }
 
 export function canApprove(state, leadId, { now = new Date(), dailyCap = 20 } = {}) {
   if (state.settings.approval_required !== true) return { ok: false, reason: 'approval_required must remain true' }
-  if (state.suppressions.some(x => x.leadId === leadId)) return { ok: false, reason: 'suppressed' }
+  if (!Number.isSafeInteger(dailyCap) || dailyCap < 1) return { ok: false, reason: 'invalid daily cap' }
   const lead = state.leads.find(x => x.id === leadId)
   if (!lead) return { ok: false, reason: 'lead not found' }
+  if (isSuppressed(state, lead)) return { ok: false, reason: 'suppressed' }
   const day = now.toISOString().slice(0, 10)
   const count = state.leads.filter(x => x.approvedAt?.slice(0, 10) === day).length
   if (count >= dailyCap) return { ok: false, reason: 'daily cap reached' }
