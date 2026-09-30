@@ -85,9 +85,34 @@ export const QUERIES: CensusQuery[] = [
  * question; a label is not money.
  */
 
-/** A `$12`, `$1,500`, `500 USDC`, `50 usd` in text. Deliberately strict about
- *  requiring digits, so the word "bounty" alone never counts as an amount. */
-export const AMOUNT_RE = /(?:\$\s?\d[\d,]*(?:\.\d+)?)|(?:\b\d[\d,]*(?:\.\d+)?\s?(?:usdc|usd|dai|eth|sats)\b)/i
+/** A `$12`, `$1,500`, `$1.5k`, `500 USDC`, `50 usd` in text. */
+export const AMOUNT_RE = /(?:\$\s?\d[\d,]*(?:\.\d+)?\s?[km]?)|(?:\b\d[\d,]*(?:\.\d+)?\s?[km]?\s?(?:usdc|usd|dai|eth|sats)\b)/i
+
+/** A generous outer sanity bound for public leads, not a payout promise. */
+export const MAX_CENSUS_USD_AMOUNT = 100_000
+// Guard non-USD rails and malformed text from huge numeric literals too.
+const MAX_CENSUS_OTHER_AMOUNT = 1_000_000
+
+/** Return the first plausible positive amount; zero is stated, but not money. */
+export function statedAmount(text: string): string | null {
+  const re = new RegExp(AMOUNT_RE.source, 'gi')
+  for (const match of text.matchAll(re)) {
+    const raw = match[0].trim()
+    const number = raw.match(/\d[\d,]*(?:\.\d+)?/)?.[0]?.replaceAll(',', '')
+    if (!number) continue
+    const suffix = /([km])\s*(?:usdc|usd|dai|eth|sats)?$/i.exec(raw)?.[1]?.toLowerCase()
+    const multiplier = suffix === 'k' ? 1_000 : suffix === 'm' ? 1_000_000 : 1
+    const value = Number(number) * multiplier
+    if (!Number.isFinite(value) || value <= 0) continue
+    const isUsd = raw.startsWith('$') || /\b(?:usd|usdc)\b/i.test(raw)
+    if (value > (isUsd ? MAX_CENSUS_USD_AMOUNT : MAX_CENSUS_OTHER_AMOUNT)) continue
+    const normalized = Number.isInteger(value) ? String(value) : String(Number(value.toFixed(2)))
+    const prefix = raw.startsWith('$') ? '$' : ''
+    const unit = /\b(?:usdc|usd|dai|eth|sats)\b/i.exec(raw)?.[0]
+    return `${prefix}${normalized}${unit ? ` ${unit.toUpperCase()}` : ''}`
+  }
+  return null
+}
 
 export interface SampledIssue {
   title: string
@@ -111,9 +136,7 @@ export interface AmountRate {
  * exactly the manufactured number this repo keeps deleting.
  */
 export function sampleAmountRate(issues: SampledIssue[]): AmountRate {
-  const withAmount = issues.filter(
-    (i) => AMOUNT_RE.test(i.title) || AMOUNT_RE.test(i.body ?? ''),
-  ).length
+  const withAmount = issues.filter((i) => statedAmount(`${i.title}\n${i.body ?? ''}`) !== null).length
   return {
     sampled: issues.length,
     withAmount,
@@ -308,7 +331,7 @@ export function repoOf(item: IssueItem): string {
 
 export function qualifyLead(item: IssueItem, nowMs: number, meta?: RepoMeta): Lead {
   const text = `${item.title}\n${item.body ?? ''}`
-  const amountMatch = AMOUNT_RE.exec(text)
+  const amount = statedAmount(text)
   const channelMatch = CHANNEL_RE.exec(text)
   const labels = (item.labels ?? []).map((l) => (l.name ?? '').toLowerCase())
   const ageDays = Math.max(0, Math.round((nowMs - Date.parse(item.created_at)) / 86_400_000))
@@ -323,8 +346,8 @@ export function qualifyLead(item: IssueItem, nowMs: number, meta?: RepoMeta): Le
     reasons.push(`${pts > 0 ? '+' : ''}${pts} ${why}`)
   }
 
-  if (amountMatch) add(3, `states an amount (${amountMatch[0].trim()})`)
-  else add(-2, 'no amount stated — a label is not money')
+  if (amount) add(3, `states an amount (${amount})`)
+  else add(-2, 'no positive, plausible amount stated — a label is not money')
   if (channelMatch) add(3, `names a payment rail (${channelMatch[1].toLowerCase()})`)
   if (ageDays <= 14) add(2, `fresh (${ageDays}d)`)
   else if (ageDays > 90) add(-2, `stale (${ageDays}d) — nobody has taken it in three months`)
@@ -357,7 +380,7 @@ export function qualifyLead(item: IssueItem, nowMs: number, meta?: RepoMeta): Le
     url: item.html_url,
     repo,
     title: item.title.trim().slice(0, 140),
-    amount: amountMatch ? amountMatch[0].trim() : null,
+    amount,
     ageDays,
     comments,
     paymentChannel: channelMatch ? channelMatch[1].toLowerCase() : null,
