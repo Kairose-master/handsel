@@ -163,6 +163,7 @@ describe('sampling separates labelled from funded', () => {
     expect(kLead.amount).toBe('$1500')
     expect(kLead.reasons).toContain('+3 states an amount ($1500)')
     expect(leadsCsv([kLead])).toContain('$1500')
+    expect(statedAmount('Reward: $1000000')).toBeNull()
     expect(statedAmount('Reward: $2m')).toBeNull()
     expect(statedAmount('Reward: $1000000000000000000000000000')).toBeNull()
 
