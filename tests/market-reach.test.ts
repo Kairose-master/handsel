@@ -96,7 +96,7 @@ describe('the default that was excluding everyone', () => {
     expect(form).toMatch(/useState\('0'\)[\s\S]{0,40}$|const \[minScore, setMinScore\] = useState\('0'\)/m)
     expect(form).not.toMatch(/useState\('600'\)/)
 
-    const external = readFileSync(join(process.cwd(), 'app/api/jobs/external/route.ts'), 'utf8')
+    const external = readFileSync(join(process.cwd(), 'lib/external-job-create.ts'), 'utf8')
     expect(external).toMatch(/import \{ DEFAULT_MIN_SCORE \} from '@\/lib\/market-reach'/)
 
     // seed-jobs.ts exists specifically so "a freshly connected worker always
