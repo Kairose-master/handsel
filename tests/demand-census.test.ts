@@ -4,6 +4,9 @@ import {
   AMOUNT_RE,
   CSV_HEADER,
   sampleAmountRate,
+  qualifyLead,
+  leadsCsv,
+  statedAmount,
   SAMPLED_KEYS,
   MIN_OBSERVATIONS_FOR_TREND,
   parseCount,
@@ -146,6 +149,37 @@ describe('sampling separates labelled from funded', () => {
     expect(AMOUNT_RE.test('costs $ tbd')).toBe(false)
     expect(AMOUNT_RE.test('paid $12.50')).toBe(true)
     expect(AMOUNT_RE.test('1000 sats')).toBe(true)
+  })
+
+  it('normalizes k/m suffixes and rejects zero or absurd values in the actual lead path', () => {
+    const base = {
+      html_url: 'https://github.com/acme/project/issues/1',
+      created_at: '2026-09-29T00:00:00Z',
+      title: '[Bounty $1.5k] Improve BF16 reciprocal rounding on Wormhole',
+      body: 'A sufficiently detailed task description with acceptance criteria.',
+    }
+    const now = Date.parse('2026-09-30T00:00:00Z')
+    const kLead = qualifyLead(base, now)
+    expect(kLead.amount).toBe('$1500')
+    expect(kLead.reasons).toContain('+3 states an amount ($1500)')
+    expect(leadsCsv([kLead])).toContain('$1500')
+    expect(statedAmount('Reward: $2m')).toBeNull()
+    expect(statedAmount('Reward: $1000000000000000000000000000')).toBeNull()
+
+    const zeroLead = qualifyLead({ ...base, title: '[Bounty $0] Do the task' }, now)
+    expect(zeroLead.amount).toBeNull()
+    expect(zeroLead.reasons).toContain('-2 no positive, plausible amount stated — a label is not money')
+    expect(zeroLead.reasons.some((reason) => reason.includes('states an amount'))).toBe(false)
+  })
+
+  it('does not count zero or malformed giant figures in the sampled amount rate', () => {
+    const rate = sampleAmountRate([
+      { title: 'Issue $0' },
+      { title: 'Issue $1000000000000000000000000000000000000000' },
+      { title: 'Issue $1.5k' },
+    ])
+    expect(rate.withAmount).toBe(1)
+    expect(rate.rate).toBeCloseTo(1 / 3, 3)
   })
 
   it('returns a null rate on an empty sample rather than 0', () => {
