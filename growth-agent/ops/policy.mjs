@@ -23,7 +23,13 @@ export function suppress(s, leadId, reason, now) {
   audit(s, 'suppressed', { leadId, reason }, now)
 }
 function checkText(value, label, max) {
-  if (typeof value !== 'string' || !value.trim() || value.length > max || /[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(value)) throw new Error(`Invalid ${label}`)
+  if (typeof value !== 'string' || !value.trim() || value.length > max) throw new Error(`Invalid ${label}`)
+  // Preserve the C0 filter while allowing TAB, LF and CR in multiline text.
+  // Inspect before trimming so leading/trailing controls cannot disappear.
+  for (const character of value) {
+    const code = character.charCodeAt(0)
+    if (code <= 0x1f && code !== 0x09 && code !== 0x0a && code !== 0x0d) throw new Error(`Invalid ${label}`)
+  }
   return value.trim()
 }
 export function editMessage(s, id, input, now) {
