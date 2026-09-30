@@ -34,3 +34,10 @@ jobs:
       - name: Test
         if: ${{ !cancelled() }}
         run: pnpm test:coverage
+
+      # The root Vitest suite only discovers tests/**/*.test.ts. Growth Agent
+      # uses node:test, so run its CLI and persistent-runtime suites explicitly.
+      - name: Growth Agent tests
+        if: ${{ !cancelled() }}
+        working-directory: growth-agent
+        run: node --test
