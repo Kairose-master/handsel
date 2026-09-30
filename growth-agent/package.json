@@ -1,0 +1,7 @@
+{
+  "name": "@handsel/growth-agent",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=18" },
+  "scripts": { "growth": "node src/cli.js", "test": "node --test" }
+}
