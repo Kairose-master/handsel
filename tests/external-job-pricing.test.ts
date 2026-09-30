@@ -60,10 +60,12 @@ describe('the price has to exceed the bounty', () => {
 
 describe('the route actually uses it', () => {
   const src = readFileSync('app/api/jobs/external/route.ts', 'utf8')
+  const posting = readFileSync('lib/external-job-create.ts', 'utf8')
 
   it('escrows the configured bounty, not the hardcoded one', () => {
-    expect(src).toContain('postJob(houseAgentId, pricing.bountyUsd')
-    expect(src).not.toMatch(/postJob\(houseAgentId, FIXED_BOUNTY_USD/)
+    expect(posting).toContain('postJob(houseAgentId, input.pricing.bountyUsd')
+    expect(posting).not.toMatch(/postJob\(houseAgentId, FIXED_BOUNTY_USD/)
+    expect(src).toContain('createExternalJob(')
   })
 
   it('bills what it charges', () => {
