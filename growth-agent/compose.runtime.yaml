@@ -1,0 +1,21 @@
+services:
+  growth:
+    build:
+      context: .
+      dockerfile: Dockerfile.runtime
+    restart: unless-stopped
+    init: true
+    env_file: .env
+    environment:
+      GROWTH_HOST: 0.0.0.0
+      GROWTH_PORT: 4318
+      GROWTH_DATA_DIR: /app/data
+    ports:
+      - "127.0.0.1:4318:4318"
+    volumes:
+      - growth-data:/app/data
+    mem_limit: 512m
+    cpus: 1.0
+    stop_grace_period: 70s
+volumes:
+  growth-data:

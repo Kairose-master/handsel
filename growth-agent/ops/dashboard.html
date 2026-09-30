@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Handsel · Growth Operations</title><link rel="stylesheet" href="/style.css"><script defer src="/app.js"></script></head>
+<body><header><div><span class="eyebrow">HANDSEL / OPERATOR CONSOLE</span><h1>Growth, with evidence.</h1><p>Research runs itself. You approve the exact person and message.</p></div><span class="badge" id="mode">Locked</span></header>
+<main><section class="panel" id="login"><h2>Unlock your review queue</h2><label>Admin token<input id="token" type="password" autocomplete="off" placeholder="GROWTH_ADMIN_TOKEN"></label><button id="unlock">Unlock</button><p>Token stays in this tab's memory. No cloud analytics or browser storage.</p></section>
+<p role="status" id="notice"></p>
+<div id="console" hidden><nav><button id="refresh">Refresh</button><button id="run">Run research now</button><button id="pause">Pause all work</button><button id="resume">Resume</button><button id="lock">Lock</button></nav>
+<div id="metrics" class="metrics"></div><p id="verification" class="muted"></p>
+<section class="panel"><h2>Market health & next steps</h2><pre id="market"></pre><p>No job is promised. Funding, eligibility and independent verification still apply.</p></section>
+<section><div class="section-head"><h2>Review queue</h2><label>Status<select id="filter"><option value="review">Needs review</option><option value="all">All messages</option></select></label></div><div id="queue"></div></section>
+<section class="panel"><h2>Run log</h2><pre id="runs"></pre></section>
+<section class="panel"><h2>Recent audit events</h2><pre id="events"></pre></section>
+</div></main><footer>Single-host operations · Human approval required · No automatic forum posting · Reported payouts are not verified adoption</footer></body></html>

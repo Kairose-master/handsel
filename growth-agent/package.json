@@ -2,6 +2,11 @@
   "name": "@handsel/growth-agent",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=18" },
-  "scripts": { "growth": "node src/cli.js", "test": "node --test" }
+  "engines": { "node": ">=22.16" },
+  "scripts": {
+    "growth": "node src/cli.js",
+    "ops": "node ops/main.mjs",
+    "start": "node ops/main.mjs serve",
+    "test": "node --test"
+  }
 }

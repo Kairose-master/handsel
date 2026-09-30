@@ -1,0 +1,8 @@
+.env
+.env.*
+data
+*.sqlite*
+send-ready*.json
+node_modules
+.git
+test
