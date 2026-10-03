@@ -1,14 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { eq } from 'drizzle-orm'
-import { db, pool } from '@/lib/db'
-import { agent } from '@/lib/db/schema'
+import { pool } from '@/lib/db'
 import { externalJobInputError, createExternalJob } from '@/lib/external-job-create'
-import { externalJobPricing, PRICE_ENV, BOUNTY_ENV } from '@/lib/external-job-pricing'
+import { xrplJobConfiguration } from '@/lib/xrpl-job-configuration'
 import {
   callXrplFacilitator,
   decodeXrplPaymentHeader,
   paymentMatchesRequirements,
-  xrplMerchantConfig,
   xrplPaymentChallenge,
   xrplPaymentRequirements,
 } from '@/lib/xrpl-x402-merchant'
@@ -58,22 +55,8 @@ function jsonResponse(body: unknown, status = 200, paymentResponse?: unknown): R
   return Response.json(body, { status, headers })
 }
 
-async function configuration() {
-  const config = xrplMerchantConfig()
-  if (!config) return { response: jsonResponse({ error: 'XRPL job posting is not configured. Set XRPL_PAY_TO, XRPL_RLUSD_ISSUER, XRPL_NETWORK, and XRPL_FACILITATOR_URL.' }, 503) } as const
-  const { isRealMoney } = await import('@/lib/onchain/real-money')
-  const pricing = externalJobPricing({ isRealMoney: isRealMoney(), price: process.env[PRICE_ENV], bounty: process.env[BOUNTY_ENV] })
-  if (!pricing.open) return { response: jsonResponse({ error: pricing.reason }, 503) } as const
-  if (!process.env.X402_JOB_REQUESTER_AGENT_ID) return { response: jsonResponse({ error: 'Job posting is unavailable: X402_JOB_REQUESTER_AGENT_ID is unset.' }, 503) } as const
-  const [house] = await db.select({ smartAccountAddress: agent.smartAccountAddress }).from(agent).where(eq(agent.id, process.env.X402_JOB_REQUESTER_AGENT_ID))
-  if (!house?.smartAccountAddress) return { response: jsonResponse({ error: 'The Handsel job requester is not provisioned.' }, 503) } as const
-  const { isLaborMarketConfigured } = await import('@/lib/onchain/config')
-  if (!isLaborMarketConfigured()) return { response: jsonResponse({ error: 'Labor market is not configured on this deployment.' }, 503) } as const
-  return { config, pricing } as const
-}
-
 export async function GET(request: Request) {
-  const configured = await configuration()
+  const configured = await xrplJobConfiguration()
   if ('response' in configured) return configured.response
   const invoice = xrplPaymentChallenge({ url: request.url, amountUsd: configured.pricing.priceUsd, config: configured.config })
   return Response.json(invoice.body, {
@@ -83,7 +66,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const configured = await configuration()
+  const configured = await xrplJobConfiguration()
   if ('response' in configured) return configured.response
   const body = await request.json().catch(() => null)
   const invalid = await externalJobInputError(body)
